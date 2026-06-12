@@ -1,0 +1,30 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "./tsconfig.tsbuildinfo"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["dist", "node_modules"],
+  "references": [
+    {
+      "path": "../authentication"
+    },
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../mcp"
+    },
+    {
+      "path": "../rest"
+    },
+    {
+      "path": "../security"
+    },
+    {
+      "path": "../testlab"
+    }
+  ]
+}

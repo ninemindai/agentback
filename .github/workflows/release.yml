@@ -1,0 +1,88 @@
+name: Release
+
+# Manual, all-at-once release of every @agentback/* package at one
+# shared version. Publishes ONLY when a maintainer dispatches this workflow
+# and the NPM_TOKEN secret exists. See docs/proposals/p2-1-publish-pipeline.md.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 0.1.0-alpha.1)'
+        required: true
+        type: string
+      dist-tag:
+        description: 'npm dist-tag'
+        required: false
+        default: 'alpha'
+        type: string
+
+permissions:
+  contents: write # push the release tag
+  id-token: write # npm provenance
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      REDIS_URL: redis://localhost:6379
+      VERSION: ${{ inputs.version }}
+      DIST_TAG: ${{ inputs.dist-tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.13'
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Validate version input
+        run: |
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "Invalid semver: $VERSION" >&2
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
+
+      - name: Set workspace version
+        run: |
+          pnpm -r --filter './packages/*' exec npm version "$VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          pnpm -r --filter './packages/*' publish \
+            --access public --no-git-checks --tag "$DIST_TAG" --provenance
+
+      - name: Tag release
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v$VERSION"
+          git push origin "v$VERSION"

@@ -1,0 +1,46 @@
+{
+  "name": "@agentback/metadata",
+  "version": "0.0.1",
+  "description": "Decorator metadata utilities (ported from @loopback/metadata)",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@agentback/common": "workspace:*",
+    "debug": "^4.4.3",
+    "lodash-es": "^4.18.1",
+    "reflect-metadata": "^0.2.2",
+    "tslib": "^2.8.1"
+  },
+  "devDependencies": {
+    "@agentback/testlab": "workspace:*",
+    "@types/debug": "^4.1.13",
+    "@types/lodash-es": "^4.17.12",
+    "vitest": "~4.1.8"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ninemindai/agentback.git",
+    "directory": "packages/metadata"
+  },
+  "homepage": "https://agentback.dev",
+  "bugs": "https://github.com/ninemindai/agentback/issues"
+}

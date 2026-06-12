@@ -1,0 +1,42 @@
+{
+  "name": "@agentback/client",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "peerDependencies": {
+    "zod": "^4"
+  },
+  "dependencies": {
+    "tslib": "^2.8.1"
+  },
+  "devDependencies": {
+    "vitest": "~4.1.8",
+    "zod": "^4.4.3"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ninemindai/agentback.git",
+    "directory": "packages/client"
+  },
+  "homepage": "https://agentback.dev",
+  "bugs": "https://github.com/ninemindai/agentback/issues"
+}

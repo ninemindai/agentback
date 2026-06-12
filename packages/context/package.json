@@ -1,0 +1,48 @@
+{
+  "name": "@agentback/context",
+  "version": "0.0.1",
+  "description": "Dependency Injection container (ported from @loopback/context)",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@agentback/common": "workspace:*",
+    "@agentback/metadata": "workspace:*",
+    "@types/debug": "^4.1.13",
+    "debug": "^4.4.3",
+    "hyperid": "^4.0.0",
+    "p-event": "^6.0.1",
+    "tslib": "^2.8.1",
+    "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "@agentback/testlab": "workspace:*",
+    "@types/uuid": "^11.0.0",
+    "vitest": "~4.1.8"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ninemindai/agentback.git",
+    "directory": "packages/context"
+  },
+  "homepage": "https://agentback.dev",
+  "bugs": "https://github.com/ninemindai/agentback/issues"
+}

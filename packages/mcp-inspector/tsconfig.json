@@ -1,0 +1,33 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "./tsconfig.tsbuildinfo"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["dist", "node_modules", "src/client"],
+  "references": [
+    {
+      "path": "../console-theme"
+    },
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../rest"
+    },
+    {
+      "path": "../openapi"
+    },
+    {
+      "path": "../mcp"
+    },
+    {
+      "path": "../mcp-connect"
+    },
+    {
+      "path": "../testlab"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "name": "create-agentback",
+  "version": "0.0.1",
+  "description": "Scaffold an AgentBack app: npm create agentback my-service [--template rest|mcp|hybrid]",
+  "type": "module",
+  "bin": {
+    "create-agentback": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "devDependencies": {
+    "vitest": "~4.1.8"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ninemindai/agentback.git",
+    "directory": "packages/create-agentback"
+  },
+  "homepage": "https://agentback.dev",
+  "bugs": "https://github.com/ninemindai/agentback/issues"
+}

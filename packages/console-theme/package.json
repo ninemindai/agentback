@@ -1,0 +1,35 @@
+{
+  "name": "@agentback/console-theme",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "tslib": "^2.8.1"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ninemindai/agentback.git",
+    "directory": "packages/console-theme"
+  },
+  "homepage": "https://agentback.dev",
+  "bugs": "https://github.com/ninemindai/agentback/issues"
+}

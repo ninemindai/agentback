@@ -1,0 +1,1286 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>messaging Architecture Map</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script
+      src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"
+      integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"
+      integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/"
+      crossorigin="anonymous"
+    ></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: 'JetBrains Mono', monospace;
+        background: #020617;
+        min-height: 100vh;
+        padding: 2rem;
+        color: white;
+      }
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+      .header {
+        margin-bottom: 2rem;
+      }
+      .header-row {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 0.5rem;
+      }
+      .pulse-dot {
+        width: 12px;
+        height: 12px;
+        background: #fb923c;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+      }
+      h1 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+      }
+      .subtitle {
+        color: #94a3b8;
+        font-size: 0.875rem;
+        margin-left: 1.75rem;
+      }
+      .diagram-container {
+        background: rgba(15, 23, 42, 0.5);
+        border-radius: 1rem;
+        border: 1px solid #1e293b;
+        padding: 1.5rem;
+        overflow-x: auto;
+      }
+      svg {
+        width: 100%;
+        min-width: 900px;
+        display: block;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 1rem;
+        margin-top: 2rem;
+      }
+      .card {
+        background: rgba(15, 23, 42, 0.5);
+        border-radius: 0.75rem;
+        border: 1px solid #1e293b;
+        padding: 1.25rem;
+      }
+      .card-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+      }
+      .card-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+      }
+      .card-dot.cyan {
+        background: #22d3ee;
+      }
+      .card-dot.emerald {
+        background: #34d399;
+      }
+      .card-dot.violet {
+        background: #a78bfa;
+      }
+      .card-dot.amber {
+        background: #fbbf24;
+      }
+      .card-dot.orange {
+        background: #fb923c;
+      }
+      .card-dot.rose {
+        background: #fb7185;
+      }
+      .card h3 {
+        font-size: 0.875rem;
+        font-weight: 600;
+      }
+      .card ul {
+        list-style: none;
+        color: #94a3b8;
+        font-size: 0.75rem;
+      }
+      .card li {
+        margin-bottom: 0.375rem;
+      }
+      .footer {
+        text-align: center;
+        margin-top: 1.5rem;
+        color: #475569;
+        font-size: 0.75rem;
+      }
+      .toolbar {
+        display: flex;
+        gap: 0.5rem;
+        margin-left: auto;
+        flex-shrink: 0;
+        align-items: center;
+      }
+      .toolbar-toggle {
+        background: transparent;
+        border: none;
+        color: #475569;
+        cursor: pointer;
+        font-size: 1.25rem;
+        line-height: 1;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.375rem;
+        transition:
+          color 0.2s,
+          background 0.2s;
+      }
+      .toolbar-toggle:hover {
+        color: #94a3b8;
+        background: rgba(30, 41, 59, 0.5);
+      }
+      .toolbar-actions {
+        display: none;
+        gap: 0.5rem;
+      }
+      .toolbar.expanded .toolbar-actions {
+        display: flex;
+      }
+      .toolbar-actions button {
+        background: rgba(30, 41, 59, 0.8);
+        border: 1px solid #334155;
+        color: #94a3b8;
+        padding: 0.375rem 0.75rem;
+        border-radius: 0.375rem;
+        font-family: inherit;
+        font-size: 0.75rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+      }
+      .toolbar-actions button:hover {
+        background: rgba(51, 65, 85, 0.8);
+        color: white;
+        border-color: #475569;
+      }
+      @media print {
+        body {
+          background: #020617;
+          padding: 1rem;
+        }
+        .toolbar {
+          display: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container" id="report-container">
+      <div class="header">
+        <div class="header-row">
+          <div class="pulse-dot"></div>
+          <h1>messaging — Architecture Map</h1>
+          <div class="toolbar">
+            <div class="toolbar-actions">
+              <button onclick="copyAsImage(this)">📋 Copy</button>
+              <button onclick="downloadPNG(this)">🖼️ PNG</button>
+              <button onclick="downloadPDF(this)">📄 PDF</button>
+            </div>
+            <button
+              class="toolbar-toggle"
+              onclick="this.parentElement.classList.toggle('expanded')"
+              title="Export options"
+              aria-label="Export options"
+            >
+              ⋯
+            </button>
+          </div>
+        </div>
+        <p class="subtitle">
+          Durable, distributed messaging substrate for the AgentBack
+          runtime · ports + swappable adapters · bus under the engine
+        </p>
+      </div>
+
+      <div class="diagram-container">
+        <svg viewBox="0 0 1000 770">
+          <defs>
+            <marker
+              id="arrowhead"
+              markerWidth="10"
+              markerHeight="7"
+              refX="9"
+              refY="3.5"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+            </marker>
+            <marker
+              id="arrowhead-orange"
+              markerWidth="10"
+              markerHeight="7"
+              refX="9"
+              refY="3.5"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#fb923c" />
+            </marker>
+            <marker
+              id="arrowhead-cyan"
+              markerWidth="10"
+              markerHeight="7"
+              refX="9"
+              refY="3.5"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee" />
+            </marker>
+            <pattern
+              id="grid"
+              width="40"
+              height="40"
+              patternUnits="userSpaceOnUse"
+            >
+              <path
+                d="M 40 0 L 0 0 0 40"
+                fill="none"
+                stroke="#1e293b"
+                stroke-width="0.5"
+              />
+            </pattern>
+          </defs>
+
+          <rect width="100%" height="100%" fill="url(#grid)" />
+
+          <!-- ============ ARROWS (drawn first, behind boxes) ============ -->
+          <!-- Consumers depend on Ports (DIP) -->
+          <line
+            x1="300"
+            y1="184"
+            x2="300"
+            y2="246"
+            stroke="#64748b"
+            stroke-width="1.5"
+            marker-end="url(#arrowhead)"
+          />
+          <text x="310" y="218" fill="#94a3b8" font-size="9">depends on</text>
+
+          <!-- bus under engine loop: Triggers enqueue -> JobQueue -->
+          <line
+            x1="250"
+            y1="184"
+            x2="160"
+            y2="262"
+            stroke="#fb923c"
+            stroke-width="1.5"
+            marker-end="url(#arrowhead-orange)"
+          />
+          <text x="150" y="225" fill="#fb923c" font-size="9">enqueue</text>
+          <!-- JobQueue worker drives Engine -->
+          <line
+            x1="120"
+            y1="262"
+            x2="110"
+            y2="186"
+            stroke="#fb923c"
+            stroke-width="1.5"
+            marker-end="url(#arrowhead-orange)"
+          />
+          <text x="38" y="228" fill="#fb923c" font-size="9">worker drives</text>
+
+          <!-- Adapters implement Ports (DIP, dashed up) -->
+          <line
+            x1="170"
+            y1="402"
+            x2="170"
+            y2="364"
+            stroke="#64748b"
+            stroke-width="1.5"
+            stroke-dasharray="5,4"
+            marker-end="url(#arrowhead)"
+          />
+          <text x="180" y="388" fill="#94a3b8" font-size="9">implements</text>
+          <line
+            x1="470"
+            y1="402"
+            x2="470"
+            y2="364"
+            stroke="#64748b"
+            stroke-width="1.5"
+            stroke-dasharray="5,4"
+            marker-end="url(#arrowhead)"
+          />
+          <text x="480" y="388" fill="#94a3b8" font-size="9">implements</text>
+
+          <!-- messaging-bullmq -> Redis infra -->
+          <line
+            x1="150"
+            y1="540"
+            x2="150"
+            y2="600"
+            stroke="#a78bfa"
+            stroke-width="1.5"
+            marker-end="url(#arrowhead)"
+          />
+          <text x="160" y="578" fill="#94a3b8" font-size="9">ioredis</text>
+
+          <!-- EventBus -> WebSocket gateway (subscribe) -->
+          <line
+            x1="694"
+            y1="292"
+            x2="744"
+            y2="292"
+            stroke="#22d3ee"
+            stroke-width="1.5"
+            marker-end="url(#arrowhead-cyan)"
+          />
+          <text x="700" y="284" fill="#22d3ee" font-size="9">subscribe</text>
+
+          <!-- WebSocket gateway -> Clients (push) -->
+          <line
+            x1="838"
+            y1="254"
+            x2="838"
+            y2="156"
+            stroke="#22d3ee"
+            stroke-width="1.5"
+            marker-end="url(#arrowhead-cyan)"
+          />
+          <text x="848" y="208" fill="#22d3ee" font-size="9">push</text>
+
+          <!-- ============ BOUNDARIES (transparent) ============ -->
+          <rect
+            x="40"
+            y="70"
+            width="660"
+            height="116"
+            rx="12"
+            fill="rgba(6, 78, 59, 0.05)"
+            stroke="#34d399"
+            stroke-width="1"
+            stroke-dasharray="8,4"
+          />
+          <text x="52" y="88" fill="#34d399" font-size="10" font-weight="600">
+            Consumers — depend only on ports (no backend imports)
+          </text>
+
+          <rect
+            x="40"
+            y="226"
+            width="660"
+            height="138"
+            rx="12"
+            fill="rgba(251, 146, 60, 0.06)"
+            stroke="#fb923c"
+            stroke-width="1"
+            stroke-dasharray="8,4"
+          />
+          <text x="52" y="244" fill="#fb923c" font-size="10" font-weight="600">
+            @agentback/messaging — ports (zero backend deps)
+          </text>
+
+          <rect
+            x="40"
+            y="402"
+            width="660"
+            height="160"
+            rx="12"
+            fill="rgba(148, 163, 184, 0.05)"
+            stroke="#94a3b8"
+            stroke-width="1"
+            stroke-dasharray="8,4"
+          />
+          <text x="52" y="420" fill="#94a3b8" font-size="10" font-weight="600">
+            Adapters — implement the ports (swappable)
+          </text>
+
+          <!-- ============ CONSUMERS ============ -->
+          <rect x="58" y="100" width="140" height="62" rx="6" fill="#0f172a" />
+          <rect
+            x="58"
+            y="100"
+            width="140"
+            height="62"
+            rx="6"
+            fill="rgba(6, 78, 59, 0.4)"
+            stroke="#34d399"
+            stroke-width="1.5"
+          />
+          <text
+            x="128"
+            y="126"
+            fill="white"
+            font-size="11"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            ExecutionEngine
+          </text>
+          <text
+            x="128"
+            y="142"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            state machine · the brain
+          </text>
+
+          <rect x="212" y="100" width="150" height="62" rx="6" fill="#0f172a" />
+          <rect
+            x="212"
+            y="100"
+            width="150"
+            height="62"
+            rx="6"
+            fill="rgba(6, 78, 59, 0.4)"
+            stroke="#34d399"
+            stroke-width="1.5"
+          />
+          <text
+            x="287"
+            y="126"
+            fill="white"
+            font-size="11"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            Triggers
+          </text>
+          <text
+            x="287"
+            y="142"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            spawn·cron·message·webhook
+          </text>
+
+          <rect x="376" y="100" width="118" height="62" rx="6" fill="#0f172a" />
+          <rect
+            x="376"
+            y="100"
+            width="118"
+            height="62"
+            rx="6"
+            fill="rgba(6, 78, 59, 0.4)"
+            stroke="#34d399"
+            stroke-width="1.5"
+          />
+          <text
+            x="435"
+            y="126"
+            fill="white"
+            font-size="11"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            Delivery
+          </text>
+          <text
+            x="435"
+            y="142"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            result fan-out
+          </text>
+
+          <rect x="508" y="100" width="174" height="62" rx="6" fill="#0f172a" />
+          <rect
+            x="508"
+            y="100"
+            width="174"
+            height="62"
+            rx="6"
+            fill="rgba(6, 78, 59, 0.4)"
+            stroke="#34d399"
+            stroke-width="1.5"
+          />
+          <text
+            x="595"
+            y="126"
+            fill="white"
+            font-size="11"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            Orchestration
+          </text>
+          <text
+            x="595"
+            y="142"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            workflow coordination
+          </text>
+
+          <!-- ============ PORTS ============ -->
+          <rect x="58" y="256" width="184" height="96" rx="6" fill="#0f172a" />
+          <rect
+            x="58"
+            y="256"
+            width="184"
+            height="96"
+            rx="6"
+            fill="rgba(251, 146, 60, 0.3)"
+            stroke="#fb923c"
+            stroke-width="1.5"
+          />
+          <text
+            x="150"
+            y="280"
+            fill="white"
+            font-size="12"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            JobQueue
+          </text>
+          <text
+            x="150"
+            y="300"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            enqueue · consume (worker)
+          </text>
+          <text
+            x="150"
+            y="314"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            schedule-delayed
+          </text>
+          <text
+            x="150"
+            y="328"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            repeatable · retries
+          </text>
+          <text
+            x="150"
+            y="344"
+            fill="#fb923c"
+            font-size="7"
+            text-anchor="middle"
+          >
+            job / worker axis
+          </text>
+
+          <rect x="262" y="256" width="184" height="96" rx="6" fill="#0f172a" />
+          <rect
+            x="262"
+            y="256"
+            width="184"
+            height="96"
+            rx="6"
+            fill="rgba(251, 146, 60, 0.3)"
+            stroke="#fb923c"
+            stroke-width="1.5"
+          />
+          <text
+            x="354"
+            y="280"
+            fill="white"
+            font-size="12"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            EventBus
+          </text>
+          <text
+            x="354"
+            y="300"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            publish
+          </text>
+          <text
+            x="354"
+            y="314"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            subscribe (consumer-group)
+          </text>
+          <text
+            x="354"
+            y="328"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            fan-out to N sinks
+          </text>
+          <text
+            x="354"
+            y="344"
+            fill="#fb923c"
+            font-size="7"
+            text-anchor="middle"
+          >
+            pub / sub axis
+          </text>
+
+          <rect x="466" y="256" width="216" height="96" rx="6" fill="#0f172a" />
+          <rect
+            x="466"
+            y="256"
+            width="216"
+            height="96"
+            rx="6"
+            fill="rgba(251, 146, 60, 0.18)"
+            stroke="#fb923c"
+            stroke-width="1.5"
+            stroke-dasharray="2,2"
+          />
+          <text
+            x="574"
+            y="280"
+            fill="white"
+            font-size="12"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            Scheduler
+          </text>
+          <text
+            x="574"
+            y="300"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            cron API (thin helper)
+          </text>
+          <text
+            x="574"
+            y="314"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            → repeatable JobQueue jobs
+          </text>
+          <text
+            x="574"
+            y="328"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            NOT a backend port
+          </text>
+          <text
+            x="574"
+            y="344"
+            fill="#fb923c"
+            font-size="7"
+            text-anchor="middle"
+          >
+            cron foundation
+          </text>
+
+          <!-- ============ ADAPTERS ============ -->
+          <rect x="58" y="432" width="190" height="108" rx="6" fill="#0f172a" />
+          <rect
+            x="58"
+            y="432"
+            width="190"
+            height="108"
+            rx="6"
+            fill="rgba(120, 53, 15, 0.3)"
+            stroke="#fbbf24"
+            stroke-width="1.5"
+          />
+          <text
+            x="153"
+            y="456"
+            fill="white"
+            font-size="11"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            messaging-bullmq
+          </text>
+          <text
+            x="153"
+            y="476"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            BullMQ → JobQueue
+          </text>
+          <text
+            x="153"
+            y="490"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            Streams → EventBus
+          </text>
+          <text
+            x="153"
+            y="504"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            ioredis connection
+          </text>
+          <text
+            x="153"
+            y="526"
+            fill="#fbbf24"
+            font-size="8"
+            text-anchor="middle"
+            font-weight="600"
+          >
+            DEFAULT
+          </text>
+
+          <rect
+            x="270"
+            y="432"
+            width="172"
+            height="108"
+            rx="6"
+            fill="#0f172a"
+          />
+          <rect
+            x="270"
+            y="432"
+            width="172"
+            height="108"
+            rx="6"
+            fill="rgba(6, 78, 59, 0.4)"
+            stroke="#34d399"
+            stroke-width="1.5"
+          />
+          <text
+            x="356"
+            y="456"
+            fill="white"
+            font-size="11"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            in-memory
+          </text>
+          <text
+            x="356"
+            y="476"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            dev · test · examples
+          </text>
+          <text
+            x="356"
+            y="490"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            same contract
+          </text>
+          <text
+            x="356"
+            y="504"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            no infra needed
+          </text>
+          <text
+            x="356"
+            y="526"
+            fill="#34d399"
+            font-size="8"
+            text-anchor="middle"
+            font-weight="600"
+          >
+            FAST TESTS
+          </text>
+
+          <rect
+            x="464"
+            y="432"
+            width="218"
+            height="108"
+            rx="6"
+            fill="#0f172a"
+          />
+          <rect
+            x="464"
+            y="432"
+            width="218"
+            height="108"
+            rx="6"
+            fill="rgba(30, 41, 59, 0.5)"
+            stroke="#94a3b8"
+            stroke-width="1.5"
+            stroke-dasharray="4,4"
+          />
+          <text
+            x="573"
+            y="456"
+            fill="white"
+            font-size="11"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            SQS·SNS / NATS
+          </text>
+          <text
+            x="573"
+            y="476"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            same ports, new backend
+          </text>
+          <text
+            x="573"
+            y="490"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            cross-cloud durability
+          </text>
+          <text
+            x="573"
+            y="504"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            if/when needed
+          </text>
+          <text
+            x="573"
+            y="526"
+            fill="#64748b"
+            font-size="8"
+            text-anchor="middle"
+            font-weight="600"
+          >
+            FUTURE — NOT BUILT
+          </text>
+
+          <!-- ============ REDIS INFRA ============ -->
+          <rect x="58" y="600" width="190" height="54" rx="6" fill="#0f172a" />
+          <rect
+            x="58"
+            y="600"
+            width="190"
+            height="54"
+            rx="6"
+            fill="rgba(76, 29, 149, 0.4)"
+            stroke="#a78bfa"
+            stroke-width="1.5"
+          />
+          <text
+            x="153"
+            y="624"
+            fill="white"
+            font-size="11"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            Redis
+          </text>
+          <text
+            x="153"
+            y="640"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            one instance: BullMQ + Streams
+          </text>
+
+          <!-- ============ WEBSOCKET GATEWAY ============ -->
+          <rect x="744" y="256" width="206" height="96" rx="6" fill="#0f172a" />
+          <rect
+            x="744"
+            y="256"
+            width="206"
+            height="96"
+            rx="6"
+            fill="rgba(8, 51, 68, 0.4)"
+            stroke="#22d3ee"
+            stroke-width="1.5"
+          />
+          <text
+            x="847"
+            y="282"
+            fill="white"
+            font-size="11"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            WebSocket Gateway
+          </text>
+          <text
+            x="847"
+            y="302"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            an EventBus subscriber
+          </text>
+          <text
+            x="847"
+            y="316"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            live status push
+          </text>
+          <text
+            x="847"
+            y="338"
+            fill="#22d3ee"
+            font-size="8"
+            text-anchor="middle"
+            font-weight="600"
+          >
+            CLIENT EGRESS ONLY
+          </text>
+
+          <!-- ============ CLIENTS ============ -->
+          <rect x="744" y="94" width="206" height="62" rx="6" fill="#0f172a" />
+          <rect
+            x="744"
+            y="94"
+            width="206"
+            height="62"
+            rx="6"
+            fill="rgba(30, 41, 59, 0.5)"
+            stroke="#94a3b8"
+            stroke-width="1.5"
+          />
+          <text
+            x="847"
+            y="120"
+            fill="white"
+            font-size="11"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            Clients
+          </text>
+          <text
+            x="847"
+            y="136"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            console live view · Slack
+          </text>
+
+          <!-- ============ LEGEND ============ -->
+          <text x="58" y="690" fill="white" font-size="10" font-weight="600">
+            Legend
+          </text>
+          <rect
+            x="58"
+            y="700"
+            width="16"
+            height="10"
+            rx="2"
+            fill="rgba(6, 78, 59, 0.4)"
+            stroke="#34d399"
+            stroke-width="1"
+          />
+          <text x="80" y="708" fill="#94a3b8" font-size="8">
+            Consumer / in-process
+          </text>
+          <rect
+            x="220"
+            y="700"
+            width="16"
+            height="10"
+            rx="2"
+            fill="rgba(251, 146, 60, 0.3)"
+            stroke="#fb923c"
+            stroke-width="1"
+          />
+          <text x="242" y="708" fill="#94a3b8" font-size="8">
+            Port (messaging)
+          </text>
+          <rect
+            x="400"
+            y="700"
+            width="16"
+            height="10"
+            rx="2"
+            fill="rgba(120, 53, 15, 0.3)"
+            stroke="#fbbf24"
+            stroke-width="1"
+          />
+          <text x="422" y="708" fill="#94a3b8" font-size="8">
+            Adapter (default)
+          </text>
+          <rect
+            x="560"
+            y="700"
+            width="16"
+            height="10"
+            rx="2"
+            fill="rgba(76, 29, 149, 0.4)"
+            stroke="#a78bfa"
+            stroke-width="1"
+          />
+          <text x="582" y="708" fill="#94a3b8" font-size="8">Infra</text>
+          <rect
+            x="640"
+            y="700"
+            width="16"
+            height="10"
+            rx="2"
+            fill="rgba(8, 51, 68, 0.4)"
+            stroke="#22d3ee"
+            stroke-width="1"
+          />
+          <text x="662" y="708" fill="#94a3b8" font-size="8">
+            Egress / client
+          </text>
+          <rect
+            x="58"
+            y="722"
+            width="16"
+            height="10"
+            rx="2"
+            fill="rgba(30, 41, 59, 0.5)"
+            stroke="#94a3b8"
+            stroke-width="1"
+            stroke-dasharray="3,3"
+          />
+          <text x="80" y="730" fill="#94a3b8" font-size="8">
+            Future / not built
+          </text>
+          <line
+            x1="220"
+            y1="727"
+            x2="236"
+            y2="727"
+            stroke="#64748b"
+            stroke-width="1.5"
+            stroke-dasharray="4,3"
+          />
+          <text x="242" y="730" fill="#94a3b8" font-size="8">
+            implements (DIP)
+          </text>
+          <line
+            x1="400"
+            y1="727"
+            x2="416"
+            y2="727"
+            stroke="#fb923c"
+            stroke-width="1.5"
+          />
+          <text x="422" y="730" fill="#94a3b8" font-size="8">
+            durable job flow
+          </text>
+          <line
+            x1="560"
+            y1="727"
+            x2="576"
+            y2="727"
+            stroke="#22d3ee"
+            stroke-width="1.5"
+          />
+          <text x="582" y="730" fill="#94a3b8" font-size="8">
+            live event push
+          </text>
+        </svg>
+      </div>
+
+      <div class="cards">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-dot orange"></div>
+            <h3>Two ports, two axes</h3>
+          </div>
+          <ul>
+            <li>• JobQueue = durable job/worker (BullMQ)</li>
+            <li>• EventBus = pub/sub fan-out (Streams)</li>
+            <li>• Scheduler = cron, as repeatable jobs</li>
+            <li>• WebSocket = a subscriber, not a bus</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-dot emerald"></div>
+            <h3>Bus under the engine</h3>
+          </div>
+          <ul>
+            <li>• Triggers/spawns enqueue jobs</li>
+            <li>• Workers pull → drive same engine</li>
+            <li>• Crash-durable detached executions</li>
+            <li>• Engine stays the multi-step brain</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-dot amber"></div>
+            <h3>Pluggable, Redis default</h3>
+          </div>
+          <ul>
+            <li>• Ports have zero backend deps</li>
+            <li>• messaging-bullmq is the durable Redis adapter</li>
+            <li>• in-memory adapter for dev/test</li>
+            <li>• SQS/NATS later, same contract</li>
+          </ul>
+        </div>
+      </div>
+
+      <p class="footer">
+        AgentBack • messaging architecture map • map-first decomposition →
+        job/worker · cron · pub/sub · websocket each get their own spec
+      </p>
+    </div>
+
+    <script>
+      async function copyAsImage(btn) {
+        const orig = btn.textContent;
+        try {
+          const el = document.getElementById('report-container');
+          const r = el.getBoundingClientRect();
+          const pad = 32;
+          const canvas = await html2canvas(document.body, {
+            backgroundColor: '#020617',
+            scale: 2,
+            useCORS: true,
+            ignoreElements: e => e.classList && e.classList.contains('toolbar'),
+            x: r.left + window.scrollX - pad,
+            y: r.top + window.scrollY - pad,
+            width: r.width + pad * 2,
+            height: r.height + pad * 2,
+          });
+          const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+          await navigator.clipboard.write([
+            new ClipboardItem({'image/png': blob}),
+          ]);
+          btn.textContent = '✓ Copied!';
+        } catch (e) {
+          btn.textContent = '✗ Failed';
+        }
+        setTimeout(() => (btn.textContent = orig), 2000);
+      }
+      async function downloadPNG(btn) {
+        const orig = btn.textContent;
+        btn.textContent = '⏳ ...';
+        try {
+          const el = document.getElementById('report-container');
+          const r = el.getBoundingClientRect();
+          const pad = 32;
+          const canvas = await html2canvas(document.body, {
+            backgroundColor: '#020617',
+            scale: 2,
+            useCORS: true,
+            ignoreElements: e => e.classList && e.classList.contains('toolbar'),
+            x: r.left + window.scrollX - pad,
+            y: r.top + window.scrollY - pad,
+            width: r.width + pad * 2,
+            height: r.height + pad * 2,
+          });
+          const link = document.createElement('a');
+          link.download = 'messaging-architecture-map.png';
+          link.href = canvas.toDataURL('image/png');
+          link.click();
+          btn.textContent = '✓ Done!';
+        } catch (e) {
+          btn.textContent = '✗ Failed';
+        }
+        setTimeout(() => (btn.textContent = orig), 2000);
+      }
+      async function downloadPDF(btn) {
+        const orig = btn.textContent;
+        btn.textContent = '⏳ ...';
+        try {
+          const el = document.getElementById('report-container');
+          const r = el.getBoundingClientRect();
+          const pad = 32;
+          const canvas = await html2canvas(document.body, {
+            backgroundColor: '#020617',
+            scale: 2,
+            useCORS: true,
+            ignoreElements: e => e.classList && e.classList.contains('toolbar'),
+            x: r.left + window.scrollX - pad,
+            y: r.top + window.scrollY - pad,
+            width: r.width + pad * 2,
+            height: r.height + pad * 2,
+          });
+          const imgData = canvas.toDataURL('image/png');
+          const {jsPDF} = window.jspdf;
+          const orientation =
+            canvas.width > canvas.height ? 'landscape' : 'portrait';
+          const pdf = new jsPDF({
+            orientation,
+            unit: 'px',
+            format: [canvas.width, canvas.height],
+            hotfixes: ['px_scaling'],
+          });
+          pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+          pdf.save('messaging-architecture-map.pdf');
+          btn.textContent = '✓ Done!';
+        } catch (e) {
+          btn.textContent = '✗ Failed';
+        }
+        setTimeout(() => (btn.textContent = orig), 2000);
+      }
+    </script>
+  </body>
+</html>

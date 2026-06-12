@@ -1,0 +1,57 @@
+{
+  "name": "@agentback/drizzle",
+  "version": "0.0.1",
+  "description": "Drizzle ORM integration: typed client binding, lifecycle pool shutdown, drizzle-zod re-exports — the blessed DB recipe",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./zod": {
+      "types": "./dist/zod.d.ts",
+      "import": "./dist/zod.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@agentback/context": "workspace:*",
+    "@agentback/core": "workspace:*",
+    "tslib": "^2.8.1"
+  },
+  "peerDependencies": {
+    "drizzle-orm": ">=0.45.2 <1",
+    "drizzle-zod": ">=0.8 <1"
+  },
+  "peerDependenciesMeta": {
+    "drizzle-zod": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "devDependencies": {
+    "drizzle-orm": "^0.45.2",
+    "drizzle-zod": "^0.8.2",
+    "vitest": "~4.1.8",
+    "zod": "^4.4.3"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ninemindai/agentback.git",
+    "directory": "packages/drizzle"
+  },
+  "homepage": "https://agentback.dev",
+  "bugs": "https://github.com/ninemindai/agentback/issues"
+}

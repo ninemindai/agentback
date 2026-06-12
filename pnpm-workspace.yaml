@@ -1,0 +1,16 @@
+packages:
+  - 'packages/*'
+  - 'examples/*'
+
+# Security override: force the patched hono (transitive via
+# @modelcontextprotocol/sdk → @hono/node-server) — fixes GHSA-f577-qrjj-4474,
+# GHSA-2gcr-mfcq-wcc3, GHSA-xrhx-7g5j-rcj5, GHSA-3hrh-pfw6-9m5x.
+overrides:
+  hono@<4.12.21: '^4.12.21'
+
+allowBuilds:
+  '@scarf/scarf': false
+  better-sqlite3: false
+  cbor-extract: false
+  esbuild: true
+  msgpackr-extract: false

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>One container, two surfaces | AgentBack Blog</title>
+    <meta
+      name="description"
+      content="How AgentBack runs REST and MCP from one dependency-injection container."
+    />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="../index.html">AgentBack blog</a>
+        <div class="nav-links">
+          <a href="../../README.md">Docs</a>
+          <a href="../../../README.md">Repo README</a>
+          <a href="../diagrams/system-boundary.html">Diagram</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="post-layout">
+      <article class="post-body">
+        <p class="post-meta">June 10, 2026</p>
+        <h1>One container, two surfaces</h1>
+        <p class="lede">
+          A hybrid AgentBack app can serve HTTP clients and MCP clients
+          from the same process, backed by the same services and schemas.
+        </p>
+
+        <p>
+          The runtime shape is intentionally plain. The application is a
+          dependency-injection context. Servers are bindings in that context.
+          Controllers, tool classes, providers, config, and lifecycle observers
+          are also bindings.
+        </p>
+
+        <pre><code class="language-ts">const app = new RestApplication();
+app.component(MCPComponent);
+
+app.restController(GreetingController);
+app.service(EchoTools);
+app.service(GreetingService);
+
+await app.start();</code></pre>
+
+        <p>
+          At startup, the REST server finds bindings tagged as REST controllers.
+          The MCP server finds bindings tagged as MCP servers. Both can inject
+          the same business service, so the transport adapters stay thin. The
+          process then serves <code>/openapi.json</code>, Swagger UI, the MCP
+          inspector, and <code>/llms.txt</code>, all derived from the same
+          bindings it just discovered.
+        </p>
+
+        <h2>Discovery beats central registries</h2>
+        <p>
+          Adding a new route or tool should not require editing a router file,
+          an OpenAPI document, and a tool manifest. In this model, adding a
+          feature means adding a tagged class binding. The server that cares
+          about that tag discovers it.
+        </p>
+
+        <ul>
+          <li>
+            REST controllers carry route metadata through `@api` and verbs.
+          </li>
+          <li>MCP tool classes carry tool metadata through `@mcpServer`.</li>
+          <li>Shared services stay transport-agnostic.</li>
+          <li>
+            Cross-cutting behavior is installed as middleware or components.
+          </li>
+        </ul>
+
+        <h2>Where the diagram helps</h2>
+        <p>
+          The full architecture map shows the pieces as a runtime system:
+          clients at the edges, a single application context in the center, and
+          contract artifacts emitted from the shared schemas.
+        </p>
+
+        <div class="post-actions">
+          <a class="button" href="../diagrams/system-boundary.html"
+            >Open architecture map</a
+          >
+          <a class="button secondary" href="../../guides/build-a-hybrid-app.md"
+            >Read the hybrid guide</a
+          >
+        </div>
+      </article>
+
+      <aside class="aside" aria-label="Post links">
+        <h2>Related</h2>
+        <a href="../../guides/build-a-rest-api.md">Build a REST API</a>
+        <a href="../../guides/build-an-mcp-server.md">Build an MCP server</a>
+        <a href="../../guides/build-a-hybrid-app.md">Build a hybrid app</a>
+      </aside>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Charge agents per call | AgentBack Blog</title>
+    <meta
+      name="description"
+      content="One @price decorator meters a route or MCP tool and gates it behind a payment rail — x402 today, Stripe metered billing from the same usage log."
+    />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="../index.html">AgentBack blog</a>
+        <div class="nav-links">
+          <a href="../../README.md">Docs</a>
+          <a href="../../../README.md">Repo README</a>
+          <a href="../diagrams/system-boundary.html">Diagram</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="post-layout">
+      <article class="post-body">
+        <p class="post-meta">June 11, 2026</p>
+        <h1>Charge agents per call</h1>
+        <p class="lede">
+          Agents don't sign up for plans. They discover a tool, decide it's
+          worth a fraction of a cent, and pay per call — if your API can take
+          the money. Today that takes one decorator.
+        </p>
+
+        <p>
+          The monetization story for agent-facing APIs is currently a stack of
+          workarounds: a billing proxy in front of the MCP server, a spreadsheet
+          mapping tool names to prices, a cron job reconciling gateway logs
+          against invoices. The price of an operation lives in three places,
+          none of them the code that implements it.
+        </p>
+
+        <p>
+          AgentBack's answer follows the framework's one rule: the
+          declaration lives on the boundary, and everything derives from it.
+        </p>
+
+        <pre><code class="language-ts">@price('$0.001')
+@tool('get_forecast', {input: ForecastIn, output: ForecastOut})
+async forecast(input: z.infer&lt;typeof ForecastIn&gt;) { … }
+
+@price('$0.01')
+@get('/premium', {response: Premium})
+async premium() { … }</code></pre>
+
+        <h2>Two consumers, one declaration</h2>
+        <p>
+          <strong>Metering reads it first.</strong> With
+          <code>MeteringComponent</code> installed, every call's usage event now
+          carries <code>cost</code> and <code>units</code> alongside the
+          principal, operation, latency, and status it already had. The usage
+          log is billing-ready: <code>StripeMeterSink</code> streams those
+          events to Stripe metered billing as they happen, and
+          <code>StripeUsageReporter</code> replays a durable log in batch,
+          idempotently, with each event's id as the Stripe identifier. No
+          gateway, no reconciliation job — the same events that power your audit
+          trail price your invoices.
+        </p>
+
+        <p>
+          <strong>The payment gate reads it second.</strong>
+          <code>installPriceGate(app, {rail})</code> refuses unpaid calls to
+          priced operations. Unpriced routes and tools pass through untouched,
+          so the gate is safe to install on a mixed surface.
+        </p>
+
+        <pre><code class="language-ts">app.component(MeteringComponent);   // order matters: metering wraps
+installPriceGate(app, {rail});      // the gate, so refusals are logged
+                                    // as payment_required — never billed</code></pre>
+
+        <p>
+          A refused call gets the framework's standard machine-actionable
+          envelope, the same shape on a REST 402 and an MCP tool error:
+        </p>
+
+        <pre><code class="language-json">{
+  "error": {
+    "statusCode": 402,
+    "code": "payment_required",
+    "message": "Payment required: 0.01 USD per call.",
+    "retryable": true,
+    "hint": "Pay per the attached 'challenge' (x402: retry with the X-PAYMENT header; MPP: open or top up a session), then retry the identical request.",
+    "challenge": {
+      "rail": "x402",
+      "accepts": [{"maxAmountRequired": "10000", "asset": "0xUSDC", "…": "…"}]
+    }
+  }
+}</code></pre>
+
+        <p>
+          The agent reads the challenge, pays through its wallet or session, and
+          retries. A settled payment returns the receipt in the
+          <code>x-payment-response</code> header. Note where the asked amount
+          came from: the rail's requirements callback receives the
+          <code>@price</code> spec in its payment context, so "0.01 USD" becomes
+          "10000 USDC base units" in one place — there is no parallel price
+          table to drift.
+        </p>
+
+        <h2>Rails are pluggable, and that's the point</h2>
+        <p>
+          Which payment rail wins for agents is genuinely unsettled. x402 has
+          the protocol momentum and the crypto-native story; Stripe's metered
+          billing and MPP sessions are where most real invoices get paid today.
+          We don't think a framework should bet your revenue on that race.
+          <code>PaymentRail</code> is one interface with one question — is this
+          call paid for? — and x402, MPP sessions, and Stripe usage-log billing
+          are adapters behind it. Pricing stays on the decorator either way.
+          Swap the rail; the controllers don't know.
+        </p>
+
+        <p>
+          The honest caveat: framework-native pricing only gates and meters.
+          Custody, settlement, refunds, tax — those stay with the processor and
+          facilitator, where they belong. What the framework removes is the part
+          that kept drifting: the mapping from "this operation" to "this price"
+          to "this invoice line."
+        </p>
+
+        <div class="callout">
+          <p>
+            The runnable version is
+            <a href="../../../examples/hello-x402/src/index.ts"
+              >examples/hello-x402</a
+            >
+            — a paid route and a paid MCP tool behind a stand-in x402
+            facilitator, with the usage log printed on shutdown.
+          </p>
+        </div>
+      </article>
+
+      <aside class="aside" aria-label="Post links">
+        <h2>Related</h2>
+        <a href="../posts/tools-are-not-endpoints.html"
+          >Tools are not endpoints</a
+        >
+        <a href="../posts/errors-agents-can-fix.html"
+          >Errors an agent can fix</a
+        >
+        <a href="../../architecture/metering-and-payments.md"
+          >Metering &amp; payments architecture</a
+        >
+      </aside>
+    </main>
+  </body>
+</html>

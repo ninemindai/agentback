@@ -1,0 +1,33 @@
+{
+  "name": "hello-oauth2",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node dist/index.js",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@agentback/metering": "workspace:*",
+    "@agentback/authentication": "workspace:*",
+    "@agentback/authentication-oauth2": "workspace:*",
+    "@agentback/authorization": "workspace:*",
+    "@agentback/core": "workspace:*",
+    "@agentback/openapi": "workspace:*",
+    "@agentback/rest": "workspace:*",
+    "@agentback/rest-explorer": "workspace:*",
+    "@agentback/security": "workspace:*",
+    "tslib": "^2.8.1",
+    "zod": "^4.4.3"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "homepage": "https://agentback.dev",
+  "bugs": "https://github.com/ninemindai/agentback/issues"
+}

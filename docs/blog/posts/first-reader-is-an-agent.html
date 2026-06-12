@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Your API's first reader is an agent | AgentBack Blog</title>
+    <meta
+      name="description"
+      content="AgentBack serves /llms.txt and /llms-full.txt from the same route registry as /openapi.json, and can render an agent-context manual for the live API."
+    />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="../index.html">AgentBack blog</a>
+        <div class="nav-links">
+          <a href="../../README.md">Docs</a>
+          <a href="../../../README.md">Repo README</a>
+          <a href="../diagrams/system-boundary.html">Diagram</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="post-layout">
+      <article class="post-body">
+        <p class="post-meta">June 11, 2026</p>
+        <h1>Your API's first reader is an agent</h1>
+        <p class="lede">
+          The first consumer of a new service used to be a developer with a
+          README. Now it's usually a coding agent with a context window. The
+          service should hand that reader its own manual.
+        </p>
+
+        <p>
+          Think about what actually happens when someone points Claude or Cursor
+          at your API today. The agent fetches
+          <code>/openapi.json</code>, gets a wall of JSON designed for machines
+          that render documentation, and starts inferring. OpenAPI is the right
+          interchange format, but it's a poor first read: heavy on structure,
+          silent on intent, expensive in tokens.
+        </p>
+
+        <p>
+          The llms.txt convention emerged for exactly this reader: a plain
+          markdown index at a well-known path, written to be loaded into a
+          context window. Documentation hosts generate it for doc sites. For
+          live APIs, almost nobody serves one, because it's yet another artifact
+          to keep in sync with the routes. That objection is the interesting
+          part. A framework whose whole thesis is "one schema, every boundary"
+          doesn't have a sync problem.
+        </p>
+
+        <h2>Served by default, derived from the registry</h2>
+        <p>
+          As of this week, <code>app.start()</code> serves two new paths
+          alongside <code>/openapi.json</code>. Nothing to configure, nothing to
+          regenerate:
+        </p>
+
+        <pre><code class="language-text">GET /llms.txt        # compact index: one line per operation
+GET /llms-full.txt   # every operation with its schemas inlined</code></pre>
+
+        <p>
+          Both render from the same assembled OpenAPI document the spec endpoint
+          uses, which renders from the same Zod schemas the dispatcher validates
+          with. Add a route, and the index updates. Tighten a schema, and the
+          inlined JSON Schema in
+          <code>/llms-full.txt</code> tightens with it. The documents also
+          describe the error envelope, so an agent learns what failures look
+          like before it sees one.
+        </p>
+
+        <pre><code class="language-text"># orders-service
+
+> Order management for the storefront.
+
+This service is described by an OpenAPI 3.1 document at `/openapi.json`.
+
+## Endpoints
+
+- `GET /orders/{id}` — Fetch one order
+- `POST /orders/{id}/refund` — Refund an order and notify the customer
+
+## MCP (Model Context Protocol)
+
+This service is also an MCP server: connect over Streamable HTTP at `/mcp`.
+
+Tools:
+
+- `refund_order` — Refund an order and notify the customer.</code></pre>
+
+        <p>
+          That MCP section isn't hardcoded. Components contribute sections by
+          binding values under the <code>AX_SECTION_TAG</code> binding tag, and
+          <code>installMcpHttp</code> contributes the tool listing when you
+          mount the MCP transport. The same DI discovery that wires servers to
+          controllers wires documentation to the components that have something
+          to say. Your own components can join in with one binding.
+        </p>
+
+        <h2>A manual you can commit</h2>
+        <p>
+          Endpoints work for agents that browse. For coding agents working in a
+          repo, the better delivery is a file they load automatically:
+        </p>
+
+        <pre><code class="language-ts">const spec = await server.getApiSpec();
+await fs.writeFile(
+  'AGENT.md',
+  generateAgentContext(spec, {baseUrl: server.url}),
+);</code></pre>
+
+        <p>
+          The output is a CLAUDE.md-shaped manual for the live API: base URL,
+          auth schemes, the error contract, and every operation with its
+          schemas. Regenerate it in CI and the manual can't drift from the
+          service, because both are projections of the same registry.
+        </p>
+
+        <h2>Why this is a framework feature</h2>
+        <p>
+          Any team could write this generator in an afternoon, and that's the
+          problem: it becomes one more artifact someone owns, three sprints from
+          being stale. The reason to push it into the framework is the same
+          reason OpenAPI emission lives there. Hand-maintained contracts drift;
+          derived contracts can't. If the first reader of every new API is an
+          agent, then "describes itself to agents" belongs next to "validates
+          its inputs," not in a wiki page about best practices.
+        </p>
+      </article>
+
+      <aside class="aside" aria-label="Post links">
+        <h2>Related</h2>
+        <a href="../posts/tools-are-not-endpoints.html"
+          >Tools are not endpoints</a
+        >
+        <a href="../posts/errors-agents-can-fix.html"
+          >Errors an agent can fix</a
+        >
+        <a href="../../agent-ergonomics.md">Boundary coherence thesis</a>
+      </aside>
+    </main>
+  </body>
+</html>

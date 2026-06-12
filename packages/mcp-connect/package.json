@@ -1,0 +1,48 @@
+{
+  "name": "@agentback/mcp-connect",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@agentback/mcp-client": "workspace:*",
+    "@agentback/rest": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@types/express": "^4.17.21",
+    "express": "^4.22.0",
+    "tslib": "^2.8.1"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "devDependencies": {
+    "@agentback/core": "workspace:*",
+    "@agentback/mcp": "workspace:*",
+    "@agentback/mcp-http": "workspace:*",
+    "@agentback/testlab": "workspace:*",
+    "vitest": "~4.1.8",
+    "zod": "^4.4.3"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ninemindai/agentback.git",
+    "directory": "packages/mcp-connect"
+  },
+  "homepage": "https://agentback.dev",
+  "bugs": "https://github.com/ninemindai/agentback/issues"
+}

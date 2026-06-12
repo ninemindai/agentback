@@ -1,0 +1,30 @@
+{
+  "name": "hello-mcp",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node dist/server.js",
+    "start:http": "node dist/http-server.js",
+    "test": "node dist/test-client.js",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@agentback/authentication": "workspace:*",
+    "@agentback/core": "workspace:*",
+    "@agentback/mcp": "workspace:*",
+    "@agentback/mcp-http": "workspace:*",
+    "@agentback/rest": "workspace:*",
+    "@agentback/security": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "tslib": "^2.8.1",
+    "zod": "^4.4.3"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "homepage": "https://agentback.dev",
+  "bugs": "https://github.com/ninemindai/agentback/issues"
+}

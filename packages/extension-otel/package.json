@@ -1,0 +1,55 @@
+{
+  "name": "@agentback/extension-otel",
+  "version": "0.0.1",
+  "description": "OpenTelemetry tracing across REST, MCP, and jobs — @opentelemetry/api only; bring your own SDK/exporter",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@agentback/common": "workspace:*",
+    "@agentback/context": "workspace:*",
+    "@agentback/core": "workspace:*",
+    "@agentback/mcp": "workspace:*",
+    "@agentback/messaging": "workspace:*",
+    "@agentback/metering": "workspace:*",
+    "@agentback/openapi": "workspace:*",
+    "@agentback/rest": "workspace:*",
+    "@agentback/security": "workspace:*",
+    "@opentelemetry/api": "^1.9.0",
+    "@types/express": "^4.17.21",
+    "tslib": "^2.8.1"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "devDependencies": {
+    "@agentback/testlab": "workspace:*",
+    "@opentelemetry/sdk-trace-base": "^1.30.0",
+    "@types/supertest": "^7.2.0",
+    "supertest": "^7.2.2",
+    "vitest": "~4.1.8",
+    "zod": "^4.4.3"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ninemindai/agentback.git",
+    "directory": "packages/extension-otel"
+  },
+  "homepage": "https://agentback.dev",
+  "bugs": "https://github.com/ninemindai/agentback/issues"
+}

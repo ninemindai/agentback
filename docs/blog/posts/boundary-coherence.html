@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Boundary coherence is the product | AgentBack Blog</title>
+    <meta
+      name="description"
+      content="Why AgentBack keeps validation, TypeScript, OpenAPI, MCP, and docs attached to one schema artifact."
+    />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="../index.html">AgentBack blog</a>
+        <div class="nav-links">
+          <a href="../../README.md">Docs</a>
+          <a href="../../../README.md">Repo README</a>
+          <a href="../diagrams/system-boundary.html">Diagram</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="post-layout">
+      <article class="post-body">
+        <p class="post-meta">June 10, 2026</p>
+        <h1>Boundary coherence is the product</h1>
+        <p class="lede">
+          AgentBack is not trying to win by having one more decorator or
+          one more server adapter. Its main bet is simpler: every boundary
+          should be the same artifact viewed from a different angle.
+        </p>
+
+        <p>
+          In a typical TypeScript service, the runtime validator, TypeScript
+          type, OpenAPI schema, tool definition, and README example are separate
+          things. They start aligned and then drift. That drift is especially
+          costly for AI-led development because the code can look plausible
+          while the live contract is already wrong.
+        </p>
+
+        <blockquote>
+          The framework's core move is to make the Zod schema the contract, not
+          merely an implementation detail.
+        </blockquote>
+
+        <h2>One declaration, five jobs</h2>
+        <p>
+          A schema attached to a route or tool decorator becomes the runtime
+          validator, the inferred TypeScript input, the OpenAPI parameter or
+          body schema, the MCP input or output schema, and the shape rendered in
+          Swagger UI or the MCP inspector.
+        </p>
+
+        <pre><code class="language-ts">const CreateItem = z.object({
+  name: z.string().min(1),
+  tags: z.array(z.string()).default([]),
+});
+
+@post('/items', {body: CreateItem, response: Item})
+async create(input: {body: z.infer&lt;typeof CreateItem&gt;}) {
+  return this.items.create(input.body);
+}</code></pre>
+
+        <p>
+          The important part is not the syntax. The important part is where the
+          error lands. If the handler shape drifts from the schema, TypeScript
+          points at the decorated method. If the URL path and path schema drift,
+          startup fails. If the implementation is wrong, behavior tests fail.
+        </p>
+
+        <h2>Why agents benefit</h2>
+        <p>
+          Agents are good at following a local recipe and bad at reconciling
+          hidden copies of the same fact. A schema-first decorator gives the
+          agent one place to inspect before editing and one place to update when
+          the contract changes.
+        </p>
+
+        <ul>
+          <li>Shape mistakes are caught near the schema declaration.</li>
+          <li>
+            Runtime validation rejects bad input before business logic runs.
+          </li>
+          <li>
+            OpenAPI and MCP contracts are emitted from code, not rewritten.
+          </li>
+          <li>Tests can focus on behavior instead of contract bookkeeping.</li>
+        </ul>
+
+        <h2>The design rule</h2>
+        <p>
+          New framework features should preserve this property. If a feature
+          asks users to repeat the same contract in another file, it needs a
+          strong reason. If it can derive from the existing schema and binding
+          metadata, that is usually the better fit.
+        </p>
+
+        <div class="callout">
+          <p>
+            For the longer version, read the design thesis:
+            <a href="../../agent-ergonomics.md"
+              >Boundary Coherence for AI-Agent-Led Development</a
+            >.
+          </p>
+        </div>
+      </article>
+
+      <aside class="aside" aria-label="Post links">
+        <h2>Related</h2>
+        <a href="../../concepts/schema-first-decorators.md"
+          >Schema-first decorators</a
+        >
+        <a href="../posts/first-reader-is-an-agent.html"
+          >Your API's first reader is an agent</a
+        >
+        <a href="../posts/one-container-two-surfaces.html"
+          >One container, two surfaces</a
+        >
+      </aside>
+    </main>
+  </body>
+</html>

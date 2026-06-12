@@ -1,0 +1,49 @@
+{
+  "name": "@agentback/authentication-oauth2",
+  "version": "0.0.1",
+  "description": "OAuth2 bearer-token authentication for AgentBack: opaque tokens via RFC 7662 introspection (with caching) and JWT access tokens via JWKS — bring-your-own authorization server",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@agentback/authentication": "workspace:*",
+    "@agentback/context": "workspace:*",
+    "@agentback/core": "workspace:*",
+    "@agentback/openapi": "workspace:*",
+    "@agentback/security": "workspace:*",
+    "@types/express": "^4.17.21",
+    "http-errors": "^2.0.1",
+    "jose": "^6.2.3",
+    "tslib": "^2.8.1"
+  },
+  "devDependencies": {
+    "@agentback/testlab": "workspace:*",
+    "@types/http-errors": "^2.0.5",
+    "vitest": "~4.1.8"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ninemindai/agentback.git",
+    "directory": "packages/authentication-oauth2"
+  },
+  "homepage": "https://agentback.dev",
+  "bugs": "https://github.com/ninemindai/agentback/issues"
+}

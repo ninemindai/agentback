@@ -1,0 +1,166 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+ESM/Zod/MCP fork of LoopBack 4 — a slim modern subset of `@loopback/core` + REST for building HTTP and MCP services out of the same DI container. ESM-only, Node 22.13+, TypeScript 6.0, pnpm 11 workspaces. Pre-alpha; API still moving.
+
+For the framework's design thesis (boundary coherence between Zod, OpenAPI, MCP, and DI — and why that matters for AI-led development), see [docs/agent-ergonomics.md](docs/agent-ergonomics.md). Read it before adding a feature that might introduce a second source of truth alongside the Zod schemas.
+
+## Commands
+
+```bash
+pnpm install                       # install workspace deps
+pnpm build                         # tsc -b across the whole workspace (project references)
+pnpm build:watch                   # incremental watch build
+pnpm clean                         # tsc -b --clean + rm -rf each package's dist
+pnpm test                          # vitest run — IMPORTANT: requires a prior `pnpm build`
+pnpm test:watch                    # vitest watch
+pnpm lint                          # eslint + prettier --check
+pnpm lint:fix                      # eslint --fix + prettier --write
+
+pnpm -F <pkg> build                # build a single workspace package (e.g. `pnpm -F @agentback/rest build`)
+pnpm -F hello-rest start           # run an example (after build)
+pnpm -F hello-hybrid start         # REST + MCP from one process
+```
+
+Running a single test file or pattern:
+
+```bash
+pnpm build
+pnpm exec vitest run packages/core/dist/__tests__/unit/application.unit.js
+pnpm exec vitest run -t "name of test"
+```
+
+## Critical: tests run against built `dist/`, not `src/`
+
+`vitest.config.ts` globs `packages/*/dist/__tests__/**/*.{test,spec,unit,integration,acceptance}.js`. After editing any `.ts` you must `pnpm build` (or have `build:watch` running) before `pnpm test` will pick up the change. The same rule applies to running examples — they `import` from each package's `dist/`.
+
+## Architecture
+
+### Workspace layout
+
+`pnpm-workspace.yaml` includes `packages/*` and `examples/*`. Each package is `@agentback/<name>` and emits to its own `dist/`. The root `tsconfig.json` is a project-references file listing build order; per-package `tsconfig.json` extends `tsconfig.base.json` and declares its own `references`. Adding a new package means: create `packages/<name>/{src,tsconfig.json,package.json}`, add it to the root `tsconfig.json` references in dependency order, and `pnpm install` to wire the workspace symlinks.
+
+### Two layers
+
+1. **Ported faithfully from upstream LoopBack 4** (ESM-ified, `.js` extensions on relative imports, `lodash` → `lodash-es`, `p-event` v6 named exports):
+   - `metadata`, `context` — decorator metadata + DI container
+   - `core` — `Application`, `Component`, `Server`, lifecycle
+   - `http-server`, `express` — HTTP server with graceful stop, Express integration
+   - `authentication`, `authentication-jwt`, `authorization`, `security` — auth stack
+   - `extension-health`, `extension-metrics` — observability extensions
+   - `testlab` — test helpers
+2. **Rewritten, not ported** (upstream carried too much baggage):
+   - `openapi` — Zod-first decorators. Emits OpenAPI 3.1.1 directly from Zod via `z.toJSONSchema({target: 'draft-2020-12'})` instead of the upstream `@loopback/repository-json-schema` pipeline.
+   - `rest` — minimal `RestServer` (routing + Zod request/body validation + error mapping + serves `/openapi.json`). Replaces upstream's ~10k LoC of sequences/actions/middleware composition.
+   - `mcp` — decorator-driven MCP server (`@mcpServer`, `@tool` with `input`/`output` Zod schemas) on top of the official `@modelcontextprotocol/sdk`. Runs stdio transport by default.
+   - `mcp-inspector` — small in-process inspector UI at `/mcp-inspector`; the official `@modelcontextprotocol/inspector` is a CLI, not embeddable.
+   - `rest-explorer` — mounts Swagger UI 5.x at `/explorer`.
+   - `client` — schema-typed HTTP client. Both ends import the **same Zod schemas**; the client has no `@agentback/openapi` runtime dep (browser-safe). `defineRoute` + `routeGroup` + `safeCall` + typed `responses[status]`. No codegen. See `packages/client/README.md` and the `examples/hello-client` + `examples/hello-rest` pair for the schema-sharing pattern.
+
+### Schema-on-decorator routing (REST + MCP share this shape)
+
+**REST verb decorators and `@tool` both put Zod schemas on the decorator and derive the handler's input type via `z.infer`.** No per-parameter `@param`/`@requestBody`/`@response`/`@arg` decorators — those were removed. The pattern:
+
+```ts
+const HelloPath = z.object({name: z.string().min(1).max(64)});
+
+@get('/hello/{name}', {path: HelloPath, response: Greeting})
+async hello(input: {path: z.infer<typeof HelloPath>}) { … }
+
+@tool('forecast', {input: ForecastIn, output: ForecastOut})
+async forecast(input: z.infer<typeof ForecastIn>) { … }
+```
+
+Rules to keep in mind when editing route/tool code:
+
+- **Slot 0 = validated input bundle when any schema is declared.** For REST: `{body, path, query, headers}` (only the keys you declared). For MCP: `z.infer<typeof input>`. The decorator's `TypedPropertyDescriptor` enforces this at compile time — a wrong parameter type errors at the `@verb` / `@tool` line with the property mismatch surfaced precisely.
+- **Slot 0 is unconstrained when no schemas are declared.** `@get('/whoami') async whoami(@inject(USER) user) {}` is valid; `@tool('ping') async ping() {}` is valid.
+- **`@inject` lives at slot 1+** when schemas are declared. Putting `@inject` at slot 0 alongside a schema throws at decoration time with the class+method+verb in the message.
+- **`response:` / `output:` constrain the return type.** When set, the method's return must satisfy `z.infer<typeof response>` (or `Promise<…>`) and is validated at runtime — logged on mismatch for REST, thrown for MCP.
+- **`status:` on REST route options** overrides the default 200. Status 204 returns an empty body.
+- **URL placeholders must match the `path:` schema's keys.** Checked at `app.start()`; mismatches throw with the controller+method named.
+- **REST header schemas use lowercase keys.** Incoming headers are normalized before validation so `headers: z.object({'x-trace': z.string()})` finds the value regardless of how the client sent it.
+
+Where the registrations live:
+
+- Verb decorators store `RouteOptions` on `RestEndpoint` metadata + a per-route Zod bundle in `zod-bridge.ts`'s `routeRegistry`. `RestServer.makeHandler` reads the registry and weaves with `resolveInjectedArguments`.
+- `@tool` stores `input`/`output` on `ToolMetadata`. `MCPServer.dispatchTool` parses input, calls `resolveInjectedArguments` to weave injects, applies the method, then validates output.
+
+### `@mcpServer` and `@api` class tagging
+
+`@mcpServer()` is `@bind({tags: {mcpServer: true}})` under the hood. When you `app.service(SomeClass)` or `app.controller(...)`, `createServiceBinding` reads the class's bind metadata and tags the binding automatically — never call `.tag()` manually for these. The MCP component and REST server discover routes/tools by querying for bindings with the relevant tag.
+
+### What's available vs deferred vs out of scope
+
+**Out of scope** (the rewrite walked away from these deliberately — don't add them back):
+
+- LB4 sequences/actions (`findRoute → parseParams → invoke → send → reject`). `RestServer.dispatch` is a single fixed pipeline; per-route customization lives on decorators, cross-cutting in middleware/interceptors, deeper changes via subclassing `RestServer` and overriding `dispatch` / `sendResult` / `sendError`.
+- `@loopback/repository` and `Filter<T>` / `Where<T>` helpers.
+- `x-ts-type` inlining (Zod schemas replace it).
+- `@oas.deprecated` / `@oas.tags` / `@oas.visibility` decorator namespace.
+
+**Available**, callers just need to know it exists:
+
+- **Middleware chain** — `app.middleware(fn)` and `app.expressMiddleware(factory)` from `MiddlewareMixin(Application)`. The chain runs through `toExpressMiddleware(this.context)` before route handlers, so middleware can short-circuit (CORS preflights, rate limiting, probes). The `MiddlewareContext`'s `request`/`response` are the standard Express objects.
+- **CORS** — `RestServerConfig.cors`: `true` for defaults, or `CorsOptions` from the `cors` package. Mounted globally in the server constructor.
+- **Subclassable dispatch** — `RestServer.makeHandler` / `dispatch` / `sendResult` / `sendError` are all `protected`. Subclass for envelope wrappers, custom error shapes, request-scoped tracing, etc.; bind the subclass via `app.server(MyRestServer)`.
+
+### Logging
+
+**`loggers` from `@agentback/common` is the single logging primitive — use it everywhere.** Do not import the `debug` npm package directly in any package (the one exception is `common/src/utils/debug{,-factory,-pino}.ts`, which _implement_ `loggers` on top of `debug` and pino).
+
+`loggers(namespace)` returns a `{error, warn, info, debug, trace}` record — each entry is a `Debugger` (callable, has `.enabled`), backed by a sub-namespace (`ns:error`, `ns:debug`, …). On top of raw `debug` it adds: level routing, secret redaction (`redactData`/`maskSecret`), an `onLog(hook)` sink for shipping warn/error events to external systems, optional pino structured-JSON output, and `DEBUG_DEPTH` inspect control. The usage shape:
+
+```ts
+import {loggers} from '@agentback/common';
+const log = loggers('loopback:context:binding');
+if (log.debug.enabled) log.debug('Get value for binding %s', this.key);
+```
+
+**Namespace note:** because each level is a sub-namespace, a `loggers('foo:bar')` line logs under `foo:bar:debug` (etc.), not `foo:bar`. Set `DEBUG=foo:bar:*` (or `foo:bar:debug`) to see it. The ported LB4 packages were migrated off raw `debug` to `loggers` in one pass; everything maps to `log.debug` (raw `debug` ≈ debug level) unless a call is semantically a warn/error.
+
+**Not yet implemented**:
+
+- File uploads / multipart — escape hatch via `restServer.expressApp.use(multer(...))`.
+- MCP HTTP/SSE transport — stdio works today; HTTP is the obvious next addition once the SDK transport is wired in.
+
+## Deps and versioning
+
+Default policy: **bump everything to the latest** with `ncu -ws --root -u` (monorepo-aware), then `pnpm install` from a clean `pnpm-lock.yaml` and verify `pnpm build && pnpm test` pass.
+
+Exceptions to "latest", and why:
+
+- **`@types/node`** — pinned to the latest **even** major (Node LTS line). `ncu` will pick odd majors like 25; reset to `^24.x` (or the next even after 24) by hand after running it.
+- **`express` stays on `^4`** — express 5 changes `req.params` to `string | string[]` and reshapes async error semantics; `mcp-inspector` and `rest` both depend on the v4 typing. Migrate as a focused PR, not as a dep bump.
+- **`p-event` stays on `^6`** — v7 reshaped the `iterator()` return type; `context-subscription.ts` was ported assuming the v6 named exports. Same — focused migration, not a drive-by.
+
+When `ncu` produces a result that won't build, prefer pinning back the offender (with a one-line reason in the commit message) over patching code, unless the upgrade was the goal.
+
+### pnpm 11 quirks worth knowing
+
+- **Supply-chain age policy**: pnpm 11 rejects lockfile entries published within a recent window (currently ~24h). If install fails with `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`, pin the offending dep one patch/minor older.
+- **`pnpm-workspace.yaml` `allowBuilds`**: pnpm 11 requires per-package opt-in for postinstall scripts. The first install on a fresh machine writes `allowBuilds: { '<pkg>': set this to true or false }` placeholders into `pnpm-workspace.yaml`; replace `set this to ...` with `true` or `false` and rerun. Don't commit placeholders.
+- **`verify-deps-before-run=false`** is set in `.npmrc` — pnpm 11 otherwise re-runs `pnpm install` before each `pnpm <script>`, which fails on the supply-chain check inside scripts that don't need re-resolution.
+
+## Style
+
+`.prettierrc.json`: single quotes, no bracket spacing (`{foo}` not `{ foo }`), trailing commas everywhere, 80 col, arrow parens avoided when possible. ESLint flat config warns on `any` and unused vars (ignore via `_` prefix).
+
+## Licensing and copyright headers
+
+The project is MIT-licensed (root `LICENSE`, `Copyright (c) ninemind.ai`). Every source file carries a three-line header — keep it on new files:
+
+```ts
+// Copyright ninemind.ai and LoopBack contributors. All Rights Reserved.
+// Node module: @agentback/<pkg>
+// This file is licensed under the MIT License.
+```
+
+**Do not reintroduce `Copyright IBM Corp.` headers.** This is a LoopBack 4 fork; much of `metadata`/`context`/`core`/`http-server`/`express`/the auth stack/`extension-*`/`testlab` is ported from upstream. MIT requires retaining the upstream copyright + permission notice, but **not per-file** — that attribution lives once in root `THIRD-PARTY-NOTICES.md`. If you port more code from another MIT/BSD/Apache project, add its notice there; don't paste its per-file headers in.
+
+## CI
+
+`.github/workflows/ci.yml` runs `pnpm install --frozen-lockfile && pnpm build && pnpm test` on Node 22.13 and 24 (pnpm 11 requires Node ≥ 22.13). The lockfile must be committed in sync with `package.json` changes or CI fails at install.

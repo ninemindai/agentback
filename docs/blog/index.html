@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AgentBack Blog</title>
+    <meta
+      name="description"
+      content="Design notes and implementation stories from the AgentBack TypeScript framework."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="index.html">AgentBack blog</a>
+        <div class="nav-links">
+          <a href="../README.md">Docs</a>
+          <a href="../../README.md">Repo README</a>
+          <a href="diagrams/system-boundary.html">Diagram</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Design notes for AI-led TypeScript systems</p>
+          <h1>One container. One schema. Many agent-facing surfaces.</h1>
+          <p class="lede">
+            A short-form publication for the ideas behind AgentBack:
+            dependency injection, Zod-first contracts, REST, MCP, errors agents
+            can act on, and the architectural choices that keep it all coherent.
+          </p>
+          <div class="hero-actions">
+            <a class="button" href="#latest">Read the latest</a>
+            <a class="button secondary" href="diagrams/system-boundary.html"
+              >Open architecture map</a
+            >
+          </div>
+        </div>
+
+        <aside class="system-visual" aria-label="System map preview">
+          <div class="visual-title">
+            <strong>Runtime shape</strong>
+            <span>Context -> servers -> contracts</span>
+          </div>
+          <div class="visual-grid">
+            <div class="node">
+              <strong>Application Context</strong>
+              <span>bindings, providers, lifecycle</span>
+            </div>
+            <div class="node cyan">
+              <strong>REST Server</strong>
+              <span>controllers + /openapi.json</span>
+            </div>
+            <div class="node violet">
+              <strong>MCP Server</strong>
+              <span>tools, prompts, inspector</span>
+            </div>
+            <div class="node amber">
+              <strong>Zod Schemas</strong>
+              <span>runtime + TypeScript + JSON Schema</span>
+            </div>
+            <div class="node rose">
+              <strong>Policy and Extensions</strong>
+              <span>auth, metering, tracing, queues</span>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <section id="latest" aria-labelledby="latest-heading">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Latest posts</p>
+            <h2 id="latest-heading">Notes from the framework boundary</h2>
+          </div>
+          <p>
+            These posts are repo-local, dependency-free HTML. They are meant to
+            be easy to review in diffs and easy to publish from any static host.
+          </p>
+        </div>
+
+        <div class="post-grid">
+          <a class="post-card" href="posts/charge-agents-per-call.html">
+            <time datetime="2026-06-11">June 11, 2026</time>
+            <h3>Charge agents per call</h3>
+            <p>
+              One @price decorator meters a route or MCP tool and gates it
+              behind a payment rail — x402 today, Stripe metered billing from
+              the same usage log.
+            </p>
+            <span class="read-more">Read post</span>
+          </a>
+
+          <a class="post-card" href="posts/errors-agents-can-fix.html">
+            <time datetime="2026-06-11">June 11, 2026</time>
+            <h3>Errors an agent can fix, operations an agent can't break</h3>
+            <p>
+              Stable codes, field-level issues, the violated schema, and a retry
+              hint in every failure — plus confirmation tokens and idempotency
+              keys for the calls that must not run twice.
+            </p>
+            <span class="read-more">Read post</span>
+          </a>
+
+          <a class="post-card" href="posts/tools-are-not-endpoints.html">
+            <time datetime="2026-06-11">June 11, 2026</time>
+            <h3>Tools are not endpoints</h3>
+            <p>
+              Every tool definition is paid for in context-window tokens on
+              every connection. Why @tool is opt-in, and how toolCostReport
+              makes the bill visible.
+            </p>
+            <span class="read-more">Read post</span>
+          </a>
+
+          <a class="post-card" href="posts/first-reader-is-an-agent.html">
+            <time datetime="2026-06-11">June 11, 2026</time>
+            <h3>Your API's first reader is an agent</h3>
+            <p>
+              /llms.txt and /llms-full.txt served from the same registry as
+              /openapi.json, and an agent-context manual you can commit —
+              derived contracts can't drift.
+            </p>
+            <span class="read-more">Read post</span>
+          </a>
+
+          <a class="post-card" href="posts/introducing-agentback.html">
+            <time datetime="2026-06-10">June 10, 2026</time>
+            <h3>Introducing AgentBack</h3>
+            <p>
+              A TypeScript framework for agent-facing services: one Zod contract
+              across REST, MCP, docs, typed clients, policy, and usage rails.
+            </p>
+            <span class="read-more">Read post</span>
+          </a>
+
+          <a class="post-card" href="posts/boundary-coherence.html">
+            <time datetime="2026-06-10">June 10, 2026</time>
+            <h3>Boundary coherence is the product</h3>
+            <p>
+              Why AgentBack treats a Zod schema as the same artifact across
+              runtime validation, TypeScript, OpenAPI, MCP, and docs.
+            </p>
+            <span class="read-more">Read post</span>
+          </a>
+
+          <a class="post-card" href="posts/one-container-two-surfaces.html">
+            <time datetime="2026-06-10">June 10, 2026</time>
+            <h3>One container, two surfaces</h3>
+            <p>
+              The practical shape of a hybrid REST + MCP app, and why discovery
+              by tag keeps feature work local.
+            </p>
+            <span class="read-more">Read post</span>
+          </a>
+
+          <a class="post-card" href="posts/contract-first-client.html">
+            <time datetime="2026-06-10">June 10, 2026</time>
+            <h3>Contract-first clients without codegen</h3>
+            <p>
+              How shared schemas let TypeScript clients stay typed and
+              runtime-validated without importing a running server.
+            </p>
+            <span class="read-more">Read post</span>
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>
+        Built as static repo documentation. Start with the
+        <a href="../README.md">documentation index</a> or the
+        <a href="../../README.md">root README</a>.
+      </p>
+    </footer>
+  </body>
+</html>

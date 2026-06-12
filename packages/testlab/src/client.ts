@@ -1,0 +1,58 @@
+// Copyright Ninemind.ai 2026. All Rights Reserved.
+// This file is licensed under the MIT License.
+// License text available at https://opensource.org/license/mit/
+
+/*
+ * HTTP client utilities
+ */
+
+import http from 'http';
+import supertest from 'supertest';
+
+export {supertest};
+
+// supertest v7 renamed `SuperTest<Test>` to `TestAgent<Test>` (returned by
+// the default factory). Derive the type from the factory to track upstream.
+export type Client = ReturnType<typeof supertest>;
+
+/**
+ * Create a SuperTest client connected to an HTTP server listening
+ * on an ephemeral port and calling `handler` to handle incoming requests.
+ * @param handler
+ */
+export function createClientForHandler(
+  handler: (req: http.IncomingMessage, res: http.ServerResponse) => void,
+): Client {
+  const server = http.createServer(handler);
+  return supertest(server);
+}
+
+/**
+ * Create a SuperTest client for a running RestApplication instance.
+ * It is the responsibility of the caller to ensure that the app
+ * is running and to stop the application after all tests are done.
+ * @param app - A running (listening) instance of a RestApplication.
+ */
+export function createRestAppClient(app: RestApplicationLike) {
+  const url = app.restServer.rootUrl ?? app.restServer.url;
+  if (!url) {
+    throw new Error(
+      `Cannot create client for ${app.constructor.name}, it is not listening.`,
+    );
+  }
+  return supertest(url);
+}
+
+/*
+ * These interfaces are meant to partially mirror the formats provided
+ * in our other libraries to avoid circular imports.
+ */
+
+export interface RestApplicationLike {
+  restServer: RestServerLike;
+}
+
+export interface RestServerLike {
+  url?: string;
+  rootUrl?: string;
+}

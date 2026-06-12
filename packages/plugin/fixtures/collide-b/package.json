@@ -1,0 +1,15 @@
+{
+  "name": "@fixture/collide-b",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "agentback": {
+    "plugin": true,
+    "component": "CollideBComponent"
+  },
+  "homepage": "https://agentback.dev",
+  "bugs": "https://github.com/ninemindai/agentback/issues"
+}

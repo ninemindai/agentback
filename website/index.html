@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AgentBack — one schema, every boundary</title>
+    <meta
+      name="description"
+      content="AgentBack is an AI-native TypeScript framework for the agent era: REST endpoints, MCP tools, OpenAPI docs, typed clients, tests, and runtime validation all share one Zod contract."
+    />
+    <meta
+      property="og:title"
+      content="AgentBack — one schema, every boundary"
+    />
+    <meta
+      property="og:description"
+      content="An AI-native API/MCP framework. One Zod contract across REST, MCP, OpenAPI, docs, typed clients, and runtime validation."
+    />
+    <meta property="og:url" content="https://agentback.dev" />
+    <link rel="canonical" href="https://agentback.dev" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,640&family=Inter:wght@400;550;700&family=JetBrains+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="home">
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="index.html"
+          >AgentBack<span class="brand-dot">.dev</span></a
+        >
+        <div class="nav-links">
+          <a href="docs/index.html">Docs</a>
+          <a href="docs/guides/build-a-rest-api.html">Guides</a>
+          <a href="blog/index.html">Blog</a>
+          <a href="https://github.com/ninemindai/agentback" class="nav-gh"
+            >GitHub</a
+          >
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <!-- ============================== hero ============================== -->
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow reveal">
+            An AI-native API/MCP framework for the agent era
+          </p>
+          <h1 class="reveal d1">One schema,<br /><em>every</em> boundary.</h1>
+          <p class="lede reveal d2">
+            AgentBack lets REST endpoints, MCP tools, OpenAPI docs, typed
+            clients, tests, and runtime validation all share
+            <strong>one Zod contract</strong> — built on LoopBack&nbsp;4's
+            proven dependency-injection core, rebuilt for ESM, Node&nbsp;22, and
+            agents as first-class consumers.
+          </p>
+          <div class="hero-actions reveal d3">
+            <a class="button" href="docs/index.html">Read the docs</a>
+            <a
+              class="button secondary"
+              href="https://github.com/ninemindai/agentback"
+            >
+              ninemindai/agentback
+            </a>
+          </div>
+          <p class="hero-status reveal d3">
+            <span class="status-dot"></span> pre-alpha · ESM-only · Node 22.13+
+            · TypeScript 6
+          </p>
+        </div>
+
+        <figure class="hero-code reveal d2" aria-label="Code example">
+          <figcaption>
+            <span class="dot r"></span><span class="dot a"></span
+            ><span class="dot g"></span>
+            <span class="filename"
+              >weather.ts — one contract, two surfaces</span
+            >
+          </figcaption>
+          <pre><code><span class="kw">const</span> <span class="ty">City</span>   = z.object({city: z.string().min(<span class="num">1</span>)});
+<span class="kw">const</span> <span class="ty">Report</span> = z.object({summary: z.string(), tempC: z.number()});
+
+<span class="dec">@api</span>({basePath: <span class="str">'/weather'</span>})
+<span class="kw">class</span> <span class="ty">WeatherController</span> {
+  <span class="dec">@get</span>(<span class="str">'/forecast/{city}'</span>, {path: <span class="ty">City</span>, response: <span class="ty">Report</span>})
+  <span class="kw">async</span> <span class="fn">forecast</span>(input: {path: z.infer&lt;<span class="kw">typeof</span> <span class="ty">City</span>&gt;}) { <span class="cm">/* … */</span> }
+}
+
+<span class="dec">@mcpServer</span>()
+<span class="kw">class</span> <span class="ty">WeatherTools</span> {
+  <span class="dec">@tool</span>(<span class="str">'forecast'</span>, {input: <span class="ty">City</span>, output: <span class="ty">Report</span>})
+  <span class="kw">async</span> <span class="fn">forecast</span>(input: z.infer&lt;<span class="kw">typeof</span> <span class="ty">City</span>&gt;) { <span class="cm">/* … */</span> }
+}</code></pre>
+        </figure>
+      </section>
+
+      <!-- ========================= schema fan-out ========================= -->
+      <section class="fanout" aria-labelledby="fanout-heading">
+        <div class="fanout-source">
+          <p class="eyebrow">One artifact, many views</p>
+          <h2 id="fanout-heading">
+            The Zod schema <span class="thread">is</span> the contract
+          </h2>
+          <p class="muted">
+            Declare a schema once, on the decorator. The framework derives every
+            other representation from it — so they can't drift.
+          </p>
+        </div>
+        <ul class="fanout-grid">
+          <li>
+            <strong>Runtime validator</strong
+            ><span>requests &amp; tool calls parsed before your code runs</span>
+          </li>
+          <li>
+            <strong><code>z.infer</code> type</strong
+            ><span>the handler's input type, enforced at compile time</span>
+          </li>
+          <li>
+            <strong>OpenAPI 3.1.1</strong
+            ><span
+              >served at <code>/openapi.json</code>, rendered in Swagger
+              UI</span
+            >
+          </li>
+          <li>
+            <strong>MCP tool schema</strong
+            ><span>input/output contracts on the official MCP SDK</span>
+          </li>
+          <li>
+            <strong><code>/llms.txt</code></strong
+            ><span
+              >agent-readable surface map from the same route registry</span
+            >
+          </li>
+          <li>
+            <strong>Typed client</strong
+            ><span>no codegen — the client imports the same schemas</span>
+          </li>
+        </ul>
+      </section>
+
+      <!-- ========================= positioning ========================= -->
+      <section class="compare" aria-labelledby="compare-heading">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Positioning</p>
+            <h2 id="compare-heading">
+              For APIs that apps <em>and</em> agents consume
+            </h2>
+          </div>
+          <p class="muted">
+            Most stacks keep the runtime contract, the service contract, and the
+            agent contract in three hand-synchronized places.
+          </p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Stack</th>
+                <th>Runtime contract</th>
+                <th>Service contract</th>
+                <th>Agent/tool contract</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Express + raw Zod</td>
+                <td>Hand-wired Zod</td>
+                <td>Hand-written OpenAPI</td>
+                <td>Hand-written manifest</td>
+              </tr>
+              <tr>
+                <td>tRPC</td>
+                <td>Zod</td>
+                <td>TypeScript-only</td>
+                <td>Custom adapter</td>
+              </tr>
+              <tr>
+                <td>NestJS</td>
+                <td>class-validator</td>
+                <td>Swagger decorators</td>
+                <td>Custom adapter</td>
+              </tr>
+              <tr>
+                <td>FastAPI</td>
+                <td>Pydantic</td>
+                <td>OpenAPI from same models</td>
+                <td>Custom adapter</td>
+              </tr>
+              <tr class="hl">
+                <td>AgentBack</td>
+                <td>Zod</td>
+                <td>OpenAPI from same Zod</td>
+                <td>MCP from same Zod</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ========================= features ========================= -->
+      <section class="features" aria-labelledby="features-heading">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">What's in the box</p>
+            <h2 id="features-heading">Agent ergonomics, end to end</h2>
+          </div>
+        </div>
+        <div class="feature-grid">
+          <article>
+            <h3>Proven DI core</h3>
+            <p>
+              A hierarchical <code>Context</code> of <code>Binding</code>s with
+              <code>@inject</code>, providers, interceptors, extension points,
+              and tag-based discovery — ported from LoopBack&nbsp;4.
+            </p>
+            <a href="docs/concepts/dependency-injection.html"
+              >Dependency injection →</a
+            >
+          </article>
+          <article>
+            <h3>Hybrid surfaces</h3>
+            <p>
+              REST and MCP servers are components over the same container. Run
+              either, or both from one process — controllers and tool classes
+              are just bindings.
+            </p>
+            <a href="docs/guides/build-a-hybrid-app.html"
+              >Build a hybrid app →</a
+            >
+          </article>
+          <article>
+            <h3>Errors agents can fix</h3>
+            <p>
+              Stable codes, per-field issues, the violated schema, retryability,
+              and remediation hints — the same machine-actionable envelope on
+              REST and MCP.
+            </p>
+            <a href="blog/posts/errors-agents-can-fix.html"
+              >Read the design note →</a
+            >
+          </article>
+          <article>
+            <h3>Safety primitives</h3>
+            <p>
+              <code>confirm:</code> payload-bound confirmation tokens and
+              <code>idempotency:</code> key replay, declared on the route or
+              tool that must not run twice.
+            </p>
+            <a href="blog/posts/errors-agents-can-fix.html"
+              >Operations agents can't break →</a
+            >
+          </article>
+          <article>
+            <h3>Per-call pricing</h3>
+            <p>
+              <code>@price('$0.001')</code> meters a route or tool; the price
+              gate refuses unpaid calls with an x402/MPP challenge. Stripe
+              metered billing from the same usage log.
+            </p>
+            <a href="docs/architecture/metering-and-payments.html"
+              >Metering &amp; payments →</a
+            >
+          </article>
+          <article>
+            <h3>Typed client, no codegen</h3>
+            <p>
+              TypeScript consumers import the same schemas and get typed calls
+              plus runtime validation — the client never imports a running
+              server.
+            </p>
+            <a href="blog/posts/contract-first-client.html"
+              >Contract-first clients →</a
+            >
+          </article>
+          <article>
+            <h3>Tool-surface budgets</h3>
+            <p>
+              Every tool definition costs context-window tokens on every
+              connection. <code>toolCostReport</code> token-prices the MCP
+              surface before agents pay for it.
+            </p>
+            <a href="blog/posts/tools-are-not-endpoints.html"
+              >Tools are not endpoints →</a
+            >
+          </article>
+          <article>
+            <h3>Production rails</h3>
+            <p>
+              Auth (JWT, OAuth 2.1), authorization voters, health probes,
+              Prometheus metrics, OpenTelemetry, rate limiting, validated config
+              — all as DI components.
+            </p>
+            <a href="docs/guides/deploy-to-production.html"
+              >Deploy to production →</a
+            >
+          </article>
+        </div>
+      </section>
+
+      <!-- ========================= docs map ========================= -->
+      <section class="docs-map" aria-labelledby="docs-heading">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Documentation</p>
+            <h2 id="docs-heading">A guided path, ideas first</h2>
+          </div>
+          <p class="muted">
+            Three ideas carry the whole framework: everything is a binding in a
+            context, schemas live once on the decorator, and servers are
+            components.
+          </p>
+        </div>
+        <div class="docs-columns">
+          <div class="docs-col">
+            <h3>Concepts</h3>
+            <a href="docs/concepts/dependency-injection.html"
+              >Dependency injection</a
+            >
+            <a href="docs/concepts/schema-first-decorators.html"
+              >Schema-first decorators</a
+            >
+            <a href="docs/concepts/components-servers-lifecycle.html"
+              >Components, servers &amp; lifecycle</a
+            >
+          </div>
+          <div class="docs-col">
+            <h3>Guides</h3>
+            <a href="docs/guides/build-a-rest-api.html">Build a REST API</a>
+            <a href="docs/guides/build-an-mcp-server.html"
+              >Build an MCP server</a
+            >
+            <a href="docs/guides/build-a-hybrid-app.html">Build a hybrid app</a>
+            <a href="docs/guides/composition-and-extensibility.html"
+              >Composition &amp; extensibility</a
+            >
+            <a href="docs/guides/testing.html">Testing</a>
+            <a href="docs/guides/secure-mcp-over-http.html"
+              >Secure MCP over HTTP</a
+            >
+            <a href="docs/guides/deploy-to-production.html"
+              >Deploy to production</a
+            >
+          </div>
+          <div class="docs-col">
+            <h3>Architecture &amp; design</h3>
+            <a href="docs/architecture/overview.html">Architecture overview</a>
+            <a href="docs/architecture/metering-and-payments.html"
+              >Metering &amp; payments</a
+            >
+            <a href="docs/agent-ergonomics.html"
+              >Boundary coherence (design thesis)</a
+            >
+            <a href="docs/db-story.html">Database story</a>
+            <a href="blog/diagrams/system-boundary.html">System boundary map</a>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================= blog ========================= -->
+      <section class="blog-teaser" aria-labelledby="blog-heading">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">From the blog</p>
+            <h2 id="blog-heading">Design notes from the framework boundary</h2>
+          </div>
+          <a class="all-posts" href="blog/index.html">All posts →</a>
+        </div>
+        <div class="post-grid">
+          <a class="post-card" href="blog/posts/introducing-agentback.html">
+            <time datetime="2026-06-10">June 10, 2026</time>
+            <h3>Introducing AgentBack</h3>
+            <p>
+              A TypeScript framework for agent-facing services: one Zod contract
+              across REST, MCP, docs, typed clients, policy, and usage rails.
+            </p>
+            <span class="read-more">Read post</span>
+          </a>
+          <a class="post-card" href="blog/posts/boundary-coherence.html">
+            <time datetime="2026-06-10">June 10, 2026</time>
+            <h3>Boundary coherence is the product</h3>
+            <p>
+              Why AgentBack treats a Zod schema as the same artifact across
+              runtime validation, TypeScript, OpenAPI, MCP, and docs.
+            </p>
+            <span class="read-more">Read post</span>
+          </a>
+          <a class="post-card" href="blog/posts/charge-agents-per-call.html">
+            <time datetime="2026-06-11">June 11, 2026</time>
+            <h3>Charge agents per call</h3>
+            <p>
+              One <code>@price</code> decorator meters a route or MCP tool and
+              gates it behind a payment rail — x402 today, Stripe from the same
+              usage log.
+            </p>
+            <span class="read-more">Read post</span>
+          </a>
+          <a class="post-card" href="blog/posts/first-reader-is-an-agent.html">
+            <time datetime="2026-06-11">June 11, 2026</time>
+            <h3>Your API's first reader is an agent</h3>
+            <p>
+              <code>/llms.txt</code> and <code>/llms-full.txt</code> served from
+              the same registry as <code>/openapi.json</code> — derived
+              contracts can't drift.
+            </p>
+            <span class="read-more">Read post</span>
+          </a>
+        </div>
+      </section>
+
+      <!-- ========================= quick start ========================= -->
+      <section class="quickstart" aria-labelledby="qs-heading">
+        <div class="qs-copy">
+          <p class="eyebrow">Quick start</p>
+          <h2 id="qs-heading">Run the examples in two minutes</h2>
+          <p class="muted">
+            AgentBack is pre-alpha — the end-to-end examples work and the API
+            surface is still moving. Clone the repo and run a working REST, MCP,
+            or hybrid app, each with its explorer UI.
+          </p>
+          <div class="hero-actions">
+            <a class="button" href="docs/index.html">Start with the docs</a>
+            <a
+              class="button secondary"
+              href="https://github.com/ninemindai/agentback/tree/main/examples"
+              >Browse examples</a
+            >
+          </div>
+        </div>
+        <figure class="hero-code" aria-label="Terminal commands">
+          <figcaption>
+            <span class="dot r"></span><span class="dot a"></span
+            ><span class="dot g"></span>
+            <span class="filename">terminal</span>
+          </figcaption>
+          <pre><code><span class="cm"># clone &amp; build (tests and examples run against dist/)</span>
+git clone https://github.com/ninemindai/agentback
+pnpm install &amp;&amp; pnpm build
+
+<span class="cm"># REST + Swagger UI + Context Explorer</span>
+pnpm -F hello-rest start
+
+<span class="cm"># REST + MCP from one process, both UIs</span>
+pnpm -F hello-hybrid start</code></pre>
+        </figure>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-inner">
+        <p>
+          <strong>AgentBack</strong> — built with agents, for agents. MIT
+          licensed · © <a href="https://ninemind.ai">ninemind.ai</a> and
+          LoopBack contributors.
+        </p>
+        <p class="footer-links">
+          <a href="docs/index.html">Docs</a>
+          <a href="blog/index.html">Blog</a>
+          <a href="https://github.com/ninemindai/agentback">GitHub</a>
+          <a href="https://github.com/ninemindai/agentback/issues">Issues</a>
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>

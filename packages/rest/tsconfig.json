@@ -1,0 +1,44 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "./tsconfig.tsbuildinfo",
+    "noImplicitAny": false
+  },
+  "include": ["src/**/*"],
+  "exclude": ["dist", "node_modules"],
+  "references": [
+    {"path": "../common"},
+    {
+      "path": "../metadata"
+    },
+    {
+      "path": "../context"
+    },
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../express"
+    },
+    {
+      "path": "../http-server"
+    },
+    {
+      "path": "../openapi"
+    },
+    {
+      "path": "../authentication"
+    },
+    {
+      "path": "../authorization"
+    },
+    {
+      "path": "../security"
+    },
+    {
+      "path": "../testlab"
+    }
+  ]
+}

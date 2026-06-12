@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tools are not endpoints | AgentBack Blog</title>
+    <meta
+      name="description"
+      content="Every tool definition is paid for in context-window tokens. AgentBack treats the MCP tool surface as a budget, with an opt-in tool decorator and a token cost report."
+    />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="../index.html">AgentBack blog</a>
+        <div class="nav-links">
+          <a href="../../README.md">Docs</a>
+          <a href="../../../README.md">Repo README</a>
+          <a href="../diagrams/system-boundary.html">Diagram</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="post-layout">
+      <article class="post-body">
+        <p class="post-meta">June 11, 2026</p>
+        <h1>Tools are not endpoints</h1>
+        <p class="lede">
+          Every tool definition an MCP server exposes is paid for in the
+          caller's context window, on every connection, before any work happens.
+          That makes the tool surface a budget, and most servers are over it.
+        </p>
+
+        <p>
+          When an agent connects to an MCP server, the first thing it does is
+          ask for <code>tools/list</code>. The whole response lands in the
+          model's context: every name, every description, every input and output
+          schema. A server with sixty tools can burn tens of thousands of tokens
+          before the agent has read the user's question. The agent pays this tax
+          again on every session.
+        </p>
+
+        <p>
+          The most common way to end up here is also the most tempting one:
+          generate the MCP server from an OpenAPI document, one tool per
+          endpoint. A REST API with eighty routes becomes eighty tools. Each
+          carries its full request and response schema. The agent now has to
+          pick the right CRUD verb out of a wall of near-identical definitions,
+          and the model's accuracy at choosing tools degrades as the list grows.
+          Even the vendors who sell these generators have started saying the
+          quiet part: a tool is not an endpoint.
+        </p>
+
+        <h2>Opt-in is the design stance</h2>
+        <p>
+          In AgentBack, a route never becomes a tool by accident. REST
+          verbs and <code>@tool</code> are separate decorators that happen to
+          accept the same Zod schemas. You expose the three task-shaped
+          operations an agent actually needs and keep the other seventy-seven
+          routes as plain HTTP.
+        </p>
+
+        <pre><code class="language-ts">@api({basePath: '/orders'})
+@mcpServer()
+class Orders {
+  // HTTP-only: agents don't need raw CRUD.
+  @get('/orders/{id}', {path: OrderPath, response: Order})
+  async get(input: {path: z.infer&lt;typeof OrderPath&gt;}) { … }
+
+  // The one operation worth a tool: outcome-level, not CRUD.
+  @tool('refund_order', {
+    description: 'Refund an order and notify the customer.',
+    input: RefundIn,
+    output: RefundOut,
+  })
+  async refund(input: z.infer&lt;typeof RefundIn&gt;) { … }
+}</code></pre>
+
+        <p>
+          The same class, the same schemas, the same DI container. The choice of
+          which methods agents see is an explicit one you make per method, and
+          the <code>@authorize</code> policy layer narrows it further per
+          caller.
+        </p>
+
+        <h2>Measure the bill</h2>
+        <p>
+          Budgets only work if you can see the spend.
+          <code>MCPServer.toolCostReport()</code> prices each tool's
+          <code>tools/list</code> entry, name, description, and emitted JSON
+          Schemas, and totals what one listing costs a caller:
+        </p>
+
+        <pre><code class="language-ts">const mcp = await app.get(MCPBindings.SERVER);
+console.log(formatToolCostReport(mcp.toolCostReport()));
+
+// tool            tokens    bytes
+// search_catalog     412     1648
+// refund_order       187      748
+// get_status          64      256
+// total              663     2652</code></pre>
+
+        <p>
+          Tools over 500 tokens get flagged. That threshold is a heuristic, not
+          a law; the point is that a fat tool is now a number in a report
+          instead of an invisible cost spread across every agent session. A
+          definition that large usually means the description restates the
+          schema, or the schema models the database row instead of the task.
+        </p>
+
+        <h2>What a good tool looks like</h2>
+        <p>
+          The pattern that holds up in practice: fewer tools, each one an
+          outcome. "Refund this order" beats four CRUD calls the agent must
+          sequence correctly. The schema names the task's inputs, not your table
+          columns. The description says when to use the tool, in one or two
+          sentences, because the schema already documents the rest.
+        </p>
+
+        <p>
+          Endpoints are for callers who read documentation once and write code
+          against it. Tools are for callers who re-read the entire catalog every
+          session and pay per word. Design accordingly.
+        </p>
+      </article>
+
+      <aside class="aside" aria-label="Post links">
+        <h2>Related</h2>
+        <a href="../posts/errors-agents-can-fix.html"
+          >Errors an agent can fix</a
+        >
+        <a href="../posts/first-reader-is-an-agent.html"
+          >Your API's first reader is an agent</a
+        >
+        <a href="../../guides/build-an-mcp-server.md">Build an MCP server</a>
+      </aside>
+    </main>
+  </body>
+</html>

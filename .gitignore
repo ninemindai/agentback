@@ -1,0 +1,16 @@
+node_modules
+dist
+*.tsbuildinfo
+.DS_Store
+coverage
+.vscode
+.idea
+*.log
+.codegraph
+.understand-anything
+build
+.gstack/
+.claude/
+
+# local pnpm store fallback (created by some pnpm operations)
+.pnpm-store/

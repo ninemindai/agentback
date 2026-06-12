@@ -1,0 +1,1366 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AgentBack — Metering &amp; Payments</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script
+      src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"
+      integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"
+      integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/"
+      crossorigin="anonymous"
+    ></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: 'JetBrains Mono', monospace;
+        background: #020617;
+        min-height: 100vh;
+        padding: 2rem;
+        color: white;
+      }
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+      .header {
+        margin-bottom: 2rem;
+      }
+      .header-row {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 0.5rem;
+      }
+      .pulse-dot {
+        width: 12px;
+        height: 12px;
+        background: #34d399;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+      }
+      h1 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+      }
+      .subtitle {
+        color: #94a3b8;
+        font-size: 0.875rem;
+        margin-left: 1.75rem;
+      }
+      .diagram-container {
+        background: rgba(15, 23, 42, 0.5);
+        border-radius: 1rem;
+        border: 1px solid #1e293b;
+        padding: 1.5rem;
+        overflow-x: auto;
+      }
+      svg {
+        width: 100%;
+        min-width: 960px;
+        display: block;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 1rem;
+        margin-top: 2rem;
+      }
+      .card {
+        background: rgba(15, 23, 42, 0.5);
+        border-radius: 0.75rem;
+        border: 1px solid #1e293b;
+        padding: 1.25rem;
+      }
+      .card-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+      }
+      .card-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+      }
+      .card-dot.emerald {
+        background: #34d399;
+      }
+      .card-dot.amber {
+        background: #fbbf24;
+      }
+      .card-dot.violet {
+        background: #a78bfa;
+      }
+      .card h3 {
+        font-size: 0.875rem;
+        font-weight: 600;
+      }
+      .card ul {
+        list-style: none;
+        color: #94a3b8;
+        font-size: 0.75rem;
+      }
+      .card li {
+        margin-bottom: 0.375rem;
+      }
+      .footer {
+        text-align: center;
+        margin-top: 1.5rem;
+        color: #475569;
+        font-size: 0.75rem;
+      }
+      .toolbar {
+        display: flex;
+        gap: 0.5rem;
+        margin-left: auto;
+        flex-shrink: 0;
+        align-items: center;
+      }
+      .toolbar-toggle {
+        background: transparent;
+        border: none;
+        color: #475569;
+        cursor: pointer;
+        font-size: 1.25rem;
+        line-height: 1;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.375rem;
+        transition:
+          color 0.2s,
+          background 0.2s;
+      }
+      .toolbar-toggle:hover {
+        color: #94a3b8;
+        background: rgba(30, 41, 59, 0.5);
+      }
+      .toolbar-actions {
+        display: none;
+        gap: 0.5rem;
+      }
+      .toolbar.expanded .toolbar-actions {
+        display: flex;
+      }
+      .toolbar-actions button {
+        background: rgba(30, 41, 59, 0.8);
+        border: 1px solid #334155;
+        color: #94a3b8;
+        padding: 0.375rem 0.75rem;
+        border-radius: 0.375rem;
+        font-family: inherit;
+        font-size: 0.75rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+      }
+      .toolbar-actions button:hover {
+        background: rgba(51, 65, 85, 0.8);
+        color: white;
+        border-color: #475569;
+      }
+      @media print {
+        body {
+          background: #020617;
+          padding: 1rem;
+        }
+        .toolbar {
+          display: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container" id="report-container">
+      <div class="header">
+        <div class="header-row">
+          <div class="pulse-dot"></div>
+          <h1>Metering &amp; Payments</h1>
+          <div class="toolbar">
+            <div class="toolbar-actions">
+              <button onclick="copyAsImage(this)">📋 Copy</button>
+              <button onclick="downloadPNG(this)">🖼️ PNG</button>
+              <button onclick="downloadPDF(this)">📄 PDF</button>
+            </div>
+            <button
+              class="toolbar-toggle"
+              onclick="this.parentElement.classList.toggle('expanded')"
+              title="Export options"
+              aria-label="Export options"
+            >
+              ⋯
+            </button>
+          </div>
+        </div>
+        <p class="subtitle">
+          Every REST/MCP call is metered and attributed to its principal; paid
+          calls are gated (x402 / MPP) or billed (Stripe). metering = metered? ·
+          payments = paid?
+        </p>
+      </div>
+
+      <div class="diagram-container">
+        <svg viewBox="0 0 1000 780">
+          <defs>
+            <marker
+              id="arrowhead"
+              markerWidth="10"
+              markerHeight="7"
+              refX="9"
+              refY="3.5"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+            </marker>
+            <marker
+              id="arrowhead-amber"
+              markerWidth="10"
+              markerHeight="7"
+              refX="9"
+              refY="3.5"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24" />
+            </marker>
+            <marker
+              id="arrowhead-violet"
+              markerWidth="10"
+              markerHeight="7"
+              refX="9"
+              refY="3.5"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa" />
+            </marker>
+            <pattern
+              id="grid"
+              width="40"
+              height="40"
+              patternUnits="userSpaceOnUse"
+            >
+              <path
+                d="M 40 0 L 0 0 0 40"
+                fill="none"
+                stroke="#1e293b"
+                stroke-width="0.5"
+              />
+            </pattern>
+          </defs>
+
+          <rect width="100%" height="100%" fill="url(#grid)" />
+
+          <!-- ===================== ARROWS (behind boxes) ===================== -->
+          <!-- caller → principal -->
+          <line
+            x1="146"
+            y1="208"
+            x2="194"
+            y2="208"
+            stroke="#22d3ee"
+            stroke-width="1.5"
+            marker-end="url(#arrowhead)"
+          />
+          <text
+            x="170"
+            y="200"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            call
+          </text>
+          <!-- principal → seams -->
+          <line
+            x1="348"
+            y1="190"
+            x2="380"
+            y2="162"
+            stroke="#fb7185"
+            stroke-width="1.5"
+            stroke-dasharray="4,3"
+            marker-end="url(#arrowhead)"
+          />
+          <line
+            x1="348"
+            y1="206"
+            x2="380"
+            y2="232"
+            stroke="#fb7185"
+            stroke-width="1.5"
+            stroke-dasharray="4,3"
+            marker-end="url(#arrowhead)"
+          />
+          <text
+            x="364"
+            y="224"
+            fill="#fb7185"
+            font-size="7"
+            text-anchor="middle"
+          >
+            attribute
+          </text>
+          <!-- seams → Meter -->
+          <line
+            x1="574"
+            y1="156"
+            x2="604"
+            y2="180"
+            stroke="#34d399"
+            stroke-width="1.5"
+            marker-end="url(#arrowhead)"
+          />
+          <line
+            x1="574"
+            y1="226"
+            x2="604"
+            y2="198"
+            stroke="#34d399"
+            stroke-width="1.5"
+            marker-end="url(#arrowhead)"
+          />
+          <text
+            x="592"
+            y="172"
+            fill="#34d399"
+            font-size="8"
+            text-anchor="middle"
+          >
+            UsageEvent
+          </text>
+          <!-- Meter → Composite -->
+          <line
+            x1="728"
+            y1="174"
+            x2="760"
+            y2="128"
+            stroke="#a78bfa"
+            stroke-width="1.5"
+            marker-end="url(#arrowhead-violet)"
+          />
+          <!-- Composite → 3 sinks -->
+          <line
+            x1="795"
+            y1="142"
+            x2="795"
+            y2="148"
+            stroke="#a78bfa"
+            stroke-width="1.2"
+            marker-end="url(#arrowhead-violet)"
+          />
+          <line
+            x1="861"
+            y1="142"
+            x2="861"
+            y2="148"
+            stroke="#a78bfa"
+            stroke-width="1.2"
+            marker-end="url(#arrowhead-violet)"
+          />
+          <line
+            x1="929"
+            y1="142"
+            x2="929"
+            y2="148"
+            stroke="#a78bfa"
+            stroke-width="1.2"
+            marker-end="url(#arrowhead-violet)"
+          />
+          <!-- Meter → Quota -->
+          <line
+            x1="728"
+            y1="200"
+            x2="760"
+            y2="220"
+            stroke="#a78bfa"
+            stroke-width="1.5"
+            marker-end="url(#arrowhead-violet)"
+          />
+          <!-- Meter/UsageEvent → StripeMeterSink (cross-band, billable events) -->
+          <path
+            d="M 666 218 L 666 300 Q 666 320 686 320 L 840 320 L 840 466"
+            fill="none"
+            stroke="#a78bfa"
+            stroke-width="1.5"
+            stroke-dasharray="5,4"
+            marker-end="url(#arrowhead-violet)"
+          />
+          <text
+            x="752"
+            y="314"
+            fill="#a78bfa"
+            font-size="8"
+            text-anchor="middle"
+          >
+            billable events → Stripe sink
+          </text>
+          <!-- paymentMiddleware → x402 / MPP -->
+          <line
+            x1="262"
+            y1="490"
+            x2="262"
+            y2="516"
+            stroke="#fbbf24"
+            stroke-width="1.5"
+            marker-end="url(#arrowhead-amber)"
+          />
+          <line
+            x1="330"
+            y1="490"
+            x2="400"
+            y2="516"
+            stroke="#fbbf24"
+            stroke-width="1.5"
+            marker-end="url(#arrowhead-amber)"
+          />
+          <!-- PaidMCPServer → tool error -->
+          <line
+            x1="615"
+            y1="490"
+            x2="615"
+            y2="516"
+            stroke="#fbbf24"
+            stroke-width="1.5"
+            marker-end="url(#arrowhead-amber)"
+          />
+          <!-- StripeMeterSink → Stripe Billing -->
+          <line
+            x1="855"
+            y1="524"
+            x2="855"
+            y2="556"
+            stroke="#a78bfa"
+            stroke-width="1.5"
+            marker-end="url(#arrowhead-violet)"
+          />
+          <!-- x402 / MPP → facilitator -->
+          <line
+            x1="265"
+            y1="584"
+            x2="300"
+            y2="616"
+            stroke="#fbbf24"
+            stroke-width="1.2"
+            stroke-dasharray="4,3"
+            marker-end="url(#arrowhead-amber)"
+          />
+          <line
+            x1="412"
+            y1="584"
+            x2="380"
+            y2="616"
+            stroke="#fbbf24"
+            stroke-width="1.2"
+            stroke-dasharray="4,3"
+            marker-end="url(#arrowhead-amber)"
+          />
+
+          <!-- ===================== caller ===================== -->
+          <rect
+            x="22"
+            y="178"
+            width="124"
+            height="62"
+            rx="6"
+            fill="rgba(30, 41, 59, 0.5)"
+            stroke="#94a3b8"
+            stroke-width="1.5"
+          />
+          <text
+            x="84"
+            y="204"
+            fill="white"
+            font-size="11"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            REST / MCP call
+          </text>
+          <text
+            x="84"
+            y="220"
+            fill="#94a3b8"
+            font-size="9"
+            text-anchor="middle"
+          >
+            + bearer token
+          </text>
+
+          <!-- ===================== METERING boundary ===================== -->
+          <rect
+            x="170"
+            y="54"
+            width="812"
+            height="300"
+            rx="12"
+            fill="rgba(52, 211, 153, 0.04)"
+            stroke="#34d399"
+            stroke-width="1"
+            stroke-dasharray="8,4"
+          />
+          <text x="184" y="74" fill="#34d399" font-size="10" font-weight="600">
+            @agentback/metering · the “metered?” answer (also the rung-1
+            audit log)
+          </text>
+
+          <!-- principal -->
+          <rect
+            x="196"
+            y="172"
+            width="152"
+            height="72"
+            rx="6"
+            fill="rgba(136, 19, 55, 0.4)"
+            stroke="#fb7185"
+            stroke-width="1.5"
+          />
+          <text
+            x="272"
+            y="196"
+            fill="white"
+            font-size="11"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            principal
+          </text>
+          <text
+            x="272"
+            y="212"
+            fill="#e2e8f0"
+            font-size="9"
+            text-anchor="middle"
+          >
+            {user} / {client}
+          </text>
+          <text
+            x="272"
+            y="228"
+            fill="#fb7185"
+            font-size="8"
+            text-anchor="middle"
+          >
+            authentication-oauth2
+          </text>
+          <text
+            x="272"
+            y="239"
+            fill="#94a3b8"
+            font-size="7"
+            text-anchor="middle"
+          >
+            = billable identity
+          </text>
+
+          <!-- seams -->
+          <rect
+            x="382"
+            y="130"
+            width="192"
+            height="50"
+            rx="6"
+            fill="rgba(6, 78, 59, 0.4)"
+            stroke="#34d399"
+            stroke-width="1.5"
+          />
+          <text
+            x="478"
+            y="151"
+            fill="white"
+            font-size="11"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            MeteredRestServer
+          </text>
+          <text
+            x="478"
+            y="167"
+            fill="#94a3b8"
+            font-size="9"
+            text-anchor="middle"
+          >
+            .dispatch (REST seam)
+          </text>
+
+          <rect
+            x="382"
+            y="200"
+            width="192"
+            height="50"
+            rx="6"
+            fill="rgba(6, 78, 59, 0.4)"
+            stroke="#34d399"
+            stroke-width="1.5"
+          />
+          <text
+            x="478"
+            y="221"
+            fill="white"
+            font-size="11"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            MeteredMCPServer
+          </text>
+          <text
+            x="478"
+            y="237"
+            fill="#94a3b8"
+            font-size="9"
+            text-anchor="middle"
+          >
+            .dispatchTool (MCP seam)
+          </text>
+
+          <!-- Meter -->
+          <rect
+            x="606"
+            y="160"
+            width="122"
+            height="58"
+            rx="6"
+            fill="rgba(6, 78, 59, 0.4)"
+            stroke="#34d399"
+            stroke-width="1.5"
+          />
+          <text
+            x="667"
+            y="184"
+            fill="white"
+            font-size="11"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            Meter
+          </text>
+          <text
+            x="667"
+            y="200"
+            fill="#94a3b8"
+            font-size="9"
+            text-anchor="middle"
+          >
+            observe()
+          </text>
+          <text
+            x="667"
+            y="212"
+            fill="#5eead4"
+            font-size="7"
+            text-anchor="middle"
+          >
+            status + latency + units
+          </text>
+
+          <!-- Composite + sinks -->
+          <rect
+            x="760"
+            y="96"
+            width="202"
+            height="40"
+            rx="6"
+            fill="rgba(76, 29, 149, 0.4)"
+            stroke="#a78bfa"
+            stroke-width="1.5"
+          />
+          <text
+            x="861"
+            y="113"
+            fill="white"
+            font-size="10"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            CompositeUsageSink
+          </text>
+          <text
+            x="861"
+            y="127"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            fan-out to N sinks
+          </text>
+
+          <rect
+            x="762"
+            y="150"
+            width="64"
+            height="38"
+            rx="5"
+            fill="rgba(76, 29, 149, 0.4)"
+            stroke="#a78bfa"
+            stroke-width="1.2"
+          />
+          <text
+            x="794"
+            y="166"
+            fill="white"
+            font-size="9"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            InMemory
+          </text>
+          <text
+            x="794"
+            y="178"
+            fill="#94a3b8"
+            font-size="7"
+            text-anchor="middle"
+          >
+            dev/test
+          </text>
+          <rect
+            x="830"
+            y="150"
+            width="64"
+            height="38"
+            rx="5"
+            fill="rgba(76, 29, 149, 0.4)"
+            stroke="#a78bfa"
+            stroke-width="1.2"
+          />
+          <text
+            x="862"
+            y="166"
+            fill="white"
+            font-size="9"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            JSONL
+          </text>
+          <text
+            x="862"
+            y="178"
+            fill="#94a3b8"
+            font-size="7"
+            text-anchor="middle"
+          >
+            audit log
+          </text>
+          <rect
+            x="898"
+            y="150"
+            width="62"
+            height="38"
+            rx="5"
+            fill="rgba(76, 29, 149, 0.4)"
+            stroke="#a78bfa"
+            stroke-width="1.2"
+          />
+          <text
+            x="929"
+            y="166"
+            fill="white"
+            font-size="9"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            Redis
+          </text>
+          <text
+            x="929"
+            y="178"
+            fill="#94a3b8"
+            font-size="7"
+            text-anchor="middle"
+          >
+            shared
+          </text>
+
+          <!-- Quota -->
+          <rect
+            x="760"
+            y="202"
+            width="202"
+            height="42"
+            rx="6"
+            fill="rgba(76, 29, 149, 0.4)"
+            stroke="#a78bfa"
+            stroke-width="1.5"
+          />
+          <text
+            x="861"
+            y="221"
+            fill="white"
+            font-size="10"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            QuotaService
+          </text>
+          <text
+            x="861"
+            y="235"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            per-principal · metered? enforce
+          </text>
+
+          <!-- ===================== legend strip (in the gap) ===================== -->
+          <rect
+            x="196"
+            y="360"
+            width="14"
+            height="9"
+            rx="2"
+            fill="rgba(6, 78, 59, 0.4)"
+            stroke="#34d399"
+            stroke-width="1"
+          />
+          <text x="216" y="368" fill="#94a3b8" font-size="8">
+            metering / seam
+          </text>
+          <rect
+            x="320"
+            y="360"
+            width="14"
+            height="9"
+            rx="2"
+            fill="rgba(76, 29, 149, 0.4)"
+            stroke="#a78bfa"
+            stroke-width="1"
+          />
+          <text x="340" y="368" fill="#94a3b8" font-size="8">sink / quota</text>
+          <rect
+            x="430"
+            y="360"
+            width="14"
+            height="9"
+            rx="2"
+            fill="rgba(120, 53, 15, 0.3)"
+            stroke="#fbbf24"
+            stroke-width="1"
+          />
+          <text x="450" y="368" fill="#94a3b8" font-size="8">
+            payment rail (gate)
+          </text>
+          <rect
+            x="576"
+            y="360"
+            width="14"
+            height="9"
+            rx="2"
+            fill="rgba(136, 19, 55, 0.4)"
+            stroke="#fb7185"
+            stroke-width="1"
+          />
+          <text x="596" y="368" fill="#94a3b8" font-size="8">identity</text>
+          <rect
+            x="666"
+            y="360"
+            width="14"
+            height="9"
+            rx="2"
+            fill="rgba(30, 41, 59, 0.5)"
+            stroke="#94a3b8"
+            stroke-width="1"
+          />
+          <text x="686" y="368" fill="#94a3b8" font-size="8">external</text>
+          <line
+            x1="760"
+            y1="365"
+            x2="776"
+            y2="365"
+            stroke="#fbbf24"
+            stroke-width="1.2"
+            stroke-dasharray="4,3"
+          />
+          <text x="782" y="368" fill="#94a3b8" font-size="8">
+            we don’t settle
+          </text>
+
+          <!-- ===================== PAYMENTS boundary ===================== -->
+          <rect
+            x="170"
+            y="396"
+            width="812"
+            height="346"
+            rx="12"
+            fill="rgba(251, 191, 36, 0.05)"
+            stroke="#fbbf24"
+            stroke-width="1"
+            stroke-dasharray="8,4"
+          />
+          <text x="184" y="416" fill="#fbbf24" font-size="10" font-weight="600">
+            @agentback/payments · the “paid?” answer · we orchestrate, we
+            don’t settle
+          </text>
+
+          <!-- REST gate -->
+          <rect
+            x="200"
+            y="440"
+            width="180"
+            height="50"
+            rx="6"
+            fill="rgba(120, 53, 15, 0.3)"
+            stroke="#fbbf24"
+            stroke-width="1.5"
+          />
+          <text
+            x="290"
+            y="461"
+            fill="white"
+            font-size="11"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            paymentMiddleware
+          </text>
+          <text
+            x="290"
+            y="477"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            REST · PaymentRail.authorize
+          </text>
+
+          <rect
+            x="200"
+            y="520"
+            width="128"
+            height="62"
+            rx="6"
+            fill="rgba(120, 53, 15, 0.3)"
+            stroke="#fbbf24"
+            stroke-width="1.5"
+          />
+          <text
+            x="264"
+            y="540"
+            fill="white"
+            font-size="10"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            x402
+          </text>
+          <text
+            x="264"
+            y="554"
+            fill="#94a3b8"
+            font-size="7.5"
+            text-anchor="middle"
+          >
+            HTTP 402
+          </text>
+          <text
+            x="264"
+            y="566"
+            fill="#94a3b8"
+            font-size="7.5"
+            text-anchor="middle"
+          >
+            USDC · L2
+          </text>
+
+          <rect
+            x="344"
+            y="520"
+            width="136"
+            height="62"
+            rx="6"
+            fill="rgba(120, 53, 15, 0.3)"
+            stroke="#fbbf24"
+            stroke-width="1.5"
+          />
+          <text
+            x="412"
+            y="540"
+            fill="white"
+            font-size="10"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            MPP
+          </text>
+          <text
+            x="412"
+            y="554"
+            fill="#94a3b8"
+            font-size="7.5"
+            text-anchor="middle"
+          >
+            pre-auth sessions
+          </text>
+          <text
+            x="412"
+            y="566"
+            fill="#94a3b8"
+            font-size="7.5"
+            text-anchor="middle"
+          >
+            X-MPP-SESSION
+          </text>
+
+          <!-- MCP gate -->
+          <rect
+            x="520"
+            y="440"
+            width="190"
+            height="50"
+            rx="6"
+            fill="rgba(120, 53, 15, 0.3)"
+            stroke="#fbbf24"
+            stroke-width="1.5"
+          />
+          <text
+            x="615"
+            y="461"
+            fill="white"
+            font-size="11"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            PaidMCPServer
+          </text>
+          <text
+            x="615"
+            y="477"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            MCP · dispatchTool gate
+          </text>
+
+          <rect
+            x="520"
+            y="520"
+            width="190"
+            height="62"
+            rx="6"
+            fill="rgba(120, 53, 15, 0.3)"
+            stroke="#fbbf24"
+            stroke-width="1.5"
+          />
+          <text
+            x="615"
+            y="540"
+            fill="white"
+            font-size="10"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            tool error
+          </text>
+          <text
+            x="615"
+            y="554"
+            fill="#94a3b8"
+            font-size="7.5"
+            text-anchor="middle"
+          >
+            _meta: challenge (no 402)
+          </text>
+          <text
+            x="615"
+            y="566"
+            fill="#fcd34d"
+            font-size="7.5"
+            text-anchor="middle"
+          >
+            agent pays → retries
+          </text>
+
+          <!-- Stripe reporting (violet = a UsageSink, not a gate) -->
+          <rect
+            x="748"
+            y="470"
+            width="214"
+            height="54"
+            rx="6"
+            fill="rgba(76, 29, 149, 0.4)"
+            stroke="#a78bfa"
+            stroke-width="1.5"
+          />
+          <text
+            x="855"
+            y="491"
+            fill="white"
+            font-size="10"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            StripeMeterSink
+          </text>
+          <text
+            x="855"
+            y="505"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            a UsageSink — bills, does not gate
+          </text>
+          <text
+            x="855"
+            y="517"
+            fill="#a78bfa"
+            font-size="7"
+            text-anchor="middle"
+          >
+            status:'ok' → meter event
+          </text>
+
+          <rect
+            x="748"
+            y="556"
+            width="214"
+            height="46"
+            rx="6"
+            fill="rgba(30, 41, 59, 0.5)"
+            stroke="#94a3b8"
+            stroke-width="1.5"
+          />
+          <text
+            x="855"
+            y="575"
+            fill="white"
+            font-size="10"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            Stripe Billing
+          </text>
+          <text
+            x="855"
+            y="589"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            meter events → invoice (fiat)
+          </text>
+
+          <!-- external facilitator/processor -->
+          <rect
+            x="200"
+            y="616"
+            width="290"
+            height="46"
+            rx="6"
+            fill="rgba(30, 41, 59, 0.5)"
+            stroke="#94a3b8"
+            stroke-width="1.5"
+          />
+          <text
+            x="345"
+            y="635"
+            fill="white"
+            font-size="10"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            facilitator / processor (external)
+          </text>
+          <text
+            x="345"
+            y="649"
+            fill="#94a3b8"
+            font-size="8"
+            text-anchor="middle"
+          >
+            verifies + settles — injected, not us
+          </text>
+
+          <text
+            x="290"
+            y="600"
+            fill="#fbbf24"
+            font-size="8"
+            text-anchor="middle"
+          >
+            no/invalid payment → 402 + requirements
+          </text>
+        </svg>
+      </div>
+
+      <div class="cards">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-dot emerald"></div>
+            <h3>Metering — the “metered?” answer</h3>
+          </div>
+          <ul>
+            <li>
+              • <b>MeteredRestServer</b> / <b>MeteredMCPServer</b> wrap dispatch
+            </li>
+            <li>
+              • <b>Meter.observe()</b> times the call → a
+              <code>UsageEvent</code>
+            </li>
+            <li>
+              • Sinks: InMemory · JSONL (audit) · Redis · Composite fan-out
+            </li>
+            <li>• <b>QuotaService</b> enforces per-principal limits</li>
+            <li>• Attributed to the auth principal — the billable identity</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-dot amber"></div>
+            <h3>Gating rails — the “paid?” answer</h3>
+          </div>
+          <ul>
+            <li>
+              • <b>x402</b> — <code>paymentMiddleware</code> → HTTP 402, USDC/L2
+            </li>
+            <li>
+              • <b>MPP</b> — pre-auth sessions (<code>X-MPP-SESSION</code>)
+            </li>
+            <li>
+              • <b>PaidMCPServer</b> — no 402 over JSON-RPC, so the challenge
+              rides back as a tool error in <code>_meta</code>; the agent pays
+              and retries
+            </li>
+            <li>
+              • Settlement is delegated to an external facilitator/processor
+            </li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-dot violet"></div>
+            <h3>Stripe — reports, doesn’t gate</h3>
+          </div>
+          <ul>
+            <li>
+              • <b>StripeMeterSink</b> is a <code>UsageSink</code>, not a rail
+            </li>
+            <li>• Billable events → Stripe metered billing → invoice (fiat)</li>
+            <li>
+              • Compose with the audit sink via <code>CompositeUsageSink</code>
+            </li>
+            <li>• “Same units, different rail” — record once, bill from it</li>
+          </ul>
+        </div>
+      </div>
+
+      <p class="footer">
+        @agentback · docs/architecture/metering-and-payments.md · gating
+        (x402 / MPP) authorizes per call; reporting (Stripe) bills off the meter
+      </p>
+    </div>
+
+    <script>
+      async function copyAsImage(btn) {
+        const orig = btn.textContent;
+        try {
+          const el = document.getElementById('report-container');
+          const r = el.getBoundingClientRect();
+          const pad = 32;
+          const canvas = await html2canvas(document.body, {
+            backgroundColor: '#020617',
+            scale: 2,
+            useCORS: true,
+            ignoreElements: e => e.classList && e.classList.contains('toolbar'),
+            x: r.left + window.scrollX - pad,
+            y: r.top + window.scrollY - pad,
+            width: r.width + pad * 2,
+            height: r.height + pad * 2,
+          });
+          const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+          await navigator.clipboard.write([
+            new ClipboardItem({'image/png': blob}),
+          ]);
+          btn.textContent = '✓ Copied!';
+        } catch (e) {
+          btn.textContent = '✗ Failed';
+        }
+        setTimeout(() => (btn.textContent = orig), 2000);
+      }
+      async function downloadPNG(btn) {
+        const orig = btn.textContent;
+        btn.textContent = '⏳ ...';
+        try {
+          const el = document.getElementById('report-container');
+          const r = el.getBoundingClientRect();
+          const pad = 32;
+          const canvas = await html2canvas(document.body, {
+            backgroundColor: '#020617',
+            scale: 2,
+            useCORS: true,
+            ignoreElements: e => e.classList && e.classList.contains('toolbar'),
+            x: r.left + window.scrollX - pad,
+            y: r.top + window.scrollY - pad,
+            width: r.width + pad * 2,
+            height: r.height + pad * 2,
+          });
+          const link = document.createElement('a');
+          link.download = 'metering-and-payments.png';
+          link.href = canvas.toDataURL('image/png');
+          link.click();
+          btn.textContent = '✓ Done!';
+        } catch (e) {
+          btn.textContent = '✗ Failed';
+        }
+        setTimeout(() => (btn.textContent = orig), 2000);
+      }
+      async function downloadPDF(btn) {
+        const orig = btn.textContent;
+        btn.textContent = '⏳ ...';
+        try {
+          const el = document.getElementById('report-container');
+          const r = el.getBoundingClientRect();
+          const pad = 32;
+          const canvas = await html2canvas(document.body, {
+            backgroundColor: '#020617',
+            scale: 2,
+            useCORS: true,
+            ignoreElements: e => e.classList && e.classList.contains('toolbar'),
+            x: r.left + window.scrollX - pad,
+            y: r.top + window.scrollY - pad,
+            width: r.width + pad * 2,
+            height: r.height + pad * 2,
+          });
+          const imgData = canvas.toDataURL('image/png');
+          const {jsPDF} = window.jspdf;
+          const orientation =
+            canvas.width > canvas.height ? 'landscape' : 'portrait';
+          const pdf = new jsPDF({
+            orientation,
+            unit: 'px',
+            format: [canvas.width, canvas.height],
+            hotfixes: ['px_scaling'],
+          });
+          pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+          pdf.save('metering-and-payments.pdf');
+          btn.textContent = '✓ Done!';
+        } catch (e) {
+          btn.textContent = '✗ Failed';
+        }
+        setTimeout(() => (btn.textContent = orig), 2000);
+      }
+    </script>
+  </body>
+</html>

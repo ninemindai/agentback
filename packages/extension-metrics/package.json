@@ -1,0 +1,47 @@
+{
+  "name": "@agentback/extension-metrics",
+  "version": "0.0.1",
+  "description": "Prometheus /metrics endpoint + HTTP request timing",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@agentback/rest": "workspace:*",
+    "@types/express": "^4.17.21",
+    "prom-client": "^15.1.3",
+    "tslib": "^2.8.1"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "devDependencies": {
+    "@agentback/openapi": "workspace:*",
+    "@agentback/testlab": "workspace:*",
+    "@types/supertest": "^7.2.0",
+    "supertest": "^7.2.2",
+    "vitest": "~4.1.8",
+    "zod": "^4.4.3"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ninemindai/agentback.git",
+    "directory": "packages/extension-metrics"
+  },
+  "homepage": "https://agentback.dev",
+  "bugs": "https://github.com/ninemindai/agentback/issues"
+}

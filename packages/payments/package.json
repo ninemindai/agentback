@@ -1,0 +1,44 @@
+{
+  "name": "@agentback/payments",
+  "version": "0.0.1",
+  "description": "PaymentRail seam for REST/MCP calls. Ships an x402 (HTTP 402) adapter; MPP/Stripe are the next adapters. Orchestrates payment authorization; does not settle.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@agentback/context": "workspace:*",
+    "@agentback/mcp": "workspace:*",
+    "@agentback/metering": "workspace:*",
+    "@agentback/rest": "workspace:*",
+    "@types/express": "^4.17.21",
+    "tslib": "^2.8.1"
+  },
+  "devDependencies": {
+    "vitest": "~4.1.8"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ninemindai/agentback.git",
+    "directory": "packages/payments"
+  },
+  "homepage": "https://agentback.dev",
+  "bugs": "https://github.com/ninemindai/agentback/issues"
+}

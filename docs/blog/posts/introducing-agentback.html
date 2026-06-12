@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Introducing AgentBack | AgentBack Blog</title>
+    <meta
+      name="description"
+      content="Announcing AgentBack, a TypeScript framework for building agent-facing REST and MCP services from one Zod contract."
+    />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="../index.html">AgentBack blog</a>
+        <div class="nav-links">
+          <a href="../../README.md">Docs</a>
+          <a href="../../../README.md">Repo README</a>
+          <a href="../diagrams/system-boundary.html">Diagram</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="post-layout">
+      <article class="post-body">
+        <p class="post-meta">June 10, 2026</p>
+        <h1>Introducing AgentBack</h1>
+        <p class="lede">
+          AgentBack is a TypeScript framework for building agent-facing
+          services where REST endpoints, MCP tools, docs, typed clients, tests,
+          and runtime validation all share one Zod contract.
+        </p>
+
+        <p>
+          Modern backends are no longer consumed only by web apps and mobile
+          apps. They are also consumed by AI agents that discover tools, inspect
+          schemas, call APIs, retry failures, and compose services into longer
+          workflows. That changes the cost of contract drift.
+        </p>
+
+        <p>
+          In the old world, a stale OpenAPI document or tool manifest was mostly
+          a documentation bug. In the agent world, it is a runtime bug. The
+          model may choose the wrong tool, send the wrong body, miss an auth
+          requirement, or trust a response shape that no longer exists.
+        </p>
+
+        <blockquote>
+          The core product claim is simple: one schema, every boundary.
+        </blockquote>
+
+        <h2>The shape</h2>
+        <p>
+          An AgentBack application is one dependency-injection container.
+          REST controllers, MCP tool classes, services, config, auth strategies,
+          lifecycle observers, and servers are bindings. Servers discover the
+          bindings they care about by tag.
+        </p>
+
+        <pre><code class="language-ts">const app = new RestApplication();
+app.component(MCPComponent);
+
+app.restController(OrdersController);
+app.service(OrderTools);
+app.service(OrderService);
+
+await app.start();</code></pre>
+
+        <p>
+          The contract lives on decorators as Zod. That same schema validates
+          requests, gives the handler its `z.infer` type, emits OpenAPI 3.1,
+          registers MCP input/output schemas, and powers the Swagger UI or MCP
+          Inspector.
+        </p>
+
+        <pre><code class="language-ts">const OrderPath = z.object({id: z.string().uuid()});
+const Order = z.object({id: z.string(), status: z.string()});
+
+@get('/orders/{id}', {path: OrderPath, response: Order})
+async get(input: {path: z.infer&lt;typeof OrderPath&gt;}) {
+  return this.orders.get(input.path.id);
+}
+
+@tool('get_order', {input: OrderPath, output: Order})
+async getOrder(input: z.infer&lt;typeof OrderPath&gt;) {
+  return this.orders.get(input.id);
+}</code></pre>
+
+        <h2>Where it sits</h2>
+        <p>
+          Express gives you freedom, but every boundary is hand-wired. tRPC
+          gives excellent TypeScript inference, but the contract is primarily
+          TypeScript-native. NestJS gives structure and DI, but API schemas and
+          tool schemas still tend to live in separate worlds. FastAPI showed how
+          powerful one model artifact can be, but TypeScript teams still need a
+          native version of that story.
+        </p>
+
+        <p>
+          AgentBack takes the FastAPI-style contract-coherence bet and
+          applies it to TypeScript services that must serve both humans and
+          agents. The differentiator is not REST alone, MCP alone, or DI alone.
+          It is the way those pieces share the same artifact.
+        </p>
+
+        <ul>
+          <li>Compared with Express, there is a contract-first recipe.</li>
+          <li>
+            Compared with tRPC, the boundary is language-agnostic through
+            OpenAPI.
+          </li>
+          <li>
+            Compared with NestJS, tool contracts are first-class, not an adapter
+            afterthought.
+          </li>
+          <li>
+            Compared with FastAPI, the stack is TypeScript-native and MCP-aware.
+          </li>
+        </ul>
+
+        <h2>Beyond hello world</h2>
+        <p>
+          The framework is deliberately modular. The DI core can stand alone.
+          REST and MCP can run separately or in one process. The client package
+          gives TypeScript consumers typed calls without codegen. The auth,
+          authorization, rate-limit, health, metrics, OTel, testing, plugin,
+          messaging, metering, and payments packages compose around the same
+          binding model.
+        </p>
+
+        <p>
+          That matters for production agent systems. A useful agent backend is
+          not just a tool function. It needs identity, policy, quotas, audit
+          logs, paid or metered access, background work, tracing, tests, and
+          operator visibility. Those concerns need to attach to the same route
+          and tool boundaries, or they become another source of drift.
+        </p>
+
+        <p>
+          The same goes for the conventions agents specifically need: errors
+          with stable codes and the violated schema inline, confirmation
+          round-trips on dangerous operations, idempotency-key replay on
+          mutations, and a <code>/llms.txt</code> the service generates from its
+          own route registry. These ship as framework defaults rather than
+          per-team conventions; the posts
+          <a href="errors-agents-can-fix.html">Errors an agent can fix</a> and
+          <a href="first-reader-is-an-agent.html"
+            >Your API's first reader is an agent</a
+          >
+          cover them in detail.
+        </p>
+
+        <h2>Status</h2>
+        <p>
+          AgentBack is pre-alpha. The examples work end to end, and the
+          package surface is still moving. The project is intentionally sharpest
+          for teams willing to adopt the core design rule now: put the schema on
+          the boundary, then let every transport and tool derive from it.
+        </p>
+
+        <div class="post-actions">
+          <a class="button" href="../../../README.md">Read the README</a>
+          <a class="button secondary" href="../diagrams/system-boundary.html"
+            >Open architecture map</a
+          >
+        </div>
+      </article>
+
+      <aside class="aside" aria-label="Post links">
+        <h2>Related</h2>
+        <a href="../../agent-ergonomics.md">Boundary coherence thesis</a>
+        <a href="../../guides/build-a-hybrid-app.md">Build a hybrid app</a>
+        <a href="../posts/boundary-coherence.html"
+          >Boundary coherence is the product</a
+        >
+      </aside>
+    </main>
+  </body>
+</html>

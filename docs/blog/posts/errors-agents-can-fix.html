@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Errors an agent can fix | AgentBack Blog</title>
+    <meta
+      name="description"
+      content="AgentBack's error envelope gives agents stable codes, field-level issues, the violated schema, and a retry hint — plus confirmation tokens and idempotency keys for the operations that must not run twice."
+    />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="../index.html">AgentBack blog</a>
+        <div class="nav-links">
+          <a href="../../README.md">Docs</a>
+          <a href="../../../README.md">Repo README</a>
+          <a href="../diagrams/system-boundary.html">Diagram</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="post-layout">
+      <article class="post-body">
+        <p class="post-meta">June 11, 2026</p>
+        <h1>Errors an agent can fix, operations an agent can't break</h1>
+        <p class="lede">
+          An agent's retry loop is only as good as the error it reads. A human
+          sees <code>400 Bad Request</code> and opens the docs. An agent sees it
+          and guesses.
+        </p>
+
+        <p>
+          Most API errors are written for people who can go read something else:
+          a status code, a sentence, maybe a link. Agents don't browse. Whatever
+          the error body carries is the entire repair budget for the next
+          attempt. If it says "validation failed," the agent mutates its input
+          at random and tries again. Three retries later you've paid for four
+          LLM calls and the request still doesn't parse.
+        </p>
+
+        <p>
+          So AgentBack makes every failure carry its own repair manual. One
+          envelope, on both surfaces: REST responses and MCP tool errors
+          serialize the same shape, so one parser self-corrects against either.
+        </p>
+
+        <pre><code class="language-json">{
+  "error": {
+    "statusCode": 422,
+    "code": "invalid_body",
+    "message": "The request body is invalid.",
+    "issues": [
+      {"path": ["amount"], "code": "too_small",
+       "message": "Number must be greater than 0"}
+    ],
+    "schema": {
+      "type": "object",
+      "properties": {"amount": {"type": "number", "exclusiveMinimum": 0}},
+      "required": ["amount"]
+    },
+    "retryable": true,
+    "hint": "Fix the listed issues (each has a path and expected type) and retry; the violated section's JSON Schema is included as 'schema'."
+  }
+}</code></pre>
+
+        <p>
+          Each field has one job. <code>code</code> is stable and
+          machine-readable; the contract is that nobody ever parses
+          <code>message</code>. <code>issues</code> point at exact fields with
+          what was expected and what arrived. <code>schema</code> inlines the
+          violated section's JSON Schema, so the agent can re-shape its input
+          without a second round-trip to <code>/openapi.json</code>.
+          <code>retryable</code> answers the only question a retry loop actually
+          has: can the same operation succeed with corrected input? Validation
+          failures say yes. Auth failures say no, because retrying with the same
+          credentials is a waste of everyone's tokens.
+        </p>
+
+        <h2>The operations that must not run twice</h2>
+        <p>
+          Self-correcting errors solve the failure path. The scarier path is
+          success: an agent that can call <code>delete_environment</code> will
+          eventually call it with conviction and the wrong argument. Two
+          decorator options handle this.
+        </p>
+
+        <p>
+          <code>confirm:</code> makes an operation a two-step handshake. The
+          first call is refused with a single-use token; the identical retry
+          with that token executes.
+        </p>
+
+        <pre><code class="language-ts">@post('/deploy', {body: DeployIn, response: DeployOut, confirm: true})
+async deploy(input: {body: z.infer&lt;typeof DeployIn&gt;}) { … }
+
+// 1st call            -> 409 {code: "confirmation_required",
+//                            confirmationToken: "…", retryable: true}
+// retry + token header -> executes</code></pre>
+
+        <p>
+          The detail that matters: the token is bound to a fingerprint of the
+          exact payload, not just to the route. Confirm
+          <code>{target: "staging"}</code> and then send
+          <code>{target: "prod-db"}</code> with the same token, and the request
+          is refused. An agent cannot confirm one mutation and execute another,
+          which is precisely the failure mode you imagine at 2am. Tokens are
+          single-use and expire after five minutes. MCP tools get the same flow
+          through <code>@tool(..., {confirm: true})</code>, with the token
+          riding in a <code>confirmationToken</code> input property that is
+          advertised in the tool's schema, so the agent learns the protocol from
+          <code>tools/list</code> rather than from its first failure.
+        </p>
+
+        <p>
+          <code>idempotency:</code> covers the duplicate problem. Agents retry.
+          Networks fail after the server commits. With the option set, a route
+          honors the <code>idempotency-key</code> header: replaying a key
+          returns the original result without re-executing, concurrent
+          duplicates share one execution, and errors are never cached, so a
+          retry after a failure genuinely retries.
+        </p>
+
+        <pre><code class="language-ts">@post('/charge', {body: ChargeIn, response: ChargeOut, idempotency: true})
+async charge(input: {body: z.infer&lt;typeof ChargeIn&gt;}) { … }</code></pre>
+
+        <h2>Ordering is part of the contract</h2>
+        <p>
+          The confirmation gate runs after authentication and authorization, so
+          an unauthorized caller never learns the operation exists, and before
+          input validation, so what gets confirmed is the byte-exact proposal.
+          Both stores are DI bindings with in-memory defaults; multi-instance
+          deployments swap in a shared implementation without touching route
+          code. Everything above is also documented in the emitted OpenAPI: the
+          409 flow, the headers, the
+          <code>x-confirmation-required</code> marker. The contract an agent
+          discovers is the contract the dispatcher enforces.
+        </p>
+      </article>
+
+      <aside class="aside" aria-label="Post links">
+        <h2>Related</h2>
+        <a href="../posts/tools-are-not-endpoints.html"
+          >Tools are not endpoints</a
+        >
+        <a href="../posts/first-reader-is-an-agent.html"
+          >Your API's first reader is an agent</a
+        >
+        <a href="../posts/boundary-coherence.html"
+          >Boundary coherence is the product</a
+        >
+      </aside>
+    </main>
+  </body>
+</html>

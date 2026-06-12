@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Contract-first clients without codegen | AgentBack Blog</title>
+    <meta
+      name="description"
+      content="How AgentBack clients share Zod contracts without importing a server runtime."
+    />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="../index.html">AgentBack blog</a>
+        <div class="nav-links">
+          <a href="../../README.md">Docs</a>
+          <a href="../../../README.md">Repo README</a>
+          <a href="../diagrams/system-boundary.html">Diagram</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="post-layout">
+      <article class="post-body">
+        <p class="post-meta">June 10, 2026</p>
+        <h1>Contract-first clients without codegen</h1>
+        <p class="lede">
+          The TypeScript client package uses the same Zod schemas as the server,
+          but it does not need to import the server or wait for an SDK
+          generation step.
+        </p>
+
+        <p>
+          OpenAPI is still the right language-agnostic contract for other
+          ecosystems. But inside a TypeScript monorepo, there is a shorter path:
+          put schemas in a module that both server and client can import, then
+          define route handles from those schemas.
+        </p>
+
+        <pre><code class="language-ts">export const HelloPath = z.object({name: z.string().min(1)});
+export const Greeting = z.object({greeting: z.string()});
+
+const greet = routeGroup('/greet');
+const hello = greet.get('/hello/{name}', {
+  path: HelloPath,
+  response: Greeting,
+});
+
+const client = createClient({baseURL: 'http://localhost:3000'});
+const out = await hello.call(client, {path: {name: 'Ada'}});</code></pre>
+
+        <p>
+          The result is typed at compile time and validated at runtime. Change
+          the schema, and TypeScript points at the call sites that no longer
+          match. No generated files are checked in, and no client package has to
+          boot the server to understand its contract.
+        </p>
+
+        <h2>The import boundary matters</h2>
+        <p>
+          The schema module should be boring and side-effect free. Export it
+          from a subpath or separate package, not from a server entry point that
+          creates an application. That keeps browser clients and tests cheap.
+        </p>
+
+        <ul>
+          <li>Server controllers import schemas for decorators.</li>
+          <li>Clients import schemas for route handles.</li>
+          <li>OpenAPI remains available for non-TypeScript consumers.</li>
+          <li>Runtime validation protects both ends from stale assumptions.</li>
+        </ul>
+
+        <div class="callout">
+          <p>
+            See the working example in
+            <a href="../../../examples/hello-client/src/index.ts"
+              >examples/hello-client</a
+            >
+            and the guide section on
+            <a
+              href="../../guides/build-a-hybrid-app.md#a-type-safe-client-with-no-codegen"
+              >type-safe clients with no codegen</a
+            >.
+          </p>
+        </div>
+      </article>
+
+      <aside class="aside" aria-label="Post links">
+        <h2>Related</h2>
+        <a href="../../../packages/client/README.md">Client package README</a>
+        <a href="../../guides/build-a-hybrid-app.md">Hybrid app guide</a>
+        <a href="../posts/boundary-coherence.html">Boundary coherence</a>
+      </aside>
+    </main>
+  </body>
+</html>

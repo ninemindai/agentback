@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgentBack System Architecture</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'JetBrains Mono', monospace; background: #020617; min-height: 100vh; padding: 2rem; color: white; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot { width: 12px; height: 12px; background: #fbbf24; border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container { background: rgba(15, 23, 42, 0.5); border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto; }
+    svg { width: 100%; min-width: 940px; display: block; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 2rem; }
+    .card { background: rgba(15, 23, 42, 0.5); border-radius: 0.75rem; border: 1px solid #1e293b; padding: 1.25rem; }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .card-dot.cyan { background: #22d3ee; }
+    .card-dot.emerald { background: #34d399; }
+    .card-dot.violet { background: #a78bfa; }
+    .card-dot.amber { background: #fbbf24; }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
+    .card li { margin-bottom: 0.375rem; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+    .toolbar { display: flex; gap: 0.5rem; margin-left: auto; flex-shrink: 0; align-items: center; }
+    .toolbar-toggle { background: transparent; border: none; color: #475569; cursor: pointer; font-size: 1.25rem; line-height: 1; padding: 0.25rem 0.5rem; border-radius: 0.375rem; transition: color 0.2s, background 0.2s; }
+    .toolbar-toggle:hover { color: #94a3b8; background: rgba(30, 41, 59, 0.5); }
+    .toolbar-actions { display: none; gap: 0.5rem; }
+    .toolbar.expanded .toolbar-actions { display: flex; }
+    .toolbar-actions button { background: rgba(30, 41, 59, 0.8); border: 1px solid #334155; color: #94a3b8; padding: 0.375rem 0.75rem; border-radius: 0.375rem; font-family: inherit; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+    .toolbar-actions button:hover { background: rgba(51, 65, 85, 0.8); color: white; border-color: #475569; }
+    @media print { body { background: #020617; padding: 1rem; } .toolbar { display: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="container" id="report-container">
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>AgentBack — System Architecture</h1>
+        <div class="toolbar">
+          <div class="toolbar-actions">
+            <button onclick="copyAsImage(this)">📋 Copy</button>
+            <button onclick="downloadPNG(this)">🖼️ PNG</button>
+            <button onclick="downloadPDF(this)">📄 PDF</button>
+          </div>
+          <button class="toolbar-toggle" onclick="this.parentElement.classList.toggle('expanded')" title="Export options" aria-label="Export options">⋯</button>
+        </div>
+      </div>
+      <p class="subtitle">Everything is a binding in one DI Context · servers discover by tag · one Zod schema feeds every contract</p>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1040 770">
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#64748b" /></marker>
+          <marker id="ah-amber" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24" /></marker>
+          <marker id="ah-emerald" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#34d399" /></marker>
+          <marker id="ah-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee" /></marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/></pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- ===== Discovery + inject arrows (drawn first, behind boxes) ===== -->
+        <!-- RestServer discovers controllers by tag -->
+        <line x1="728" y1="235" x2="674" y2="235" stroke="#34d399" stroke-width="1.5" marker-end="url(#ah-emerald)"/>
+        <text x="701" y="229" fill="#34d399" font-size="7" text-anchor="middle">by tag</text>
+        <!-- MCPServer discovers tool classes by tag -->
+        <line x1="728" y1="385" x2="674" y2="385" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#ah-cyan)"/>
+        <text x="701" y="379" fill="#22d3ee" font-size="7" text-anchor="middle">by tag</text>
+        <!-- @inject: controllers/tools depend on services -->
+        <line x1="362" y1="235" x2="344" y2="235" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrowhead)"/>
+        <line x1="362" y1="385" x2="344" y2="385" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrowhead)"/>
+        <text x="352" y="300" fill="#94a3b8" font-size="7" text-anchor="middle" transform="rotate(-90 352 300)">@inject</text>
+
+        <!-- ===== Application container ===== -->
+        <rect x="150" y="70" width="540" height="400" rx="12" fill="rgba(251, 191, 36, 0.05)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="164" y="92" fill="#fbbf24" font-size="10" font-weight="600">Application — one DI Context · everything below is a binding</text>
+
+        <!-- Shared Zod schemas -->
+        <rect x="170" y="104" width="500" height="44" rx="6" fill="#0f172a"/>
+        <rect x="170" y="104" width="500" height="44" rx="6" fill="rgba(120, 53, 15, 0.35)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="420" y="124" fill="white" font-size="11" font-weight="600" text-anchor="middle">Shared Zod schemas</text>
+        <text x="420" y="139" fill="#94a3b8" font-size="9" text-anchor="middle">one artifact → validator · z.infer type · OpenAPI · MCP · docs</text>
+
+        <!-- Services / Providers / Config -->
+        <rect x="170" y="170" width="170" height="300" rx="6" fill="#0f172a"/>
+        <rect x="170" y="170" width="170" height="300" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="255" y="196" fill="white" font-size="12" font-weight="600" text-anchor="middle">Services</text>
+        <text x="255" y="216" fill="#94a3b8" font-size="9" text-anchor="middle">Providers · Config</text>
+        <text x="255" y="234" fill="#94a3b8" font-size="9" text-anchor="middle">bound by key</text>
+        <text x="255" y="252" fill="#94a3b8" font-size="9" text-anchor="middle">singleton / transient</text>
+        <text x="255" y="455" fill="#a78bfa" font-size="8" text-anchor="middle">resolved on demand</text>
+
+        <!-- Controllers -->
+        <rect x="360" y="170" width="314" height="130" rx="6" fill="#0f172a"/>
+        <rect x="360" y="170" width="314" height="130" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="517" y="198" fill="white" font-size="12" font-weight="600" text-anchor="middle">Controllers</text>
+        <text x="517" y="218" fill="#94a3b8" font-size="9" text-anchor="middle">@api · @get / @post / @put / @del</text>
+        <text x="517" y="234" fill="#94a3b8" font-size="8" text-anchor="middle">carry Zod path / query / body / response</text>
+        <text x="517" y="286" fill="#34d399" font-size="8" text-anchor="middle">[ tag: restController ]</text>
+
+        <!-- MCP tool classes -->
+        <rect x="360" y="320" width="314" height="130" rx="6" fill="#0f172a"/>
+        <rect x="360" y="320" width="314" height="130" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="517" y="348" fill="white" font-size="12" font-weight="600" text-anchor="middle">MCP tool classes</text>
+        <text x="517" y="368" fill="#94a3b8" font-size="9" text-anchor="middle">@mcpServer · @tool / @resource / @prompt</text>
+        <text x="517" y="384" fill="#94a3b8" font-size="8" text-anchor="middle">carry Zod input / output</text>
+        <text x="517" y="436" fill="#22d3ee" font-size="8" text-anchor="middle">[ tag: mcpServer ]</text>
+
+        <!-- ===== Servers (outside the container, discover inward) ===== -->
+        <rect x="730" y="160" width="200" height="110" rx="6" fill="#0f172a"/>
+        <rect x="730" y="160" width="200" height="110" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="830" y="186" fill="white" font-size="12" font-weight="600" text-anchor="middle">RestServer</text>
+        <text x="830" y="203" fill="#94a3b8" font-size="9" text-anchor="middle">servers.RestServer</text>
+        <text x="830" y="223" fill="#94a3b8" font-size="8" text-anchor="middle">→ HTTP · /openapi.json</text>
+        <text x="830" y="237" fill="#94a3b8" font-size="8" text-anchor="middle">→ /explorer (Swagger UI)</text>
+        <text x="830" y="258" fill="#34d399" font-size="8" text-anchor="middle">discovers restController ◂</text>
+
+        <rect x="730" y="330" width="200" height="110" rx="6" fill="#0f172a"/>
+        <rect x="730" y="330" width="200" height="110" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="830" y="356" fill="white" font-size="12" font-weight="600" text-anchor="middle">MCPServer</text>
+        <text x="830" y="373" fill="#94a3b8" font-size="9" text-anchor="middle">servers.MCPServer</text>
+        <text x="830" y="393" fill="#94a3b8" font-size="8" text-anchor="middle">→ stdio transport</text>
+        <text x="830" y="407" fill="#94a3b8" font-size="8" text-anchor="middle">→ /mcp-inspector</text>
+        <text x="830" y="428" fill="#22d3ee" font-size="8" text-anchor="middle">discovers mcpServer ◂</text>
+
+        <!-- ===== Divider ===== -->
+        <line x1="80" y1="505" x2="960" y2="505" stroke="#1e293b" stroke-width="1"/>
+        <text x="520" y="497" fill="white" font-size="11" font-weight="600" text-anchor="middle">One Zod schema · five coherent views</text>
+
+        <!-- ===== Radial schema fan ===== -->
+        <!-- arrows (behind chips) -->
+        <line x1="425" y1="641" x2="252" y2="577" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#ah-amber)"/>
+        <line x1="425" y1="650" x2="252" y2="712" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#ah-amber)"/>
+        <line x1="615" y1="640" x2="788" y2="567" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#ah-amber)"/>
+        <line x1="615" y1="645" x2="788" y2="642" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#ah-amber)"/>
+        <line x1="615" y1="652" x2="788" y2="722" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#ah-amber)"/>
+
+        <!-- center schema node -->
+        <rect x="425" y="618" width="190" height="50" rx="6" fill="#0f172a"/>
+        <rect x="425" y="618" width="190" height="50" rx="6" fill="rgba(120, 53, 15, 0.35)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="520" y="640" fill="white" font-size="12" font-weight="600" text-anchor="middle">z.object({ … })</text>
+        <text x="520" y="656" fill="#94a3b8" font-size="8" text-anchor="middle">single source of truth</text>
+
+        <!-- chips -->
+        <rect x="72" y="555" width="180" height="44" rx="6" fill="rgba(30, 41, 59, 0.7)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="162" y="577" fill="white" font-size="11" font-weight="600" text-anchor="middle">runtime validator</text>
+        <text x="162" y="591" fill="#94a3b8" font-size="8" text-anchor="middle">rejects bad input (422/400)</text>
+
+        <rect x="72" y="690" width="180" height="44" rx="6" fill="rgba(30, 41, 59, 0.7)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="162" y="712" fill="white" font-size="11" font-weight="600" text-anchor="middle">z.infer&lt;&gt; TS type</text>
+        <text x="162" y="726" fill="#94a3b8" font-size="8" text-anchor="middle">compile-time handler type</text>
+
+        <rect x="788" y="545" width="180" height="44" rx="6" fill="rgba(30, 41, 59, 0.7)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="878" y="567" fill="white" font-size="11" font-weight="600" text-anchor="middle">OpenAPI 3.1</text>
+        <text x="878" y="581" fill="#94a3b8" font-size="8" text-anchor="middle">z.toJSONSchema()</text>
+
+        <rect x="788" y="620" width="180" height="44" rx="6" fill="rgba(30, 41, 59, 0.7)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="878" y="642" fill="white" font-size="11" font-weight="600" text-anchor="middle">MCP input/output</text>
+        <text x="878" y="656" fill="#94a3b8" font-size="8" text-anchor="middle">tool contract for the SDK</text>
+
+        <rect x="788" y="700" width="180" height="44" rx="6" fill="rgba(30, 41, 59, 0.7)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="878" y="722" fill="white" font-size="11" font-weight="600" text-anchor="middle">Swagger UI / Inspector</text>
+        <text x="878" y="736" fill="#94a3b8" font-size="8" text-anchor="middle">rendered docs</text>
+      </svg>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-header"><div class="card-dot amber"></div><h3>Everything is a binding</h3></div>
+        <ul>
+          <li>• The Application <em>is</em> a DI Context.</li>
+          <li>• Controllers, tools, services, config, and the servers are all bindings.</li>
+          <li>• New capability = new binding; you never edit a central registry.</li>
+          <li>• Swap any dependency for tests with one <code>app.bind(...)</code>.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-dot emerald"></div><h3>Servers discover by tag</h3></div>
+        <ul>
+          <li>• RestServer finds <code>restController</code>-tagged bindings.</li>
+          <li>• MCPServer finds <code>mcpServer</code>-tagged bindings.</li>
+          <li>• Discovery happens at <code>app.start()</code> — no router file.</li>
+          <li>• Run REST, MCP, or both from one process.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-dot violet"></div><h3>One schema, five views</h3></div>
+        <ul>
+          <li>• A Zod schema is the validator and the <code>z.infer</code> type.</li>
+          <li>• …the OpenAPI 3.1 parameter/response.</li>
+          <li>• …the MCP tool input/output.</li>
+          <li>• …and the rendered docs. Change it once; all move together.</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="footer">AgentBack · DI + Zod + REST + MCP · see docs/architecture/overview.md and docs/agent-ergonomics.md</p>
+  </div>
+
+  <script>
+    async function copyAsImage(btn) {
+      const orig = btn.textContent;
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        btn.textContent = '✓ Copied!';
+      } catch (e) { btn.textContent = '✗ Failed'; }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+    async function downloadPNG(btn) {
+      const orig = btn.textContent; btn.textContent = '⏳ ...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const link = document.createElement('a'); link.download = 'AgentBack-architecture.png'; link.href = canvas.toDataURL('image/png'); link.click();
+        btn.textContent = '✓ Done!';
+      } catch (e) { btn.textContent = '✗ Failed'; }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+    async function downloadPDF(btn) {
+      const orig = btn.textContent; btn.textContent = '⏳ ...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const imgData = canvas.toDataURL('image/png');
+        const { jsPDF } = window.jspdf;
+        const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
+        const pdf = new jsPDF({ orientation, unit: 'px', format: [canvas.width, canvas.height], hotfixes: ['px_scaling'] });
+        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height); pdf.save('AgentBack-architecture.pdf');
+        btn.textContent = '✓ Done!';
+      } catch (e) { btn.textContent = '✗ Failed'; }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+  </script>
+</body>
+</html>

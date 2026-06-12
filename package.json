@@ -1,0 +1,44 @@
+{
+  "name": "agentback",
+  "version": "0.0.1",
+  "private": true,
+  "description": "AI-native API/MCP framework for the agent era, built with agents, for agents",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "packageManager": "pnpm@11.5.3",
+  "scripts": {
+    "build": "tsc -b && pnpm -r run build:client",
+    "build:watch": "tsc -b --watch",
+    "clean": "tsc -b --clean && pnpm -r exec rm -rf dist",
+    "typecheck:client": "pnpm -r --if-present run typecheck:client",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint . && prettier --check \"**/*.{ts,json,md}\"",
+    "lint:fix": "eslint . --fix && prettier --write \"**/*.{ts,json,md}\""
+  },
+  "pnpm": {
+    "ignoredBuiltDependencies": [
+      "@scarf/scarf"
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.4",
+    "@typescript-eslint/eslint-plugin": "~8.60.1",
+    "@typescript-eslint/parser": "~8.60.1",
+    "eslint": "~10.4.1",
+    "marked": "^18.0.5",
+    "prettier": "^3.8.3",
+    "typescript": "~6.0.3",
+    "vitest": "~4.1.8"
+  },
+  "license": "MIT",
+  "copyright.owner": "Ninemind.ai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ninemindai/agentback.git"
+  },
+  "homepage": "https://agentback.dev",
+  "bugs": "https://github.com/ninemindai/agentback/issues"
+}
