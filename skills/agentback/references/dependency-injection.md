@@ -164,12 +164,7 @@ and namespace — directly to a class. `createBindingFromClass` reads it when
 registering the class.
 
 ```ts
-import {
-  injectable,
-  bind,
-  BindingScope,
-  ContextTags,
-} from '@agentback/core';
+import {injectable, bind, BindingScope, ContextTags} from '@agentback/core';
 
 // Equivalent forms — @bind is the shorter alias
 @injectable({
@@ -307,8 +302,8 @@ at `start()` via `ctx.findByTag(tag)` — no central registry to edit.
 import {mcpServer, tool} from '@agentback/mcp';
 import {z} from 'zod';
 
-// @mcpServer() = @bind({tags: {mcpServer: true, [ContextTags.NAME]: name}})
-// MCPServer calls ctx.findByTag('mcpServer') at start to enumerate tool providers.
+// @mcpServer() = @injectable({scope: SINGLETON}, extensionFor(MCP_SERVERS))
+// MCPServer calls ctx.find(extensionFilter(MCP_SERVERS)) at start to enumerate tools.
 @mcpServer()
 export class WeatherService {
   @tool('forecast', {input: ForecastIn, output: ForecastOut})

@@ -18,7 +18,7 @@ const app = new RestApplication(); // binds servers.RestServer
 app.component(MCPComponent); // binds servers.MCPServer
 
 app.restController(GreetingController); // REST surface
-app.controller(EchoTools); // MCP surface — controller() so @inject resolves
+app.service(EchoTools); // MCP surface (an MCP_SERVERS extension)
 
 app.configure('servers.RestServer').to({port: 3000});
 app.configure('servers.MCPServer').to({name: 'hello-hybrid', version: '1.0.0'});

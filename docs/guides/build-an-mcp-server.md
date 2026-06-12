@@ -83,15 +83,14 @@ A `string` return is sent as text; a non-string is JSON-stringified.
 ## 3. Run the server
 
 Add `MCPComponent` (it binds `servers.MCPServer`), register your tool classes
-with `app.controller(...)`, configure, start. The stdio transport is active by
+with `app.service(...)`, configure, start. The stdio transport is active by
 default — exactly what Claude Desktop and most local MCP clients speak.
 
-> **Controller, not service.** Register tool classes with `app.controller(...)`.
-> The dispatcher instantiates a tool through its `controllers.<name>` binding
-> (which resolves constructor `@inject`) and otherwise `new`s it with no DI —
-> see [§4](#4-dependency-injection-in-tools). `@mcpServer()` tags it for
-> discovery either way, so a dependency-free tool works as a service too, but
-> `controller()` is the safe default.
+> A tool class **is** a DI service. `@mcpServer()` (built on `@injectable`)
+> makes it an _extension_ of the `MCP_SERVERS` extension point and defaults it
+> to singleton scope. The server discovers it by that extension and resolves it
+> through its binding, so constructor `@inject` is honored no matter how it was
+> registered — see [§4](#4-dependency-injection-in-tools).
 
 ```ts
 import {RestApplication} from '@agentback/rest';
@@ -105,8 +104,8 @@ app.configure('servers.MCPServer').to({
   version: '1.0.0',
   // transports: {stdio: true},  // default; set false in tests/hybrid HTTP apps
 });
-app.controller(MathTools);
-app.controller(Docs);
+app.service(MathTools);
+app.service(Docs);
 await app.start(); // MCP server up, tools/resources/prompts registered
 ```
 
@@ -151,21 +150,22 @@ scopes.
 
 ## How discovery works
 
-`@mcpServer()` is sugar for `@bind({tags: {mcpServer: true}})`. When you call
-`app.controller(MathTools)`, the framework reads that bind metadata and tags the
-binding `mcpServer` automatically — **you never call `.tag()`**. At
-`app.start()`, `MCPServer` queries the container for `mcpServer`-tagged
-bindings, reflects over their `@tool`/`@resource`/`@prompt` methods, and
-registers each with the SDK.
+`@mcpServer()` is built on `@injectable`: it tags the class as an _extension_ of
+the `MCP_SERVERS` extension point (`extensionFor: MCP_SERVERS`) and defaults it
+to singleton scope. When you call `app.service(MathTools)`, the framework reads
+that metadata and tags the binding — **you never call `.tag()`**. At
+`app.start()`, `MCPServer` discovers the `MCP_SERVERS` extensions, reflects over
+their `@tool`/`@resource`/`@prompt` methods, and registers each with the SDK —
+resolving the instance through its own binding, so constructor `@inject` works.
 
 ```mermaid
 graph LR
-  D["@mcpServer() class"] -->|"app.controller()"| B["binding [tag: mcpServer]"]
-  B -->|"start(): findByTag"| M["MCPServer"]
+  D["@mcpServer() class"] -->|"app.service()"| B["binding [extensionFor: MCP_SERVERS]"]
+  B -->|"start(): extensionFilter"| M["MCPServer"]
   M -->|reflect @tool/@resource/@prompt| SDK["@modelcontextprotocol/sdk"]
 ```
 
-Consequence: adding a tool is adding a method (or a class + `app.controller`).
+Consequence: adding a tool is adding a method (or a class + `app.service`).
 Nothing central changes — the same composability as REST controllers.
 
 ## 4. Dependency injection in tools
@@ -186,12 +186,14 @@ class WeatherTools {
 }
 ```
 
-Register an injected tool with **`app.controller(WeatherTools)`** — this is why.
-The dispatcher resolves the instance from its `controllers.<name>` binding,
-which runs constructor injection; a `app.service(...)`-bound tool falls back to
-`new WeatherTools()` and `this.api` comes back `undefined`. (A dual REST + MCP
-class — `@api` _and_ `@mcpServer` — needs **both** `restController` for the
-routes + injection binding and `service` for the MCP discovery tag.)
+Register it with **`app.service(WeatherTools)`** — a tool is a service. The
+dispatcher discovers it as an `MCP_SERVERS` extension and resolves the instance
+through that binding, so `this.api` is injected. This holds for any
+registration that carries the extension tag — `app.service`, `app.controller`,
+or a manual `bind().apply(extensionFor(MCP_SERVERS))`. (A dual REST + MCP class —
+`@api` _and_ `@mcpServer` — still needs **both** `restController` for the routes
+and `service` for the MCP extension, since `restController` tags it for REST
+only.)
 
 ## 5. Inspect it: the MCP Inspector
 

@@ -36,9 +36,11 @@ pnpm add @agentback/mcp-inspector
 
 ## Defining an MCP Server Class
 
-`@mcpServer()` is shorthand for `@bind({tags: {mcpServer: true}})`. It marks the
-class so `MCPServer` finds it via `context.findByTag('mcpServer')` at startup.
-Never call `.tag('mcpServer')` manually — the decorator does it.
+`@mcpServer()` is built on `@injectable`: it marks the class as an _extension_ of
+the `MCP_SERVERS` extension point (`extensionFor: MCP_SERVERS`) and defaults it to
+singleton scope, so `MCPServer` finds it via `extensionFilter(MCP_SERVERS)` at
+startup. Pass options to customize — `@mcpServer({scope, tags})` or
+`@mcpServer('name')`. Never call `.tag()` manually — the decorator does it.
 
 ```ts
 import {z} from 'zod';
@@ -63,19 +65,17 @@ class WeatherTools {
 }
 ```
 
-Register it with **`app.controller(WeatherTools)`**, _not_ `app.service(...)`.
-The MCP dispatcher instantiates a tool class through its `controllers.<name>`
-binding (`MCPServer.resolveController`), which resolves constructor `@inject`; a
-service-bound class falls back to `new ctor()` with **no** DI, so `this.weather`
-would be `undefined`. `@mcpServer()` tags the class for discovery either way —
-the controller-vs-service choice only governs injection. (A tool with no
-constructor deps works as a service too, but `controller()` is the safe default.)
+Register it with **`app.service(WeatherTools)`** — a tool is a DI service. The
+MCP server discovers it as an `MCP_SERVERS` extension and resolves the instance
+through its binding (`MCPServer.resolveMember`), so constructor `@inject` is
+honored regardless of namespace — `service`, `controller`, or a manual
+`bind().apply(extensionFor(MCP_SERVERS))` all work.
 
 **Dual REST + MCP class** (one class carrying both `@api` and `@mcpServer`):
 register it with **both** `app.restController(C)` _and_ `app.service(C)`.
-`restController` serves the routes and provides the `controllers.<name>` binding
-for `@inject`; `service` carries the `@mcpServer` discovery tag (`restController`
-tags it for REST only). Drop either and one surface goes dark.
+`restController` serves the REST routes; `service` registers it as the MCP
+extension. `restController` tags it for REST only, so drop `service` and the MCP
+surface goes dark.
 
 ## The `@tool` Decorator
 
@@ -188,7 +188,7 @@ class EchoTools {
 
 const app = new MCPApplication();
 app.configure('servers.MCPServer').to({name: 'my-server', version: '1.0.0'});
-app.controller(EchoTools); // controller, not service — see the rule above
+app.service(EchoTools);
 await app.start(); // blocks until stdin closes
 process.stderr.write('stdio transport ready\n'); // stderr only
 ```
@@ -221,7 +221,7 @@ import {installMcpHttp} from '@agentback/mcp-http';
 const app = new RestApplication();
 app.configure('servers.MCPServer').to({name: 'my-server', version: '1.0.0'});
 app.component(MCPComponent);
-app.controller(MyTools); // controller, not service — resolves constructor @inject
+app.service(MyTools);
 
 await installMcpHttp(app); // call before app.start()
 await app.start();
@@ -418,7 +418,7 @@ are declared via `@api`-decorated REST controllers registered in the DI containe
 
 ## Key Rules
 
-- `@mcpServer()` = `@bind({tags: {mcpServer: true}})`. Never tag manually.
+- `@mcpServer()` is built on `@injectable` — tags the class `extensionFor: MCP_SERVERS` (singleton by default). Never tag manually.
 - **Slot 0 = `z.infer<typeof input>`** when `input` is declared; `@inject` at
   slot 1+. Violation throws at decoration time.
 - **No `input`** → tool takes no validated input; all slots free for `@inject`.

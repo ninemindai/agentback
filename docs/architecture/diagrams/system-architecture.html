@@ -115,7 +115,7 @@
         <text x="517" y="348" fill="white" font-size="12" font-weight="600" text-anchor="middle">MCP tool classes</text>
         <text x="517" y="368" fill="#94a3b8" font-size="9" text-anchor="middle">@mcpServer · @tool / @resource / @prompt</text>
         <text x="517" y="384" fill="#94a3b8" font-size="8" text-anchor="middle">carry Zod input / output</text>
-        <text x="517" y="436" fill="#22d3ee" font-size="8" text-anchor="middle">[ tag: mcpServer ]</text>
+        <text x="517" y="436" fill="#22d3ee" font-size="8" text-anchor="middle">[ extensionFor: MCP_SERVERS ]</text>
 
         <!-- ===== Servers (outside the container, discover inward) ===== -->
         <rect x="730" y="160" width="200" height="110" rx="6" fill="#0f172a"/>
@@ -132,7 +132,7 @@
         <text x="830" y="373" fill="#94a3b8" font-size="9" text-anchor="middle">servers.MCPServer</text>
         <text x="830" y="393" fill="#94a3b8" font-size="8" text-anchor="middle">→ stdio transport</text>
         <text x="830" y="407" fill="#94a3b8" font-size="8" text-anchor="middle">→ /mcp-inspector</text>
-        <text x="830" y="428" fill="#22d3ee" font-size="8" text-anchor="middle">discovers mcpServer ◂</text>
+        <text x="830" y="428" fill="#22d3ee" font-size="8" text-anchor="middle">discovers MCP_SERVERS ◂</text>
 
         <!-- ===== Divider ===== -->
         <line x1="80" y1="505" x2="960" y2="505" stroke="#1e293b" stroke-width="1"/>
@@ -189,7 +189,7 @@
         <div class="card-header"><div class="card-dot emerald"></div><h3>Servers discover by tag</h3></div>
         <ul>
           <li>• RestServer finds <code>restController</code>-tagged bindings.</li>
-          <li>• MCPServer finds <code>mcpServer</code>-tagged bindings.</li>
+          <li>• MCPServer finds <code>MCP_SERVERS</code> extensions.</li>
           <li>• Discovery happens at <code>app.start()</code> — no router file.</li>
           <li>• Run REST, MCP, or both from one process.</li>
         </ul>
