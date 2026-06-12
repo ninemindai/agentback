@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 160" width="920" height="160" role="img" aria-label="MCP tool discovery: @mcpServer class is bound and tagged via app.service(), found by MCPServer at start, and registered with the MCP SDK">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="7" refX="8" refY="3.5" orient="auto">
+      <path d="M0,0 L8,3.5 L0,7 z" fill="#8a948d"/>
+    </marker>
+  </defs>
+
+  <!-- edges -->
+  <line x1="170" y1="82" x2="258" y2="82" stroke="#8a948d" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <line x1="390" y1="82" x2="506" y2="82" stroke="#8a948d" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <line x1="618" y1="82" x2="734" y2="82" stroke="#8a948d" stroke-width="1.4" marker-end="url(#arrow)"/>
+
+  <!-- edge labels -->
+  <rect x="171" y="74" width="86" height="16" rx="4" fill="#f7f8f5"/>
+  <text x="214" y="85.5" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" fill="#5a645e">app.service()</text>
+  <rect x="390" y="74" width="116" height="16" rx="4" fill="#f7f8f5"/>
+  <text x="448" y="85.5" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" fill="#5a645e">start(): findByTag</text>
+  <rect x="621" y="67" width="110" height="30" rx="4" fill="#f7f8f5"/>
+  <text x="676" y="79" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" fill="#5a645e">reflect @tool/</text>
+  <text x="676" y="92" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" fill="#5a645e">@resource/@prompt</text>
+
+  <!-- node: @mcpServer() class -->
+  <rect x="10" y="58" width="160" height="48" rx="8" fill="#ffffff" stroke="#6d4ca8" stroke-width="1.5"/>
+  <rect x="16" y="66" width="4" height="32" rx="2" fill="#6d4ca8"/>
+  <text x="92" y="86.5" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="600" fill="#17201b">@mcpServer() class</text>
+
+  <!-- node: binding -->
+  <rect x="260" y="54" width="130" height="56" rx="8" fill="#ffffff" stroke="#6d4ca8" stroke-width="1.5"/>
+  <rect x="266" y="62" width="4" height="40" rx="2" fill="#6d4ca8"/>
+  <text x="327" y="78" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="600" fill="#17201b">binding</text>
+  <text x="327" y="94" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#5a645e">[tag: mcpServer]</text>
+
+  <!-- node: MCPServer -->
+  <rect x="508" y="58" width="110" height="48" rx="8" fill="#ffffff" stroke="#6d4ca8" stroke-width="1.5"/>
+  <rect x="514" y="66" width="4" height="32" rx="2" fill="#6d4ca8"/>
+  <text x="565" y="86.5" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="600" fill="#17201b">MCPServer</text>
+
+  <!-- node: MCP SDK -->
+  <rect x="736" y="54" width="176" height="56" rx="8" fill="#ffffff" stroke="#6d4ca8" stroke-width="1.5"/>
+  <rect x="742" y="62" width="4" height="40" rx="2" fill="#6d4ca8"/>
+  <text x="826" y="78" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="600" fill="#17201b">MCP SDK</text>
+  <text x="826" y="94" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#5a645e">@modelcontextprotocol/sdk</text>
+</svg>

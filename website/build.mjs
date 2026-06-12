@@ -148,6 +148,46 @@ function escapeHtml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// Mermaid blocks in the markdown stay the source of truth; the site renders a
+// hand-laid-out SVG per block (website/diagrams/<doc>-<n>.svg, see STYLE.md)
+// with the mermaid source kept underneath in a <details>.
+const DIAGRAM_DIR = path.join(root, 'website', 'diagrams');
+
+function diagramBase(src) {
+  if (src === 'docs/architecture/overview.md') return 'architecture-overview';
+  return path.posix.basename(src, '.md');
+}
+
+function replaceMermaidBlocks(md, src, outPage) {
+  let n = 0;
+  return md.replace(/```mermaid\n([\s\S]*?)```/g, (_, source) => {
+    n += 1;
+    const name = `${diagramBase(src)}-${n}.svg`;
+    if (!fs.existsSync(path.join(DIAGRAM_DIR, name))) {
+      throw new Error(
+        `${src} mermaid block #${n} has no rendered SVG at ` +
+          `website/diagrams/${name} — create or update it ` +
+          `(see website/diagrams/STYLE.md).`,
+      );
+    }
+    const rel = path.posix.relative(
+      path.posix.dirname(outPage),
+      `diagrams/${name}`,
+    );
+    // No blank lines inside: marked treats this as one raw HTML block.
+    const pre = escapeHtml(source.trim()).replace(/\n{2,}/g, '\n');
+    return [
+      '<figure class="diagram">',
+      `<img src="${rel}" alt="Architecture diagram — text source below" />`,
+      '<details>',
+      '<summary>diagram source (mermaid)</summary>',
+      `<pre><code>${pre}</code></pre>`,
+      '</details>',
+      '</figure>',
+    ].join('\n');
+  });
+}
+
 function docShell({title, body, outPage}) {
   const rel = p => path.posix.relative(path.posix.dirname(outPage), p) || '.';
   const nav = NAV_SECTIONS.map(section => {
@@ -241,10 +281,18 @@ for (const src of DOC_PAGES) {
   const md = fs.readFileSync(path.join(root, src), 'utf8');
   const outPage = mapTarget(src);
   const title = (md.match(/^#\s+(.+)$/m) ?? [, src])[1].replace(/[*_`]/g, '');
-  let body = marked.parse(md);
+  let body = marked.parse(replaceMermaidBlocks(md, src, outPage));
   body = addHeadingIds(body);
   body = rewriteHtmlLinks(body, path.posix.dirname(src), outPage);
   write(outPage, docShell({title, body, outPage}));
+}
+
+// 2b. Doc diagram SVGs.
+fs.mkdirSync(path.join(out, 'diagrams'), {recursive: true});
+for (const f of fs.readdirSync(DIAGRAM_DIR)) {
+  if (f.endsWith('.svg')) {
+    fs.copyFileSync(path.join(DIAGRAM_DIR, f), path.join(out, 'diagrams', f));
+  }
 }
 
 // 3. Architecture diagrams: standalone HTML, copied verbatim.

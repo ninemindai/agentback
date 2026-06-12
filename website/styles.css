@@ -858,6 +858,39 @@ section.hero {
   max-width: 100%;
 }
 
+.doc-content .diagram {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin: 28px 0;
+  padding: 20px;
+}
+
+.doc-content .diagram img {
+  display: block;
+  height: auto;
+  margin: 0 auto;
+  max-width: 100%;
+}
+
+.doc-content .diagram details {
+  border-top: 1px dashed var(--line);
+  margin-top: 16px;
+  padding-top: 10px;
+}
+
+.doc-content .diagram summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.doc-content .diagram pre {
+  font-size: 12.5px;
+  margin: 10px 0 0;
+}
+
 .doc-content hr {
   border: none;
   border-top: 1px dashed var(--line);

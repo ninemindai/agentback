@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 580" width="940" height="580" role="img" aria-label="REST request dispatch: middleware, RestServer.dispatch, Zod validation, DI weaving, handler, with invalid/valid branches">
+  <!-- Source: docs/architecture/overview.md mermaid block 2 ("How a REST request flows") -->
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="7" refX="8" refY="3.5" orient="auto">
+      <path d="M0,0 L8,3.5 L0,7 z" fill="#8a948d"/>
+    </marker>
+  </defs>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+
+    <!-- ============ lifelines ============ -->
+    <g stroke="#c5ccc4" stroke-width="1" stroke-dasharray="4,4">
+      <line x1="75" y1="60" x2="75" y2="560"/>
+      <line x1="230" y1="60" x2="230" y2="560"/>
+      <line x1="395" y1="60" x2="395" y2="560"/>
+      <line x1="555" y1="60" x2="555" y2="560"/>
+      <line x1="705" y1="60" x2="705" y2="560"/>
+      <line x1="865" y1="60" x2="865" y2="560"/>
+    </g>
+
+    <!-- ============ participant boxes ============ -->
+    <!-- Client (green) -->
+    <g>
+      <rect x="20" y="16" width="110" height="44" rx="8" fill="#ffffff" stroke="#0f6b4f" stroke-width="1.5"/>
+      <rect x="25" y="22" width="4" height="32" rx="2" fill="#0f6b4f"/>
+      <text x="75" y="42" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">Client</text>
+    </g>
+    <!-- Middleware chain (neutral) -->
+    <g>
+      <rect x="160" y="16" width="140" height="44" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+      <rect x="165" y="22" width="4" height="32" rx="2" fill="#d9ded6"/>
+      <text x="230" y="36" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">Middleware</text>
+      <text x="230" y="52" font-size="10.5" fill="#5a645e" text-anchor="middle">chain</text>
+    </g>
+    <!-- RestServer.dispatch (cyan) -->
+    <g>
+      <rect x="315" y="16" width="160" height="44" rx="8" fill="#ffffff" stroke="#087b8c" stroke-width="1.5"/>
+      <rect x="320" y="22" width="4" height="32" rx="2" fill="#087b8c"/>
+      <text x="395" y="36" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">RestServer</text>
+      <text x="395" y="52" font-size="10.5" fill="#5a645e" text-anchor="middle">.dispatch</text>
+    </g>
+    <!-- Zod (amber) -->
+    <g>
+      <rect x="485" y="16" width="140" height="44" rx="8" fill="#ffffff" stroke="#9b6b16" stroke-width="1.5"/>
+      <rect x="490" y="22" width="4" height="32" rx="2" fill="#9b6b16"/>
+      <text x="555" y="36" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">Zod</text>
+      <text x="555" y="52" font-size="10.5" fill="#5a645e" text-anchor="middle">route bundle</text>
+    </g>
+    <!-- DI (green) -->
+    <g>
+      <rect x="625" y="16" width="160" height="44" rx="8" fill="#ffffff" stroke="#0f6b4f" stroke-width="1.5"/>
+      <rect x="630" y="22" width="4" height="32" rx="2" fill="#0f6b4f"/>
+      <text x="705" y="36" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">DI</text>
+      <text x="705" y="52" font-size="10" fill="#5a645e" text-anchor="middle">resolveInjectedArguments</text>
+    </g>
+    <!-- Your handler (ink) -->
+    <g>
+      <rect x="800" y="16" width="130" height="44" rx="8" fill="#ffffff" stroke="#17201b" stroke-width="1.5"/>
+      <rect x="805" y="22" width="4" height="32" rx="2" fill="#17201b"/>
+      <text x="865" y="42" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">Your handler</text>
+    </g>
+
+    <!-- ============ alt frame ============ -->
+    <rect x="50" y="200" width="845" height="280" rx="8" fill="none" stroke="#c5ccc4" stroke-width="1" stroke-dasharray="6,4"/>
+    <rect x="58" y="192" width="72" height="16" fill="#f7f8f5" stroke="#d9ded6" stroke-width="1"/>
+    <text x="94" y="204" font-size="10" fill="#5a645e" text-anchor="middle">alt invalid</text>
+    <line x1="50" y1="272" x2="895" y2="272" stroke="#c5ccc4" stroke-width="1" stroke-dasharray="6,4"/>
+    <rect x="58" y="264" width="68" height="16" fill="#f7f8f5" stroke="#d9ded6" stroke-width="1"/>
+    <text x="92" y="276" font-size="10" fill="#5a645e" text-anchor="middle">else valid</text>
+
+    <!-- ============ messages ============ -->
+    <g fill="none" stroke="#8a948d" stroke-width="1.4">
+      <!-- 1. Client -> Middleware -->
+      <path d="M75,100 L226,100" marker-end="url(#arrow)"/>
+      <!-- 2. Middleware -> RestServer -->
+      <path d="M230,138 L391,138" marker-end="url(#arrow)"/>
+      <!-- 3. RestServer -> Zod -->
+      <path d="M395,176 L551,176" marker-end="url(#arrow)"/>
+      <!-- 4. invalid: Zod to Client (return, dashed) -->
+      <path d="M555,240 L79,240" stroke-dasharray="4,4" marker-end="url(#arrow)"/>
+      <!-- 5. RestServer -> DI -->
+      <path d="M395,312 L701,312" marker-end="url(#arrow)"/>
+      <!-- 6. DI -> handler -->
+      <path d="M705,350 L861,350" marker-end="url(#arrow)"/>
+      <!-- 7. handler to RestServer (return, dashed) -->
+      <path d="M865,388 L399,388" stroke-dasharray="4,4" marker-end="url(#arrow)"/>
+      <!-- 8. RestServer -> Zod (response validation) -->
+      <path d="M395,428 L551,428" marker-end="url(#arrow)"/>
+      <!-- 9. RestServer to Client (return, dashed) -->
+      <path d="M395,462 L79,462" stroke-dasharray="4,4" marker-end="url(#arrow)"/>
+    </g>
+
+    <!-- ============ message labels (white chips) ============ -->
+    <g font-size="10.5" fill="#5a645e" text-anchor="middle">
+      <rect x="111" y="81" width="84" height="15" fill="#f7f8f5"/>
+      <text x="153" y="92">HTTP request</text>
+
+      <rect x="207" y="119" width="208" height="15" fill="#f7f8f5"/>
+      <text x="311" y="130">after CORS / rate-limit / tracing</text>
+
+      <rect x="373" y="157" width="204" height="15" fill="#f7f8f5"/>
+      <text x="475" y="168">validate path/query/headers/body</text>
+
+      <rect x="227" y="221" width="180" height="15" fill="#f7f8f5"/>
+      <text x="317" y="232">422 / 400 + ZodError.issues</text>
+
+      <rect x="455" y="293" width="186" height="15" fill="#f7f8f5"/>
+      <text x="548" y="304">resolve @inject args (slot 1+)</text>
+
+      <rect x="694" y="331" width="178" height="15" fill="#f7f8f5"/>
+      <text x="783" y="342">input bundle (slot 0) + deps</text>
+
+      <rect x="592" y="369" width="80" height="15" fill="#f7f8f5"/>
+      <text x="632" y="380">return value</text>
+
+      <rect x="391" y="395" width="168" height="28" fill="#f7f8f5"/>
+      <text x="475" y="406">validate against response</text>
+      <text x="475" y="419">(log on mismatch)</text>
+
+      <rect x="152" y="443" width="170" height="15" fill="#f7f8f5"/>
+      <text x="237" y="454">status + JSON (sendResult)</text>
+    </g>
+  </g>
+</svg>

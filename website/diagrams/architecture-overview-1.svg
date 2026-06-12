@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 600" width="900" height="600" role="img" aria-label="Application: one DI Context with servers discovering bindings by tag and schemas radiating to every contract">
+  <!-- Source: docs/architecture/overview.md mermaid block 1 ("The system at a glance") -->
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="7" refX="8" refY="3.5" orient="auto">
+      <path d="M0,0 L8,3.5 L0,7 z" fill="#8a948d"/>
+    </marker>
+  </defs>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+
+    <!-- ============ edges (under nodes) ============ -->
+    <g fill="none" stroke="#8a948d" stroke-width="1.4">
+      <!-- carry: Ctrls -> Schemas -->
+      <path d="M215,148 L215,82 L346,82" stroke-dasharray="4,4" marker-end="url(#arrow)"/>
+      <!-- carry: Tools -> Schemas -->
+      <path d="M685,148 L685,82 L554,82" stroke-dasharray="4,4" marker-end="url(#arrow)"/>
+      <!-- @inject: Ctrls -> Svcs -->
+      <path d="M310,176 L330,176 L330,228 L346,228" stroke-dasharray="4,4" marker-end="url(#arrow)"/>
+      <!-- @inject: Tools -> Svcs -->
+      <path d="M590,176 L570,176 L570,228 L554,228" stroke-dasharray="4,4" marker-end="url(#arrow)"/>
+      <!-- Container -> RestServer / MCPServer -->
+      <path d="M300,276 L300,326" marker-end="url(#arrow)"/>
+      <path d="M560,276 L560,326" marker-end="url(#arrow)"/>
+      <!-- findByTag: RS -> Ctrls, MS -> Tools -->
+      <path d="M200,330 L200,200" marker-end="url(#arrow)"/>
+      <path d="M660,330 L660,200" marker-end="url(#arrow)"/>
+      <!-- Schemas -> OpenAPI 3.1 -->
+      <path d="M350,66 L60,66 L60,328" marker-end="url(#arrow)"/>
+      <!-- Schemas -> MCP schema -->
+      <path d="M550,66 L840,66 L840,328" marker-end="url(#arrow)"/>
+      <!-- OpenAPI -> HTTP -->
+      <path d="M85,380 L85,464 L166,464" marker-end="url(#arrow)"/>
+      <!-- MCP schema -> MCPServer -->
+      <path d="M740,356 L704,356" marker-end="url(#arrow)"/>
+      <!-- RS -> HTTP -->
+      <path d="M265,382 L265,436" marker-end="url(#arrow)"/>
+      <!-- HTTP -> Swagger UI -->
+      <path d="M270,488 L270,526" marker-end="url(#arrow)"/>
+      <!-- MS -> stdio -->
+      <path d="M545,382 L545,436" marker-end="url(#arrow)"/>
+      <!-- MS -> /mcp-inspector -->
+      <path d="M655,382 L655,410 L765,410 L765,436" marker-end="url(#arrow)"/>
+    </g>
+
+    <!-- edge label chips -->
+    <g font-size="10" fill="#5a645e" text-anchor="middle">
+      <rect x="254" y="74" width="36" height="15" fill="#f7f8f5"/>
+      <text x="272" y="85">carry</text>
+      <rect x="610" y="74" width="36" height="15" fill="#f7f8f5"/>
+      <text x="628" y="85">carry</text>
+      <rect x="306" y="194" width="48" height="15" fill="#f7f8f5"/>
+      <text x="330" y="205">@inject</text>
+      <rect x="546" y="194" width="48" height="15" fill="#f7f8f5"/>
+      <text x="570" y="205">@inject</text>
+      <rect x="118" y="290" width="164" height="16" fill="#f7f8f5"/>
+      <text x="200" y="302">findByTag('restController')</text>
+      <rect x="592" y="290" width="136" height="16" fill="#f7f8f5"/>
+      <text x="660" y="302">findByTag('mcpServer')</text>
+    </g>
+
+    <!-- ============ container ============ -->
+    <rect x="90" y="24" width="720" height="252" rx="12" fill="rgba(15,107,79,0.03)" stroke="#c5ccc4" stroke-width="1" stroke-dasharray="6,4"/>
+    <text x="106" y="46" font-size="11" letter-spacing="1" fill="#5a645e">APPLICATION — ONE DI CONTEXT</text>
+
+    <!-- ============ nodes ============ -->
+    <!-- Zod schemas (amber) -->
+    <g>
+      <rect x="350" y="58" width="200" height="48" rx="8" fill="#ffffff" stroke="#9b6b16" stroke-width="1.5"/>
+      <rect x="355" y="64" width="4" height="36" rx="2" fill="#9b6b16"/>
+      <text x="450" y="79" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">Zod schemas</text>
+      <text x="450" y="95" font-size="10.5" fill="#5a645e" text-anchor="middle">(shared)</text>
+    </g>
+    <!-- controllers (cyan) -->
+    <g>
+      <rect x="120" y="148" width="190" height="48" rx="8" fill="#ffffff" stroke="#087b8c" stroke-width="1.5"/>
+      <rect x="125" y="154" width="4" height="36" rx="2" fill="#087b8c"/>
+      <text x="215" y="169" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">controllers.*</text>
+      <text x="215" y="185" font-size="10.5" fill="#5a645e" text-anchor="middle">[restController]</text>
+    </g>
+    <!-- tool classes (violet) -->
+    <g>
+      <rect x="590" y="148" width="190" height="48" rx="8" fill="#ffffff" stroke="#6d4ca8" stroke-width="1.5"/>
+      <rect x="595" y="154" width="4" height="36" rx="2" fill="#6d4ca8"/>
+      <text x="685" y="169" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">tool classes</text>
+      <text x="685" y="185" font-size="10.5" fill="#5a645e" text-anchor="middle">[mcpServer]</text>
+    </g>
+    <!-- services (green) -->
+    <g>
+      <rect x="350" y="210" width="200" height="48" rx="8" fill="#ffffff" stroke="#0f6b4f" stroke-width="1.5"/>
+      <rect x="355" y="216" width="4" height="36" rx="2" fill="#0f6b4f"/>
+      <text x="450" y="231" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">services.*</text>
+      <text x="450" y="247" font-size="10.5" fill="#5a645e" text-anchor="middle">providers · config</text>
+    </g>
+
+    <!-- RestServer (cyan) -->
+    <g>
+      <rect x="160" y="330" width="210" height="52" rx="8" fill="#ffffff" stroke="#087b8c" stroke-width="1.5"/>
+      <rect x="165" y="336" width="4" height="40" rx="2" fill="#087b8c"/>
+      <text x="265" y="352" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">RestServer</text>
+      <text x="265" y="369" font-size="10.5" fill="#5a645e" text-anchor="middle">servers.RestServer</text>
+    </g>
+    <!-- MCPServer (violet) -->
+    <g>
+      <rect x="500" y="330" width="200" height="52" rx="8" fill="#ffffff" stroke="#6d4ca8" stroke-width="1.5"/>
+      <rect x="505" y="336" width="4" height="40" rx="2" fill="#6d4ca8"/>
+      <text x="600" y="352" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">MCPServer</text>
+      <text x="600" y="369" font-size="10.5" fill="#5a645e" text-anchor="middle">servers.MCPServer</text>
+    </g>
+
+    <!-- OpenAPI 3.1 (amber) -->
+    <g>
+      <rect x="10" y="332" width="150" height="48" rx="8" fill="#ffffff" stroke="#9b6b16" stroke-width="1.5"/>
+      <rect x="15" y="338" width="4" height="36" rx="2" fill="#9b6b16"/>
+      <text x="85" y="353" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">OpenAPI 3.1</text>
+      <text x="85" y="369" font-size="10.5" fill="#5a645e" text-anchor="middle">z.toJSONSchema</text>
+    </g>
+    <!-- MCP input/output schema (amber) -->
+    <g>
+      <rect x="740" y="332" width="150" height="48" rx="8" fill="#ffffff" stroke="#9b6b16" stroke-width="1.5"/>
+      <rect x="745" y="338" width="4" height="36" rx="2" fill="#9b6b16"/>
+      <text x="815" y="353" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">MCP schema</text>
+      <text x="815" y="369" font-size="10.5" fill="#5a645e" text-anchor="middle">tool input/output</text>
+    </g>
+
+    <!-- HTTP + /openapi.json (cyan) -->
+    <g>
+      <rect x="170" y="440" width="200" height="48" rx="8" fill="#ffffff" stroke="#087b8c" stroke-width="1.5"/>
+      <rect x="175" y="446" width="4" height="36" rx="2" fill="#087b8c"/>
+      <text x="270" y="461" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">HTTP</text>
+      <text x="270" y="477" font-size="10.5" fill="#5a645e" text-anchor="middle">+ /openapi.json</text>
+    </g>
+    <!-- Swagger UI (cyan) -->
+    <g>
+      <rect x="170" y="530" width="200" height="44" rx="8" fill="#ffffff" stroke="#087b8c" stroke-width="1.5"/>
+      <rect x="175" y="536" width="4" height="32" rx="2" fill="#087b8c"/>
+      <text x="270" y="549" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">/explorer</text>
+      <text x="270" y="564" font-size="10.5" fill="#5a645e" text-anchor="middle">Swagger UI</text>
+    </g>
+    <!-- stdio (violet) -->
+    <g>
+      <rect x="460" y="440" width="170" height="48" rx="8" fill="#ffffff" stroke="#6d4ca8" stroke-width="1.5"/>
+      <rect x="465" y="446" width="4" height="36" rx="2" fill="#6d4ca8"/>
+      <text x="545" y="467" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">stdio transport</text>
+    </g>
+    <!-- /mcp-inspector (violet) -->
+    <g>
+      <rect x="680" y="440" width="170" height="48" rx="8" fill="#ffffff" stroke="#6d4ca8" stroke-width="1.5"/>
+      <rect x="685" y="446" width="4" height="36" rx="2" fill="#6d4ca8"/>
+      <text x="765" y="467" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">/mcp-inspector</text>
+    </g>
+  </g>
+</svg>

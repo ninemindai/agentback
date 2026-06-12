@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 406" width="880" height="406" role="img" aria-label="One Zod schema fans out to five derived views: runtime validator, TS type, OpenAPI 3.1 schema, MCP tool schema, and rendered docs">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="7" refX="8" refY="3.5" orient="auto">
+      <path d="M0,0 L8,3.5 L0,7 z" fill="#8a948d"/>
+    </marker>
+  </defs>
+
+  <!-- fan edges -->
+  <line x1="320" y1="186" x2="558" y2="50" stroke="#8a948d" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <line x1="320" y1="198" x2="558" y2="130" stroke="#8a948d" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <line x1="320" y1="210" x2="558" y2="210" stroke="#8a948d" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <line x1="320" y1="222" x2="558" y2="290" stroke="#8a948d" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <line x1="320" y1="234" x2="558" y2="370" stroke="#8a948d" stroke-width="1.4" marker-end="url(#arrow)"/>
+
+  <!-- node: schema (amber) -->
+  <rect x="10" y="178" width="310" height="64" rx="8" fill="#ffffff" stroke="#9b6b16" stroke-width="1.5"/>
+  <rect x="16" y="186" width="4" height="48" rx="2" fill="#9b6b16"/>
+  <text x="167" y="204" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="600" fill="#17201b">Zod schema</text>
+  <text x="167" y="222" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#5a645e">z.object({name: z.string().min(1)})</text>
+
+  <!-- node: runtime validator (green) -->
+  <rect x="560" y="22" width="310" height="56" rx="8" fill="#ffffff" stroke="#0f6b4f" stroke-width="1.5"/>
+  <rect x="566" y="30" width="4" height="40" rx="2" fill="#0f6b4f"/>
+  <text x="717" y="46" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="600" fill="#17201b">runtime validator</text>
+  <text x="717" y="62" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#5a645e">rejects bad input</text>
+
+  <!-- node: TS type (green) -->
+  <rect x="560" y="102" width="310" height="56" rx="8" fill="#ffffff" stroke="#0f6b4f" stroke-width="1.5"/>
+  <rect x="566" y="110" width="4" height="40" rx="2" fill="#0f6b4f"/>
+  <text x="717" y="126" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="600" fill="#17201b">TS type</text>
+  <text x="717" y="142" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#5a645e">z.infer&lt;typeof Schema&gt;</text>
+
+  <!-- node: OpenAPI schema (cyan) -->
+  <rect x="560" y="182" width="310" height="56" rx="8" fill="#ffffff" stroke="#087b8c" stroke-width="1.5"/>
+  <rect x="566" y="190" width="4" height="40" rx="2" fill="#087b8c"/>
+  <text x="717" y="206" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="600" fill="#17201b">OpenAPI 3.1 schema</text>
+  <text x="717" y="222" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#5a645e">z.toJSONSchema()</text>
+
+  <!-- node: MCP schema (violet) -->
+  <rect x="560" y="262" width="310" height="56" rx="8" fill="#ffffff" stroke="#6d4ca8" stroke-width="1.5"/>
+  <rect x="566" y="270" width="4" height="40" rx="2" fill="#6d4ca8"/>
+  <text x="717" y="286" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="600" fill="#17201b">MCP tool schema</text>
+  <text x="717" y="302" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#5a645e">inputSchema / outputSchema</text>
+
+  <!-- node: rendered docs (neutral) -->
+  <rect x="560" y="342" width="310" height="56" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+  <rect x="566" y="350" width="4" height="40" rx="2" fill="#8a948d"/>
+  <text x="717" y="366" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="600" fill="#17201b">rendered docs</text>
+  <text x="717" y="382" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#5a645e">Swagger UI / MCP Inspector</text>
+</svg>

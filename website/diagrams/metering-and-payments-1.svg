@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" width="960" height="520" role="img" aria-label="Metering data flow: a REST or MCP call with bearer token is attributed to a principal, dispatch hooks emit UsageEvents into Meter.observe(), which fans out to usage sinks and the quota service">
+  <defs>
+    <marker id="arr" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+      <path d="M0,0 L8,3.5 L0,7 z" fill="#8a948d"/>
+    </marker>
+  </defs>
+
+  <!-- group container: @agentback/metering -->
+  <rect x="168" y="36" width="780" height="440" rx="12" fill="rgba(15,107,79,0.03)" stroke="#c5ccc4" stroke-width="1" stroke-dasharray="6,4"/>
+  <text x="184" y="60" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" letter-spacing="1" fill="#5a645e">@AGENTBACK/METERING — METERED?</text>
+
+  <!-- edges -->
+  <g stroke="#8a948d" stroke-width="1.4" fill="none">
+    <path d="M148,240 L180,240" marker-end="url(#arr)"/>
+    <path d="M259,206 L259,146 L372,146" stroke-dasharray="4,4" marker-end="url(#arr)"/>
+    <path d="M259,274 L259,326 L372,326" stroke-dasharray="4,4" marker-end="url(#arr)"/>
+    <path d="M540,146 L553,146 L553,228 L562,228" marker-end="url(#arr)"/>
+    <path d="M540,326 L553,326 L553,248 L562,248" marker-end="url(#arr)"/>
+    <path d="M696,228 L712,228 L712,96 L726,96" marker-end="url(#arr)"/>
+    <path d="M696,248 L712,248 L712,376 L726,376" marker-end="url(#arr)"/>
+    <path d="M740,122 L740,190 L756,190" marker-end="url(#arr)"/>
+    <path d="M740,122 L740,255 L756,255" marker-end="url(#arr)"/>
+    <path d="M740,122 L740,320 L756,320" marker-end="url(#arr)"/>
+  </g>
+
+  <!-- edge label chips -->
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10" fill="#5a645e" text-anchor="middle">
+    <rect x="280" y="139" width="64" height="14" rx="3" fill="#f7f8f5"/>
+    <text x="312" y="149.5">attribute</text>
+    <rect x="280" y="319" width="64" height="14" rx="3" fill="#f7f8f5"/>
+    <text x="312" y="329.5">attribute</text>
+    <rect x="518" y="180" width="70" height="14" rx="3" fill="#f7f8f5"/>
+    <text x="553" y="190.5">UsageEvent</text>
+    <rect x="518" y="280" width="70" height="14" rx="3" fill="#f7f8f5"/>
+    <text x="553" y="290.5">UsageEvent</text>
+  </g>
+
+  <!-- Call (neutral) -->
+  <g>
+    <rect x="16" y="212" width="132" height="56" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+    <rect x="20" y="218" width="4" height="44" rx="2" fill="#c5ccc4"/>
+    <text x="86" y="236" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">REST / MCP call</text>
+    <text x="86" y="252" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#5a645e" text-anchor="middle">+ bearer token</text>
+  </g>
+
+  <!-- principal (rose) -->
+  <g>
+    <rect x="184" y="206" width="150" height="68" rx="8" fill="#ffffff" stroke="#b43b55" stroke-width="1.5"/>
+    <rect x="188" y="212" width="4" height="56" rx="2" fill="#b43b55"/>
+    <text x="261" y="228" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">principal</text>
+    <text x="261" y="244" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#5a645e" text-anchor="middle">{user}/{client}</text>
+    <text x="261" y="259" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#5a645e" text-anchor="middle">authentication-oauth2</text>
+  </g>
+
+  <!-- REST dispatch hook (cyan) -->
+  <g>
+    <rect x="376" y="120" width="164" height="52" rx="8" fill="#ffffff" stroke="#087b8c" stroke-width="1.5"/>
+    <rect x="380" y="126" width="4" height="40" rx="2" fill="#087b8c"/>
+    <text x="460" y="142" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">REST dispatch hook</text>
+    <text x="460" y="158" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#5a645e" text-anchor="middle">metering subclass</text>
+  </g>
+
+  <!-- MCP dispatch hook (violet) -->
+  <g>
+    <rect x="376" y="300" width="164" height="52" rx="8" fill="#ffffff" stroke="#6d4ca8" stroke-width="1.5"/>
+    <rect x="380" y="306" width="4" height="40" rx="2" fill="#6d4ca8"/>
+    <text x="460" y="322" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">MCP dispatch hook</text>
+    <text x="460" y="338" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#5a645e" text-anchor="middle">metering subclass</text>
+  </g>
+
+  <!-- Meter.observe() (green) -->
+  <g>
+    <rect x="566" y="212" width="130" height="52" rx="8" fill="#ffffff" stroke="#0f6b4f" stroke-width="1.5"/>
+    <rect x="570" y="218" width="4" height="40" rx="2" fill="#0f6b4f"/>
+    <text x="633" y="243" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">Meter.observe()</text>
+  </g>
+
+  <!-- CompositeUsageSink (green) -->
+  <g>
+    <rect x="730" y="70" width="160" height="52" rx="8" fill="#ffffff" stroke="#0f6b4f" stroke-width="1.5"/>
+    <rect x="734" y="76" width="4" height="40" rx="2" fill="#0f6b4f"/>
+    <text x="812" y="92" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12.5" font-weight="600" fill="#17201b" text-anchor="middle">CompositeUsageSink</text>
+    <text x="812" y="108" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#5a645e" text-anchor="middle">fan-out</text>
+  </g>
+
+  <!-- sinks (neutral) -->
+  <g>
+    <rect x="760" y="170" width="100" height="40" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+    <rect x="764" y="176" width="4" height="28" rx="2" fill="#c5ccc4"/>
+    <text x="812" y="194" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">InMemory</text>
+  </g>
+  <g>
+    <rect x="760" y="235" width="100" height="40" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+    <rect x="764" y="241" width="4" height="28" rx="2" fill="#c5ccc4"/>
+    <text x="812" y="252" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">JSONL</text>
+    <text x="812" y="266" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#5a645e" text-anchor="middle">audit log</text>
+  </g>
+  <g>
+    <rect x="760" y="300" width="100" height="40" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+    <rect x="764" y="306" width="4" height="28" rx="2" fill="#c5ccc4"/>
+    <text x="812" y="324" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">Redis</text>
+  </g>
+
+  <!-- QuotaService (green) -->
+  <g>
+    <rect x="730" y="350" width="150" height="52" rx="8" fill="#ffffff" stroke="#0f6b4f" stroke-width="1.5"/>
+    <rect x="734" y="356" width="4" height="40" rx="2" fill="#0f6b4f"/>
+    <text x="807" y="372" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">QuotaService</text>
+    <text x="807" y="388" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="10.5" fill="#5a645e" text-anchor="middle">check / consume</text>
+  </g>
+</svg>

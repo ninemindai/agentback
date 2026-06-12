@@ -1,0 +1,247 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 900" width="1000" height="900" role="img" aria-label="Package layering: DI foundation at the bottom; HTTP/REST, MCP, auth, metering, observability, and console packages build up from it. Arrows mean depends on.">
+  <!-- Source: docs/architecture/overview.md mermaid block 4 ("Package layering", graph BT) -->
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="7" refX="8" refY="3.5" orient="auto">
+      <path d="M0,0 L8,3.5 L0,7 z" fill="#8a948d"/>
+    </marker>
+  </defs>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+
+    <!-- ============ group containers ============ -->
+    <g fill="rgba(15,107,79,0.03)" stroke="#c5ccc4" stroke-width="1" stroke-dasharray="6,4">
+      <rect x="380" y="28"  width="580" height="92"  rx="12"/>
+      <rect x="24"  y="140" width="222" height="222" rx="12"/>
+      <rect x="768" y="140" width="164" height="200" rx="12"/>
+      <rect x="24"  y="372" width="320" height="280" rx="12"/>
+      <rect x="370" y="380" width="336" height="366" rx="12"/>
+      <rect x="712" y="498" width="272" height="248" rx="12"/>
+      <rect x="24"  y="664" width="340" height="78"  rx="12"/>
+      <rect x="200" y="798" width="530" height="80"  rx="12"/>
+    </g>
+    <g font-size="11" letter-spacing="1" fill="#5a645e">
+      <text x="396" y="48">CONSOLE / EXPLORERS</text>
+      <text x="40"  y="160">OBSERVABILITY + EDGE</text>
+      <text x="780" y="160">METERING + PAYMENTS</text>
+      <text x="40"  y="392">AUTH STACK</text>
+      <text x="386" y="400">HTTP / REST / OPENAPI</text>
+      <text x="728" y="518">MCP</text>
+      <text x="40"  y="684">CROSS-CUTTING</text>
+      <text x="216" y="818">DI FOUNDATION (PORTS OF @LOOPBACK/*)</text>
+    </g>
+
+    <!-- ============ edges (arrow points at the dependency) ============ -->
+    <g fill="none" stroke="#8a948d" stroke-width="1.4">
+      <!-- foundation: context -> metadata, core -> context -->
+      <path d="M420,843 L320,843" marker-end="url(#arrow)"/>
+      <path d="M610,843 L510,843" marker-end="url(#arrow)"/>
+      <!-- fan-in to core -->
+      <path d="M89,726 L89,788 L614,788 L614,826" marker-end="url(#arrow)"/>
+      <path d="M193,726 L193,780 L632,780 L632,826" marker-end="url(#arrow)"/>
+      <path d="M442,726 L442,772 L650,772 L650,826" marker-end="url(#arrow)"/>
+      <path d="M601,726 L601,764 L668,764 L668,826" marker-end="url(#arrow)"/>
+      <path d="M921,726 L921,756 L686,756 L686,826" marker-end="url(#arrow)"/>
+      <!-- HTTP column -->
+      <path d="M455,634 L455,692" marker-end="url(#arrow)"/>
+      <path d="M478,542 L478,600" marker-end="url(#arrow)"/>
+      <path d="M545,542 L545,575 L601,575 L601,692" marker-end="url(#arrow)"/>
+      <path d="M610,448 L610,532 L560,532" marker-end="url(#arrow)"/>
+      <!-- auth stack -->
+      <path d="M112,514 L112,560" marker-end="url(#arrow)"/>
+      <path d="M220,434 L220,545 L150,545 L150,560" marker-end="url(#arrow)"/>
+      <path d="M112,594 L112,646 L172,646 L172,692" marker-end="url(#arrow)"/>
+      <path d="M260,594 L260,638 L214,638 L214,692" marker-end="url(#arrow)"/>
+      <path d="M500,542 L500,550 L130,550 L130,560" marker-end="url(#arrow)"/>
+      <path d="M470,535 L348,535 L348,570 L324,570" marker-end="url(#arrow)"/>
+      <!-- observability -> rest -->
+      <path d="M196,187 L352,187 L352,511 L470,511" marker-end="url(#arrow)"/>
+      <path d="M204,257 L359,257 L359,519 L470,519" marker-end="url(#arrow)"/>
+      <path d="M228,327 L366,327 L366,527 L470,527" marker-end="url(#arrow)"/>
+      <!-- metering + payments -->
+      <path d="M830,214 L830,276" marker-end="url(#arrow)"/>
+      <path d="M890,197 L970,197 L970,705 L966,705" marker-end="url(#arrow)"/>
+      <path d="M800,300 L566,300 L566,520 L560,520" marker-end="url(#arrow)"/>
+      <path d="M845,310 L845,709 L876,709" marker-end="url(#arrow)"/>
+      <!-- MCP family -->
+      <path d="M921,640 L921,692" marker-end="url(#arrow)"/>
+      <path d="M775,640 L775,692" marker-end="url(#arrow)"/>
+      <path d="M828,554 L828,692" marker-end="url(#arrow)"/>
+      <!-- console / explorers -->
+      <path d="M860,83 L840,83" marker-end="url(#arrow)"/>
+      <path d="M905,66 L905,46 L620,46 L620,66" marker-end="url(#arrow)"/>
+      <path d="M556,100 L556,508" marker-end="url(#arrow)"/>
+      <path d="M740,100 L740,520" marker-end="url(#arrow)"/>
+      <path d="M820,100 L820,124 L978,124 L978,712 L966,712" marker-end="url(#arrow)"/>
+    </g>
+
+    <!-- ============ nodes ============ -->
+    <g font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">
+
+      <!-- console / explorers (amber) -->
+      <g>
+        <rect x="400" y="66" width="128" height="34" rx="8" fill="#ffffff" stroke="#9b6b16" stroke-width="1.5"/>
+        <rect x="405" y="72" width="4" height="22" rx="2" fill="#9b6b16"/>
+        <text x="466" y="87">console-theme</text>
+      </g>
+      <g>
+        <rect x="544" y="66" width="152" height="34" rx="8" fill="#ffffff" stroke="#9b6b16" stroke-width="1.5"/>
+        <rect x="549" y="72" width="4" height="22" rx="2" fill="#9b6b16"/>
+        <text x="622" y="87">context-explorer</text>
+      </g>
+      <g>
+        <rect x="712" y="66" width="128" height="34" rx="8" fill="#ffffff" stroke="#9b6b16" stroke-width="1.5"/>
+        <rect x="717" y="72" width="4" height="22" rx="2" fill="#9b6b16"/>
+        <text x="778" y="87">mcp-inspector</text>
+      </g>
+      <g>
+        <rect x="860" y="66" width="90" height="34" rx="8" fill="#ffffff" stroke="#9b6b16" stroke-width="1.5"/>
+        <rect x="865" y="72" width="4" height="22" rx="2" fill="#9b6b16"/>
+        <text x="907" y="87">console</text>
+      </g>
+
+      <!-- observability + edge (amber) -->
+      <g>
+        <rect x="44" y="170" width="152" height="34" rx="8" fill="#ffffff" stroke="#9b6b16" stroke-width="1.5"/>
+        <rect x="49" y="176" width="4" height="22" rx="2" fill="#9b6b16"/>
+        <text x="122" y="191">extension-health</text>
+      </g>
+      <g>
+        <rect x="44" y="240" width="160" height="34" rx="8" fill="#ffffff" stroke="#9b6b16" stroke-width="1.5"/>
+        <rect x="49" y="246" width="4" height="22" rx="2" fill="#9b6b16"/>
+        <text x="126" y="261">extension-metrics</text>
+      </g>
+      <g>
+        <rect x="44" y="310" width="184" height="34" rx="8" fill="#ffffff" stroke="#9b6b16" stroke-width="1.5"/>
+        <rect x="49" y="316" width="4" height="22" rx="2" fill="#9b6b16"/>
+        <text x="138" y="331">extension-rate-limit</text>
+      </g>
+
+      <!-- metering + payments (rose) -->
+      <g>
+        <rect x="800" y="180" width="90" height="34" rx="8" fill="#ffffff" stroke="#b43b55" stroke-width="1.5"/>
+        <rect x="805" y="186" width="4" height="22" rx="2" fill="#b43b55"/>
+        <text x="847" y="201">payments</text>
+      </g>
+      <g>
+        <rect x="800" y="276" width="90" height="34" rx="8" fill="#ffffff" stroke="#b43b55" stroke-width="1.5"/>
+        <rect x="805" y="282" width="4" height="22" rx="2" fill="#b43b55"/>
+        <text x="847" y="297">metering</text>
+      </g>
+
+      <!-- auth stack (rose) -->
+      <g>
+        <rect x="44" y="400" width="184" height="34" rx="8" fill="#ffffff" stroke="#b43b55" stroke-width="1.5"/>
+        <rect x="49" y="406" width="4" height="22" rx="2" fill="#b43b55"/>
+        <text x="138" y="421">authentication-oauth2</text>
+      </g>
+      <g>
+        <rect x="44" y="480" width="168" height="34" rx="8" fill="#ffffff" stroke="#b43b55" stroke-width="1.5"/>
+        <rect x="49" y="486" width="4" height="22" rx="2" fill="#b43b55"/>
+        <text x="130" y="501">authentication-jwt</text>
+      </g>
+      <g>
+        <rect x="44" y="560" width="136" height="34" rx="8" fill="#ffffff" stroke="#b43b55" stroke-width="1.5"/>
+        <rect x="49" y="566" width="4" height="22" rx="2" fill="#b43b55"/>
+        <text x="114" y="581">authentication</text>
+      </g>
+      <g>
+        <rect x="196" y="560" width="128" height="34" rx="8" fill="#ffffff" stroke="#b43b55" stroke-width="1.5"/>
+        <rect x="201" y="566" width="4" height="22" rx="2" fill="#b43b55"/>
+        <text x="262" y="581">authorization</text>
+      </g>
+
+      <!-- HTTP / REST / OpenAPI (cyan) -->
+      <g>
+        <rect x="400" y="414" width="110" height="44" rx="8" fill="#ffffff" stroke="#087b8c" stroke-width="1.5"/>
+        <rect x="405" y="420" width="4" height="32" rx="2" fill="#087b8c"/>
+        <text x="457" y="433">client</text>
+        <text x="457" y="448" font-size="10.5" font-weight="400" fill="#5a645e">(standalone)</text>
+      </g>
+      <g>
+        <rect x="576" y="414" width="128" height="34" rx="8" fill="#ffffff" stroke="#087b8c" stroke-width="1.5"/>
+        <rect x="581" y="420" width="4" height="22" rx="2" fill="#087b8c"/>
+        <text x="642" y="435">rest-explorer</text>
+      </g>
+      <g>
+        <rect x="470" y="508" width="90" height="34" rx="8" fill="#ffffff" stroke="#087b8c" stroke-width="1.5"/>
+        <rect x="475" y="514" width="4" height="22" rx="2" fill="#087b8c"/>
+        <text x="517" y="529">rest</text>
+      </g>
+      <g>
+        <rect x="410" y="600" width="90" height="34" rx="8" fill="#ffffff" stroke="#087b8c" stroke-width="1.5"/>
+        <rect x="415" y="606" width="4" height="22" rx="2" fill="#087b8c"/>
+        <text x="457" y="621">express</text>
+      </g>
+      <g>
+        <rect x="386" y="692" width="112" height="34" rx="8" fill="#ffffff" stroke="#087b8c" stroke-width="1.5"/>
+        <rect x="391" y="698" width="4" height="22" rx="2" fill="#087b8c"/>
+        <text x="444" y="713">http-server</text>
+      </g>
+      <g>
+        <rect x="556" y="692" width="90" height="34" rx="8" fill="#ffffff" stroke="#087b8c" stroke-width="1.5"/>
+        <rect x="561" y="698" width="4" height="22" rx="2" fill="#087b8c"/>
+        <text x="603" y="713">openapi</text>
+      </g>
+
+      <!-- MCP (violet) -->
+      <g>
+        <rect x="724" y="520" width="112" height="34" rx="8" fill="#ffffff" stroke="#6d4ca8" stroke-width="1.5"/>
+        <rect x="729" y="526" width="4" height="22" rx="2" fill="#6d4ca8"/>
+        <text x="782" y="541">mcp-connect</text>
+      </g>
+      <g>
+        <rect x="730" y="606" width="90" height="34" rx="8" fill="#ffffff" stroke="#6d4ca8" stroke-width="1.5"/>
+        <rect x="735" y="612" width="4" height="22" rx="2" fill="#6d4ca8"/>
+        <text x="777" y="627">mcp-host</text>
+      </g>
+      <g>
+        <rect x="876" y="606" width="90" height="34" rx="8" fill="#ffffff" stroke="#6d4ca8" stroke-width="1.5"/>
+        <rect x="881" y="612" width="4" height="22" rx="2" fill="#6d4ca8"/>
+        <text x="923" y="627">mcp-http</text>
+      </g>
+      <g>
+        <rect x="730" y="692" width="104" height="34" rx="8" fill="#ffffff" stroke="#6d4ca8" stroke-width="1.5"/>
+        <rect x="735" y="698" width="4" height="22" rx="2" fill="#6d4ca8"/>
+        <text x="784" y="713">mcp-client</text>
+      </g>
+      <g>
+        <rect x="876" y="692" width="90" height="34" rx="8" fill="#ffffff" stroke="#6d4ca8" stroke-width="1.5"/>
+        <rect x="881" y="698" width="4" height="22" rx="2" fill="#6d4ca8"/>
+        <text x="923" y="713">mcp</text>
+      </g>
+
+      <!-- cross-cutting (green) -->
+      <g>
+        <rect x="44" y="692" width="90" height="34" rx="8" fill="#ffffff" stroke="#0f6b4f" stroke-width="1.5"/>
+        <rect x="49" y="698" width="4" height="22" rx="2" fill="#0f6b4f"/>
+        <text x="91" y="713">config</text>
+      </g>
+      <g>
+        <rect x="148" y="692" width="90" height="34" rx="8" fill="#ffffff" stroke="#0f6b4f" stroke-width="1.5"/>
+        <rect x="153" y="698" width="4" height="22" rx="2" fill="#0f6b4f"/>
+        <text x="195" y="713">security</text>
+      </g>
+      <g>
+        <rect x="252" y="692" width="90" height="34" rx="8" fill="#ffffff" stroke="#0f6b4f" stroke-width="1.5"/>
+        <rect x="257" y="698" width="4" height="22" rx="2" fill="#0f6b4f"/>
+        <text x="299" y="713">testlab</text>
+      </g>
+
+      <!-- DI foundation (green) -->
+      <g>
+        <rect x="230" y="826" width="90" height="34" rx="8" fill="#ffffff" stroke="#0f6b4f" stroke-width="1.5"/>
+        <rect x="235" y="832" width="4" height="22" rx="2" fill="#0f6b4f"/>
+        <text x="277" y="847">metadata</text>
+      </g>
+      <g>
+        <rect x="420" y="826" width="90" height="34" rx="8" fill="#ffffff" stroke="#0f6b4f" stroke-width="1.5"/>
+        <rect x="425" y="832" width="4" height="22" rx="2" fill="#0f6b4f"/>
+        <text x="467" y="847">context</text>
+      </g>
+      <g>
+        <rect x="610" y="826" width="90" height="34" rx="8" fill="#ffffff" stroke="#0f6b4f" stroke-width="1.5"/>
+        <rect x="615" y="832" width="4" height="22" rx="2" fill="#0f6b4f"/>
+        <text x="657" y="847">core</text>
+      </g>
+    </g>
+  </g>
+</svg>
