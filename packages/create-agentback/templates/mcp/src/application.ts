@@ -11,6 +11,11 @@ export class Application extends CoreApplication {
       version: '0.1.0',
       transports: {stdio: options.stdio ?? true},
     });
-    this.service(EchoTools);
+    // Register tool classes as controllers, not services: the MCP dispatcher
+    // resolves them via `controllers.<name>`, which is the binding that honors
+    // constructor `@inject`. A service-bound tool class is `new`-ed without DI,
+    // so injected dependencies would be undefined. (`@mcpServer()` tags the
+    // class either way, so it's still discovered.)
+    this.controller(EchoTools);
   }
 }

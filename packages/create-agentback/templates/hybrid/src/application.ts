@@ -11,6 +11,11 @@ export class Application extends RestApplication {
       version: '0.1.0',
       transports: {stdio: false},
     });
+    // One class, two surfaces — both registrations are needed. `restController`
+    // serves the REST routes and binds it at `controllers.<name>`, the binding
+    // the MCP dispatcher resolves with constructor `@inject`. `service` carries
+    // the `@mcpServer` discovery tag the MCP server finds tools by (restController
+    // tags it for REST only). Drop either and one surface goes dark.
     this.restController(GreetingController);
     this.service(GreetingController);
   }
