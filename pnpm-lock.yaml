@@ -317,16 +317,16 @@ importers:
   packages/authentication:
     dependencies:
       '@agentback/context':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../context
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       '@agentback/metadata':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../metadata
       '@agentback/security':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../security
       '@types/express':
         specifier: ^4.17.21
@@ -336,7 +336,7 @@ importers:
         version: 2.8.1
     devDependencies:
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       vitest:
         specifier: ~4.1.8
@@ -345,19 +345,19 @@ importers:
   packages/authentication-jwt:
     dependencies:
       '@agentback/authentication':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../authentication
       '@agentback/context':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../context
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       '@agentback/openapi':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../openapi
       '@agentback/security':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../security
       '@types/express':
         specifier: ^4.17.21
@@ -376,7 +376,7 @@ importers:
         version: 2.8.1
     devDependencies:
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       '@types/http-errors':
         specifier: ^2.0.5
@@ -388,19 +388,19 @@ importers:
   packages/authentication-oauth2:
     dependencies:
       '@agentback/authentication':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../authentication
       '@agentback/context':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../context
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       '@agentback/openapi':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../openapi
       '@agentback/security':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../security
       '@types/express':
         specifier: ^4.17.21
@@ -416,7 +416,7 @@ importers:
         version: 2.8.1
     devDependencies:
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       '@types/http-errors':
         specifier: ^2.0.5
@@ -428,23 +428,23 @@ importers:
   packages/authorization:
     dependencies:
       '@agentback/context':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../context
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       '@agentback/metadata':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../metadata
       '@agentback/security':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../security
       tslib:
         specifier: ^2.8.1
         version: 2.8.1
     devDependencies:
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       vitest:
         specifier: ~4.1.8
@@ -488,13 +488,13 @@ importers:
   packages/config:
     dependencies:
       '@agentback/common':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../common
       '@agentback/context':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../context
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       '@types/debug':
         specifier: ^4.1.13
@@ -519,7 +519,7 @@ importers:
         version: 4.4.3
     devDependencies:
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       vitest:
         specifier: ~4.1.8
@@ -528,19 +528,19 @@ importers:
   packages/console:
     dependencies:
       '@agentback/console-theme':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../console-theme
       '@agentback/context-explorer':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../context-explorer
       '@agentback/mcp-inspector':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../mcp-inspector
       '@agentback/rest':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../rest
       '@agentback/rest-explorer':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../rest-explorer
       '@types/express':
         specifier: ^4.17.21
@@ -553,13 +553,13 @@ importers:
         version: 2.8.1
     devDependencies:
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       '@agentback/mcp':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../mcp
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       '@types/react':
         specifier: ~19.2.17
@@ -598,10 +598,10 @@ importers:
   packages/context:
     dependencies:
       '@agentback/common':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../common
       '@agentback/metadata':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../metadata
       '@types/debug':
         specifier: ^4.1.13
@@ -623,7 +623,7 @@ importers:
         version: 14.0.0
     devDependencies:
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       '@types/uuid':
         specifier: ^11.0.0
@@ -635,16 +635,16 @@ importers:
   packages/context-explorer:
     dependencies:
       '@agentback/console-theme':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../console-theme
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       '@agentback/openapi':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../openapi
       '@agentback/rest':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../rest
       '@types/express':
         specifier: ^4.17.21
@@ -660,7 +660,7 @@ importers:
         version: 4.4.3
     devDependencies:
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       '@dagrejs/dagre':
         specifier: ^1.1.4
@@ -696,10 +696,10 @@ importers:
   packages/core:
     dependencies:
       '@agentback/common':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../common
       '@agentback/context':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../context
       '@types/debug':
         specifier: ^4.1.13
@@ -712,7 +712,7 @@ importers:
         version: 2.8.1
     devDependencies:
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       vitest:
         specifier: ~4.1.8
@@ -727,10 +727,10 @@ importers:
   packages/drizzle:
     dependencies:
       '@agentback/context':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../context
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       tslib:
         specifier: ^2.8.1
@@ -752,19 +752,19 @@ importers:
   packages/express:
     dependencies:
       '@agentback/common':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../common
       '@agentback/context':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../context
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       '@agentback/http-server':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../http-server
       '@agentback/metadata':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../metadata
       '@types/body-parser':
         specifier: ^1.19.6
@@ -804,7 +804,7 @@ importers:
         version: 2.8.1
     devDependencies:
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       '@types/debug':
         specifier: ^4.1.13
@@ -819,23 +819,23 @@ importers:
   packages/extension-health:
     dependencies:
       '@agentback/context':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../context
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       '@agentback/rest':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../rest
       tslib:
         specifier: ^2.8.1
         version: 2.8.1
     devDependencies:
       '@agentback/openapi':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../openapi
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       '@types/supertest':
         specifier: ^7.2.0
@@ -850,7 +850,7 @@ importers:
   packages/extension-metrics:
     dependencies:
       '@agentback/rest':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../rest
       '@types/express':
         specifier: ^4.17.21
@@ -863,10 +863,10 @@ importers:
         version: 2.8.1
     devDependencies:
       '@agentback/openapi':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../openapi
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       '@types/supertest':
         specifier: ^7.2.0
@@ -884,31 +884,31 @@ importers:
   packages/extension-otel:
     dependencies:
       '@agentback/common':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../common
       '@agentback/context':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../context
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       '@agentback/mcp':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../mcp
       '@agentback/messaging':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../messaging
       '@agentback/metering':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../metering
       '@agentback/openapi':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../openapi
       '@agentback/rest':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../rest
       '@agentback/security':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../security
       '@opentelemetry/api':
         specifier: ^1.9.0
@@ -921,7 +921,7 @@ importers:
         version: 2.8.1
     devDependencies:
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       '@opentelemetry/sdk-trace-base':
         specifier: ^1.30.0
@@ -942,7 +942,7 @@ importers:
   packages/extension-rate-limit:
     dependencies:
       '@agentback/rest':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../rest
       '@types/express':
         specifier: ^4.17.21
@@ -957,7 +957,7 @@ importers:
   packages/http-server:
     dependencies:
       '@agentback/common':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../common
       '@types/debug':
         specifier: ^4.1.13
@@ -973,7 +973,7 @@ importers:
         version: 2.8.1
     devDependencies:
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       '@types/stoppable':
         specifier: ^1.1.3
@@ -985,25 +985,25 @@ importers:
   packages/mcp:
     dependencies:
       '@agentback/authorization':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../authorization
       '@agentback/common':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../common
       '@agentback/context':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../context
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       '@agentback/metadata':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../metadata
       '@agentback/openapi':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../openapi
       '@agentback/security':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../security
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
@@ -1022,7 +1022,7 @@ importers:
         version: 4.4.3
     devDependencies:
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       vitest:
         specifier: ~4.1.8
@@ -1038,19 +1038,19 @@ importers:
         version: 2.8.1
     devDependencies:
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       '@agentback/mcp':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../mcp
       '@agentback/mcp-http':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../mcp-http
       '@agentback/rest':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../rest
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       vitest:
         specifier: ~4.1.8
@@ -1062,10 +1062,10 @@ importers:
   packages/mcp-connect:
     dependencies:
       '@agentback/mcp-client':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../mcp-client
       '@agentback/rest':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../rest
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
@@ -1081,16 +1081,16 @@ importers:
         version: 2.8.1
     devDependencies:
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       '@agentback/mcp':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../mcp
       '@agentback/mcp-http':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../mcp-http
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       vitest:
         specifier: ~4.1.8
@@ -1102,7 +1102,7 @@ importers:
   packages/mcp-host:
     dependencies:
       '@agentback/mcp-client':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../mcp-client
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
@@ -1112,19 +1112,19 @@ importers:
         version: 2.8.1
     devDependencies:
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       '@agentback/mcp':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../mcp
       '@agentback/mcp-http':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../mcp-http
       '@agentback/rest':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../rest
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       vitest:
         specifier: ~4.1.8
@@ -1136,16 +1136,16 @@ importers:
   packages/mcp-http:
     dependencies:
       '@agentback/authentication':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../authentication
       '@agentback/mcp':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../mcp
       '@agentback/rest':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../rest
       '@agentback/security':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../security
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
@@ -1164,10 +1164,10 @@ importers:
         version: 2.8.1
     devDependencies:
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       vitest:
         specifier: ~4.1.8
@@ -1179,22 +1179,22 @@ importers:
   packages/mcp-inspector:
     dependencies:
       '@agentback/console-theme':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../console-theme
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       '@agentback/mcp':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../mcp
       '@agentback/mcp-connect':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../mcp-connect
       '@agentback/openapi':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../openapi
       '@agentback/rest':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../rest
       '@types/express':
         specifier: ^4.17.21
@@ -1210,7 +1210,7 @@ importers:
         version: 4.4.3
     devDependencies:
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       '@types/react':
         specifier: ~19.2.17
@@ -1240,13 +1240,13 @@ importers:
   packages/messaging:
     dependencies:
       '@agentback/common':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../common
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       '@agentback/metadata':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../metadata
       tslib:
         specifier: ^2.8.1
@@ -1262,16 +1262,16 @@ importers:
   packages/messaging-bullmq:
     dependencies:
       '@agentback/common':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../common
       '@agentback/context':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../context
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       '@agentback/messaging':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../messaging
       bullmq:
         specifier: ^5.56.0
@@ -1293,7 +1293,7 @@ importers:
   packages/metadata:
     dependencies:
       '@agentback/common':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../common
       debug:
         specifier: ^4.4.3
@@ -1309,7 +1309,7 @@ importers:
         version: 2.8.1
     devDependencies:
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       '@types/debug':
         specifier: ^4.1.13
@@ -1324,28 +1324,28 @@ importers:
   packages/metering:
     dependencies:
       '@agentback/authentication':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../authentication
       '@agentback/context':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../context
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       '@agentback/mcp':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../mcp
       '@agentback/metadata':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../metadata
       '@agentback/openapi':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../openapi
       '@agentback/rest':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../rest
       '@agentback/security':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../security
       '@types/express':
         specifier: ^4.17.21
@@ -1358,7 +1358,7 @@ importers:
         version: 2.8.1
     devDependencies:
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       vitest:
         specifier: ~4.1.8
@@ -1367,16 +1367,16 @@ importers:
   packages/openapi:
     dependencies:
       '@agentback/common':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../common
       '@agentback/context':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../context
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       '@agentback/metadata':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../metadata
       '@types/debug':
         specifier: ^4.1.13
@@ -1407,7 +1407,7 @@ importers:
         version: 4.4.3
     devDependencies:
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       vitest:
         specifier: ~4.1.8
@@ -1416,16 +1416,16 @@ importers:
   packages/payments:
     dependencies:
       '@agentback/context':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../context
       '@agentback/mcp':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../mcp
       '@agentback/metering':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../metering
       '@agentback/rest':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../rest
       '@types/express':
         specifier: ^4.17.21
@@ -1441,10 +1441,10 @@ importers:
   packages/plugin:
     dependencies:
       '@agentback/context':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../context
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       tslib:
         specifier: ^2.8.1
@@ -1454,7 +1454,7 @@ importers:
         version: 4.4.3
     devDependencies:
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       vitest:
         specifier: ~4.1.8
@@ -1463,34 +1463,34 @@ importers:
   packages/rest:
     dependencies:
       '@agentback/authentication':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../authentication
       '@agentback/authorization':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../authorization
       '@agentback/common':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../common
       '@agentback/context':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../context
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       '@agentback/express':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../express
       '@agentback/http-server':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../http-server
       '@agentback/metadata':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../metadata
       '@agentback/openapi':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../openapi
       '@agentback/security':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../security
       '@types/cors':
         specifier: ~2.8.19
@@ -1521,7 +1521,7 @@ importers:
         version: 4.4.3
     devDependencies:
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       '@types/http-errors':
         specifier: ^2.0.5
@@ -1539,7 +1539,7 @@ importers:
   packages/rest-explorer:
     dependencies:
       '@agentback/rest':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../rest
       '@types/express':
         specifier: ^4.17.21
@@ -1558,10 +1558,10 @@ importers:
         version: 2.8.1
     devDependencies:
       '@agentback/openapi':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../openapi
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       '@types/react':
         specifier: ~19.2.17
@@ -1585,14 +1585,14 @@ importers:
   packages/security:
     dependencies:
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       tslib:
         specifier: ^2.8.1
         version: 2.8.1
     devDependencies:
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       vitest:
         specifier: ~4.1.8
@@ -1601,35 +1601,35 @@ importers:
   packages/testing:
     dependencies:
       '@agentback/client':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../client
       '@agentback/context':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../context
       '@agentback/core':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../core
       '@agentback/rest':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../rest
       '@agentback/testlab':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../testlab
       tslib:
         specifier: ^2.8.1
         version: 2.8.1
     devDependencies:
       '@agentback/authorization':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../authorization
       '@agentback/mcp':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../mcp
       '@agentback/openapi':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../openapi
       '@agentback/security':
-        specifier: workspace:*
+        specifier: workspace:~
         version: link:../security
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0

@@ -1,6 +1,6 @@
 {
   "name": "@agentback/mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,13 +19,13 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@agentback/authorization": "workspace:*",
-    "@agentback/common": "workspace:*",
-    "@agentback/context": "workspace:*",
-    "@agentback/core": "workspace:*",
-    "@agentback/metadata": "workspace:*",
-    "@agentback/openapi": "workspace:*",
-    "@agentback/security": "workspace:*",
+    "@agentback/authorization": "workspace:~",
+    "@agentback/common": "workspace:~",
+    "@agentback/context": "workspace:~",
+    "@agentback/core": "workspace:~",
+    "@agentback/metadata": "workspace:~",
+    "@agentback/openapi": "workspace:~",
+    "@agentback/security": "workspace:~",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/debug": "^4.1.13",
     "debug": "^4.4.3",
@@ -36,7 +36,7 @@
     "node": ">=22.13"
   },
   "devDependencies": {
-    "@agentback/testlab": "workspace:*",
+    "@agentback/testlab": "workspace:~",
     "vitest": "~4.1.8"
   },
   "license": "MIT",

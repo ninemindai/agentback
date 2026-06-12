@@ -1,6 +1,6 @@
 {
   "name": "@agentback/authorization",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "@authorize decorator + voter pipeline (minimal port of @loopback/authorization)",
   "type": "module",
   "main": "dist/index.js",
@@ -20,17 +20,17 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@agentback/context": "workspace:*",
-    "@agentback/core": "workspace:*",
-    "@agentback/metadata": "workspace:*",
-    "@agentback/security": "workspace:*",
+    "@agentback/context": "workspace:~",
+    "@agentback/core": "workspace:~",
+    "@agentback/metadata": "workspace:~",
+    "@agentback/security": "workspace:~",
     "tslib": "^2.8.1"
   },
   "engines": {
     "node": ">=22.13"
   },
   "devDependencies": {
-    "@agentback/testlab": "workspace:*",
+    "@agentback/testlab": "workspace:~",
     "vitest": "~4.1.8"
   },
   "license": "MIT",

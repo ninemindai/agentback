@@ -1,6 +1,6 @@
 {
   "name": "@agentback/security",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Security primitives (UserProfile, Subject, principals) — ported from @loopback/security",
   "type": "module",
   "main": "dist/index.js",
@@ -20,14 +20,14 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@agentback/core": "workspace:*",
+    "@agentback/core": "workspace:~",
     "tslib": "^2.8.1"
   },
   "engines": {
     "node": ">=22.13"
   },
   "devDependencies": {
-    "@agentback/testlab": "workspace:*",
+    "@agentback/testlab": "workspace:~",
     "vitest": "~4.1.8"
   },
   "license": "MIT",

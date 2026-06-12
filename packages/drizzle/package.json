@@ -1,6 +1,6 @@
 {
   "name": "@agentback/drizzle",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Drizzle ORM integration: typed client binding, lifecycle pool shutdown, drizzle-zod re-exports — the blessed DB recipe",
   "type": "module",
   "main": "dist/index.js",
@@ -24,8 +24,8 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@agentback/context": "workspace:*",
-    "@agentback/core": "workspace:*",
+    "@agentback/context": "workspace:~",
+    "@agentback/core": "workspace:~",
     "tslib": "^2.8.1"
   },
   "peerDependencies": {

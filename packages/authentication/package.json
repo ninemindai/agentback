@@ -1,6 +1,6 @@
 {
   "name": "@agentback/authentication",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Authentication decorator + strategy interface — minimal port of @loopback/authentication",
   "type": "module",
   "main": "dist/index.js",
@@ -20,10 +20,10 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@agentback/context": "workspace:*",
-    "@agentback/core": "workspace:*",
-    "@agentback/metadata": "workspace:*",
-    "@agentback/security": "workspace:*",
+    "@agentback/context": "workspace:~",
+    "@agentback/core": "workspace:~",
+    "@agentback/metadata": "workspace:~",
+    "@agentback/security": "workspace:~",
     "@types/express": "^4.17.21",
     "tslib": "^2.8.1"
   },
@@ -31,7 +31,7 @@
     "node": ">=22.13"
   },
   "devDependencies": {
-    "@agentback/testlab": "workspace:*",
+    "@agentback/testlab": "workspace:~",
     "vitest": "~4.1.8"
   },
   "license": "MIT",

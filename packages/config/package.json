@@ -1,6 +1,6 @@
 {
   "name": "@agentback/config",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Zod-validated, env-aware config loader (JSONC + YAML) with layered overlays and DI bindings",
   "type": "module",
   "main": "dist/index.js",
@@ -20,9 +20,9 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@agentback/common": "workspace:*",
-    "@agentback/context": "workspace:*",
-    "@agentback/core": "workspace:*",
+    "@agentback/common": "workspace:~",
+    "@agentback/context": "workspace:~",
+    "@agentback/core": "workspace:~",
     "@types/debug": "^4.1.13",
     "debug": "^4.4.3",
     "dotenv": "^17.4.2",
@@ -32,7 +32,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@agentback/testlab": "workspace:*",
+    "@agentback/testlab": "workspace:~",
     "vitest": "~4.1.8"
   },
   "engines": {

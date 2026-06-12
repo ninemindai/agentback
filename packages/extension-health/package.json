@@ -1,6 +1,6 @@
 {
   "name": "@agentback/extension-health",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Health and readiness HTTP endpoints (k8s-shape probes)",
   "type": "module",
   "main": "dist/index.js",
@@ -20,17 +20,17 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@agentback/context": "workspace:*",
-    "@agentback/core": "workspace:*",
-    "@agentback/rest": "workspace:*",
+    "@agentback/context": "workspace:~",
+    "@agentback/core": "workspace:~",
+    "@agentback/rest": "workspace:~",
     "tslib": "^2.8.1"
   },
   "engines": {
     "node": ">=22.13"
   },
   "devDependencies": {
-    "@agentback/openapi": "workspace:*",
-    "@agentback/testlab": "workspace:*",
+    "@agentback/openapi": "workspace:~",
+    "@agentback/testlab": "workspace:~",
     "@types/supertest": "^7.2.0",
     "supertest": "^7.2.2",
     "vitest": "~4.1.8"

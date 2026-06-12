@@ -1,6 +1,6 @@
 {
   "name": "@agentback/testing",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "First-class test harness: createTestApp with binding overrides, typed in-process REST client, supertest bridge, and in-memory MCP client",
   "type": "module",
   "main": "dist/index.js",
@@ -20,15 +20,15 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@agentback/client": "workspace:*",
-    "@agentback/context": "workspace:*",
-    "@agentback/core": "workspace:*",
-    "@agentback/rest": "workspace:*",
-    "@agentback/testlab": "workspace:*",
+    "@agentback/client": "workspace:~",
+    "@agentback/context": "workspace:~",
+    "@agentback/core": "workspace:~",
+    "@agentback/rest": "workspace:~",
+    "@agentback/testlab": "workspace:~",
     "tslib": "^2.8.1"
   },
   "peerDependencies": {
-    "@agentback/mcp": "workspace:*",
+    "@agentback/mcp": "workspace:~",
     "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "peerDependenciesMeta": {
@@ -43,10 +43,10 @@
     "node": ">=22.13"
   },
   "devDependencies": {
-    "@agentback/authorization": "workspace:*",
-    "@agentback/mcp": "workspace:*",
-    "@agentback/openapi": "workspace:*",
-    "@agentback/security": "workspace:*",
+    "@agentback/authorization": "workspace:~",
+    "@agentback/mcp": "workspace:~",
+    "@agentback/openapi": "workspace:~",
+    "@agentback/security": "workspace:~",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "vitest": "~4.1.8",
     "zod": "^4.4.3"

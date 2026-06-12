@@ -1,6 +1,6 @@
 {
   "name": "@agentback/extension-rate-limit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Rate-limiting middleware (rate-limiter-flexible) — in-memory or Redis-backed, with 429 + RateLimit headers",
   "type": "module",
   "main": "dist/index.js",
@@ -20,7 +20,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@agentback/rest": "workspace:*",
+    "@agentback/rest": "workspace:~",
     "@types/express": "^4.17.21",
     "rate-limiter-flexible": "~11.1.1",
     "tslib": "^2.8.1"
