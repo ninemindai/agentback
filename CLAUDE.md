@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-ESM/Zod/MCP fork of LoopBack 4 — a slim modern subset of `@loopback/core` + REST for building HTTP and MCP services out of the same DI container. ESM-only, Node 22.13+, TypeScript 6.0, pnpm 11 workspaces. Alpha; API still settling.
+ESM/Zod/MCP fork of LoopBack 4 — a slim modern subset of `@loopback/core` + REST for building HTTP and MCP services out of the same DI container. ESM-only, Node 22.13+, TypeScript 6.0, pnpm 11 workspaces. Alpha (v0.1.2 published to npm — all `@agentback/*` packages + the `create-agentback` scaffolder); API still settling. Scaffold a new app with `npm create agentback my-service [--template rest|mcp|hybrid]`.
 
 For the framework's design thesis (boundary coherence between Zod, OpenAPI, MCP, and DI — and why that matters for AI-led development), see [docs/agent-ergonomics.md](docs/agent-ergonomics.md). Read it before adding a feature that might introduce a second source of truth alongside the Zod schemas.
 
@@ -49,7 +49,7 @@ pnpm exec vitest run -t "name of test"
    - `metadata`, `context` — decorator metadata + DI container
    - `core` — `Application`, `Component`, `Server`, lifecycle
    - `http-server`, `express` — HTTP server with graceful stop, Express integration
-   - `authentication`, `authentication-jwt`, `authorization`, `security` — auth stack
+   - `authentication`, `authentication-jwt`, `authentication-oauth2`, `authorization`, `security` — auth stack (`-oauth2` adds RFC 7662 introspection + JWKS bearer tokens; bring-your-own auth server)
    - `extension-health`, `extension-metrics` — observability extensions
    - `testlab` — test helpers
 2. **Rewritten, not ported** (upstream carried too much baggage):
@@ -59,6 +59,24 @@ pnpm exec vitest run -t "name of test"
    - `mcp-inspector` — small in-process inspector UI at `/mcp-inspector`; the official `@modelcontextprotocol/inspector` is a CLI, not embeddable.
    - `rest-explorer` — mounts Swagger UI 5.x at `/explorer`.
    - `client` — schema-typed HTTP client. Both ends import the **same Zod schemas**; the client has no `@agentback/openapi` runtime dep (browser-safe). `defineRoute` + `routeGroup` + `safeCall` + typed `responses[status]`. No codegen. See `packages/client/README.md` and the `examples/hello-client` + `examples/hello-rest` pair for the schema-sharing pattern.
+
+3. **New capability packages** (no upstream LB4 ancestor — added on top of the ported core). Each has a README; read it before touching the package:
+   - `common` — shared infra utils (hosts `loggers`, the project's logging primitive — see Logging below).
+   - `config` — Zod-validated, env-aware config loader (JSONC + YAML) with layered overlays and DI bindings.
+   - `drizzle` — the blessed DB recipe: typed Drizzle client binding, lifecycle pool shutdown, `drizzle-zod` re-exports. One artifact chain (Postgres table → Zod → REST route + MCP tool); see `examples/hello-drizzle`.
+   - `messaging` + `messaging-bullmq` — transport-agnostic messaging ports (`JobQueue`/`EventBus`/`QueueAdmin`/`Scheduler`) with typed Zod descriptors and an in-memory adapter; the BullMQ package is the durable Redis-backed adapter. See `examples/hello-jobs`.
+   - `metering` — rail-neutral usage metering for REST + MCP calls (per-principal `UsageEvent`s, pluggable sink, per-principal quota).
+   - `payments` — `PaymentRail` seam for REST/MCP calls; ships an x402 (HTTP 402) adapter (MPP/Stripe next). Authorizes payment; does not settle. See `examples/hello-x402`.
+   - `plugin` — discover, gate, and mount Component-contributing plugins into an Application.
+   - `extension-otel` — OpenTelemetry tracing across REST/MCP/jobs (`@opentelemetry/api` only; bring your own SDK/exporter).
+   - `extension-rate-limit` — rate-limiting middleware (`rate-limiter-flexible`); in-memory or Redis, with 429 + `RateLimit` headers.
+   - `mcp-http` — exposes the in-process MCP server over the MCP **Streamable HTTP** transport, mounted on the REST app's Express. Kept separate so `mcp` stays Express-free. **(This is the HTTP transport the old "not yet implemented" note referred to — it now exists.)**
+   - `mcp-client` — thin wrapper over the SDK client for connecting to a remote Streamable-HTTP MCP server (incl. OAuth, with bearer injection + 401 refresh-retry).
+   - `mcp-connect` — connect to remote MCP servers and proxy their tools/resources/prompts over a JSON API, incl. the full OAuth 2.1 handshake.
+   - `mcp-host` — turn AgentBack into an MCP **gateway**: aggregate several upstream MCP servers (stdio/HTTP) into one surface and proxy calls; exposable over `mcp-http`.
+   - `context-explorer` — read-only web UI for inspecting the DI container (every binding's key/scope/type/tags/source + parent chain); JSON API via a real `@api` REST controller.
+   - `console` + `console-theme` — unified dev console at `/console` composing context-explorer + rest-explorer + mcp-inspector behind one shell; `console-theme` is the shared "newspaper" design tokens used by all four UIs.
+   - `testing` — first-class test harness: `createTestApp` with binding overrides, typed in-process REST client, supertest bridge, in-memory MCP client.
 
 ### Schema-on-decorator routing (REST + MCP share this shape)
 
@@ -87,11 +105,13 @@ Rules to keep in mind when editing route/tool code:
 Where the registrations live:
 
 - Verb decorators store `RouteOptions` on `RestEndpoint` metadata + a per-route Zod bundle in `zod-bridge.ts`'s `routeRegistry`. `RestServer.makeHandler` reads the registry and weaves with `resolveInjectedArguments`.
-- `@tool` stores `input`/`output` on `ToolMetadata`. `MCPServer.dispatchTool` parses input, calls `resolveInjectedArguments` to weave injects, applies the method, then validates output.
+- `@tool` stores `input`/`output` on `ToolMetadata`. `MCPServer.dispatchTool` parses input, resolves the tool **instance through its own binding** (`MCPServer.resolveMember`, so constructor `@inject` is honored), calls `resolveInjectedArguments` to weave method-level injects, applies the method, then validates output.
 
 ### `@mcpServer` and `@api` class tagging
 
-`@mcpServer()` is `@bind({tags: {mcpServer: true}})` under the hood. When you `app.service(SomeClass)` or `app.controller(...)`, `createServiceBinding` reads the class's bind metadata and tags the binding automatically — never call `.tag()` manually for these. The MCP component and REST server discover routes/tools by querying for bindings with the relevant tag.
+`@mcpServer()` is `@injectable({scope: SINGLETON}, extensionFor(MCP_SERVERS))` under the hood — a tool class is a DI **service** that is an _extension_ of the `MCP_SERVERS` extension point, singleton by default (pass `@mcpServer({scope, tags})` or `@mcpServer('name')` to customize). **Register tool classes with `app.service(...)`** — a tool is a service. The MCP server discovers them via `ctx.find(extensionFilter(MCP_SERVERS))` and resolves each instance through its own binding (`resolveMember`), so constructor `@inject` works regardless of namespace (`service`, `controller`, or a manual `bind().apply(extensionFor(MCP_SERVERS))`). When you `app.service(SomeClass)`, `createServiceBinding` reads the class's bind metadata and tags the binding automatically — never call `.tag()` manually.
+
+`@api()` REST controllers are discovered by the `restController` tag (a separate mechanism). A **dual REST + MCP class** (`@api` + `@mcpServer`) needs **both** `app.restController(C)` (the REST routes) and `app.service(C)` (the MCP extension) — `restController` tags it for REST only, so dropping `service` makes the MCP surface vanish.
 
 ### What's available vs deferred vs out of scope
 
@@ -125,7 +145,8 @@ if (log.debug.enabled) log.debug('Get value for binding %s', this.key);
 **Not yet implemented**:
 
 - File uploads / multipart — escape hatch via `restServer.expressApp.use(multer(...))`.
-- MCP HTTP/SSE transport — stdio works today; HTTP is the obvious next addition once the SDK transport is wired in.
+
+MCP HTTP transport **is** implemented — `@agentback/mcp` runs stdio by default, and `@agentback/mcp-http` adds the Streamable HTTP transport mounted on the REST app's Express (per-session isolation). See the New capability packages list above.
 
 ## Deps and versioning
 
