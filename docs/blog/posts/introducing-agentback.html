@@ -81,6 +81,20 @@ app.service(OrderService);
 await app.start();</code></pre>
 
         <p>
+          The DI container is what makes the architecture componentized rather
+          than monolithic. A <code>Component</code> bundles controllers,
+          services, providers, servers, and lifecycle observers into one
+          registration — auth, health, metrics, metering, payments, and MCP
+          support all ship this way, and your features should too. Extension
+          points take it further: a service declares a slot
+          (<code>@extensionPoint</code>) and anyone fills it by tag
+          (<code>@extensions</code>) — that's how the auth stack collects
+          strategies and health collects checks, without either ever importing
+          its plugins. The rule underneath both: add a binding, never edit the
+          core. New capability is composition, not modification.
+        </p>
+
+        <p>
           The contract lives on decorators as Zod. That same schema validates
           requests, gives the handler its `z.infer` type, emits OpenAPI 3.1,
           registers MCP input/output schemas, and powers the Swagger UI or MCP
