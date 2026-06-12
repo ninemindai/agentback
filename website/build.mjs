@@ -9,6 +9,7 @@
 // Markdown stays the single source of truth — nothing is duplicated here.
 
 import {marked} from 'marked';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -273,6 +274,35 @@ const rewriteBlogDir = dir => {
   }
 };
 rewriteBlogDir(path.join(out, 'blog'));
+
+// 5. Cache busting: stamp every stylesheet href with a content hash so a
+// deploy is never masked by a stale browser/CDN copy of styles.css.
+const cssVersions = new Map();
+const versionFor = file => {
+  if (!cssVersions.has(file)) {
+    const hash = crypto.createHash('sha256').update(fs.readFileSync(file));
+    cssVersions.set(file, hash.digest('hex').slice(0, 8));
+  }
+  return cssVersions.get(file);
+};
+const stampStylesheets = dir => {
+  for (const entry of fs.readdirSync(dir, {withFileTypes: true})) {
+    const file = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      stampStylesheets(file);
+    } else if (entry.name.endsWith('.html')) {
+      const html = fs
+        .readFileSync(file, 'utf8')
+        .replace(/href="([^"?]*styles\.css)"/g, (whole, href) => {
+          const target = path.resolve(path.dirname(file), href);
+          if (!fs.existsSync(target)) return whole;
+          return `href="${href}?v=${versionFor(target)}"`;
+        });
+      fs.writeFileSync(file, html);
+    }
+  }
+};
+stampStylesheets(out);
 
 const count = DOC_PAGES.length;
 console.log(
