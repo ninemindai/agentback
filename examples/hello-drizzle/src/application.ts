@@ -2,9 +2,9 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {BindingScope} from '@agentback/core';
+import {BindingScope, extensionFor} from '@agentback/core';
 import {RestApplication, REST_CONTROLLER_TAG} from '@agentback/rest';
-import {MCPComponent, MCP_SERVER_TAG} from '@agentback/mcp';
+import {MCPComponent, MCP_SERVERS} from '@agentback/mcp';
 import {UsersController} from './controllers/users.controller.js';
 import {InMemoryUserStore, USER_STORE} from './user-store.js';
 
@@ -13,9 +13,9 @@ import {InMemoryUserStore, USER_STORE} from './user-store.js';
  * `users` table's drizzle-zod schemas as the shared contract.
  *
  * `UsersController` is BOTH `@api` (REST) and `@mcpServer` (MCP). It's bound
- * ONCE, tagged with both `restController` (so RestServer mounts its routes)
- * and `mcpServer` (so MCPServer discovers its tools), so REST and MCP share a
- * single controller instance and a single injected store.
+ * ONCE, tagged `restController` (so RestServer mounts its routes) and marked an
+ * `MCP_SERVERS` extension (so MCPServer discovers its tools), so REST and MCP
+ * share a single controller instance and a single injected store.
  */
 export class HelloDrizzleApplication extends RestApplication {
   constructor() {
@@ -34,10 +34,11 @@ export class HelloDrizzleApplication extends RestApplication {
       .toClass(InMemoryUserStore)
       .inScope(BindingScope.SINGLETON);
 
-    // Register the dual-protocol controller once with both discovery tags.
+    // Register the dual-protocol controller once: REST discovery tag + the
+    // MCP_SERVERS extension marker.
     this.bind('controllers.UsersController')
       .toClass(UsersController)
       .tag(REST_CONTROLLER_TAG)
-      .tag(MCP_SERVER_TAG);
+      .apply(extensionFor(MCP_SERVERS));
   }
 }
