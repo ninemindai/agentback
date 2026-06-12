@@ -1,6 +1,6 @@
 {
   "name": "@agentback/common",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Shared infra utils",
   "type": "module",
   "main": "dist/index.js",

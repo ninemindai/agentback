@@ -1,6 +1,6 @@
 {
   "name": "@agentback/extension-rate-limit",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Rate-limiting middleware (rate-limiter-flexible) — in-memory or Redis-backed, with 429 + RateLimit headers",
   "type": "module",
   "main": "dist/index.js",
