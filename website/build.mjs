@@ -210,7 +210,8 @@ function docShell({title, body, outPage}) {
     <title>${escapeHtml(title)} · AgentBack</title>
     <meta name="description" content="AgentBack documentation — ${escapeHtml(title)}" />
     <link rel="alternate" type="text/markdown" href="${mdHref}" />
-    <link rel="icon" type="image/svg+xml" href="${rel('logo.svg')}" />
+    <link rel="icon" type="image/png" href="${rel('logo.png')}" />
+    <link rel="apple-touch-icon" href="${rel('apple-touch-icon.png')}" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -222,7 +223,7 @@ function docShell({title, body, outPage}) {
   <body class="doc-page">
     <header class="site-header">
       <nav class="nav" aria-label="Primary">
-        <a class="brand" href="${rel('index.html')}"><img class="brand-mark" src="${rel('logo.svg')}" alt="" />AgentBack<span class="brand-dot">.dev</span></a>
+        <a class="brand" href="${rel('index.html')}"><img class="brand-mark" src="${rel('logo-mark.png')}" alt="" />AgentBack<span class="brand-dot">.dev</span></a>
         <div class="nav-links">
           <a href="${rel('docs/index.html')}">Docs</a>
           <a href="${rel('blog/index.html')}">Blog</a>
@@ -274,7 +275,14 @@ fs.rmSync(out, {recursive: true, force: true});
 fs.mkdirSync(out, {recursive: true});
 
 // 1. Homepage + shared assets.
-for (const asset of ['index.html', 'styles.css', 'logo.svg', 'banner.png']) {
+for (const asset of [
+  'index.html',
+  'styles.css',
+  'logo.png',
+  'logo-mark.png',
+  'apple-touch-icon.png',
+  'banner.png',
+]) {
   fs.copyFileSync(path.join(root, 'website', asset), path.join(out, asset));
 }
 write('CNAME', `${DOMAIN}\n`);

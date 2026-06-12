@@ -92,10 +92,9 @@ code {
 }
 
 .brand-mark {
-  border-radius: 6px;
-  height: 24px;
+  height: 21px;
   margin-right: 9px;
-  width: 24px;
+  width: auto;
 }
 
 .brand-dot {
