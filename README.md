@@ -38,13 +38,13 @@ The core product claim is **one schema, every boundary**. Compared with common
 Node/TypeScript service stacks, AgentBack optimizes for teams whose APIs
 are consumed by both applications and AI agents.
 
-| Stack              | Runtime contract | Service contract             | Agent/tool contract        |
-| ------------------ | ---------------- | ---------------------------- | -------------------------- |
-| Express + raw Zod  | Hand-wired Zod   | Hand-written OpenAPI         | Hand-written tool manifest |
-| tRPC               | Zod              | TypeScript-only              | Custom adapter             |
-| NestJS             | class-validator  | Swagger decorators           | Custom adapter             |
-| FastAPI            | Pydantic         | OpenAPI from the same models | Custom adapter             |
-| **AgentBack** | **Zod**          | **OpenAPI from same Zod**    | **MCP from same Zod**      |
+| Stack             | Runtime contract | Service contract             | Agent/tool contract        |
+| ----------------- | ---------------- | ---------------------------- | -------------------------- |
+| Express + raw Zod | Hand-wired Zod   | Hand-written OpenAPI         | Hand-written tool manifest |
+| tRPC              | Zod              | TypeScript-only              | Custom adapter             |
+| NestJS            | class-validator  | Swagger decorators           | Custom adapter             |
+| FastAPI           | Pydantic         | OpenAPI from the same models | Custom adapter             |
+| **AgentBack**     | **Zod**          | **OpenAPI from same Zod**    | **MCP from same Zod**      |
 
 Use it when you need HTTP APIs, MCP tools, docs, typed clients, policy checks,
 and usage rails to stay coherent as the system grows.
@@ -77,8 +77,8 @@ The DI framework is the foundation; everything else is built on it.
 
 ### DI foundation
 
-| Package                    | Role                                                                                                 |
-| -------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Package               | Role                                                                                                 |
+| --------------------- | ---------------------------------------------------------------------------------------------------- |
 | `@agentback/common`   | Shared logging, env, ID, redaction, and async helper utilities                                       |
 | `@agentback/metadata` | Decorator metadata utilities (port of `@loopback/metadata`)                                          |
 | `@agentback/context`  | DI container: `Context`, `Binding`, `@inject`, providers, interceptors (port of `@loopback/context`) |
@@ -86,8 +86,8 @@ The DI framework is the foundation; everything else is built on it.
 
 ### REST, MCP, and clients
 
-| Package                            | Role                                                                    |
-| ---------------------------------- | ----------------------------------------------------------------------- |
+| Package                       | Role                                                                    |
+| ----------------------------- | ----------------------------------------------------------------------- |
 | `@agentback/http-server`      | HTTP server with graceful stop (port of `@loopback/http-server`)        |
 | `@agentback/express`          | Express integration + middleware (port of `@loopback/express`)          |
 | `@agentback/openapi`          | Zod-first decorators + OpenAPI 3.1.1 emission                           |
@@ -104,8 +104,8 @@ The DI framework is the foundation; everything else is built on it.
 
 ### Platform components
 
-| Package                                 | Role                                                               |
-| --------------------------------------- | ------------------------------------------------------------------ |
+| Package                            | Role                                                               |
+| ---------------------------------- | ------------------------------------------------------------------ |
 | `@agentback/config`                | Zod-validated config loader with env overlays and DI bindings      |
 | `@agentback/security`              | User, subject, and principal primitives                            |
 | `@agentback/authentication`        | Authentication decorator and strategy pipeline                     |
@@ -138,17 +138,52 @@ pnpm -F hello-mcp test      # MCP over stdio (drives the server with a test clie
 pnpm -F hello-hybrid start  # REST + MCP from one process, both UIs
 ```
 
+## For coding agents (Claude Code, Codex, …)
+
+This repo ships an **agent skill** —
+[`skills/agentback`](skills/agentback) — that teaches a coding agent the
+framework's decorator patterns, slot-0 input-bundle convention, DI container,
+auth stack, and schema-sharing client, with task-scoped reference files the
+agent loads on demand. If you're building an app _with_ AgentBack and an
+agent is doing the typing, install the skill first; it encodes the conventions
+that aren't guessable from type signatures alone.
+
+**Claude Code** — copy the skill into your project (or `~/.claude/skills` to
+enable it for every project):
+
+```bash
+mkdir -p .claude/skills
+cp -R path/to/agentback/skills/agentback .claude/skills/agentback
+# or, straight from GitHub without cloning:
+npx -y degit ninemindai/agentback/skills/agentback .claude/skills/agentback
+```
+
+Claude Code discovers it automatically; it activates when a task mentions
+`@agentback/*` packages, the REST/MCP decorators, or hybrid Zod-shared apps.
+
+**Codex / other agents** — the skill is plain markdown with a YAML
+description. Point the agent at it from your instructions file (e.g.
+`AGENTS.md`):
+
+```markdown
+When working with @agentback/\* packages, first read
+skills/agentback/SKILL.md and the relevant file under
+skills/agentback/references/ (REST, MCP tools, DI, auth, client sharing,
+or composition) before writing code.
+```
+
+The skill's [`references/`](skills/agentback/references) directory splits the
+deep material by task — `rest-and-openapi.md`, `mcp-tools.md`,
+`dependency-injection.md`, `auth-and-rate-limiting.md`,
+`schema-sharing-and-client.md`, `composition-and-operations.md` — so agents
+pull only the context the current task needs.
+
 ## A 30-second feel
 
 ### DI container (works standalone, no HTTP needed)
 
 ```ts
-import {
-  Context,
-  BindingScope,
-  inject,
-  injectable,
-} from '@agentback/context';
+import {Context, BindingScope, inject, injectable} from '@agentback/context';
 import {Application} from '@agentback/core';
 
 @injectable({scope: BindingScope.SINGLETON})
