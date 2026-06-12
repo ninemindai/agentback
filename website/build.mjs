@@ -201,6 +201,7 @@ function docShell({title, body, outPage}) {
     return `<div class="nav-group">\n          <h2>${section.title}</h2>\n          ${items}\n        </div>`;
   }).join('\n        ');
 
+  const mdHref = `./${path.posix.basename(outPage, '.html')}.md`;
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -208,6 +209,7 @@ function docShell({title, body, outPage}) {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${escapeHtml(title)} · AgentBack</title>
     <meta name="description" content="AgentBack documentation — ${escapeHtml(title)}" />
+    <link rel="alternate" type="text/markdown" href="${mdHref}" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -236,7 +238,9 @@ ${body}
         <footer class="doc-footer">
           <p>
             MIT licensed · <a href="${GITHUB}">ninemindai/agentback</a> ·
-            built from the markdown in <a href="${GITHUB}/tree/main/docs">docs/</a>
+            built from the markdown in <a href="${GITHUB}/tree/main/docs">docs/</a> ·
+            <a href="${mdHref}">view as markdown</a> ·
+            <a href="${rel('llms.txt')}">llms.txt</a>
           </p>
         </footer>
       </main>
@@ -286,6 +290,80 @@ for (const src of DOC_PAGES) {
   body = rewriteHtmlLinks(body, path.posix.dirname(src), outPage);
   write(outPage, docShell({title, body, outPage}));
 }
+
+// 2a. Agent-facing artifacts: markdown mirrors of every docs page (served
+// next to the HTML), /llms.txt (annotated site map), /llms-full.txt (the
+// whole docs corpus in one fetch), and the agent skill at /skills/agentback.
+const SITE = `https://${DOMAIN}`;
+const docMeta = [];
+for (const src of DOC_PAGES) {
+  const md = fs.readFileSync(path.join(root, src), 'utf8');
+  const outPage = mapTarget(src);
+  const mdPage = outPage.replace(/\.html$/, '.md');
+  write(mdPage, md);
+  const title = (md.match(/^#\s+(.+)$/m) ?? [, src])[1].replace(/[*_`]/g, '');
+  const firstPara = (
+    md
+      .replace(/^---[\s\S]*?---/, '')
+      .split(/\n\n+/)
+      .map(p => p.trim())
+      .find(p => p && !/^[#>|`\-!\[]/.test(p)) ?? ''
+  )
+    .replace(/\s+/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
+  docMeta.push({src, mdPage, title, firstPara});
+}
+
+const llmsSections = NAV_SECTIONS.map(section => {
+  const lines = section.items.map(([src, label]) => {
+    const m = docMeta.find(d => d.src === src);
+    return `- [${label}](${SITE}/${m.mdPage}): ${m.firstPara}`;
+  });
+  return `## ${section.title}\n\n${lines.join('\n')}`;
+});
+write(
+  'llms.txt',
+  `# AgentBack
+
+> AgentBack is an AI-native API/MCP framework for TypeScript: REST endpoints,
+> MCP tools, OpenAPI 3.1 docs, typed clients, tests, and runtime validation
+> all share one Zod contract, on an ESM port of LoopBack 4's DI core.
+> Alpha. MIT. Source: ${GITHUB}
+
+Every page below is the raw markdown the HTML docs are built from.
+The full corpus in one file: ${SITE}/llms-full.txt
+
+${llmsSections.join('\n\n')}
+
+## Coding-agent skill
+
+- [SKILL.md](${SITE}/skills/agentback/SKILL.md): teaches an agent the
+  decorator patterns, slot-0 input bundle, DI, auth, and client conventions.
+  Install: \`npx skills add ninemindai/agentback\`
+
+## Blog
+
+- [Blog index](${SITE}/blog/index.html): design notes — boundary coherence,
+  errors agents can fix, tool-surface budgets, per-call pricing, schema-shared
+  clients.
+`,
+);
+
+write(
+  'llms-full.txt',
+  `# AgentBack — full documentation corpus\n# Source: ${GITHUB} · Site: ${SITE}\n\n` +
+    docMeta
+      .map(
+        d =>
+          `\n\n<!-- ===== ${SITE}/${d.mdPage} ===== -->\n\n${fs.readFileSync(path.join(root, d.src), 'utf8')}`,
+      )
+      .join(''),
+);
+
+copyDir(
+  path.join(root, 'skills', 'agentback'),
+  path.join(out, 'skills', 'agentback'),
+);
 
 // 2b. Doc diagram SVGs.
 fs.mkdirSync(path.join(out, 'diagrams'), {recursive: true});

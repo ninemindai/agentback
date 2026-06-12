@@ -1,6 +1,6 @@
 # Contributing to AgentBack
 
-Thanks for looking under the hood. The project is pre-alpha and moving fast;
+Thanks for looking under the hood. The project is in alpha and moving fast;
 this document keeps contributions cheap to review and safe to land.
 
 ## Setup

@@ -30,7 +30,8 @@ Swagger/Inspector-rendered docs.
 - **Policy, auth, metering, payments, messaging, and observability** as DI components
 - Built on the official `@modelcontextprotocol/sdk`
 
-Status: **pre-alpha**. End-to-end examples work; API surface still moving.
+Status: **alpha**. End-to-end examples and tests pass; the API surface is
+stabilizing but may still change between alpha releases.
 
 ## Positioning
 

@@ -68,8 +68,8 @@
             </a>
           </div>
           <p class="hero-status reveal d3">
-            <span class="status-dot"></span> pre-alpha · ESM-only · Node 22.13+
-            · TypeScript 6
+            <span class="status-dot"></span> alpha · ESM-only · Node 22.13+ ·
+            TypeScript 6
           </p>
         </div>
 
@@ -413,13 +413,43 @@
         </div>
       </section>
 
+      <!-- ===================== for coding agents ===================== -->
+      <section class="quickstart" aria-labelledby="agents-heading">
+        <div class="qs-copy">
+          <p class="eyebrow">For coding agents</p>
+          <h2 id="agents-heading">This site is agent-readable too</h2>
+          <p class="muted">
+            AgentBack's thesis is that your API's first reader is an agent — so
+            the docs practice it. Every docs page has a markdown mirror,
+            <a href="llms.txt">/llms.txt</a> maps the corpus,
+            <a href="llms-full.txt">/llms-full.txt</a> is the whole thing in one
+            fetch, and a repo
+            <a href="skills/agentback/SKILL.md">agent skill</a> teaches Claude
+            Code, Codex, Cursor, and 20+ other agents the framework's
+            conventions.
+          </p>
+        </div>
+        <figure class="hero-code" aria-label="Agent setup commands">
+          <figcaption>
+            <span class="dot r"></span><span class="dot a"></span
+            ><span class="dot g"></span>
+            <span class="filename">terminal</span>
+          </figcaption>
+          <pre><code><span class="cm"># install the AgentBack skill into your agent of choice</span>
+npx skills add ninemindai/agentback
+
+<span class="cm"># point an agent at the docs corpus</span>
+curl -s https://agentback.dev/llms.txt</code></pre>
+        </figure>
+      </section>
+
       <!-- ========================= quick start ========================= -->
       <section class="quickstart" aria-labelledby="qs-heading">
         <div class="qs-copy">
           <p class="eyebrow">Quick start</p>
           <h2 id="qs-heading">Run the examples in two minutes</h2>
           <p class="muted">
-            AgentBack is pre-alpha — the end-to-end examples work and the API
+            AgentBack is in alpha — the end-to-end examples work and the API
             surface is still moving. Clone the repo and run a working REST, MCP,
             or hybrid app, each with its explorer UI.
           </p>
