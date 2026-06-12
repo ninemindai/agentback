@@ -166,6 +166,23 @@ When `ncu` produces a result that won't build, prefer pinning back the offender 
 - **`pnpm-workspace.yaml` `allowBuilds`**: pnpm 11 requires per-package opt-in for postinstall scripts. The first install on a fresh machine writes `allowBuilds: { '<pkg>': set this to true or false }` placeholders into `pnpm-workspace.yaml`; replace `set this to ...` with `true` or `false` and rerun. Don't commit placeholders.
 - **`verify-deps-before-run=false`** is set in `.npmrc` — pnpm 11 otherwise re-runs `pnpm install` before each `pnpm <script>`, which fails on the supply-chain check inside scripts that don't need re-resolution.
 
+## Releasing
+
+Versioning is **lockstep**: every `@agentback/*` package + `create-agentback` shares one version and releases together. Internal deps use `workspace:~`, which pnpm rewrites to `~<version>` at publish time (so patches propagate to consumers; verify with `pnpm -F <pkg> pack` + inspect the packed `package.json`). To cut `X.Y.Z`:
+
+1. **Bump** every `packages/*/package.json` `version` to `X.Y.Z` (lockstep — do not bump one package alone; `create-agentback`'s scaffolded version range is derived from its own version).
+2. **Verify**: `pnpm install && pnpm build && pnpm test` all green.
+3. **Commit** (`chore(release): lockstep X.Y.Z`) and push.
+4. **Publish** (OTP-gated, so run interactively): `pnpm -r publish --access public --no-git-checks`. Publishes in dependency order and **skips versions already on the registry**, so re-running after an OTP timeout is safe.
+5. **Tag + push** — npm publish touches nothing in git, so tag the release commit and push it (otherwise the registry and repo history drift apart):
+   ```bash
+   git tag vX.Y.Z && git push origin vX.Y.Z
+   gh release create vX.Y.Z --latest --title vX.Y.Z --notes "…"   # optional, matches v0.1.0+
+   ```
+6. **Bump dependent repos** (e.g. the demo) to `^X.Y.Z` and re-verify against the published packages.
+
+Right after a publish, a consumer `npm install` can briefly 404 the new version (registry/CDN propagation lag) even though `npm view <pkg> version` shows it — retry with `--prefer-online` before assuming a partial release.
+
 ## Style
 
 `.prettierrc.json`: single quotes, no bracket spacing (`{foo}` not `{ foo }`), trailing commas everywhere, 80 col, arrow parens avoided when possible. ESLint flat config warns on `any` and unused vars (ignore via `_` prefix).
