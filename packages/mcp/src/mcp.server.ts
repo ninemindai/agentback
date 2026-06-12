@@ -212,7 +212,7 @@ export class MCPServer implements Server {
       user,
       reqCtx,
     );
-    const instance = (await this.resolveController(
+    const instance = (await this.resolveMember(
       resource.ctor,
       reqCtx,
     )) as Record<string, Function>;
@@ -251,7 +251,7 @@ export class MCPServer implements Server {
       user,
       reqCtx,
     );
-    const instance = (await this.resolveController(
+    const instance = (await this.resolveMember(
       prompt.ctor,
       reqCtx,
     )) as Record<string, Function>;
@@ -375,7 +375,7 @@ export class MCPServer implements Server {
       undefined,
       nonInjected,
     );
-    const instance = (await this.resolveController(
+    const instance = (await this.resolveMember(
       tool.ctor,
       reqCtx,
     )) as Record<string, Function>;
@@ -561,16 +561,26 @@ export class MCPServer implements Server {
     return out;
   }
 
-  private async resolveController<T = object>(
+  /**
+   * Resolve a tool/resource/prompt class instance. The class is discovered by
+   * its `@mcpServer` tag, so resolve it through that **same binding** — whatever
+   * namespace it lives in (`services.*`, `controllers.*`, or a manual
+   * `bind().tag(mcpServer)`). This runs constructor `@inject` and honors the
+   * binding's scope; the registration verb (`app.service`/`app.controller`/…) is
+   * irrelevant. `findByTag` walks the context chain, so a per-request child
+   * still finds app-level tool bindings, and `ctx.get` resolves request-scoped
+   * constructor injects against that child.
+   */
+  private async resolveMember<T = object>(
     ctor: Function,
     ctx: Context = this.context,
   ): Promise<T> {
-    // `isBound` (not `contains`) so a per-request child context still finds
-    // controllers bound on the app context up the chain.
-    if (ctx.isBound(`controllers.${ctor.name}`)) {
-      return ctx.get<T>(`controllers.${ctor.name}`);
-    }
-    // Fall back: a no-DI instantiation. Tools without dependencies still work.
+    const binding = ctx
+      .findByTag(MCP_SERVER_TAG)
+      .find(b => b.valueConstructor === ctor);
+    if (binding) return ctx.get<T>(binding.key);
+    // Safety net: a discovered tool always has a tagged binding, so this is only
+    // reached for a class invoked without one — instantiate with no DI.
     return new (ctor as new () => T)();
   }
 
