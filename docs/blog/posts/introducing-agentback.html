@@ -33,6 +33,18 @@
         </p>
 
         <p>
+          First, a word on why this exists. Thirteen years ago I co-created
+          LoopBack to make API development feel like declaring what you want
+          instead of wiring plumbing. Since then I've built large-scale
+          platforms — Collab.Land, and Faction's AI agent harness and deal-flow
+          systems — and the same failure followed me everywhere: the contract
+          an API enforces, the contract it documents, and the contract an agent
+          is given quietly stop being the same contract. AgentBack is my
+          attempt to make that drift structurally impossible, starting from the
+          DI core I know best.
+        </p>
+
+        <p>
           Modern backends are no longer consumed only by web apps and mobile
           apps. They are also consumed by AI agents that discover tools, inspect
           schemas, call APIs, retry failures, and compose services into longer
@@ -151,13 +163,51 @@ async getOrder(input: z.infer&lt;typeof OrderPath&gt;) {
           cover them in detail.
         </p>
 
+        <h2>AI-native means the tooling too</h2>
+        <p>
+          "AI-native" is an easy claim, so here is what it means concretely.
+          Most of this framework was written by coding agents, and the project
+          treats agents as first-class developers, not just first-class
+          callers. The docs site serves <code>/llms.txt</code> and a full
+          markdown mirror of every page, so an agent can read the corpus in one
+          fetch instead of scraping HTML.
+        </p>
+
+        <p>
+          More importantly, the repo ships an installable
+          <strong>agent skill</strong> — a structured playbook that teaches a
+          coding agent the framework's conventions: the schema-on-decorator
+          pattern, the slot-0 input bundle, how DI discovery works, the auth
+          stack, and how to share schemas with a typed client. These are
+          exactly the things an agent can't guess from type signatures. One
+          command installs it into Claude Code, Codex, Cursor, and 20+ other
+          agents:
+        </p>
+
+        <pre><code>npx skills add ninemindai/agentback</code></pre>
+
+        <p>
+          After that, asking your agent to "add a paid MCP tool with an
+          idempotency key" lands on the framework's conventions instead of an
+          improvised approximation of them. The framework's own development
+          works the same way — the agents that build it use the skill that
+          ships with it.
+        </p>
+
         <h2>Status</h2>
         <p>
-          AgentBack is in alpha. The examples work end to end, and the
-          package surface is still moving. The project is intentionally sharpest
-          for teams willing to adopt the core design rule now: put the schema on
-          the boundary, then let every transport and tool derive from it.
+          AgentBack is in alpha, and as of this week it is on npm: all
+          <code>@agentback/*</code> packages and the
+          <code>create-agentback</code> scaffolder are published at 0.1.0. The
+          examples work end to end, and the package surface is still moving.
+          The project is intentionally sharpest for teams willing to adopt the
+          core design rule now: put the schema on the boundary, then let every
+          transport and tool derive from it.
         </p>
+
+        <pre><code>npm install @agentback/core @agentback/rest @agentback/openapi zod
+# or scaffold a new app:
+npm create agentback@latest</code></pre>
 
         <div class="post-actions">
           <a class="button" href="../../../README.md">Read the README</a>
