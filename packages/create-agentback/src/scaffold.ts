@@ -2,7 +2,14 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {cpSync, existsSync, readFileSync, readdirSync, writeFileSync} from 'fs';
+import {
+  cpSync,
+  existsSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  writeFileSync,
+} from 'fs';
 import path from 'path';
 import {fileURLToPath} from 'url';
 
@@ -96,6 +103,13 @@ export function scaffold(options: ScaffoldOptions): ScaffoldResult {
   }
 
   cpSync(src, dir, {recursive: true});
+
+  // npm and pnpm strip a literal `.gitignore` from published tarballs, so the
+  // templates ship it as `gitignore`; restore the leading dot after copying.
+  const dotlessGitignore = path.join(dir, 'gitignore');
+  if (existsSync(dotlessGitignore)) {
+    renameSync(dotlessGitignore, path.join(dir, '.gitignore'));
+  }
 
   const version = options.version ?? ownVersion();
   const files = walk(dir);

@@ -37,6 +37,13 @@ describe('scaffold', () => {
     expect(result.files).toContain('tsconfig.json');
     expect(result.files.some(f => f.startsWith('src/'))).toBe(true);
     expect(result.files.some(f => f.includes('__tests__'))).toBe(true);
+    // The dot-less `gitignore` template file is restored to `.gitignore`
+    // (npm/pnpm strip a literal `.gitignore` from published tarballs).
+    expect(result.files).toContain('.gitignore');
+    expect(result.files).not.toContain('gitignore');
+    expect(readFileSync(path.join(result.dir, '.gitignore'), 'utf8')).toContain(
+      'node_modules/',
+    );
     // README mentions the app by name.
     const readme = readFileSync(path.join(result.dir, 'README.md'), 'utf8');
     expect(readme).toContain('my-service');
