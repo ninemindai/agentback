@@ -24,12 +24,12 @@
 
     <main class="post-layout">
       <article class="post-body">
-        <p class="post-meta">June 10, 2026</p>
+        <p class="post-meta">June 12, 2026</p>
         <h1>Introducing AgentBack</h1>
         <p class="lede">
-          AgentBack is a TypeScript framework for building agent-facing
-          services where REST endpoints, MCP tools, docs, typed clients, tests,
-          and runtime validation all share one Zod contract.
+          AgentBack is a TypeScript framework for building agent-facing services
+          where REST endpoints, MCP tools, docs, typed clients, tests, and
+          runtime validation all share one Zod contract.
         </p>
 
         <p>
@@ -37,12 +37,12 @@
           LoopBack to make API development feel like declaring what you want
           instead of wiring plumbing. Since then I've built large-scale
           platforms — Collab.Land, and Faction's AI agent harness and deal-flow
-          systems — and the same failure followed me everywhere: the contract
-          an API enforces, the contract it documents, and the contract an agent
-          is given quietly stop being the same contract. My conclusion:
-          LoopBack needs a refresh for the AI agent era. AgentBack is that
-          refresh — built on the DI core I know best, with the drift made
-          structurally impossible.
+          systems — and the same failure followed me everywhere: the contract an
+          API enforces, the contract it documents, and the contract an agent is
+          given quietly stop being the same contract. My conclusion: LoopBack
+          needs a refresh for the AI agent era. AgentBack is that refresh —
+          built on the DI core I know best, with the drift made structurally
+          impossible.
         </p>
 
         <p>
@@ -66,8 +66,8 @@
           beats a paragraph of prose. It is a <strong>constraint</strong> — a
           model can hallucinate an argument, but a validated boundary stops bad
           input before it reaches your handler. And it is a
-          <strong>contract</strong> — stable, diffable, testable, the thing
-          both sides can hold each other to.
+          <strong>contract</strong> — stable, diffable, testable, the thing both
+          sides can hold each other to.
         </p>
 
         <p>
@@ -86,8 +86,8 @@
 
         <h2>The shape</h2>
         <p>
-          An AgentBack application is one dependency-injection container.
-          REST controllers, MCP tool classes, services, config, auth strategies,
+          An AgentBack application is one dependency-injection container. REST
+          controllers, MCP tool classes, services, config, auth strategies,
           lifecycle observers, and servers are bindings. Servers discover the
           bindings they care about by tag.
         </p>
@@ -146,10 +146,10 @@ async getOrder(input: z.infer&lt;typeof OrderPath&gt;) {
         </p>
 
         <p>
-          AgentBack takes the FastAPI-style contract-coherence bet and
-          applies it to TypeScript services that must serve both humans and
-          agents. The differentiator is not REST alone, MCP alone, or DI alone.
-          It is the way those pieces share the same artifact.
+          AgentBack takes the FastAPI-style contract-coherence bet and applies
+          it to TypeScript services that must serve both humans and agents. The
+          differentiator is not REST alone, MCP alone, or DI alone. It is the
+          way those pieces share the same artifact.
         </p>
 
         <ul>
@@ -203,10 +203,10 @@ async getOrder(input: z.infer&lt;typeof OrderPath&gt;) {
         <p>
           "AI-native" is an easy claim, so here is what it means concretely.
           Most of this framework was written by coding agents, and the project
-          treats agents as first-class developers, not just first-class
-          callers. The docs site serves <code>/llms.txt</code> and a full
-          markdown mirror of every page, so an agent can read the corpus in one
-          fetch instead of scraping HTML.
+          treats agents as first-class developers, not just first-class callers.
+          The docs site serves <code>/llms.txt</code> and a full markdown mirror
+          of every page, so an agent can read the corpus in one fetch instead of
+          scraping HTML.
         </p>
 
         <p>
@@ -214,10 +214,9 @@ async getOrder(input: z.infer&lt;typeof OrderPath&gt;) {
           <strong>agent skill</strong> — a structured playbook that teaches a
           coding agent the framework's conventions: the schema-on-decorator
           pattern, the slot-0 input bundle, how DI discovery works, the auth
-          stack, and how to share schemas with a typed client. These are
-          exactly the things an agent can't guess from type signatures. One
-          command installs it into Claude Code, Codex, Cursor, and 20+ other
-          agents:
+          stack, and how to share schemas with a typed client. These are exactly
+          the things an agent can't guess from type signatures. One command
+          installs it into Claude Code, Codex, Cursor, and 20+ other agents:
         </p>
 
         <pre><code>npx skills add ninemindai/agentback</code></pre>
@@ -226,8 +225,8 @@ async getOrder(input: z.infer&lt;typeof OrderPath&gt;) {
           After that, asking your agent to "add a paid MCP tool with an
           idempotency key" lands on the framework's conventions instead of an
           improvised approximation of them. The framework's own development
-          works the same way — the agents that build it use the skill that
-          ships with it.
+          works the same way — the agents that build it use the skill that ships
+          with it.
         </p>
 
         <h2>Status</h2>
@@ -235,9 +234,9 @@ async getOrder(input: z.infer&lt;typeof OrderPath&gt;) {
           AgentBack is in alpha, and as of this week it is on npm: all
           <code>@agentback/*</code> packages and the
           <code>create-agentback</code> scaffolder are published at 0.1.0. The
-          examples work end to end, and the package surface is still moving.
-          The project is intentionally sharpest for teams willing to adopt the
-          core design rule now: put the schema on the boundary, then let every
+          examples work end to end, and the package surface is still moving. The
+          project is intentionally sharpest for teams willing to adopt the core
+          design rule now: put the schema on the boundary, then let every
           transport and tool derive from it.
         </p>
 
