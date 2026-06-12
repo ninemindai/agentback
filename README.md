@@ -158,16 +158,6 @@ npx skills add ninemindai/agentback -a claude-code -a codex -y
 npx skills add ninemindai/agentback -g -y      # user-global, all agents
 ```
 
-Or install manually — for Claude Code, copy the skill into your project (or
-`~/.claude/skills` to enable it for every project):
-
-```bash
-mkdir -p .claude/skills
-cp -R path/to/agentback/skills/agentback .claude/skills/agentback
-# or, straight from GitHub without cloning:
-npx -y degit ninemindai/agentback/skills/agentback .claude/skills/agentback
-```
-
 Once installed, the agent discovers it automatically; it activates when a task
 mentions `@agentback/*` packages, the REST/MCP decorators, or hybrid
 Zod-shared apps.
