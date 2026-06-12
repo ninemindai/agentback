@@ -59,6 +59,27 @@
           requirement, or trust a response shape that no longer exists.
         </p>
 
+        <p>
+          Why bet so heavily on schemas? Because a schema is three things to an
+          agent at once. It is <strong>knowledge</strong> — the tool contract is
+          the only documentation an agent reliably reads, and a precise one
+          beats a paragraph of prose. It is a <strong>constraint</strong> — a
+          model can hallucinate an argument, but a validated boundary stops bad
+          input before it reaches your handler. And it is a
+          <strong>contract</strong> — stable, diffable, testable, the thing
+          both sides can hold each other to.
+        </p>
+
+        <p>
+          Schema-first lost to code-first once already, and the reason was
+          honest: rigorous schemas are tedious, and developers are lazy — I say
+          that with affection, laziness is an engineering virtue. But the
+          economics flipped. Agents are tireless. When an agent writes and
+          maintains the schema, the cost of rigor drops to nearly zero, while
+          the value of rigor goes up, because the consumer on the other side of
+          the boundary is also a machine that takes the contract literally.
+        </p>
+
         <blockquote>
           The core product claim is simple: one schema, every boundary.
         </blockquote>
