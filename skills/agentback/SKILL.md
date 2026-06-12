@@ -10,7 +10,9 @@ description: >-
   voters, rate limiting, MCP-over-HTTP auth, or the agent runtime. Triggers on
   @agentback/core, RestApplication, MCPApplication, @api, @get, @tool,
   @mcpServer, installMcpHttp, @authenticate, @authorize, z.infer, or building a
-  hybrid REST+MCP app where both ends share the same Zod schemas.
+  hybrid REST+MCP app where both ends share the same Zod schemas. Also covers
+  scaffolding a new app with `npm create agentback` / the `create-agentback`
+  CLI (rest | mcp | hybrid templates).
 ---
 
 # Build REST + MCP Services with AgentBack
@@ -42,6 +44,44 @@ ESM-only, Node 22.13+, TypeScript 6, pnpm workspaces. **Relative imports use
    → Auth & rate limiting ([auth-and-rate-limiting.md](references/auth-and-rate-limiting.md))
 6. **Health/metrics, middleware, subclassing the dispatcher, packaging?** →
    Composition & operations ([composition-and-operations.md](references/composition-and-operations.md))
+
+## Getting Started: scaffold a new app
+
+Don't hand-write `package.json`/`tsconfig.json`. Scaffold with the
+`create-agentback` CLI — `npm create agentback` resolves to it:
+
+```bash
+npm create agentback my-service                       # hybrid (default)
+npm create agentback my-service -- --template rest    # REST only
+npm create agentback my-service -- --template mcp     # MCP only
+```
+
+The three templates are `hybrid` (default), `rest`, and `mcp`. **The `--`
+matters with npm** — `npm create` passes everything before `--` to itself, so
+`npm create agentback my-service --template rest` sends the flag to npm, not the
+scaffolder. With `pnpm`/`yarn`/`bun` the `--` is unnecessary
+(`pnpm create agentback my-service --template rest`). Short flag `-t` also works.
+
+The app name must be a valid npm package name; a scoped name like
+`@acme/my-service` creates the directory `my-service`. The CLI refuses to
+overwrite a non-empty directory, and detects your package manager (from npm's
+user-agent) to print the right next steps.
+
+Each template lands a complete, runnable workspace — `application.ts` +
+`main.ts`, a sample controller and/or tool class, a passing `vitest` test under
+`src/__tests__/`, `tsconfig.json`, and `vitest.config.ts`. The
+`@agentback/*` deps are pinned to a caret range. Then:
+
+```bash
+cd my-service
+npm install          # or pnpm/yarn/bun
+npm run build        # tsc — REQUIRED before test/start (tests run against dist/)
+npm start            # run the app
+npm test             # vitest
+```
+
+Programmatic use (e.g. from another tool) is available too — import `scaffold`
+from `create-agentback` and pass `{name, template?, cwd?, version?}`.
 
 ## Quick Start: a hybrid REST + MCP app from shared schemas
 
