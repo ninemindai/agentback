@@ -144,7 +144,7 @@ const app = new RestApplication();
 app.component(JWTAuthenticationComponent); // a feature bundle
 app.component(MCPComponent); // adds servers.MCPServer
 app.restController(GreetingController); // REST surface
-app.service(WeatherTools); // MCP surface (@mcpServer-tagged)
+app.controller(WeatherTools); // MCP surface — controller() so @inject resolves
 app.configure('servers.RestServer').to({port: 3000});
 await app.start(); // both servers up, controllers + tools discovered
 // … later

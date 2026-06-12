@@ -82,9 +82,16 @@ A `string` return is sent as text; a non-string is JSON-stringified.
 
 ## 3. Run the server
 
-Add `MCPComponent` (it binds `servers.MCPServer`), register your classes with
-`app.service(...)`, configure, start. The stdio transport is active by default —
-exactly what Claude Desktop and most local MCP clients speak.
+Add `MCPComponent` (it binds `servers.MCPServer`), register your tool classes
+with `app.controller(...)`, configure, start. The stdio transport is active by
+default — exactly what Claude Desktop and most local MCP clients speak.
+
+> **Controller, not service.** Register tool classes with `app.controller(...)`.
+> The dispatcher instantiates a tool through its `controllers.<name>` binding
+> (which resolves constructor `@inject`) and otherwise `new`s it with no DI —
+> see [§4](#4-dependency-injection-in-tools). `@mcpServer()` tags it for
+> discovery either way, so a dependency-free tool works as a service too, but
+> `controller()` is the safe default.
 
 ```ts
 import {RestApplication} from '@agentback/rest';
@@ -98,8 +105,8 @@ app.configure('servers.MCPServer').to({
   version: '1.0.0',
   // transports: {stdio: true},  // default; set false in tests/hybrid HTTP apps
 });
-app.service(MathTools);
-app.service(Docs);
+app.controller(MathTools);
+app.controller(Docs);
 await app.start(); // MCP server up, tools/resources/prompts registered
 ```
 
@@ -145,7 +152,7 @@ scopes.
 ## How discovery works
 
 `@mcpServer()` is sugar for `@bind({tags: {mcpServer: true}})`. When you call
-`app.service(MathTools)`, the framework reads that bind metadata and tags the
+`app.controller(MathTools)`, the framework reads that bind metadata and tags the
 binding `mcpServer` automatically — **you never call `.tag()`**. At
 `app.start()`, `MCPServer` queries the container for `mcpServer`-tagged
 bindings, reflects over their `@tool`/`@resource`/`@prompt` methods, and
@@ -153,12 +160,12 @@ registers each with the SDK.
 
 ```mermaid
 graph LR
-  D["@mcpServer() class"] -->|"app.service()"| B["binding [tag: mcpServer]"]
+  D["@mcpServer() class"] -->|"app.controller()"| B["binding [tag: mcpServer]"]
   B -->|"start(): findByTag"| M["MCPServer"]
   M -->|reflect @tool/@resource/@prompt| SDK["@modelcontextprotocol/sdk"]
 ```
 
-Consequence: adding a tool is adding a method (or a class + `app.service`).
+Consequence: adding a tool is adding a method (or a class + `app.controller`).
 Nothing central changes — the same composability as REST controllers.
 
 ## 4. Dependency injection in tools
@@ -178,6 +185,13 @@ class WeatherTools {
   }
 }
 ```
+
+Register an injected tool with **`app.controller(WeatherTools)`** — this is why.
+The dispatcher resolves the instance from its `controllers.<name>` binding,
+which runs constructor injection; a `app.service(...)`-bound tool falls back to
+`new WeatherTools()` and `this.api` comes back `undefined`. (A dual REST + MCP
+class — `@api` _and_ `@mcpServer` — needs **both** `restController` for the
+routes + injection binding and `service` for the MCP discovery tag.)
 
 ## 5. Inspect it: the MCP Inspector
 

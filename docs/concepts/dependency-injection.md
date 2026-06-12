@@ -161,18 +161,25 @@ const controllers = app.findByTag('restController'); // Binding[]
 You rarely call `.tag()` by hand. The class decorators put the tag in metadata,
 and the registration helpers apply it for you:
 
-| Helper                  | Tag applied                                 | Found by                |
-| ----------------------- | ------------------------------------------- | ----------------------- |
-| `app.restController(C)` | `restController`                            | `RestServer`            |
-| `app.service(C)`        | `service` (+ `mcpServer` if `@mcpServer()`) | DI / MCP server         |
-| `app.controller(C)`     | `controller`                                | (generic)               |
-| `app.component(C)`      | — (registers the component's bindings)      | —                       |
-| `app.server(C)`         | `server`                                    | `Application` lifecycle |
+| Helper                  | Tag applied                                        | Found by                                        |
+| ----------------------- | -------------------------------------------------- | ----------------------------------------------- |
+| `app.restController(C)` | `restController` (+ `mcpServer` if `@mcpServer()`) | `RestServer` (+ `MCPServer`)                    |
+| `app.controller(C)`     | `controller` (+ `mcpServer` if `@mcpServer()`)     | binds `controllers.<name>` → resolves `@inject` |
+| `app.service(C)`        | `service` (+ `mcpServer` if `@mcpServer()`)        | DI / MCP server (binds `services.<name>`)       |
+| `app.component(C)`      | — (registers the component's bindings)             | —                                               |
+| `app.server(C)`         | `server`                                           | `Application` lifecycle                         |
 
 `@mcpServer()` is literally `@bind({tags: {mcpServer: true}})`; when you
-`app.service(WeatherTools)`, the framework reads that metadata and tags the
+`app.controller(WeatherTools)`, the framework reads that metadata and tags the
 binding automatically — see the
 [MCP guide](../guides/build-an-mcp-server.md#how-discovery-works).
+
+**Register tool classes with `app.controller(C)`.** The MCP dispatcher
+instantiates a tool via its `controllers.<name>` binding (which runs constructor
+`@inject`); a `service`-bound tool is `new`-ed with no DI, so injected
+dependencies come back `undefined`. Discovery works through the `mcpServer` tag
+either way. A dual REST + MCP class (`@api` + `@mcpServer`) needs **both**
+`restController` (routes + injection binding) and `service` (the discovery tag).
 
 ## Configuration
 

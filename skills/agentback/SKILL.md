@@ -127,7 +127,7 @@ async function main() {
   const app = new RestApplication({});
   app.restController(GreetingController); // discovered by the REST server (tag)
   app.component(MCPComponent);
-  app.service(MathTools); // discovered by the MCP server (tag)
+  app.controller(MathTools); // tool classes are controllers (resolve @inject), not services
   await installMcpHttp(app); // POST/GET/DELETE /mcp on the same Express app
   await app.start();
   // REST  : GET /greet/hello/world, POST /greet/add, /openapi.json
@@ -176,6 +176,13 @@ if (isMain(import.meta)) await main();
 - **`@mcpServer()` is `@bind({tags:{mcpServer:true}})`** — `app.service()` /
   `app.controller()` read the class's bind metadata and tag automatically; never
   call `.tag()` manually for these.
+- **Register MCP tool classes with `app.controller()`, not `app.service()`.**
+  The dispatcher resolves a tool via its `controllers.<name>` binding (which
+  honors constructor `@inject`) and otherwise `new`s it with no DI — a
+  service-bound tool's injected deps come back `undefined`. A dual REST+MCP
+  class (`@api` + `@mcpServer`) needs **both** `restController` (routes +
+  injection) and `service` (the MCP discovery tag). See
+  [mcp-tools.md](references/mcp-tools.md).
 - **`express` stays on `^4`** here; the schema-typed `client` depends on nothing
   but `zod` (browser-safe).
 - Every source file carries the three-line MIT header

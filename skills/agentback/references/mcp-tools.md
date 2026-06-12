@@ -63,7 +63,19 @@ class WeatherTools {
 }
 ```
 
-Register it with `app.service(WeatherTools)` — same as any DI-managed class.
+Register it with **`app.controller(WeatherTools)`**, _not_ `app.service(...)`.
+The MCP dispatcher instantiates a tool class through its `controllers.<name>`
+binding (`MCPServer.resolveController`), which resolves constructor `@inject`; a
+service-bound class falls back to `new ctor()` with **no** DI, so `this.weather`
+would be `undefined`. `@mcpServer()` tags the class for discovery either way —
+the controller-vs-service choice only governs injection. (A tool with no
+constructor deps works as a service too, but `controller()` is the safe default.)
+
+**Dual REST + MCP class** (one class carrying both `@api` and `@mcpServer`):
+register it with **both** `app.restController(C)` _and_ `app.service(C)`.
+`restController` serves the routes and provides the `controllers.<name>` binding
+for `@inject`; `service` carries the `@mcpServer` discovery tag (`restController`
+tags it for REST only). Drop either and one surface goes dark.
 
 ## The `@tool` Decorator
 
@@ -176,7 +188,7 @@ class EchoTools {
 
 const app = new MCPApplication();
 app.configure('servers.MCPServer').to({name: 'my-server', version: '1.0.0'});
-app.service(EchoTools);
+app.controller(EchoTools); // controller, not service — see the rule above
 await app.start(); // blocks until stdin closes
 process.stderr.write('stdio transport ready\n'); // stderr only
 ```
@@ -209,7 +221,7 @@ import {installMcpHttp} from '@agentback/mcp-http';
 const app = new RestApplication();
 app.configure('servers.MCPServer').to({name: 'my-server', version: '1.0.0'});
 app.component(MCPComponent);
-app.service(MyTools);
+app.controller(MyTools); // controller, not service — resolves constructor @inject
 
 await installMcpHttp(app); // call before app.start()
 await app.start();
