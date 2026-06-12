@@ -2,6 +2,13 @@
   <a href="https://agentback.dev"><img src="https://agentback.dev/banner.png" alt="AgentBack — one schema, every boundary" width="720" /></a>
 </p>
 
+<p align="center">
+  <a href="https://www.npmjs.com/package/@agentback/core"><img src="https://img.shields.io/npm/v/%40agentback%2Fcore?label=npm&color=2563eb" alt="npm version" /></a>
+  <a href="https://github.com/ninemindai/agentback/actions/workflows/ci.yml"><img src="https://github.com/ninemindai/agentback/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/node/v/%40agentback%2Fcore?color=101b33" alt="Node version" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2563eb" alt="MIT license" /></a>
+</p>
+
 # AgentBack
 
 AgentBack is an **AI-native API/MCP framework for the agent era**, built with
