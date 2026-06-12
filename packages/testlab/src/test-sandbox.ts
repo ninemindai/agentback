@@ -2,7 +2,12 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {
+// `fs-extra` is CommonJS; native-ESM consumers (Vitest, `node --import`) can't
+// bind its named exports, so import the default and destructure.
+import fsExtra from 'fs-extra';
+import {join, parse, resolve} from 'path';
+
+const {
   appendFile,
   copy,
   emptyDir,
@@ -14,8 +19,7 @@ import {
   pathExists,
   readFile,
   remove,
-} from 'fs-extra';
-import {join, parse, resolve} from 'path';
+} = fsExtra;
 
 /**
  * Options for a test sandbox

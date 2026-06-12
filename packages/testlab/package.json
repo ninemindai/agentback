@@ -1,6 +1,6 @@
 {
   "name": "@agentback/testlab",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Test utilities (port of @loopback/testlab) — works under Vitest",
   "type": "module",
   "main": "dist/index.js",
@@ -13,7 +13,8 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "fixtures"
   ],
   "scripts": {
     "build": "tsc -b",

@@ -9,10 +9,18 @@ import {ListenOptions} from 'net';
 import path from 'path';
 
 const FIXTURES = path.resolve(import.meta.dirname, '../fixtures');
-const DUMMY_TLS_CONFIG = {
-  key: readFileSync(path.join(FIXTURES, 'key.pem')),
-  cert: readFileSync(path.join(FIXTURES, 'cert.pem')),
-};
+
+// Read the dummy key/cert lazily: only callers that ask for an `https` config
+// without their own TLS material need the fixtures. Reading at import time
+// would make merely importing this module (e.g. via `@agentback/testing`)
+// fail whenever the fixtures aren't on disk.
+let dummyTlsConfig: {key: Buffer; cert: Buffer} | undefined;
+function getDummyTlsConfig(): {key: Buffer; cert: Buffer} {
+  return (dummyTlsConfig ??= {
+    key: readFileSync(path.join(FIXTURES, 'key.pem')),
+    cert: readFileSync(path.join(FIXTURES, 'cert.pem')),
+  });
+}
 
 export interface HttpOptions extends ListenOptions {
   protocol?: 'http';
@@ -73,7 +81,7 @@ export function givenHttpServerConfig<T extends HttpOptions | HttpsOptions>(
 function setupTlsConfig(config: HttpsServerOptions) {
   if ('key' in config && 'cert' in config) return;
   if ('pfx' in config) return;
-  Object.assign(config, DUMMY_TLS_CONFIG);
+  Object.assign(config, getDummyTlsConfig());
 }
 
 /**
