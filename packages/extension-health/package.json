@@ -1,6 +1,6 @@
 {
   "name": "@agentback/extension-health",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Health and readiness HTTP endpoints (k8s-shape probes)",
   "type": "module",
   "main": "dist/index.js",

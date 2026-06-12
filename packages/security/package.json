@@ -1,6 +1,6 @@
 {
   "name": "@agentback/security",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Security primitives (UserProfile, Subject, principals) — ported from @loopback/security",
   "type": "module",
   "main": "dist/index.js",
