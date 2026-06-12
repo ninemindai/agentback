@@ -8,6 +8,7 @@ import {
   readFileSync,
   readdirSync,
   renameSync,
+  rmSync,
   writeFileSync,
 } from 'fs';
 import path from 'path';
@@ -15,6 +16,9 @@ import {fileURLToPath} from 'url';
 
 export const TEMPLATES = ['hybrid', 'rest', 'mcp'] as const;
 export type TemplateName = (typeof TEMPLATES)[number];
+
+/** Templates with an HTTP server that can host the `/console` dev UI. */
+export const CONSOLE_TEMPLATES: readonly TemplateName[] = ['hybrid', 'rest'];
 
 export interface ScaffoldOptions {
   /** App name — becomes the directory and package name. */
@@ -28,6 +32,12 @@ export interface ScaffoldOptions {
    * range of this package's own version (templates carry `{{version}}`).
    */
   version?: string;
+  /**
+   * Mount the unified dev console (`@agentback/console`) at `/console` in place
+   * of the standalone explorer/inspector mounts. Only valid for the `hybrid`
+   * and `rest` templates (the stdio `mcp` template has no HTTP server).
+   */
+  console?: boolean;
 }
 
 export interface ScaffoldResult {
@@ -75,6 +85,47 @@ function walk(dir: string, base = dir): string[] {
 }
 
 /**
+ * Replace the standalone explorer/inspector deps with `@agentback/console`,
+ * which composes them into one mounted UI. Leaves `{{version}}` in place for
+ * the substitution pass. Writes plain 2-space JSON (the scaffolded app, not a
+ * linted workspace file).
+ */
+function retargetDepsToConsole(dir: string, template: TemplateName): void {
+  const pkgPath = path.join(dir, 'package.json');
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as {
+    dependencies?: Record<string, string>;
+  };
+  const drop =
+    template === 'hybrid'
+      ? ['@agentback/rest-explorer', '@agentback/mcp-inspector']
+      : ['@agentback/rest-explorer'];
+  const kept = Object.entries(pkg.dependencies ?? {}).filter(
+    ([k]) => !drop.includes(k),
+  );
+  // Place `@agentback/console` ahead of the other @agentback deps.
+  const at = kept.findIndex(([k]) => k.startsWith('@agentback/'));
+  kept.splice(at < 0 ? kept.length : at, 0, [
+    '@agentback/console',
+    '{{version}}',
+  ]);
+  pkg.dependencies = Object.fromEntries(kept);
+  writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+}
+
+/** Point the README's URL hints at `/console` instead of the explorers. */
+function retargetReadmeToConsole(dir: string): void {
+  const readmePath = path.join(dir, 'README.md');
+  if (!existsSync(readmePath)) return;
+  const text = readFileSync(readmePath, 'utf8')
+    .replace('REST + Swagger UI at /explorer', 'REST + dev console at /console')
+    .replace(
+      '`GET /explorer` (Swagger UI) · `GET /mcp-inspector` · `POST /mcp` (MCP HTTP)',
+      '`GET /console` (dev console) · `POST /mcp` (MCP HTTP)',
+    );
+  writeFileSync(readmePath, text);
+}
+
+/**
  * Copy a template into `<cwd>/<name>` with `{{name}}`/`{{version}}`
  * substitution. Refuses to overwrite an existing non-empty directory.
  */
@@ -89,6 +140,12 @@ export function scaffold(options: ScaffoldOptions): ScaffoldResult {
   if (!TEMPLATES.includes(template)) {
     throw new Error(
       `Unknown template '${template}'. Available: ${TEMPLATES.join(', ')}.`,
+    );
+  }
+  if (options.console && !CONSOLE_TEMPLATES.includes(template)) {
+    throw new Error(
+      `--console is not supported for the '${template}' template; the console ` +
+        `needs an HTTP server. Use --template ${CONSOLE_TEMPLATES.join(' or ')}.`,
     );
   }
   const src = path.join(templatesRoot(), template);
@@ -109,6 +166,20 @@ export function scaffold(options: ScaffoldOptions): ScaffoldResult {
   const dotlessGitignore = path.join(dir, 'gitignore');
   if (existsSync(dotlessGitignore)) {
     renameSync(dotlessGitignore, path.join(dir, '.gitignore'));
+  }
+
+  // Console-capable templates ship a `src/main.console.ts` overlay next to the
+  // default `src/main.ts`. With --console, swap it in and retarget deps + docs
+  // from the standalone explorers to `@agentback/console`; otherwise drop it.
+  const consoleEntry = path.join(dir, 'src', 'main.console.ts');
+  if (existsSync(consoleEntry)) {
+    if (options.console) {
+      renameSync(consoleEntry, path.join(dir, 'src', 'main.ts'));
+      retargetDepsToConsole(dir, template);
+      retargetReadmeToConsole(dir);
+    } else {
+      rmSync(consoleEntry);
+    }
   }
 
   const version = options.version ?? ownVersion();

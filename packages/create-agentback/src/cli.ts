@@ -13,10 +13,11 @@ import {
 const USAGE = `create-agentback — scaffold an AgentBack app
 
 Usage:
-  npm create agentback <name> [-- --template ${TEMPLATES.join('|')}]
+  npm create agentback <name> [-- --template ${TEMPLATES.join('|')}] [--console]
 
 Options:
   -t, --template <name>   Template: ${TEMPLATES.join(', ')} (default: hybrid)
+  -c, --console           Mount the dev console at /console (hybrid|rest only)
   -h, --help              Show this help
 `;
 
@@ -29,6 +30,7 @@ function fail(msg: string): never {
 const args = process.argv.slice(2);
 let name: string | undefined;
 let template: TemplateName | undefined;
+let withConsole = false;
 
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
@@ -39,6 +41,8 @@ for (let i = 0; i < args.length; i++) {
     template = args[++i] as TemplateName;
   } else if (a.startsWith('--template=')) {
     template = a.slice('--template='.length) as TemplateName;
+  } else if (a === '-c' || a === '--console') {
+    withConsole = true;
   } else if (a.startsWith('-')) {
     fail(`unknown option '${a}'`);
   } else if (!name) {
@@ -51,7 +55,7 @@ for (let i = 0; i < args.length; i++) {
 if (!name) fail('missing app name');
 
 try {
-  const result = scaffold({name, template});
+  const result = scaffold({name, template, console: withConsole});
   const pm = detectPackageManager();
   const run = pm === 'npm' ? 'npm run' : pm;
   console.log(
@@ -64,6 +68,9 @@ try {
     `  ${run} build && ${pm === 'npm' ? 'npm start' : `${pm} start`}`,
   );
   console.log(`  ${pm} test\n`);
+  if (withConsole) {
+    console.log(`Dev console mounts at the /console path printed on start.\n`);
+  }
 } catch (err) {
   fail((err as Error).message);
 }

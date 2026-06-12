@@ -2,7 +2,14 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {mkdtempSync, readFileSync, rmSync, mkdirSync, writeFileSync} from 'fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  mkdirSync,
+  writeFileSync,
+} from 'fs';
 import {tmpdir} from 'os';
 import path from 'path';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
@@ -96,5 +103,60 @@ describe('scaffold', () => {
     mkdirSync(path.join(cwd, 'taken'));
     writeFileSync(path.join(cwd, 'taken', 'f.txt'), 'x');
     expect(() => scaffold({name: 'taken', cwd})).toThrow(/not empty/);
+  });
+
+  it('drops the console overlay from a default scaffold', () => {
+    const {dir, files} = scaffold({name: 'plain', template: 'hybrid', cwd});
+    expect(files).toContain('src/main.ts');
+    expect(files).not.toContain('src/main.console.ts');
+    const main = readFileSync(path.join(dir, 'src/main.ts'), 'utf8');
+    expect(main).toContain('installExplorer');
+    expect(main).not.toContain('@agentback/console');
+    const pkg = JSON.parse(
+      readFileSync(path.join(dir, 'package.json'), 'utf8'),
+    );
+    expect(pkg.dependencies['@agentback/console']).toBeUndefined();
+    expect(pkg.dependencies['@agentback/rest-explorer']).toBeDefined();
+  });
+
+  it.each(['hybrid', 'rest'] as const)(
+    'wires the console for the %s template with --console',
+    template => {
+      const {dir, files} = scaffold({
+        name: 'svc',
+        template,
+        console: true,
+        cwd,
+      });
+      // The overlay became main.ts; no leftover overlay file.
+      expect(files).toContain('src/main.ts');
+      expect(files).not.toContain('src/main.console.ts');
+      const main = readFileSync(path.join(dir, 'src/main.ts'), 'utf8');
+      expect(main).toContain('installConsole');
+      expect(main).toContain('@agentback/console');
+      expect(main).not.toContain('installExplorer');
+      // Deps swapped: console in, standalone explorers out (no {{version}}).
+      const pkg = JSON.parse(
+        readFileSync(path.join(dir, 'package.json'), 'utf8'),
+      );
+      expect(pkg.dependencies['@agentback/console']).toBeDefined();
+      expect(pkg.dependencies['@agentback/console']).not.toContain('{{');
+      expect(pkg.dependencies['@agentback/rest-explorer']).toBeUndefined();
+      if (template === 'hybrid') {
+        expect(pkg.dependencies['@agentback/mcp-inspector']).toBeUndefined();
+      }
+      // README points at /console, not the explorers.
+      const readme = readFileSync(path.join(dir, 'README.md'), 'utf8');
+      expect(readme).toContain('/console');
+      expect(readme).not.toContain('/explorer');
+    },
+  );
+
+  it('rejects --console for the stdio mcp template', () => {
+    expect(() =>
+      scaffold({name: 'x', template: 'mcp', console: true, cwd}),
+    ).toThrow(/--console is not supported/);
+    // And does not leave a partial directory behind.
+    expect(existsSync(path.join(cwd, 'x'))).toBe(false);
   });
 });
