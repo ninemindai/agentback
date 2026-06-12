@@ -82,11 +82,20 @@ code {
 }
 
 .brand {
+  align-items: center;
   color: var(--ink);
+  display: inline-flex;
   font-family: var(--serif);
   font-size: 21px;
   font-weight: 640;
   text-decoration: none;
+}
+
+.brand-mark {
+  border-radius: 6px;
+  height: 24px;
+  margin-right: 9px;
+  width: 24px;
 }
 
 .brand-dot {

@@ -1,3 +1,7 @@
+<p align="center">
+  <a href="https://agentback.dev"><img src="https://agentback.dev/banner.png" alt="AgentBack — one schema, every boundary" width="720" /></a>
+</p>
+
 # AgentBack
 
 AgentBack is an **AI-native API/MCP framework for the agent era**, built with
