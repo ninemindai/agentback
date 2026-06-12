@@ -17,20 +17,28 @@ import {MCPComponent} from '../../mcp.component.js';
 import {MCPServer} from '../../mcp.server.js';
 import {
   MCPKeys,
-  MCP_SERVER_TAG,
+  MCP_SERVERS,
   PromptMetadata,
   ResourceMetadata,
   ToolMetadata,
 } from '../../keys.js';
-import {getBindingMetadata, inject} from '@agentback/context';
+import {
+  createBindingFromClass,
+  getBindingMetadata,
+  inject,
+} from '@agentback/context';
+import {extensionFilter} from '@agentback/core';
 
 describe('@mcpServer', () => {
-  it('tags the class with mcpServer via @bind metadata', () => {
+  it('marks the class as an MCP_SERVERS extension via @injectable', () => {
     @mcpServer()
     class Tools {}
     const meta = getBindingMetadata(Tools);
     expect(meta?.templates?.length).toBeGreaterThan(0);
     expect(meta?.target).toBe(Tools);
+    // The injectable template tags it `extensionFor: MCP_SERVERS`.
+    const binding = createBindingFromClass(Tools);
+    expect(extensionFilter(MCP_SERVERS)(binding)).toBe(true);
   });
 
   it('accepts an optional name', () => {
@@ -180,9 +188,9 @@ describe('@prompt', () => {
   });
 });
 
-describe('MCP_SERVER_TAG export', () => {
-  it('exports the canonical tag string used by createServiceBinding', () => {
-    expect(MCP_SERVER_TAG).toBe('mcpServer');
+describe('MCP_SERVERS extension point', () => {
+  it('exports the canonical extension-point name', () => {
+    expect(MCP_SERVERS).toBe('mcpServers');
   });
 });
 

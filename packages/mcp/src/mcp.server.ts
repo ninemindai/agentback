@@ -17,7 +17,7 @@ import {
   type AuthorizationMetadata,
 } from '@agentback/authorization';
 import {SecurityBindings, type UserProfile} from '@agentback/security';
-import {CoreBindings, Server} from '@agentback/core';
+import {CoreBindings, extensionFilter, Server} from '@agentback/core';
 import {MetadataInspector} from '@agentback/metadata';
 import {
   buildErrorEnvelope,
@@ -45,7 +45,7 @@ import {
 import type {ZodType} from 'zod';
 import {
   MCP_DISPATCH_HOOK_TAG,
-  MCP_SERVER_TAG,
+  MCP_SERVERS,
   MCPBindings,
   MCPKeys,
   noopProgress,
@@ -506,7 +506,7 @@ export class MCPServer implements Server {
 
   private collectAllTools(): ToolBinding[] {
     const out: ToolBinding[] = [];
-    for (const b of this.context.findByTag(MCP_SERVER_TAG)) {
+    for (const b of this.context.find(extensionFilter(MCP_SERVERS))) {
       const ctor = b.valueConstructor;
       if (typeof ctor !== 'function') continue;
       const tools =
@@ -527,7 +527,7 @@ export class MCPServer implements Server {
     meta: ResourceMetadata;
   }[] {
     const out: {ctor: Function; meta: ResourceMetadata}[] = [];
-    for (const b of this.context.findByTag(MCP_SERVER_TAG)) {
+    for (const b of this.context.find(extensionFilter(MCP_SERVERS))) {
       const ctor = b.valueConstructor;
       if (typeof ctor !== 'function') continue;
       const resources =
@@ -545,7 +545,7 @@ export class MCPServer implements Server {
 
   private collectAllPrompts(): {ctor: Function; meta: PromptMetadata}[] {
     const out: {ctor: Function; meta: PromptMetadata}[] = [];
-    for (const b of this.context.findByTag(MCP_SERVER_TAG)) {
+    for (const b of this.context.find(extensionFilter(MCP_SERVERS))) {
       const ctor = b.valueConstructor;
       if (typeof ctor !== 'function') continue;
       const prompts =
@@ -576,7 +576,7 @@ export class MCPServer implements Server {
     ctx: Context = this.context,
   ): Promise<T> {
     const binding = ctx
-      .findByTag(MCP_SERVER_TAG)
+      .find(extensionFilter(MCP_SERVERS))
       .find(b => b.valueConstructor === ctor);
     if (binding) return ctx.get<T>(binding.key);
     // Safety net: a discovered tool always has a tagged binding, so this is only

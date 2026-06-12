@@ -89,7 +89,12 @@ export namespace MCPBindings {
   );
 }
 
-export const MCP_SERVER_TAG = 'mcpServer';
+/**
+ * Extension-point name for classes that contribute MCP tools/resources/prompts.
+ * `@mcpServer()` tags a class `extensionFor: MCP_SERVERS`; the server discovers
+ * them with `extensionFilter(MCP_SERVERS)`.
+ */
+export const MCP_SERVERS = 'mcpServers';
 
 /**
  * Binding tag for {@link McpDispatchHook} values. Bind a hook value and tag

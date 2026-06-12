@@ -5,7 +5,8 @@
 import {describe, expect, it} from 'vitest';
 import {z} from 'zod';
 import {inject} from '@agentback/context';
-import {Application} from '@agentback/core';
+import {Application, extensionFor} from '@agentback/core';
+import {MCP_SERVERS} from '../../keys.js';
 import {MCPComponent} from '../../mcp.component.js';
 import {MCPServer} from '../../mcp.server.js';
 import {mcpServer, tool} from '../../decorators/index.js';
@@ -58,9 +59,12 @@ describe('MCP tool constructor injection is namespace-independent', () => {
     expect(await server.callTool('greet', {})).toEqual({msg: 'injected'});
   });
 
-  it('injects via a manual bind().tag(mcpServer)', async () => {
+  it('injects via a manual bind().apply(extensionFor(MCP_SERVERS))', async () => {
     const server = await serverWith(app =>
-      app.bind('tools.injected').toClass(InjectedTools).tag('mcpServer'),
+      app
+        .bind('tools.injected')
+        .toClass(InjectedTools)
+        .apply(extensionFor(MCP_SERVERS)),
     );
     expect(await server.callTool('greet', {})).toEqual({msg: 'injected'});
   });
