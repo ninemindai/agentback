@@ -1,6 +1,6 @@
 ---
-name: AgentBack
-description:
+name: agentback
+description: >-
   Build HTTP (REST) and MCP services from one Zod schema set and one DI
   container with AgentBack — an ESM/Zod/MCP fork of LoopBack 4. Use when
   building TypeScript/Node.js apps with @agentback/* packages: Zod-first
@@ -101,17 +101,17 @@ if (isMain(import.meta)) await main();
 
 | Concept             | Key APIs                                                                       | Notes                                                                                                                                     |
 | ------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| DI container        | `Context`, `BindingKey.create<T>()`, `@inject`, `@injectable`                  | Ported from `@loopback/core`; import from `@agentback/core`                                                                          |
+| DI container        | `Context`, `BindingKey.create<T>()`, `@inject`, `@injectable`                  | Ported from `@loopback/core`; import from `@agentback/core`                                                                               |
 | App + servers       | `RestApplication`, `MCPApplication`, `Application`, `Server`                   | `RestApplication` for HTTP (REST + MCP-over-HTTP); `MCPApplication` for a stdio MCP server. Servers discover bindings by tag at `start()` |
 | Components          | `Component` with `components[]` / `services[]` / `bindings[]`                  | Composable packaging; `app.component(X)`                                                                                                  |
 | REST routing        | `@api`, `@get/@post/@put/@patch/@del`, `{path,query,body,headers,response}`    | Zod on the decorator; slot 0 = validated input bundle                                                                                     |
 | MCP tools           | `@mcpServer`, `@tool('name', {input, output, scope?})`, `@resource`, `@prompt` | Zod on the decorator; stdio + HTTP transport                                                                                              |
 | OpenAPI             | emitted from Zod via `z.toJSONSchema({target:'draft-2020-12'})`                | `/openapi.json`, Swagger at `/explorer`                                                                                                   |
-| Schema-typed client | `@agentback/client` (`defineRoute`, `routeGroup`, `safeCall`)             | Browser-safe; shares the SAME Zod schemas; no codegen                                                                                     |
+| Schema-typed client | `@agentback/client` (`defineRoute`, `routeGroup`, `safeCall`)                  | Browser-safe; shares the SAME Zod schemas; no codegen                                                                                     |
 | Auth                | `@authenticate('jwt'\|'api-key'\|...)`, `@authorize({...})`, voters            | Strategies + voter pipeline; client-app scope governance                                                                                  |
 | Rate limiting       | `installRateLimit(app)`, per-tool limits for MCP-over-HTTP                     | `rate-limiter-flexible`; in-memory or Redis                                                                                               |
 | Operations          | `app.middleware()`, `installHealth`, `installMetrics`, CORS                    | Subclass `RestServer.dispatch`/`sendResult`/`sendError` for deep changes                                                                  |
-| Agent runtime       | `@agentback/agent-*` + `agent-messaging`                                  | LLM agent stack on the DI substrate: engine + triggers, turn loop, tools, durable jobs                                                    |
+| Agent runtime       | `@agentback/agent-*` + `agent-messaging`                                       | LLM agent stack on the DI substrate: engine + triggers, turn loop, tools, durable jobs                                                    |
 
 ## Key Rules
 

@@ -148,8 +148,17 @@ agent loads on demand. If you're building an app _with_ AgentBack and an
 agent is doing the typing, install the skill first; it encodes the conventions
 that aren't guessable from type signatures alone.
 
-**Claude Code** — copy the skill into your project (or `~/.claude/skills` to
-enable it for every project):
+The easiest install is [skills.sh](https://skills.sh), which supports Claude
+Code, Codex, Cursor, Copilot, Gemini, and 20+ other agents:
+
+```bash
+npx skills add ninemindai/agentback            # pick agents interactively
+npx skills add ninemindai/agentback -a claude-code -a codex -y
+npx skills add ninemindai/agentback -g -y      # user-global, all agents
+```
+
+Or install manually — for Claude Code, copy the skill into your project (or
+`~/.claude/skills` to enable it for every project):
 
 ```bash
 mkdir -p .claude/skills
@@ -158,10 +167,11 @@ cp -R path/to/agentback/skills/agentback .claude/skills/agentback
 npx -y degit ninemindai/agentback/skills/agentback .claude/skills/agentback
 ```
 
-Claude Code discovers it automatically; it activates when a task mentions
-`@agentback/*` packages, the REST/MCP decorators, or hybrid Zod-shared apps.
+Once installed, the agent discovers it automatically; it activates when a task
+mentions `@agentback/*` packages, the REST/MCP decorators, or hybrid
+Zod-shared apps.
 
-**Codex / other agents** — the skill is plain markdown with a YAML
+**Agents without skill support** — the skill is plain markdown with a YAML
 description. Point the agent at it from your instructions file (e.g.
 `AGENTS.md`):
 
