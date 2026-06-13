@@ -4,7 +4,7 @@
 
 ### Adopt AgentError across the demo and examples once released
 
-**What:** After a release ships `AgentError` (added in `@agentback/openapi`, commit `9cc545a`, unreleased as of 0.1.2), replace the hand-rolled error shape in the demo's `WeatherError` with `extends AgentError`, and adopt `AgentError` in `examples/` services that throw client-correctable errors.
+**What:** `AgentError` (added in `@agentback/openapi`, commit `9cc545a`) shipped in **0.2.0** — this is now actionable: replace the hand-rolled error shape in the demo's `WeatherError` with `extends AgentError`, and adopt `AgentError` in `examples/` services that throw client-correctable errors.
 
 **Why:** The demo's `WeatherService.WeatherError` currently hand-rolls the same `statusCode`/`code`/`publicMessage`/`retryable` fields that `AgentError` now provides (done deliberately so the demo keeps building against the published 0.1.2). Once `AgentError` is on npm, `extends AgentError` deletes that duplication and makes the demo the canonical example of the framework's client-error primitive — the same "flagship demo should use the supported path" argument that drove the createTestApp conversion.
 
@@ -12,4 +12,4 @@
 
 **Effort:** S
 **Priority:** P3
-**Depends on:** Next `@agentback/*` release that includes `AgentError` (>= 0.1.3)
+**Depends on:** Satisfied — `AgentError` is published in `@agentback/*` 0.2.0.

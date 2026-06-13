@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-ESM/Zod/MCP fork of LoopBack 4 — a slim modern subset of `@loopback/core` + REST for building HTTP and MCP services out of the same DI container. ESM-only, Node 22.13+, TypeScript 6.0, pnpm 11 workspaces. Alpha (v0.1.2 published to npm — all `@agentback/*` packages + the `create-agentback` scaffolder); API still settling. Scaffold a new app with `npm create agentback my-service [--template rest|mcp|hybrid]`.
+ESM/Zod/MCP fork of LoopBack 4 — a slim modern subset of `@loopback/core` + REST for building HTTP and MCP services out of the same DI container. ESM-only, Node 22.13+, TypeScript 6.0, pnpm 11 workspaces. Alpha (v0.2.0 published to npm — all `@agentback/*` packages + the `create-agentback` scaffolder); API still settling. Scaffold a new app with `npm create agentback my-service [--template rest|mcp|hybrid]`.
 
 For the framework's design thesis (boundary coherence between Zod, OpenAPI, MCP, and DI — and why that matters for AI-led development), see [docs/agent-ergonomics.md](docs/agent-ergonomics.md). Read it before adding a feature that might introduce a second source of truth alongside the Zod schemas.
 
