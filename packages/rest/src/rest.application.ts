@@ -4,8 +4,12 @@
 
 import {Application, ApplicationConfig} from '@agentback/core';
 import {MiddlewareMixin} from '@agentback/express';
+import {loggers} from '@agentback/common';
 import {RestServer} from './rest.server.js';
 import {RestBindings, REST_CONTROLLER_TAG} from './keys.js';
+import type {RestServerConfig} from './types.js';
+
+const log = loggers('agentback:rest:application');
 
 /**
  * Convenience Application subclass that pre-registers a RestServer, tags
@@ -18,14 +22,43 @@ export class RestApplication extends MiddlewareMixin(Application) {
   constructor(config?: ApplicationConfig) {
     super(config);
     this.server(RestServer);
-    // The constructor's `rest` key is the ergonomic way to configure the
-    // RestServer (`new RestApplication({rest: {port}})`). Forward it to the
-    // server's config binding — otherwise it lands in APPLICATION_CONFIG and
-    // is silently ignored, since RestServer reads `@config()` off its own
-    // `servers.RestServer` binding. Runs before any later
-    // `app.configure(RestBindings.SERVER)`, so explicit reconfiguration wins.
-    if (config?.rest != null) {
-      this.configure(RestBindings.SERVER).to(config.rest);
+    // Resolve the RestServer config from three sources, highest precedence
+    // first:
+    //   1. the explicit `rest` config passed to the constructor (code intent)
+    //   2. the PORT / HOST environment variables (12-factor deploys: a platform
+    //      like Cloud Run / Heroku assigns $PORT and expects the app to bind it)
+    //   3. RestServer's own defaults (port 3000, host 127.0.0.1)
+    // Env only fills a field the caller LEFT UNSET, so an explicit
+    // `new RestApplication({rest: {port}})` is never overridden by a stray env.
+    const rest: RestServerConfig = {
+      ...(config?.rest as RestServerConfig | undefined),
+    };
+
+    if (rest.port == null) {
+      const envPort = process.env.PORT;
+      if (envPort != null && envPort !== '') {
+        const parsed = Number(envPort);
+        // Accept 0 (ephemeral) through 65535; reject NaN / out-of-range so a
+        // malformed PORT surfaces loudly instead of silently binding 3000.
+        if (Number.isInteger(parsed) && parsed >= 0 && parsed <= 65535) {
+          rest.port = parsed;
+        } else {
+          log.warn(
+            'Ignoring invalid PORT env var %j (expected an integer 0-65535); ' +
+              'falling back to the configured/default port',
+            envPort,
+          );
+        }
+      }
+    }
+    if (rest.host == null && process.env.HOST) rest.host = process.env.HOST;
+
+    // Forward to the server's config binding — RestServer reads `@config()` off
+    // its own `servers.RestServer` binding, so values left in APPLICATION_CONFIG
+    // are ignored. Runs before any later `app.configure(RestBindings.SERVER)`,
+    // so explicit reconfiguration still wins.
+    if (Object.keys(rest).length > 0) {
+      this.configure(RestBindings.SERVER).to(rest);
     }
   }
 
