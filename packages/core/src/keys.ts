@@ -3,6 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 import {BindingKey} from '@agentback/context';
+import type {Fetch} from '@agentback/common';
 import {
   Application,
   ApplicationConfig,
@@ -38,6 +39,20 @@ export namespace CoreBindings {
   export const APPLICATION_METADATA = BindingKey.create<ApplicationMetadata>(
     'application.metadata',
   );
+
+  /**
+   * Binding key for the injectable HTTP {@link Fetch} seam. Domain services
+   * that call an external API should inject this (optional, defaulting to
+   * `globalThis.fetch`) instead of the global, so tests can bind a stub:
+   *
+   * ```ts
+   * constructor(
+   *   @inject(CoreBindings.FETCH, {optional: true})
+   *   private readonly fetch: Fetch = globalThis.fetch,
+   * ) {}
+   * ```
+   */
+  export const FETCH = BindingKey.create<Fetch>('application.fetch');
 
   // server
   /**

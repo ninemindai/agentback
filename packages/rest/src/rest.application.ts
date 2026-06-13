@@ -18,6 +18,15 @@ export class RestApplication extends MiddlewareMixin(Application) {
   constructor(config?: ApplicationConfig) {
     super(config);
     this.server(RestServer);
+    // The constructor's `rest` key is the ergonomic way to configure the
+    // RestServer (`new RestApplication({rest: {port}})`). Forward it to the
+    // server's config binding — otherwise it lands in APPLICATION_CONFIG and
+    // is silently ignored, since RestServer reads `@config()` off its own
+    // `servers.RestServer` binding. Runs before any later
+    // `app.configure(RestBindings.SERVER)`, so explicit reconfiguration wins.
+    if (config?.rest != null) {
+      this.configure(RestBindings.SERVER).to(config.rest);
+    }
   }
 
   /**

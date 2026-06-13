@@ -5,6 +5,7 @@
 export * from './debug-factory.js';
 export * from './debug.js';
 export * from './env.js';
+export * from './fetch.js';
 export * from './id-generator.js';
 export * from './mask.js';
 export * from './pmap.js';

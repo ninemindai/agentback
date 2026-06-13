@@ -19,6 +19,7 @@ alike.
 - **`maskSecret(value)`** — redact sensitive strings in logs.
 - **`promiseTimeout(ms, promise)`** — race a promise against a timeout.
 - **`getServerUrl(req)`** — derive a canonical server URL from an Express request.
+- **`Fetch`** — type alias for `typeof globalThis.fetch`, the framework's injectable HTTP seam. Services that call an external API inject it (bound under `CoreBindings.FETCH`) instead of the global `fetch`, so tests can supply canned responses with no network. The type lives here (DI-free leaf); the binding key lives in `@agentback/core`.
 
 ## Usage
 
