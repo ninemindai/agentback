@@ -2,7 +2,7 @@
 
 > Shared "newspaper" design tokens and base CSS for the AgentBack developer UIs.
 
-A single source of truth for the visual shell used by `@agentback/console`, `@agentback/context-explorer`, `@agentback/rest-explorer`, and `@agentback/mcp-inspector`. Each tool injects this CSS once into its server-rendered `<style>` block, then appends its own component-specific rules on top.
+A single source of truth for the visual shell used by `@agentback/console`, `@agentback/context-explorer`, `@agentback/schema-explorer`, `@agentback/rest-explorer`, and `@agentback/mcp-inspector`. Each tool injects this CSS once into its server-rendered `<style>` block, then appends its own component-specific rules on top.
 
 ```bash
 pnpm add @agentback/console-theme

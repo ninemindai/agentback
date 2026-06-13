@@ -138,7 +138,7 @@ graph BT
   end
   subgraph ui["console / explorers"]
     theme["console-theme"]; ctxexp["context-explorer"]
-    mcpins["mcp-inspector"]; console["console"]
+    schemaexp["schema-explorer"]; mcpins["mcp-inspector"]; console["console"]
   end
 
   context --> metadata
@@ -169,10 +169,13 @@ graph BT
   metrics --> rest
   ratelimit --> rest
   ctxexp --> rest
+  schemaexp --> rest
+  schemaexp --> mcp
   mcpins --> mcp
   mcpins --> mcpconnect
   console --> mcpins
   console --> ctxexp
+  console --> schemaexp
 ```
 
 Notes:
@@ -195,7 +198,10 @@ Notes:
   standalone path for _consuming_ upstream MCP servers, distinct from `mcp`
   (which _serves_ tools).
 - The UI packages (`rest-explorer`, `mcp-inspector`, `context-explorer`,
-  `console`) mount on a running server; `console-theme` is shared styling.
+  `schema-explorer`, `console`) mount on a running server; `console-theme` is
+  shared styling. `schema-explorer` reads **both** `rest` and `mcp` — it indexes
+  the app by Zod schema and joins each entity to the routes and tools that use
+  it (the inverse of the per-protocol explorers).
 
 ## Agent-facing runtime pieces
 

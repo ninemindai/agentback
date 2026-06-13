@@ -106,6 +106,7 @@ The DI framework is the foundation; everything else is built on it.
 | `@agentback/rest`             | Minimal REST server with Zod request/body validation                    |
 | `@agentback/rest-explorer`    | Mounts Swagger UI 5.x at `/explorer`                                    |
 | `@agentback/context-explorer` | Mounts a context/binding explorer UI                                    |
+| `@agentback/schema-explorer`  | Mounts a schema/entity provenance explorer UI (REST + MCP + Drizzle)    |
 | `@agentback/mcp`              | Decorator-driven MCP server (`@mcpServer`, `@tool` w/ Zod input/output) |
 | `@agentback/mcp-inspector`    | Mounts an MCP inspector UI at `/mcp-inspector`                          |
 | `@agentback/mcp-http`         | Exposes the MCP server over Streamable HTTP at `/mcp` (+ OAuth, scopes) |
@@ -137,7 +138,7 @@ The DI framework is the foundation; everything else is built on it.
 | `@agentback/testing`               | Test harness with typed REST client, supertest, and in-memory MCP  |
 | `@agentback/testlab`               | Lower-level test helpers used by the package test suites           |
 | `create-agentback`                 | `npm create` scaffold for REST, MCP, and hybrid services           |
-| `@agentback/console`               | Combined context, REST/OpenAPI, and MCP admin console              |
+| `@agentback/console`               | Combined context, schema, REST/OpenAPI, and MCP admin console      |
 | `@agentback/console-theme`         | Shared styling for console and explorer UIs                        |
 
 ## Quick start

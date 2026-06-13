@@ -329,6 +329,46 @@ const server = await app.get('servers.RestServer');
 mountExplorer(server, {path: '/docs'});
 ```
 
+## Explorers and the unified console
+
+Beyond Swagger, several read-only UIs mount on a running app (call before
+`app.start()`):
+
+```ts
+import {installContextExplorer} from '@agentback/context-explorer';
+import {installSchemaExplorer} from '@agentback/schema-explorer';
+import {installConsole} from '@agentback/console';
+
+await installContextExplorer(app); // DI container browser     → /context-explorer/
+await installSchemaExplorer(app); // schema/entity provenance  → /schema-explorer/
+await installConsole(app, {unsafeAllowUnauthenticated: true}); // all panels → /console
+```
+
+- **schema-explorer** indexes the app _by Zod schema_ instead of by route/tool:
+  each entity is a node with provenance edges to every REST route, MCP tool, and
+  Drizzle table that uses it (joined by object identity), plus an ERD-style field
+  view. Give a schema a stable name + table origin with
+  `bindSchema(app, 'User', User, {table})` from `@agentback/openapi`, or the
+  `register{Insert,Select,Update}Schema` helpers in `@agentback/drizzle/zod`.
+  Unregistered schemas still appear (discovered from the routes/tools using them).
+- **console** composes context-explorer, schema-explorer, rest-explorer, and
+  mcp-inspector behind one shell at `/console`; it requires an explicit auth
+  posture (`auth` middleware, or `unsafeAllowUnauthenticated: true` for local dev).
+
+## Server port and host
+
+`RestApplication` resolves its listen port/host from three sources, highest
+precedence first: explicit `rest` config → `PORT`/`HOST` env vars → the defaults
+(`3000` / `127.0.0.1`).
+
+```ts
+new RestApplication({rest: {port: 8080}}); // explicit always wins over $PORT
+new RestApplication(); // binds $PORT if set (Cloud Run / Heroku), else 3000
+```
+
+Env only fills a field you leave unset, so explicit config is never clobbered; a
+malformed `PORT` warns and falls back, and `PORT=0` is honored (ephemeral).
+
 ## CORS and Middleware
 
 **CORS** is enabled via `RestServerConfig.cors`. Pass `true` for permissive
