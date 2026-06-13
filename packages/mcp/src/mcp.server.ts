@@ -251,10 +251,10 @@ export class MCPServer implements Server {
       user,
       reqCtx,
     );
-    const instance = (await this.resolveMember(
-      prompt.ctor,
-      reqCtx,
-    )) as Record<string, Function>;
+    const instance = (await this.resolveMember(prompt.ctor, reqCtx)) as Record<
+      string,
+      Function
+    >;
     const result =
       await instance[prompt.meta.methodName as string].call(instance);
     return {
@@ -375,10 +375,10 @@ export class MCPServer implements Server {
       undefined,
       nonInjected,
     );
-    const instance = (await this.resolveMember(
-      tool.ctor,
-      reqCtx,
-    )) as Record<string, Function>;
+    const instance = (await this.resolveMember(tool.ctor, reqCtx)) as Record<
+      string,
+      Function
+    >;
     let result = await instance[tool.meta.methodName as string].apply(
       instance,
       args,
@@ -765,6 +765,25 @@ export class MCPServer implements Server {
       const inputSchema = t.meta.input
         ? (schemaToOpenApiSchema(t.meta.input) as Record<string, unknown>)
         : {type: 'object'};
+      // MCP requires inputSchema to be an object with named properties at the
+      // root. A union/intersection/primitive lowers to anyOf/oneOf/allOf or a
+      // scalar `type` — which has no `properties`, breaks tools/list, and would
+      // be corrupted further by the confirmation-token injection below. Reject
+      // it loudly at registration rather than emit a malformed schema. Note a
+      // `.refine()` on a z.object() is fine (it lowers to the object schema),
+      // but the refinement itself is validated at runtime only — it is NOT
+      // reflected in the published inputSchema.
+      if (t.meta.input && inputSchema.type !== 'object') {
+        throw new Error(
+          `MCP tool '${t.meta.name}': input schema must be an object ` +
+            `(z.object(...)), but it lowered to ${describeNonObjectRoot(
+              inputSchema,
+            )}. MCP tool inputs need named properties at the root — a ` +
+            `top-level union/intersection/primitive can't be expressed. ` +
+            `Use a single z.object(); for cross-field rules add .refine() ` +
+            `(validated at runtime, but not reflected in inputSchema).`,
+        );
+      }
       if (t.meta.confirm) {
         // Advertise the confirmation flow in the inputSchema so callers
         // discover it from tools/list, not from the first error.
@@ -976,6 +995,15 @@ export function progressFnFor(
       params: {progressToken, ...p},
     });
   };
+}
+
+/** Describe a non-object JSON Schema root for the inputSchema guardrail. */
+function describeNonObjectRoot(schema: Record<string, unknown>): string {
+  if ('anyOf' in schema) return 'a union (anyOf)';
+  if ('oneOf' in schema) return 'a union (oneOf)';
+  if ('allOf' in schema) return 'an intersection (allOf)';
+  if (typeof schema.type === 'string') return `a non-object \`${schema.type}\``;
+  return 'a non-object schema';
 }
 
 function issuesError(

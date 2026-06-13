@@ -62,6 +62,71 @@ export const ErrorCodes = {
   INTERNAL_ERROR: 'internal_error',
 } as const;
 
+/** Options for constructing an {@link AgentError}. */
+export interface AgentErrorOptions {
+  /** Stable machine-readable code (see {@link ErrorCodes}). Defaults from status. */
+  code?: string;
+  /** HTTP-equivalent status. Default 400 (a client-correctable error). */
+  status?: number;
+  /** Per-field validation issues surfaced under `issues`. */
+  issues?: ParseIssue[];
+  /** One-line remediation hint for an agent. Defaults from `code`. */
+  hint?: string;
+  /** Override the default retryability derived from status/code. */
+  retryable?: boolean;
+  /** JSON Schema of the violated input section, when derivable. */
+  schema?: unknown;
+  /** Underlying cause, forwarded to `Error`'s `cause`. */
+  cause?: unknown;
+}
+
+/**
+ * A transport-neutral, client-correctable error for domain code.
+ *
+ * Throwing a plain `Error` from a service or `@tool` yields a redacted 500
+ * (`code: internal_error`, `message: Internal Server Error`) on both REST and
+ * MCP — so the reason never reaches the caller. `AgentError` carries the
+ * `status`/`code`/`message` (and optional `issues`/`hint`/`schema`) that
+ * {@link buildErrorEnvelope} reads, so the message survives on both surfaces.
+ * Its message is always treated as public (even for intentional 5xx).
+ *
+ * ```ts
+ * if (!city && lat == null)
+ *   throw new AgentError('Provide either a city or both coordinates.', {
+ *     code: ErrorCodes.INVALID_INPUT,
+ *   });
+ * ```
+ *
+ * For REST-specific validation failures the framework still ships
+ * `invalidParameter` / `invalidRequestBody` (http-errors based); reach for
+ * `AgentError` in domain/service code that is shared across transports.
+ */
+export class AgentError extends Error {
+  readonly statusCode: number;
+  readonly code: string;
+  /** Mirrors `message`; marks the text as safe to surface even for 5xx. */
+  readonly publicMessage: string;
+  readonly issues?: ParseIssue[];
+  readonly hint?: string;
+  readonly retryable?: boolean;
+  readonly schema?: unknown;
+
+  constructor(message: string, options: AgentErrorOptions = {}) {
+    super(
+      message,
+      options.cause !== undefined ? {cause: options.cause} : undefined,
+    );
+    this.name = 'AgentError';
+    this.statusCode = options.status ?? 400;
+    this.code = options.code ?? codeForStatus(this.statusCode);
+    this.publicMessage = message;
+    if (options.issues) this.issues = options.issues;
+    if (options.hint !== undefined) this.hint = options.hint;
+    if (options.retryable !== undefined) this.retryable = options.retryable;
+    if (options.schema !== undefined) this.schema = options.schema;
+  }
+}
+
 /** Default code for a status when the thrown error carries none. */
 export function codeForStatus(status: number): string {
   switch (status) {

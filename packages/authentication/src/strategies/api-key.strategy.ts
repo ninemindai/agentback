@@ -21,7 +21,14 @@ import type {ApiKeyVerifier, AuthenticationStrategy} from '../types.js';
  *   app.service(ApiKeyAuthenticationStrategy);  // bind with AUTH_STRATEGY tag
  */
 export class ApiKeyAuthenticationStrategy implements AuthenticationStrategy {
-  name = 'api-key';
+  /**
+   * The name this strategy registers under. Reference it instead of the raw
+   * `'api-key'` string when selecting the strategy (e.g.
+   * `installMcpHttp(app, {strategyAuth: {strategy: ApiKeyAuthenticationStrategy.STRATEGY_NAME}})`).
+   */
+  static readonly STRATEGY_NAME = 'api-key';
+
+  name = ApiKeyAuthenticationStrategy.STRATEGY_NAME;
 
   constructor(
     @inject(API_KEY_VERIFIER, {optional: true})

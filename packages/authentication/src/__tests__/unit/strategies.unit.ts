@@ -24,6 +24,13 @@ describe('AnonymousAuthenticationStrategy', () => {
 describe('ApiKeyAuthenticationStrategy', () => {
   const svc: UserProfile = {[securityId]: 'svc', name: 'svc'};
 
+  it('exposes its registration name as a constant, in sync with the instance', () => {
+    expect(ApiKeyAuthenticationStrategy.STRATEGY_NAME).toBe('api-key');
+    expect(new ApiKeyAuthenticationStrategy().name).toBe(
+      ApiKeyAuthenticationStrategy.STRATEGY_NAME,
+    );
+  });
+
   it('resolves a valid key via the verifier (header)', async () => {
     const s = new ApiKeyAuthenticationStrategy(key =>
       key === 'good' ? svc : undefined,
