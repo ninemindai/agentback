@@ -245,17 +245,65 @@ const EXPLORER_CSS = `
 .schemax .badge.mcp { color:var(--accent); border-color:color-mix(in srgb, var(--accent) 35%, transparent); }
 .schemax .badge.table { color:var(--muted); }
 .schemax .badge.unused { color:var(--accent); border-style:dashed; }
-.schemax .detail { overflow:auto; padding:1.4rem 1.6rem; animation:rise .5s cubic-bezier(.2,.7,.3,1) both; }
-.schemax .detail h2 { font-family:var(--mono); font-weight:500; color:var(--accent); font-size:1.1rem; word-break:break-all; margin:0 0 .3rem; }
-.schemax .detail .sub { color:var(--muted); font-size:.8rem; margin:0 0 1.1rem; padding-bottom:.7rem; border-bottom:1px solid var(--line); }
-.schemax .uses { margin-bottom:1.6rem; }
-.schemax .uses h3, .schemax .fields h3 { font-family:var(--sans); font-size:.74rem; font-weight:600; text-transform:uppercase; letter-spacing:.07em; color:var(--faint); margin:0 0 .6rem; }
-.schemax .uses ul { list-style:none; margin:0; padding:0; }
-.schemax .uses li { margin:.25rem 0; padding:.45rem .6rem; border:1px solid var(--line); border-radius:5px; display:flex; align-items:center; gap:.5rem; }
-.schemax .uses .ref { font-family:var(--mono); font-size:12.5px; word-break:break-all; }
-.schemax .uses .role { margin-left:auto; font-size:.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
-.schemax .uses .empty { font-style:italic; color:var(--accent); }
-.schemax pre.json { background:var(--card); border:1px solid var(--line-2); padding:1rem; border-radius:6px; white-space:pre-wrap; word-break:break-word; font-size:12px; font-family:var(--mono); margin:0; }
+.schemax .detail { overflow:auto; padding:1.5rem 1.8rem 3rem; animation:rise .5s cubic-bezier(.2,.7,.3,1) both; }
+/* ---- masthead: the entity set as a reference-book entry ---- */
+.schemax .entryhead { margin:0 0 1.6rem; padding-bottom:.85rem; border-bottom:2px solid var(--ink); position:relative; }
+.schemax .entryhead::after { content:''; position:absolute; left:0; right:0; bottom:-4px; height:1px; background:var(--line-2); }
+.schemax .eyebrow { font-family:var(--sans); font-size:.64rem; font-weight:700; text-transform:uppercase; letter-spacing:.15em; color:var(--accent); margin-bottom:.5rem; }
+.schemax .eyebrow .fcount { color:var(--faint); font-weight:500; letter-spacing:.08em; }
+.schemax .detail h2 { font-family:var(--serif); font-weight:600; font-size:2.15rem; line-height:1.04; letter-spacing:-.02em; color:var(--ink); margin:0; word-break:break-word; }
+.schemax .entryhead .meta { display:flex; flex-wrap:wrap; gap:.5rem .9rem; margin-top:.7rem; align-items:center; }
+.schemax .entryhead .mkey { font-family:var(--mono); font-size:11.5px; color:var(--muted); }
+.schemax .entryhead .mtag { font-family:var(--mono); font-size:11.5px; color:var(--ink); background:var(--badge); border-radius:3px; padding:.12rem .5rem; display:inline-flex; align-items:center; gap:.4rem; }
+.schemax .entryhead .mtag .g { color:var(--accent-soft); }
+.schemax .entryhead .mtag em { font-style:normal; color:var(--muted); }
+/* ---- provenance ledger ---- */
+.schemax .uses { margin-bottom:1.9rem; }
+.schemax .uses h3, .schemax .fields h3 { font-family:var(--sans); font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.13em; color:var(--faint); margin:0 0 .7rem; }
+.schemax .uses ul { list-style:none; margin:0; padding:0; border-top:1px solid var(--line); }
+.schemax .use { display:flex; align-items:baseline; gap:.7rem; padding:.52rem .25rem .52rem .65rem; border-bottom:1px solid var(--line); position:relative; transition:padding-left .14s, background .14s; }
+.schemax .use::before { content:''; position:absolute; left:0; top:-1px; bottom:-1px; width:2px; background:transparent; transition:background .14s; }
+.schemax .use:hover { background:var(--card); padding-left:.85rem; }
+.schemax .use.rest:hover::before { background:var(--blue); }
+.schemax .use.mcp:hover::before { background:var(--accent); }
+.schemax .umark { font-family:var(--sans); font-size:.58rem; font-weight:700; letter-spacing:.09em; text-transform:uppercase; padding:.14rem .42rem; border-radius:3px; flex:none; }
+.schemax .umark.rest { color:var(--blue); background:color-mix(in srgb, var(--blue) 11%, transparent); }
+.schemax .umark.mcp { color:var(--accent); background:color-mix(in srgb, var(--accent) 11%, transparent); }
+.schemax .use .ref { font-family:var(--mono); font-size:12.5px; word-break:break-all; }
+.schemax .use .role { margin-left:auto; font-size:.7rem; color:var(--muted); letter-spacing:.03em; display:inline-flex; align-items:center; gap:.28rem; flex:none; }
+.schemax .use .role.out { color:var(--ok); }
+.schemax .use .role .arrow { font-size:.9em; opacity:.8; }
+.schemax .deadnote { font-style:italic; color:var(--accent); font-size:13px; padding:.7rem .85rem; border:1px dashed var(--accent-soft); border-radius:5px; background:color-mix(in srgb, var(--accent) 5%, transparent); }
+/* ---- field-toggle + spec table ---- */
+.schemax .fieldhead { display:flex; align-items:center; gap:.7rem; margin-bottom:.75rem; }
+.schemax .fieldhead h3 { margin:0; }
+.schemax .seg { margin-left:auto; display:inline-flex; border:1px solid var(--line-2); border-radius:5px; overflow:hidden; }
+.schemax .seg button { border:0; background:var(--card); color:var(--muted); font-family:var(--mono); font-size:11px; letter-spacing:.03em; padding:.3rem .72rem; cursor:pointer; transition:color .14s, background .14s; }
+.schemax .seg button:hover { color:var(--ink); }
+.schemax .seg button.on { background:var(--accent); color:#fdf8ef; }
+.schemax .seg button + button { border-left:1px solid var(--line-2); }
+/* ---- ERD entity card ---- */
+.schemax .ecard { border:1px solid var(--line-2); border-radius:7px; overflow:hidden; background:var(--card); box-shadow:0 1px 0 var(--line), 0 10px 26px -22px rgba(34,29,22,.5); }
+.schemax .ecard-head { display:flex; align-items:baseline; gap:.6rem; padding:.55rem .85rem; background:linear-gradient(var(--paper), color-mix(in srgb, var(--paper) 60%, var(--card))); border-bottom:2px solid var(--ink); }
+.schemax .ecard-head .etitle { font-family:var(--mono); font-weight:500; font-size:13.5px; color:var(--ink); letter-spacing:.01em; word-break:break-all; }
+.schemax .ecard-head .ekind { margin-left:auto; font-family:var(--sans); font-size:.58rem; font-weight:700; text-transform:uppercase; letter-spacing:.12em; color:var(--faint); }
+.schemax .erow { display:grid; grid-template-columns:14px minmax(92px,1.1fr) minmax(78px,auto) 1fr; gap:.6rem; align-items:baseline; padding:.44rem .85rem; border-bottom:1px solid var(--line); animation:rise .3s cubic-bezier(.2,.7,.3,1) both; }
+.schemax .ecard-body > :last-child > .erow:last-child, .schemax .ecard-body > .erow:last-child { border-bottom:0; }
+.schemax .erow:hover { background:var(--paper); }
+.schemax .pip { align-self:center; width:7px; height:7px; border-radius:50%; flex:none; }
+.schemax .pip.req { background:var(--accent); box-shadow:0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent); }
+.schemax .pip.opt { border:1px solid var(--line-2); }
+.schemax .ename { font-family:var(--mono); font-size:12.5px; color:var(--ink); word-break:break-word; }
+.schemax .etype { font-family:var(--mono); font-size:12px; color:var(--blue); display:inline-flex; align-items:center; gap:.3rem; word-break:break-word; }
+.schemax .etype .caret { color:var(--faint); font-size:.8em; }
+.schemax .econ { display:flex; flex-wrap:wrap; gap:.3rem; align-items:center; }
+.schemax .efmt { font-size:12px; color:var(--accent); line-height:1; }
+.schemax .echip { font-family:var(--mono); font-size:10.5px; color:var(--badge-ink); background:var(--badge); border-radius:3px; padding:.07rem .42rem; white-space:nowrap; }
+.schemax .edesc { font-size:11.5px; color:var(--faint); font-style:italic; padding:0 .85rem .4rem 1.95rem; border-bottom:1px solid var(--line); }
+.schemax .enest { padding:.35rem .6rem .55rem 1.55rem; position:relative; }
+.schemax .enest::before { content:''; position:absolute; left:.9rem; top:-.1rem; bottom:.85rem; width:1px; background:var(--line-2); }
+.schemax .ecard.nested { border-radius:6px; box-shadow:none; border-color:var(--line); }
+.schemax pre.json { background:var(--card); border:1px solid var(--line-2); padding:1rem; border-radius:6px; white-space:pre-wrap; word-break:break-word; font-size:12px; line-height:1.55; font-family:var(--mono); margin:0; }
 .schemax .empty { padding:2rem 0; color:var(--muted); }
 .schemax .err { color:var(--accent); padding:1.5rem; font-family:var(--mono); }
 .schemax .gtooltip { position:fixed; z-index:62; pointer-events:none; max-width:280px; background:var(--card); color:var(--ink); border:1px solid var(--line-2); border-radius:6px; padding:.6rem .7rem; box-shadow:0 14px 34px -18px rgba(34,29,22,.5); font-size:12px; }
