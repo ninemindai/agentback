@@ -1,6 +1,6 @@
 {
   "name": "@agentback/extension-metrics",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Prometheus /metrics endpoint + HTTP request timing",
   "type": "module",
   "main": "dist/index.js",
