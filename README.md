@@ -151,6 +151,13 @@ pnpm -F hello-mcp test      # MCP over stdio (drives the server with a test clie
 pnpm -F hello-hybrid start  # REST + MCP from one process, both UIs
 ```
 
+## Reference app
+
+For a complete, real-world build beyond the in-repo `hello-*` examples, see
+**[ninemindai/agentback-demo](https://github.com/ninemindai/agentback-demo)** —
+a Weather MCP server where one Zod schema set is served over stdio, authenticated
+HTTP, and a dev console, backed by the free Open-Meteo API.
+
 ## For coding agents (Claude Code, Codex, …)
 
 This repo ships an **agent skill** —
