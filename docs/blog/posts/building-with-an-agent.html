@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Building with an agent inside the framework | AgentBack Blog</title>
+    <meta
+      name="description"
+      content="A development story: how the agentback-demo weather MCP server was built with Claude Code, and what the framework's constraints changed about the experience."
+    />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="../index.html">AgentBack blog</a>
+        <div class="nav-links">
+          <a href="../../README.md">Docs</a>
+          <a href="../../../README.md">Repo README</a>
+          <a href="../diagrams/system-boundary.html">Diagram</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="post-layout">
+      <article class="post-body">
+        <p class="post-meta">June 13, 2026</p>
+        <h1>Building with an agent inside the framework</h1>
+        <p class="lede">
+          What actually changes when a coding agent builds inside a
+          contract-enforcing framework instead of against an empty canvas. A
+          development story told through the commits of
+          <a href="https://github.com/ninemindai/agentback-demo"
+            >agentback-demo</a
+          >.
+        </p>
+
+        <p>
+          The claim at the center of AgentBack is that encoding best practice in
+          the framework — rather than in a code review comment or a README — lets
+          an AI coding agent produce better-structured code with less drift. That
+          is easy to assert. Here is a concrete account of what it looked like to
+          test it.
+        </p>
+
+        <p>
+          The agentback-demo is a real reference application: a weather MCP
+          server that exposes Open-Meteo data as MCP tools, served three ways
+          from a single DI wiring. It was built end-to-end with Claude Code as
+          the coding agent, starting from an empty directory and a single
+          sentence of intent. The result is roughly 600 lines of TypeScript, zero
+          hand-maintained OpenAPI or MCP schema files, three transports (stdio,
+          Streamable HTTP, dev console), API-key auth, per-tool rate limiting, a
+          real test suite, and an architecture diagram. It earned a 93/100 health
+          score from a brooks-lint review on first pass.
+        </p>
+
+        <p>
+          What follows is a walk through the development arc — the commits, the
+          moments the framework helped, and the one place it couldn't.
+        </p>
+
+        <h2>The contract before the implementation</h2>
+        <p>
+          The agent's first meaningful act was not writing a route handler. It
+          was writing <code>schemas.ts</code>:
+        </p>
+
+        <pre><code class="language-ts">export const LocationSelector = z.object({
+  city:      z.string().optional(),
+  latitude:  z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+});
+
+export const CurrentWeather = z.object({
+  city:        z.string(),
+  temperature: z.number(),
+  feelsLike:   z.number(),
+  humidity:    z.number(),
+  windSpeed:   z.number(),
+  description: z.string(),
+  time:        z.string(),
+});
+
+export const ForecastDay = z.object({ /* … */ });
+export const Forecast    = z.object({ days: z.array(ForecastDay) });</code></pre>
+
+        <p>
+          This was the first commit. Nothing ran yet. But once those schemas
+          existed, everything else had a single source to pull from: the MCP tool
+          input and output, the TypeScript types across the whole codebase, the
+          emitted MCP <code>inputSchema</code> that tools/list returns to
+          clients. The agent didn't have to synchronize any of those separately —
+          they were all derived.
+        </p>
+
+        <p>
+          This is the spec-first moment the framework is designed around. The
+          contract lands before the behavior, enforced by the compiler, and every
+          subsequent step is implementation inside a shape that is already locked.
+        </p>
+
+        <h2>Where the type error caught the agent</h2>
+        <p>
+          In the second commit, the agent wrote the tool class and reached for
+          a return shape that differed slightly from the declared output schema —
+          a field name mismatch that would have been invisible until a client
+          tried to parse the response.
+        </p>
+
+        <pre><code class="language-ts">@tool('get_current_weather', {input: LocationSelector, output: CurrentWeather})
+async getCurrent(input: z.infer&lt;typeof LocationSelector&gt;) {
+  const data = await this.weather.current(input);
+  return {
+    city:        data.city,
+    temp:        data.temperature,  // ← TS error here: 'temp' not in CurrentWeather
+    // …
+  };
+}</code></pre>
+
+        <p>
+          The TypeScript error appeared at the <code>@tool</code> decoration
+          line, naming the property mismatch precisely. The agent corrected the
+          field name, ran the build again, and moved on. No test needed to catch
+          it. No runtime surprise. The framework's generic constraint on the
+          method return type was the signal, and it fired before the code ever
+          ran.
+        </p>
+
+        <p>
+          This is the class of mistake agents make often. Without an output
+          schema on the tool, the error would have surfaced as a behavioral
+          failure in a downstream consumer — a test, a CI run, or a confused MCP
+          client. With it, the signal was a single-line TS error at the
+          definition site. That is a meaningful difference in search space.
+        </p>
+
+        <h2>Adding a second transport without touching the contract</h2>
+        <p>
+          The initial commit served stdio only — the right starting point for an
+          MCP server you wire into a local AI assistant. The next meaningful
+          capability was remote access: a Streamable HTTP transport so clients on
+          the network could connect without spawning a subprocess.
+        </p>
+
+        <p>
+          The agent added this as a new entry point, <code>serve-http.ts</code>,
+          with API-key authentication and per-tool rate limiting:
+        </p>
+
+        <pre><code class="language-ts">const app = buildHttpApp({port: PORT});
+installMcpHttp(app, {
+  rateLimits: [
+    {methods: ['tools/call'], points: 60, duration: 60},
+    {methods: ['tools/call'], toolNames: ['get_forecast'], points: 20, duration: 60},
+  ],
+});
+await app.start();</code></pre>
+
+        <p>
+          The <code>buildHttpApp</code> helper is just a factory that boots the
+          same application with the same DI wiring — the same schemas, the same
+          tool class, the same service — and adds the Streamable HTTP transport
+          on top. The schemas didn't change. The tool class didn't change. The
+          MCP tool definitions clients received were identical to the stdio
+          surface.
+        </p>
+
+        <p>
+          The agent had no architectural choices to invent here. The DI container
+          already had the tools registered; HTTP was a new server binding, not a
+          new set of tools. The framework's extension-point model meant the
+          second transport was additive, not structural.
+        </p>
+
+        <p>
+          A third surface — the dev console, a web UI combining an MCP inspector,
+          an OpenAPI explorer, and a DI container viewer — was added with the
+          same pattern: another entry point, same wiring. Three ways to run the
+          server; one place where the contract lives.
+        </p>
+
+        <h2>Tests that don't start a process</h2>
+        <p>
+          The test suite was the agent's next step, and it was where
+          <code>@agentback/testing</code>'s <code>createTestApp</code> paid off
+          most clearly:
+        </p>
+
+        <pre><code class="language-ts">await using setup = await createTestApp(buildTestApp);
+
+it('registers the expected tools', async () => {
+  const tools = await setup.mcp.listTools();
+  expect(tools.map(t => t.name)).toContain('get_current_weather');
+  expect(tools.map(t => t.name)).toContain('get_forecast');
+});
+
+it('rejects a call without a location', async () => {
+  const result = await setup.mcp.callTool('get_current_weather', {});
+  expect(result.isError).toBe(true);
+  expect(result.content[0].text).toMatch(/city.*latitude/i);
+});</code></pre>
+
+        <p>
+          <code>setup.mcp</code> is an in-memory MCP client — no process spawn,
+          no port binding, no stdio pipe. The MCP session runs entirely in
+          memory. The agent could write and iterate tests without managing
+          processes or race conditions, and CI could run them without a live
+          Open-Meteo connection. The <code>await using</code> pattern handles
+          cleanup automatically.
+        </p>
+
+        <p>
+          The agent also wrote HTTP auth tests using the supertest bridge
+          (<code>setup.http</code>), verifying that requests without a valid
+          <code>x-api-key</code> got a 401. Both test surfaces — MCP and REST —
+          came from <code>createTestApp</code> without any additional setup.
+        </p>
+
+        <h2>What the framework didn't enforce</h2>
+        <p>
+          A brooks-lint review of the finished codebase gave it 93/100 and found
+          exactly one substantive gap: the network and response-mapping logic
+          inside <code>WeatherService</code> had no test seam.
+        </p>
+
+        <p>
+          The root cause was structural. The <code>getJson</code> helper called
+          the global <code>fetch</code> directly, without a seam for injecting a
+          fake:
+        </p>
+
+        <pre><code class="language-ts">async function getJson&lt;T&gt;(url: string): Promise&lt;T&gt; {
+  const res = await fetch(url, {signal: AbortSignal.timeout(15_000)});
+  if (!res.ok) throw new WeatherError(`HTTP ${res.status}`);
+  return res.json() as T;
+}</code></pre>
+
+        <p>
+          The WMO-code translation, the unit fallback logic, and the full
+          response-shaping pipeline in <code>current()</code> and
+          <code>forecast()</code> were exercised only by the live API. The green
+          test suite read as "covered" while the part most likely to break on an
+          upstream change had zero protection.
+        </p>
+
+        <p>
+          The fix is mechanical — accept an injectable fetcher via a constructor
+          parameter or a <code>CoreBindings.FETCH</code> binding, then write unit
+          tests against a canned Open-Meteo fixture. The framework supports the
+          pattern directly: <code>CoreBindings.FETCH</code> is the injectable
+          <code>fetch</code> seam, and <code>createTestApp</code> accepts binding
+          overrides. The agent just didn't reach for it.
+        </p>
+
+        <p>
+          This is the honest limit. The framework can enforce schema coherence
+          at compile time and make the right wiring pattern easy; it cannot
+          enforce test coverage or prevent a module-level function from closing
+          over the global. Where the framework's structure doesn't reach, the
+          agent navigates on its own — and navigates no better than it would
+          without the framework.
+        </p>
+
+        <blockquote>
+          The framework can make the wrong structure hard to build. It cannot
+          make a missing test visible.
+        </blockquote>
+
+        <h2>What the commit history shows</h2>
+        <p>
+          The development arc has a shape that is legible in the git log:
+        </p>
+
+        <ul>
+          <li>
+            <strong>Initial commit</strong> — schemas first, then tool class,
+            then service. The contract preceded the implementation.
+          </li>
+          <li>
+            <strong>HTTP transport</strong> — new entry point, same wiring. No
+            changes to schemas or tools.
+          </li>
+          <li>
+            <strong>Dev console</strong> — third entry point, same pattern.
+          </li>
+          <li>
+            <strong>Auth and rate limiting</strong> — one configuration site in
+            the HTTP entry point. The tools were unaware.
+          </li>
+          <li>
+            <strong>Tests</strong> — <code>createTestApp</code> with in-memory
+            MCP and supertest. No process management.
+          </li>
+          <li>
+            <strong>Component refactor</strong> — the agent packaged the weather
+            wiring as an AgentBack <code>Component</code>, a pattern it learned
+            from the framework's DI idioms rather than invented.
+          </li>
+          <li>
+            <strong>Architecture docs</strong> — a layer diagram and a narrative
+            README, generated with the agent's help and committed alongside the
+            code.
+          </li>
+        </ul>
+
+        <p>
+          Each commit was additive. The schemas written in the first commit were
+          never replaced — only the implementation around them changed. The
+          framework's one-source-of-truth property held across the whole
+          trajectory.
+        </p>
+
+        <h2>What an AI-native development experience looks like</h2>
+        <p>
+          The agent that built this server was tireless and fast. It also made
+          the usual mistakes: field name mismatches, missing test seams, a
+          duplicated configuration literal across two entry points that the
+          brooks-lint review flagged as a maintenance risk.
+        </p>
+
+        <p>
+          The framework changed where those mistakes showed up. The schema
+          mismatches surfaced at the decoration line, not in a test. The
+          duplicated port logic was contained to two entry points, not spread
+          across handlers. The missing test seam was isolated to the service
+          layer, not to a route handler where it would have been harder to see.
+          In each case the framework's structure meant the error signal was
+          localized and early.
+        </p>
+
+        <p>
+          That is the claim in practice: not that the agent makes fewer mistakes,
+          but that the mistakes it makes are smaller, earlier, and more
+          self-describing. The agent still needs a human (or a reviewer like
+          brooks-lint) to see the test seam gap. But the structural mistakes —
+          the drift between surfaces, the mismatched schema, the missing DI
+          registration — those the framework closes.
+        </p>
+
+        <p>
+          The bet is that in a world where agents write most of the code, the
+          framework's job is to be the part of the system that never drifts.
+        </p>
+
+        <div class="post-actions">
+          <a
+            class="button"
+            href="https://github.com/ninemindai/agentback-demo"
+            >agentback-demo on GitHub</a
+          >
+          <a class="button secondary" href="../../agent-ergonomics.md"
+            >Boundary coherence thesis</a
+          >
+        </div>
+      </article>
+
+      <aside class="aside" aria-label="Post links">
+        <h2>Related</h2>
+        <a href="introducing-agentback.html">Introducing AgentBack</a>
+        <a href="boundary-coherence.html">Boundary coherence is the product</a>
+        <a href="errors-agents-can-fix.html">Errors an agent can fix</a>
+        <a href="../../agent-ergonomics.md">Boundary coherence thesis (full)</a>
+        <a href="https://github.com/ninemindai/agentback-demo"
+          >agentback-demo repo</a
+        >
+      </aside>
+    </main>
+  </body>
+</html>
