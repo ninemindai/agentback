@@ -3,18 +3,18 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AgentBack — one schema, every boundary</title>
+    <title>AgentBack — interfaces agents use, backends agents build</title>
     <meta
       name="description"
-      content="AgentBack is an AI-native TypeScript framework for the agent era: REST endpoints, MCP tools, OpenAPI docs, typed clients, tests, and runtime validation all share one Zod contract."
+      content="AgentBack gives REST, MCP, OpenAPI, typed clients, and validation one Zod contract — one schema, every boundary. Agents consume it with machine-actionable errors, /llms.txt, and MCP tools, and a coding agent can author the whole surface from it without drift."
     />
     <meta
       property="og:title"
-      content="AgentBack — one schema, every boundary"
+      content="AgentBack — interfaces agents use, backends agents build"
     />
     <meta
       property="og:description"
-      content="An AI-native API/MCP framework. One Zod contract across REST, MCP, OpenAPI, docs, typed clients, and runtime validation."
+      content="One Zod contract across REST, MCP, OpenAPI, typed clients, and validation. Agents consume it with machine-actionable errors, /llms.txt, and MCP tools; a coding agent can author the whole surface without drift."
     />
     <meta property="og:url" content="https://agentback.dev" />
     <meta property="og:image" content="https://agentback.dev/banner.png" />
@@ -55,16 +55,20 @@
       <!-- ============================== hero ============================== -->
       <section class="hero">
         <div class="hero-copy">
-          <p class="eyebrow reveal">
-            An AI-native API/MCP framework for the agent era
-          </p>
-          <h1 class="reveal d1">One schema,<br /><em>every</em> boundary.</h1>
+          <p class="eyebrow reveal">Agent-native, end to end</p>
+          <h1 class="reveal d1">
+            Interfaces agents <em>use</em>.<br />Backends agents
+            <em>build</em>.
+          </h1>
           <p class="lede reveal d2">
-            AgentBack lets REST endpoints, MCP tools, OpenAPI docs, typed
-            clients, tests, and runtime validation all share
-            <strong>one Zod contract</strong> — built on LoopBack&nbsp;4's
-            proven dependency-injection core, rebuilt for ESM, Node&nbsp;22, and
-            agents as first-class consumers.
+            AgentBack gives your REST endpoints, MCP tools, OpenAPI docs, typed
+            clients, and validation <strong>one Zod contract</strong> — one
+            schema, every boundary. Agents consume that surface with
+            machine-actionable errors, <code>/llms.txt</code>, and MCP tools;
+            and because there's a single source of truth, a coding agent can
+            author the whole surface from it without drift. Built on
+            LoopBack&nbsp;4's proven dependency-injection core, rebuilt for ESM
+            and Node&nbsp;22.
           </p>
           <div class="hero-actions reveal d3">
             <a class="button" href="docs/index.html">Read the docs</a>
@@ -115,7 +119,8 @@
           </h2>
           <p class="muted">
             Declare a schema once, on the decorator. The framework derives every
-            other representation from it — so they can't drift.
+            other representation from it — so a coding agent adds a surface in
+            one edit and nothing drifts.
           </p>
         </div>
         <ul class="fanout-grid">
@@ -425,16 +430,19 @@
       <section class="quickstart" aria-labelledby="agents-heading">
         <div class="qs-copy">
           <p class="eyebrow">For coding agents</p>
-          <h2 id="agents-heading">This site is agent-readable too</h2>
+          <h2 id="agents-heading">Hand the build to a coding agent</h2>
           <p class="muted">
-            AgentBack's thesis is that your API's first reader is an agent — so
-            the docs practice it. Every docs page has a markdown mirror,
-            <a href="llms.txt">/llms.txt</a> maps the corpus,
-            <a href="llms-full.txt">/llms-full.txt</a> is the whole thing in one
-            fetch, and a repo
-            <a href="skills/agentback/SKILL.md">agent skill</a> teaches Claude
-            Code, Codex, Cursor, and 20+ other agents the framework's
-            conventions.
+            AgentBack ships an
+            <a href="skills/agentback/SKILL.md">agent skill</a> that teaches
+            Claude Code, Codex, Cursor, and 20+ other agents the conventions
+            that aren't guessable from type signatures — schema-on-decorator,
+            the slot-0 input bundle, the DI container. One Zod schema is the only
+            source of truth, so an agent adds a route, its MCP tool, and its docs
+            in a single edit without drift. The docs are agent-readable too —
+            <a href="llms.txt">/llms.txt</a>,
+            <a href="llms-full.txt">/llms-full.txt</a>, and a markdown mirror of
+            every page — so the agent reads the framework the way it reads your
+            API.
           </p>
         </div>
         <figure class="hero-code" aria-label="Agent setup commands">
@@ -449,6 +457,45 @@ npx skills add ninemindai/agentback
 <span class="cm"># point an agent at the docs corpus</span>
 curl -s https://agentback.dev/llms.txt</code></pre>
         </figure>
+      </section>
+
+      <!-- ===================== proof: worked example ===================== -->
+      <section class="quickstart proof" aria-labelledby="proof-heading">
+        <div class="qs-copy">
+          <p class="eyebrow">Built with AgentBack</p>
+          <h2 id="proof-heading">A worked example, end to end</h2>
+          <p class="muted">
+            Not a snippet — a real service. <code>agentback-demo</code> is a
+            Weather server where one Zod schema set is served over stdio,
+            authenticated HTTP, and a dev console. It's the shape a coding agent
+            and the skill produce: one contract fanning out to REST, MCP, a
+            typed client, and docs, with nothing kept in sync by hand.
+          </p>
+          <div class="hero-actions">
+            <a
+              class="button"
+              href="https://github.com/ninemindai/agentback-demo"
+              >View agentback-demo</a
+            >
+          </div>
+        </div>
+        <a
+          class="proof-card"
+          href="https://github.com/ninemindai/agentback-demo"
+        >
+          <span class="proof-tag">ninemindai/agentback-demo</span>
+          <strong>Weather MCP server</strong>
+          <p>
+            One Zod schema set, served three ways — stdio, authenticated HTTP,
+            and a dev console. Backed by the free Open-Meteo API.
+          </p>
+          <ul class="proof-list">
+            <li>one schema → REST + MCP + typed client + docs</li>
+            <li><code>AgentError</code>, <code>/llms.txt</code>, tool-cost report</li>
+            <li>the canonical agent-plus-skill build</li>
+          </ul>
+          <span class="proof-link">github.com/ninemindai/agentback-demo →</span>
+        </a>
       </section>
 
       <!-- ========================= quick start ========================= -->

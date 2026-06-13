@@ -579,6 +579,73 @@ section.hero {
   text-decoration: none;
 }
 
+/* ---------- proof card ---------- */
+
+.proof-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--ink);
+  display: block;
+  padding: 26px 28px;
+  text-decoration: none;
+  transition: border-color 0.15s ease;
+}
+
+.proof-card:hover {
+  border-color: var(--green);
+}
+
+.proof-tag {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+}
+
+.proof-card strong {
+  display: block;
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 640;
+  margin: 6px 0 10px;
+}
+
+.proof-card p {
+  color: var(--muted);
+  font-size: 14.5px;
+  margin: 0 0 16px;
+}
+
+.proof-list {
+  list-style: none;
+  margin: 0 0 18px;
+  padding: 0;
+}
+
+.proof-list li {
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+  padding: 9px 0;
+}
+
+.proof-list li:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+.proof-list code {
+  background: var(--green-soft);
+  border-radius: 4px;
+  font-size: 0.92em;
+  padding: 1px 5px;
+}
+
+.proof-link {
+  color: var(--green);
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
 /* ---------- docs map ---------- */
 
 .docs-columns {
