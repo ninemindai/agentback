@@ -8,8 +8,14 @@
 // package and adding one import + spread below. esbuild resolves these to the
 // tools' source TSX, so they are bundled into the single console SPA.
 import {pages as contextPages} from '@agentback/context-explorer/console';
+import {pages as schemaPages} from '@agentback/schema-explorer/console';
 import {pages as apiPages} from '@agentback/rest-explorer/console';
 import {pages as mcpPages} from '@agentback/mcp-inspector/console';
 import type {ConsolePage} from './types';
 
-export const pages: ConsolePage[] = [...contextPages, ...apiPages, ...mcpPages];
+export const pages: ConsolePage[] = [
+  ...contextPages,
+  ...schemaPages,
+  ...apiPages,
+  ...mcpPages,
+];

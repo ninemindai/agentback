@@ -9,6 +9,7 @@ import {THEME_CSS, THEME_FONTS_HREF} from '@agentback/console-theme';
 import {contextConsoleFeature} from '@agentback/context-explorer';
 import {apiConsoleFeature} from '@agentback/rest-explorer';
 import {mcpConsoleFeature} from '@agentback/mcp-inspector';
+import {schemaConsoleFeature} from '@agentback/schema-explorer';
 import type {RestApplication, RestServer} from '@agentback/rest';
 
 /**
@@ -53,7 +54,12 @@ const DEFAULT_BASE = '/console';
 
 /** The built-in panels, in nav order. */
 export function defaultFeatures(): ConsoleFeature[] {
-  return [contextConsoleFeature(), apiConsoleFeature(), mcpConsoleFeature()];
+  return [
+    contextConsoleFeature(),
+    schemaConsoleFeature(),
+    apiConsoleFeature(),
+    mcpConsoleFeature(),
+  ];
 }
 
 /**

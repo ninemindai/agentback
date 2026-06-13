@@ -2,10 +2,13 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import {getTableName} from 'drizzle-orm';
 import {BindingScope, extensionFor} from '@agentback/core';
+import {bindSchema} from '@agentback/openapi';
 import {RestApplication, REST_CONTROLLER_TAG} from '@agentback/rest';
 import {MCPComponent, MCP_SERVERS} from '@agentback/mcp';
 import {UsersController} from './controllers/users.controller.js';
+import {users, NewUser, User} from './db/schema.js';
 import {InMemoryUserStore, USER_STORE} from './user-store.js';
 
 /**
@@ -40,5 +43,15 @@ export class HelloDrizzleApplication extends RestApplication {
       .toClass(UsersController)
       .tag(REST_CONTROLLER_TAG)
       .apply(extensionFor(MCP_SERVERS));
+
+    // Name the shared drizzle-zod schemas in the container and tag their source
+    // table. This is *enrichment* — the schemas already work as route + tool
+    // contracts unregistered; binding them gives the schema-explorer a stable
+    // name and the table-origin leg of the provenance graph (drizzle-zod
+    // otherwise loses the link back to `users`). The SAME objects the decorators
+    // use are bound, so identity still joins REST + MCP usage onto one node.
+    const table = getTableName(users);
+    bindSchema(this, 'NewUser', NewUser, {table, kind: 'insert'});
+    bindSchema(this, 'User', User, {table, kind: 'select'});
   }
 }

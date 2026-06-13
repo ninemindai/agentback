@@ -61,14 +61,20 @@ describe('mcp/rest/context unified console', () => {
       }
     });
 
-    it('injects a panel map for context, api and mcp', async () => {
+    it('injects a panel map for context, schema, api and mcp', async () => {
       const r = await client.get('/console').expect(200);
       const cfg = JSON.parse(
         r.text.match(/window\.__CONSOLE__=(\{.*?\})<\/script>/)![1],
       );
       expect(cfg.basePath).toBe('/console');
-      expect(Object.keys(cfg.panels).sort()).toEqual(['api', 'context', 'mcp']);
+      expect(Object.keys(cfg.panels).sort()).toEqual([
+        'api',
+        'context',
+        'mcp',
+        'schema',
+      ]);
       expect(cfg.panels.context.apiBase).toBe('/context-explorer/api');
+      expect(cfg.panels.schema.apiBase).toBe('/schema-explorer/api');
       expect(cfg.panels.mcp.apiBase).toBe('/mcp-inspector/api');
       // mcp panel carries its remote-connect config.
       expect(cfg.panels.mcp.extra.connect.base).toBe('/mcp-connect/api');

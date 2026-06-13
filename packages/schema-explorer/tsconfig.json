@@ -9,11 +9,11 @@
   "exclude": ["dist", "node_modules", "src/client"],
   "references": [
     {"path": "../console-theme"},
+    {"path": "../core"},
+    {"path": "../mcp"},
+    {"path": "../metadata"},
+    {"path": "../openapi"},
     {"path": "../rest"},
-    {"path": "../context-explorer"},
-    {"path": "../rest-explorer"},
-    {"path": "../mcp-inspector"},
-    {"path": "../schema-explorer"},
     {"path": "../testlab"}
   ]
 }

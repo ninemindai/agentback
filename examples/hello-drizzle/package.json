@@ -17,6 +17,7 @@
     "@agentback/openapi": "workspace:*",
     "@agentback/rest": "workspace:*",
     "@agentback/rest-explorer": "workspace:*",
+    "@agentback/schema-explorer": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "drizzle-zod": "^0.8.2",
     "tslib": "^2.8.1",

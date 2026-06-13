@@ -11,11 +11,13 @@
 
 import {isMain} from '@agentback/core';
 import {installExplorer} from '@agentback/rest-explorer';
+import {installSchemaExplorer} from '@agentback/schema-explorer';
 import {HelloDrizzleApplication} from './application.js';
 
 async function main() {
   const app = new HelloDrizzleApplication();
   await installExplorer(app, {title: 'hello-drizzle API'});
+  await installSchemaExplorer(app, {title: 'hello-drizzle schemas'});
   await app.start();
 
   const server = await app.restServer;
@@ -26,6 +28,7 @@ async function main() {
   );
   console.log(`    GET  ${server.url}/openapi.json`);
   console.log(`    GET  ${server.url}/explorer/`);
+  console.log(`    GET  ${server.url}/schema-explorer/  (entity provenance)`);
   console.log(`  MCP:`);
   console.log(`    tool create_user  (same NewUser/User schema chain)`);
 }

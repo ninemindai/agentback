@@ -26,6 +26,7 @@
   "dependencies": {
     "@agentback/context": "workspace:~",
     "@agentback/core": "workspace:~",
+    "@agentback/openapi": "workspace:~",
     "tslib": "^2.8.1"
   },
   "peerDependencies": {
