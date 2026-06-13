@@ -37,6 +37,46 @@ class ObjectTool {
   }
 }
 
+// A discriminated union — the exact "city XOR coordinates" modeling the audit
+// flagged. Lowers to a root oneOf, so the guardrail must still reject it.
+const DiscriminatedInput = z.discriminatedUnion('kind', [
+  z.object({kind: z.literal('city'), city: z.string()}),
+  z.object({kind: z.literal('coords'), lat: z.number(), lon: z.number()}),
+]);
+
+@mcpServer()
+class DiscriminatedTool {
+  @tool('disc_weather', {input: DiscriminatedInput})
+  weather(_input: z.infer<typeof DiscriminatedInput>) {
+    return {ok: true};
+  }
+}
+
+// An intersection lowers to a root allOf.
+const IntersectionInput = z.intersection(
+  z.object({a: z.string()}),
+  z.object({b: z.number()}),
+);
+
+@mcpServer()
+class IntersectionTool {
+  @tool('inter_weather', {input: IntersectionInput})
+  weather(_input: z.infer<typeof IntersectionInput>) {
+    return {ok: true};
+  }
+}
+
+// A bare primitive lowers to a scalar `type`, not an object.
+const PrimitiveInput = z.string();
+
+@mcpServer()
+class PrimitiveTool {
+  @tool('prim_weather', {input: PrimitiveInput})
+  weather(_input: z.infer<typeof PrimitiveInput>) {
+    return {ok: true};
+  }
+}
+
 async function serverWith(toolClass: new () => object): Promise<MCPServer> {
   const app = new Application();
   app.component(MCPComponent);
@@ -59,5 +99,23 @@ describe('MCP tool inputSchema must lower to an object root', () => {
   it('accepts a plain object input schema', async () => {
     const server = await serverWith(ObjectTool);
     expect(() => server.buildServer()).not.toThrow();
+  });
+
+  it('rejects a discriminated union (oneOf root)', async () => {
+    const server = await serverWith(DiscriminatedTool);
+    expect(() => server.buildServer()).toThrow(/disc_weather/);
+    expect(() => server.buildServer()).toThrow(/oneOf/);
+  });
+
+  it('rejects an intersection (allOf root)', async () => {
+    const server = await serverWith(IntersectionTool);
+    expect(() => server.buildServer()).toThrow(/inter_weather/);
+    expect(() => server.buildServer()).toThrow(/allOf/);
+  });
+
+  it('rejects a bare primitive (scalar type root)', async () => {
+    const server = await serverWith(PrimitiveTool);
+    expect(() => server.buildServer()).toThrow(/prim_weather/);
+    expect(() => server.buildServer()).toThrow(/non-object `string`/);
   });
 });
