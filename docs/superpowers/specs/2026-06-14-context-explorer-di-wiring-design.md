@@ -1,7 +1,8 @@
 # Context Explorer → DI Wiring Explorer — Design
 
 **Date:** 2026-06-14
-**Status:** Approved design; ready for implementation planning.
+**Status:** Approved design, independently reviewed against the codebase
+(findings A, B, 6, 7, 8 incorporated); ready for implementation planning.
 **Package:** `@agentback/context-explorer`
 **Supersedes (extends):** `2026-05-29-context-explorer-design.md` (the original
 three-view explorer). This is a redesign of the same package, not a new one.
@@ -58,7 +59,16 @@ Surface the container **as wired architecture**, indexed by facet:
 - **No exact cross-group lifecycle boot ordering.** The resolved order lives in
   the `LifeCycleObserverRegistry` and depends on configured group order;
   surfacing it faithfully would require resolving the registry. Out of scope —
-  the explorer shows declared grouping only (see Decisions).
+  the explorer shows declared grouping only (see Decisions). **Expectation-setting
+  (review finding 7):** the `lifeCycleObserverGroup` tag is set *only* by the
+  `@lifeCycleObserver(group)` decorator. The common registration paths
+  (`app.lifeCycleObserver()`, component mounting, servers, every
+  `.apply(asLifeCycleObserver)`) set only the `lifeCycleObserver` tag, **not** a
+  group. So in a typical app most observers have `lifeCycleGroup === undefined`
+  and land in a single "default" bucket — the Lifecycle facet is a faithful view
+  of *declared* groups, which will often be sparse, not a rich grouping. This is
+  acceptable: the facet's job is to enumerate observers and surface whatever
+  grouping was declared, not to reconstruct boot order.
 - **No new top-level npm dependency.** Reuse React Flow (already a dep for the
   graph view) and `console-theme`.
 
@@ -93,12 +103,22 @@ multiple endpoints and force the client to re-join by key.
 Two facts make a single model endpoint not just tidier but **correct**:
 
 - After the `2026-06-14` refactor (commit `8d923d6`, "unify controller discovery
-  on the core `controller` tag"), a **dual `@api` + `@mcpServer` class is ONE
-  binding** carrying both the `controller` tag and `extensionFor(MCP_SERVERS)`
-  membership. A node can be simultaneously a controller (with routes) and an MCP
-  server (with tools). Separate `/controllers` and `/mcp-servers` endpoints would
-  split that one binding across two payloads; one model with `routes?`/`tools?`
-  **on the node** keeps it whole.
+  on the core `controller` tag"), a **dual `@api` + `@mcpServer` class registered
+  via `restController()`** (the additive alias) or merged through a component's
+  `controllers`/`services` arrays is **ONE binding** carrying both the
+  `controller` tag and `extensionFor(MCP_SERVERS)` membership — one node that is
+  simultaneously a controller (with routes) and an MCP server (with tools).
+  **Caveat (review finding A):** this single-binding outcome is *conditional*.
+  The commit message is explicit that explicit `app.controller(C)` **plus**
+  `app.service(C)` for the same class keep **two separate bindings** (no magic) —
+  and CLAUDE.md still documents that two-call pattern. So the same dual class can
+  appear as **one binding** (routes+tools) *or* **two bindings** sharing a
+  `valueConstructor`. The model must therefore **join dual identity by
+  `valueConstructor` name, not by binding key**: the UI groups the controller and
+  mcpServer facets of a class together when they share a source class, whether
+  that is one binding or two. Either way, separate `/controllers` and
+  `/mcp-servers` endpoints would force the client to re-join across payloads;
+  one model keeps the join server-side.
 - A single payload is an **atomic snapshot** — separate `/bindings` + `/graph`
   fetches can disagree if anything changes between them.
 
@@ -165,9 +185,9 @@ ContextModel = {
     type?: string;             // Class | Provider | Constant | Alias | ...
     source?: string;           // valueConstructor / providerConstructor / alias
     isLocked?: boolean;
-    tags: Array<{name: string; value: string | boolean}>;  // P0 ENABLER
+    tags: Array<{name: string; value: string | boolean}>;  // P0 ENABLER (see note)
     kinds: string[];           // server-computed set (see Kind taxonomy below)
-    dependsOn: string[];       // injection edges (from inspect injections)
+    dependsOn: string[];       // direct-key injection edges only (see note)
     extensionPoint?: string;   // item 3 — if this binding IS a point
     extensionFor?: string[];   // item 3 — point name(s) this binding extends
     configurationFor?: string; // item 7 — target key this binding configures
@@ -194,7 +214,27 @@ Computed server-side from authoritative filters/tags:
 | `server` | `servers.*` namespace / server tag |
 
 A binding with none of these has an empty `kinds` set ("plain"). A dual
-REST+MCP class has `['controller', 'mcpServer', ...]`.
+REST+MCP class registered as one binding has `['controller', 'mcpServer', ...]`;
+registered as two bindings, each binding carries one of the kinds and the client
+joins them by `valueConstructor` name (finding A).
+
+### Data-shape notes (review findings B & 6)
+
+- **`tags` value normalization (finding B).** `tagMap` values are
+  `string | string[] | true`. In particular `extensionFor` is a bare **string**
+  for a single point and a **`string[]`** for multiple
+  (`extension-point.ts`). The builder must therefore expand an array-valued tag
+  into multiple `{name, value}` entries (or flatten consistently) rather than
+  `Object.entries(tagMap)` naively, and `extensionFor?: string[]` must coerce the
+  single-string case to a one-element array.
+- **`dependsOn` covers direct-key injections only (finding 6).**
+  `inspect({includeInjections:true})` emits `bindingKey` only for direct key
+  injections; `@extensions()`/tag-filter injections emit `bindingTagPattern` and
+  filter-function injections emit `bindingFilter` — **no resolvable key**. So
+  `dependsOn` (and the Graph view) silently omit extension-point→extensions and
+  other filter-based wiring. That wiring is instead surfaced via the
+  **tag-derived** extension-point↔extensions section (below), which does not
+  depend on injection metadata. This split is intentional, not a gap.
 
 ### Derivations (client-side selectors over `model`)
 
@@ -274,7 +314,12 @@ coherent. A small legend renders in the facet nav.
   `HierarchyView`; `GraphView` gains color-by-scope.
 - `packages/context-explorer/src/client/lib/` — pure selector functions
   (facets, extension grouping, config edges, hierarchy tree) — unit-testable.
-- `packages/console` — verify the panel still composes (new `apiBase`/CSS).
+- `packages/console` — the SPA bundles context-explorer's client *source*
+  (`console/src/client/pages.ts` imports the TSX), so client fetch changes are
+  picked up automatically; no console client wiring to change. **But
+  `packages/console/src/__tests__/integration/console.integration.ts` asserts
+  `GET /context-explorer/api/bindings` returns 200/401 (review finding 8) — those
+  assertions must be repointed to `/model` when `/bindings` is removed.**
 - READMEs: `context-explorer/README.md` (new views + `/model` API).
 
 ## Testing
@@ -284,28 +329,41 @@ coherent. A small legend renders in the facet nav.
 
 - **`explorer.integration.ts` (extend):** boot a small app exercising every kind
   — a `@api` controller, a `@mcpServer` tool class, a **dual `@api`+`@mcpServer`**
-  class, a component, a lifecycle observer, an extension point + extension, a
-  `.configure()` config binding. Assert:
-  - `/model` returns tag **values** (not just names);
-  - `kinds` is correct, including the dual node carrying **both** `controller`
-    and `mcpServer` and **both** `routes` and `tools`;
+  class, a component, a lifecycle observer (incl. one via
+  `@lifeCycleObserver(group)` so a non-default group exists), an extension point +
+  extension (incl. a multi-point `extensionFor` to exercise the array case,
+  finding B), a `.configure()` config binding. Assert:
+  - `/model` returns tag **values** (not just names), with array tag values
+    expanded correctly;
+  - `kinds` is correct;
+  - **dual binding — both registration paths (finding A):** register one dual
+    class via `restController()` and assert it is **one** node carrying both
+    `controller`+`mcpServer` and both `routes`+`tools`; register a second dual
+    class via `app.controller()` + `app.service()` and assert it surfaces as
+    **two** nodes sharing a `valueConstructor`, joinable by source class;
   - extension `extensionFor` resolves to the point's `extensionPoint`;
   - `configurationFor` edge present;
   - `contexts[]` parent chain present;
   - `app.name`/`version` populated from `APPLICATION_METADATA`;
   - **no binding is resolved** (e.g. a provider with a throwing/​side-effecting
     constructor stays untouched; a secret constant value never appears in the
-    payload);
+    payload) — except the single permitted `APPLICATION_METADATA` read;
   - `/bindings` and `/graph` are gone (404 / not registered).
-- **Pure selector unit tests** for facet counting, extension grouping, config
-  edges, and hierarchy-tree construction.
+- **`packages/console` integration (finding 8):** repoint the
+  `/context-explorer/api/bindings` assertions in `console.integration.ts` to
+  `/model` (200 ungated, 401 when gated). Required for the console suite to pass.
+- **Pure selector unit tests** for facet counting, extension grouping (incl.
+  array `extensionFor`), config edges, hierarchy-tree construction, and the
+  by-`valueConstructor` dual-binding join.
 
 ## Phasing (one plan, staged commits)
 
-- **P0 — enabler + model endpoint.** `buildModel` with tag values, `kinds`,
-  `dependsOn`, `contexts`; `/model` live; `/bindings`+`/graph` removed; client
-  switched to `fetchModel`; existing views kept working. Integration test for the
-  model shape + no-resolve.
+- **P0 — enabler + model endpoint.** `buildModel` with normalized tag values
+  (incl. array `extensionFor`), `kinds`, `dependsOn` (direct-key only),
+  `contexts`, and `app` (the `APPLICATION_METADATA` read); `/model` live;
+  `/bindings`+`/graph` removed; client switched to `fetchModel`; existing views
+  kept working. **Repoint `console.integration.ts` to `/model`** (finding 8).
+  Integration test for the model shape + no-resolve.
 - **P1 — facet shell + scope/type + tags (1, 2).** Three-pane layout, FacetNav,
   color tokens/legend, tag=value chips, group/multi-select facets.
 - **P2 — extension points + lifecycle + config + hierarchy + app/component
@@ -313,7 +371,8 @@ coherent. A small legend renders in the facet nav.
   card, selector libs + their unit tests.
 - **P3 — controllers + MCP servers (8, 9).** Server-side `routes`/`tools` reads
   (mirroring schema-explorer), detail-pane Routes/Tools lists with link-outs,
-  dual-binding handling; integration coverage for the dual node.
+  dual-binding handling with the **by-`valueConstructor` join** (one-binding and
+  two-binding paths, finding A); integration coverage for both dual paths.
 
 ## Open questions
 
