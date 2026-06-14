@@ -72,6 +72,17 @@ export type ContextNode = z.infer<typeof ContextNode>;
 
 // ---- Helpers ----------------------------------------------------------------
 
+/**
+ * Stringify a single tag value. Functions/classes (e.g. a constructor used as a
+ * tag value) stringify to their whole source via `String()`, so collapse them
+ * to just the name — a bare anonymous function falls back to `(anonymous)`.
+ */
+function tagValue(v: unknown): string | boolean {
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'function') return v.name || '(anonymous)';
+  return String(v);
+}
+
 /** Normalize a `tagMap` into flat {name,value} entries; arrays fan out. */
 function tagEntries(
   tagMap: Record<string, unknown>,
@@ -79,11 +90,9 @@ function tagEntries(
   const out: z.infer<typeof TagEntry>[] = [];
   for (const [name, raw] of Object.entries(tagMap)) {
     if (Array.isArray(raw)) {
-      for (const v of raw) out.push({name, value: String(v)});
-    } else if (typeof raw === 'boolean') {
-      out.push({name, value: raw});
+      for (const v of raw) out.push({name, value: tagValue(v)});
     } else {
-      out.push({name, value: String(raw)});
+      out.push({name, value: tagValue(raw)});
     }
   }
   return out;

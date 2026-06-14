@@ -7,7 +7,7 @@ import {fileURLToPath} from 'node:url';
 import express from 'express';
 import {z} from 'zod';
 import {api, get, post, schemaToOpenApiSchema} from '@agentback/openapi';
-import {inject} from '@agentback/core';
+import {BindingScope, inject, injectable} from '@agentback/core';
 import {MCPBindings, type MCPServer} from '@agentback/mcp';
 import {
   installMcpConnect,
@@ -88,6 +88,9 @@ const Manifest = z
  * `@api`/`@get`/`@post` decorators and registered via `app.restController(...)`.
  * Injects the in-process MCP server — no MCP transport is involved.
  */
+// Stateless, read-only: request state arrives via method params, never the
+// constructor, so one shared instance is safe and avoids a per-request alloc.
+@injectable({scope: BindingScope.SINGLETON})
 @api({basePath: API_BASE})
 export class McpInspectorController {
   constructor(@inject(MCPBindings.SERVER) private readonly mcp: MCPServer) {}

@@ -7,7 +7,13 @@ import {fileURLToPath} from 'node:url';
 import express from 'express';
 import {z} from 'zod';
 import {api, get} from '@agentback/openapi';
-import {CoreBindings, inject, type Context} from '@agentback/core';
+import {
+  BindingScope,
+  CoreBindings,
+  inject,
+  injectable,
+  type Context,
+} from '@agentback/core';
 import {THEME_CSS, THEME_FONTS_HREF} from '@agentback/console-theme';
 import type {RestApplication, RestServer} from '@agentback/rest';
 import {buildSchemaInventory} from './inventory.js';
@@ -94,6 +100,9 @@ type SchemaGraph = z.infer<typeof SchemaGraph>;
  * indexes it by *schema*: every Zod entity, with provenance edges to the REST
  * routes, MCP tools, and Drizzle tables that use it.
  */
+// Stateless, read-only: request state arrives via method params, never the
+// constructor, so one shared instance is safe and avoids a per-request alloc.
+@injectable({scope: BindingScope.SINGLETON})
 @api({basePath: API_BASE})
 export class SchemaExplorerController {
   constructor(

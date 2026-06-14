@@ -90,6 +90,10 @@ describe('context-explorer model', () => {
       .inScope(BindingScope.SINGLETON);
     app.bind('explorer.test.transient').to(42).inScope(BindingScope.TRANSIENT);
 
+    // A tag whose value is a class/function: must surface the NAME, not source.
+    class TaggedFactory {}
+    app.bind('explorer.test.fnTag').to('x').tag({factory: TaggedFactory});
+
     // A secret + an exploding provider: must never be resolved.
     app.bind('secret.jwt').to('TOP-SECRET').inScope(BindingScope.SINGLETON);
     app.bind('danger.provider').toProvider(ExplodingProvider);
@@ -154,6 +158,14 @@ describe('context-explorer model', () => {
     expect(find(m, 'explorer.test.transient').scope).toBe(
       BindingScope.TRANSIENT,
     );
+  });
+
+  it('renders a class/function tag value as its name, not its source', async () => {
+    const m = await getModel();
+    const fnTag = find(m, 'explorer.test.fnTag').tags.find(
+      t => t.name === 'factory',
+    );
+    expect(fnTag).toEqual({name: 'factory', value: 'TaggedFactory'});
   });
 
   it('reports the application identity from APPLICATION_METADATA', async () => {
