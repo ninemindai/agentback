@@ -175,7 +175,12 @@ export function App({
           <HierarchyView
             contexts={model?.contexts ?? []}
             bindings={bindings}
-            onSelect={setSelectedKey}
+            // Jump to Explore with the binding selected so its detail opens
+            // (the hierarchy tree has no detail pane of its own).
+            onSelect={key => {
+              setSelectedKey(key);
+              setView('browse');
+            }}
           />
         </div>
       )}
