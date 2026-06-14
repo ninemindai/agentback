@@ -10,6 +10,8 @@ export interface FacetSelection {
   scope: Set<string>;
   type: Set<string>;
   tag: Set<string>;
+  extensionPoint: Set<string>;
+  lifeCycleGroup: Set<string>;
   context: Set<string>;
 }
 
@@ -27,6 +29,8 @@ const GROUPS: {
   {facet: 'kind', label: 'Kind', map: 'kind'},
   {facet: 'scope', label: 'Scope', map: 'scope'},
   {facet: 'type', label: 'Type', map: 'type'},
+  {facet: 'extensionPoint', label: 'Extension point', map: 'extensionPoint'},
+  {facet: 'lifeCycleGroup', label: 'Lifecycle group', map: 'lifeCycleGroup'},
   {facet: 'context', label: 'Context', map: 'context'},
   {facet: 'tag', label: 'Tag', map: 'tag'},
 ];

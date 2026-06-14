@@ -25,6 +25,8 @@ const emptySel = (): FacetSelection => ({
   scope: new Set(),
   type: new Set(),
   tag: new Set(),
+  extensionPoint: new Set(),
+  lifeCycleGroup: new Set(),
   context: new Set(),
 });
 
@@ -93,6 +95,8 @@ export function App({
         inFacet(sel.kind, v => b.kinds.includes(v)) &&
         inFacet(sel.scope, v => b.scope === v) &&
         inFacet(sel.type, v => b.type === v) &&
+        inFacet(sel.extensionPoint, v => b.extensionPoint === v) &&
+        inFacet(sel.lifeCycleGroup, v => b.lifeCycleGroup === v) &&
         inFacet(sel.context, v => b.context === v) &&
         inFacet(sel.tag, v => b.tags.some(t => t.name === v)),
     );

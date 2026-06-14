@@ -27,14 +27,24 @@ interface Hover {
   y: number;
 }
 
-// Warm paper-palette tint per binding type so kinds are scannable at a glance.
-const TYPE_FILL: Record<string, string> = {
-  Class: '#e6ece2',
-  Provider: '#efe5d6',
-  Constant: '#ece6d8',
-  Alias: '#e1eae6',
-  Function: '#f0e6db',
+// Node fill keyed on scope (matching the `.fdot.scope-*` tokens) so the graph
+// is scannable by lifecycle scope: singleton green, transient amber, context
+// blue, else a neutral paper tint.
+const SCOPE_FILL: Record<string, string> = {
+  Singleton: '#4f7d5b',
+  Transient: '#9a6b2f',
+  Context: '#3f6d8c',
 };
+
+function scopeFill(scope: string): string {
+  return SCOPE_FILL[scope] ?? '#ece6d8';
+}
+
+// White text reads on the saturated scope fills; dark text on the neutral
+// default keeps the paper look for unscoped/finer-grained scopes.
+function scopeText(scope: string): string {
+  return scope in SCOPE_FILL ? '#f6f1e6' : '#221d16';
+}
 
 function nodeLabel(key: string, scope: string, type: string) {
   return (
@@ -132,8 +142,8 @@ export function GraphView({selectedKey, onSelect, bindings}: Props) {
             padding: 6,
             borderRadius: 5,
             border: isSel ? '1.5px solid #9a3324' : '1px solid #cabfa6',
-            background: TYPE_FILL[data.type] ?? '#ece6d8',
-            color: '#221d16',
+            background: scopeFill(data.scope),
+            color: scopeText(data.scope),
             fontFamily: "'JetBrains Mono',ui-monospace,monospace",
             opacity: dimmed ? 0.28 : 1,
             boxShadow: isSel
