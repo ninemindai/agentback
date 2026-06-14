@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>A console for one container | AgentBack Blog</title>
+    <meta
+      name="description"
+      content="A read-only dev console that renders the same DI container and Zod schemas your REST and MCP servers run on — bindings, wiring, routes, tools, and the schema graph."
+    />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="../index.html">AgentBack blog</a>
+        <div class="nav-links">
+          <a href="../../README.md">Docs</a>
+          <a href="../../../README.md">Repo README</a>
+          <a href="../diagrams/system-boundary.html">Diagram</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="post-layout">
+      <article class="post-body">
+        <p class="post-meta">June 14, 2026</p>
+        <h1>A console for one container</h1>
+        <p class="lede">
+          An AgentBack app is one dependency-injection container and one set of
+          Zod schemas. The console at <code>/console</code> is a read-only window
+          onto exactly that — not a second description of the system that can
+          drift from it.
+        </p>
+
+        <p>
+          Most dev dashboards are a separate artifact: a hand-maintained diagram,
+          a generated spec, a list of routes someone keeps up to date. They start
+          accurate and rot. AgentBack already keeps its REST routes, MCP tools,
+          OpenAPI, typed clients, and <code>llms.txt</code> derived from a single
+          source. The console is that same idea pointed inward: render the
+          running container, don't re-describe it.
+        </p>
+
+        <p>
+          One call mounts it. The console composes four panels behind a shared
+          shell.
+        </p>
+
+        <pre><code class="language-ts">const app = new RestApplication();
+app.component(MCPComponent);
+app.restController(GreetingController);
+app.service(EchoTools);
+
+// Context + Schema + API + MCP panels, one shell at /console.
+await installConsole(app, {title: 'my-service'});
+await app.start();</code></pre>
+
+        <div class="visual-grid">
+          <div class="node">
+            <strong>Context</strong>
+            <span>the DI container as wiring</span>
+          </div>
+          <div class="node amber">
+            <strong>Schema</strong>
+            <span>Zod entities and where they're used</span>
+          </div>
+          <div class="node cyan">
+            <strong>API</strong>
+            <span>Swagger over /openapi.json</span>
+          </div>
+          <div class="node violet">
+            <strong>MCP</strong>
+            <span>tools, prompts, the inspector</span>
+          </div>
+        </div>
+
+        <h2>The container as wiring, not a list</h2>
+        <p>
+          The Context panel is the one most frameworks don't have, because most
+          frameworks don't have a single container to show. It indexes every
+          binding and offers four views of the same model: <strong>Explore</strong>,
+          <strong>Graph</strong>, <strong>Hierarchy</strong>, and
+          <strong>Raw</strong>.
+        </p>
+        <p>
+          Explore is a faceted browser. Pick one facet value — a kind
+          (<code>controller</code>, <code>mcpServer</code>, <code>component</code>,
+          <code>lifeCycleObserver</code>, <code>extensionPoint</code>,
+          <code>config</code>, <code>server</code>), a scope, a type, a tag, an
+          extension point, a lifecycle group, or a context — and the list filters
+          to it. Scope and type are color-coded so a registry of a hundred
+          bindings is still scannable. The detail pane shows a binding's tags
+          (with values), its dependencies both directions, and any routes or
+          tools it contributes.
+        </p>
+
+        <h2>The graph shows real relationships</h2>
+        <p>
+          Architecture in AgentBack is encoded in tag conventions, not buried in
+          imperative wiring. That makes it drawable. The Graph view lays the
+          container out and distinguishes five kinds of edge, each one a
+          relationship the container actually has:
+        </p>
+
+        <ul>
+          <li>
+            <strong>depends on</strong> — a direct constructor or property
+            injection (<code>@inject('key')</code>).
+          </li>
+          <li>
+            <strong>injects by tag</strong> — a binding that injects a whole view
+            of a tag (<code>@inject.view</code>), e.g. the lifecycle registry
+            pulling in every <code>lifeCycleObserver</code>.
+          </li>
+          <li>
+            <strong>extension &rarr; extension point</strong> — an extension
+            registering with the point it extends. Points consumed only by name
+            (like <code>mcpServers</code>, with no declaring binding) get a
+            synthetic node so the wiring still lands somewhere.
+          </li>
+          <li>
+            <strong>configures</strong> — a <code>.configure()</code> binding to
+            the binding it configures.
+          </li>
+          <li>
+            <strong>alias &rarr; target</strong> — an alias binding to the key it
+            resolves to.
+          </li>
+        </ul>
+
+        <p>
+          Hierarchy renders the context parent chain as a tree; Raw is the
+          unreshaped <code>inspect()</code> dump for when you want ground truth.
+          Click any binding in any view and you land on its detail.
+        </p>
+
+        <h2>It never resolves a binding</h2>
+        <p>
+          The console is strictly read-only, and "read-only" here has a precise
+          meaning: it never resolves a binding's <em>value</em>. Resolving could
+          instantiate a provider or read a secret — a JWT signing key is a
+          binding like any other. So the model is built from metadata only:
+          <code>inspect()</code> output, the tag map, and decorator metadata read
+          off a class constructor without ever calling it. Routes come from
+          reading controller specs; tools from reading method metadata. A bound
+          secret shows its key, scope, and tags, and nothing else.
+        </p>
+        <p>
+          There is exactly one deliberate exception:
+          <code>APPLICATION_METADATA</code>, a plain <code>package.json</code>
+          object, is resolved to render the app's name and version. It is a
+          constant, never a secret, and the exception is a single guarded read.
+        </p>
+
+        <h2>Why it can't drift</h2>
+        <p>
+          The Context panel calls one endpoint — <code>/context-explorer/api/model</code>
+          — which builds its model from the same registry the REST and MCP
+          servers discover themselves from at startup. There is no second list to
+          keep in sync. When provenance isn't already in the container, the fix
+          is to record it in the container, not to reconstruct it in the UI:
+          components now tag every binding they contribute with
+          <code>fromComponent</code>, so "what does this component contain" is a
+          tag query, not a guess. The console shows what is, because it reads
+          what runs.
+        </p>
+
+        <div class="callout">
+          <p>
+            The runnable version is
+            <a href="../../../examples/hello-console/src/index.ts"
+              >examples/hello-console</a
+            >. Start it and open <code>/console</code>. (For local development the
+            example passes <code>unsafeAllowUnauthenticated: true</code>; in
+            production the console requires an explicit auth posture, since it
+            exposes DI internals.)
+          </p>
+        </div>
+
+        <div class="post-actions">
+          <a class="button" href="../../../packages/console/README.md"
+            >Read the console docs</a
+          >
+          <a class="button secondary" href="../../agent-ergonomics.md"
+            >Why one source of truth</a
+          >
+        </div>
+      </article>
+
+      <aside class="aside" aria-label="Post links">
+        <h2>Related</h2>
+        <a href="../../../packages/context-explorer/README.md"
+          >Context explorer</a
+        >
+        <a href="../../../packages/schema-explorer/README.md">Schema explorer</a>
+        <a href="../diagrams/system-boundary.html">Architecture map</a>
+        <a href="one-container-two-surfaces.html">One container, two surfaces</a>
+      </aside>
+    </main>
+  </body>
+</html>
