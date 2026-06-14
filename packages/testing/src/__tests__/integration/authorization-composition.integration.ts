@@ -102,10 +102,12 @@ class SecureApp extends RestApplication {
         ? {localPrincipal: {[securityId]: 'svc', scopes: ['admin']}}
         : {}),
     });
+    // A dual `@api` + `@mcpServer` class needs only ONE registration: the
+    // additive `restController` keeps the class's `extensionFor(MCP_SERVERS)`
+    // membership, so REST (via the `restController` tag) and MCP (via the
+    // extension membership) both discover it from a single binding.
     this.restController(SecureController);
-    this.service(SecureController);
     this.restController(OpenController);
-    this.service(OpenController);
   }
 }
 

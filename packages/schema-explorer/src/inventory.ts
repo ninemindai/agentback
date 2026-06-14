@@ -2,7 +2,7 @@
 // Node module: @agentback/schema-explorer
 // This file is licensed under the MIT License.
 
-import {extensionFilter, type Context} from '@agentback/core';
+import {CoreTags, extensionFilter, type Context} from '@agentback/core';
 import {MetadataInspector} from '@agentback/metadata';
 import {
   SCHEMA_TAG,
@@ -13,7 +13,6 @@ import {
   type RouteSchemas,
   type SchemaLike,
 } from '@agentback/openapi';
-import {REST_CONTROLLER_TAG} from '@agentback/rest';
 import {MCP_SERVERS, MCPKeys, type ToolMetadata} from '@agentback/mcp';
 
 /** Which boundary a schema is wired into. */
@@ -203,7 +202,7 @@ export function buildSchemaInventory(ctx: Context): SchemaInventory {
   }
 
   // ---- Edges: invert REST route schemas -------------------------------------
-  for (const b of ctx.findByTag(REST_CONTROLLER_TAG)) {
+  for (const b of ctx.findByTag(CoreTags.CONTROLLER)) {
     const ctor = b.valueConstructor;
     if (typeof ctor !== 'function') continue;
     let spec;

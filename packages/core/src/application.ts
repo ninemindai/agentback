@@ -165,7 +165,11 @@ export class Application extends Context implements LifeCycleObserver {
   ): Binding<T> {
     this.debug('Adding controller %s', nameOrOptions ?? controllerCtor.name);
     const binding = createBindingFromClass(controllerCtor, {
-      namespace: CoreBindings.CONTROLLERS,
+      // `defaultNamespace` (not `namespace`) so a class that explicitly declares
+      // its own namespace/key via decorators wins; the helper only fills the
+      // default when the class said nothing. `type` stays authoritative — a
+      // controller registered here is a controller.
+      defaultNamespace: CoreBindings.CONTROLLERS,
       type: CoreTags.CONTROLLER,
       defaultScope: BindingScope.TRANSIENT,
       ...toOptions(nameOrOptions),
@@ -198,7 +202,9 @@ export class Application extends Context implements LifeCycleObserver {
   ): Binding<T> {
     this.debug('Adding server %s', nameOrOptions ?? ctor.name);
     const binding = createBindingFromClass(ctor, {
-      namespace: CoreBindings.SERVERS,
+      // `defaultNamespace` so an explicit class-declared namespace/key wins;
+      // helper only fills the default. See `controller()` for rationale.
+      defaultNamespace: CoreBindings.SERVERS,
       type: CoreTags.SERVER,
       defaultScope: BindingScope.SINGLETON,
       ...toOptions(nameOrOptions),

@@ -18,7 +18,7 @@ customization lives on decorator options; cross-cutting concerns go in Express m
 - `RestApplication` — `Application` subclass with `MiddlewareMixin`; pre-binds `RestServer`; exposes `app.restController()`, `app.restServer`, `app.middleware()`, `app.expressMiddleware()`
 - `RestServerConfig` — `{port?, host?, basePath?, openApiSpec?: {path?, overrides?}, cors?}`
 - `RestBindings` — DI keys: `RestBindings.SERVER`, `RestBindings.CONFIG`
-- `REST_CONTROLLER_TAG` — tag used to discover controller bindings
+- Controllers are discovered by the core `controller` tag (`CoreTags.CONTROLLER` from `@agentback/core`); `app.restController()` is a thin, REST-flavored alias for `app.controller()` and adds no separate tag
 - Error helpers: `invalidParameter(field, message)`, `invalidRequestBody(details)`, `zodIssuesToDetails(issues)` — produce HTTP 400/422 error shapes from Zod validation failures
 
 ## Request pipeline

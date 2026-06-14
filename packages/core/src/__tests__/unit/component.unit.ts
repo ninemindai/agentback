@@ -260,6 +260,29 @@ describe('Component', () => {
       expect(bindings[0].valueConstructor).toBe(MyService);
     });
 
+    it('contributes ONE binding for a class listed in both controllers and services', () => {
+      @injectable({scope: BindingScope.SINGLETON})
+      class DualClass {}
+
+      const component: Component = {
+        controllers: [DualClass],
+        services: [DualClass],
+      };
+
+      mountComponent(app, component);
+
+      // A single binding carries the class — not one per surface array (unlike
+      // two explicit app.controller() + app.service() calls, which keep two).
+      const bindings = app.find(b => b.valueConstructor === DualClass);
+      expect(bindings).toHaveLength(1);
+      // ...and it carries BOTH surfaces' tags.
+      const tags = Array.from(bindings[0].tagNames);
+      expect(tags).toContainEqual(CoreTags.SERVICE);
+      expect(tags).toContainEqual(CoreTags.CONTROLLER);
+      // No separate controllers.<name> binding was created.
+      expect(app.contains('controllers.DualClass')).toBe(false);
+    });
+
     it('binds multiple services from component', () => {
       @injectable({scope: BindingScope.SINGLETON})
       class ServiceA {

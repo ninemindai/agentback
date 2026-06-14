@@ -22,7 +22,7 @@ import {
 } from '@agentback/authorization';
 import {SecurityBindings, UserProfile} from '@agentback/security';
 import createError from 'http-errors';
-import {CoreBindings, Server} from '@agentback/core';
+import {CoreBindings, CoreTags, Server} from '@agentback/core';
 import {toExpressMiddleware} from '@agentback/express';
 import cors from 'cors';
 import {
@@ -57,7 +57,6 @@ import express, {
 } from 'express';
 import type {Server as HttpServer} from 'http';
 import {
-  REST_CONTROLLER_TAG,
   REST_DISPATCH_HOOK_TAG,
   RestBindings,
   type RestDispatchHook,
@@ -695,9 +694,9 @@ export class RestServer implements Server {
   }
 
   private async resolveController<T>(ctor: Function): Promise<T> {
-    // Find a binding tagged restController whose valueConstructor === ctor,
+    // Find a binding tagged `controller` whose valueConstructor === ctor,
     // or by class name as a fallback.
-    const found = this.context.findByTag(REST_CONTROLLER_TAG);
+    const found = this.context.findByTag(CoreTags.CONTROLLER);
     for (const binding of found) {
       if ((binding.valueConstructor as unknown) === ctor) {
         return this.context.get<T>(binding.key);
@@ -717,7 +716,7 @@ export class RestServer implements Server {
    */
   async getApiSpec(): Promise<OpenApiSpec> {
     const controllers: Function[] = [];
-    for (const b of this.context.findByTag(REST_CONTROLLER_TAG)) {
+    for (const b of this.context.findByTag(CoreTags.CONTROLLER)) {
       if (typeof b.valueConstructor === 'function') {
         controllers.push(b.valueConstructor);
       }
@@ -742,7 +741,7 @@ export class RestServer implements Server {
    * Register all controllers tagged in the context.
    */
   private mountAllControllers() {
-    const bindings = this.context.findByTag(REST_CONTROLLER_TAG);
+    const bindings = this.context.findByTag(CoreTags.CONTROLLER);
     for (const b of bindings) {
       if (typeof b.valueConstructor === 'function') {
         this.controller(b.valueConstructor);

@@ -25,8 +25,6 @@ export namespace RestBindings {
   );
 }
 
-export const REST_CONTROLLER_TAG = 'restController';
-
 /**
  * Binding tag for {@link RestDispatchHook} values. Bind a hook value and tag
  * it to wrap every dispatched request:

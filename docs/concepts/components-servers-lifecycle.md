@@ -39,7 +39,7 @@ what keeps large apps composable: a feature is a component, not a diff against
 ```mermaid
 graph TD
   C["app.component(MyComponent)"]
-  C --> ctl["controllers[] → tagged restController"]
+  C --> ctl["controllers[] → tagged controller"]
   C --> cls["classes{} → bound by key"]
   C --> prov["providers{} → bound by key"]
   C --> srv["servers{} → bound under servers.*"]
@@ -53,7 +53,7 @@ A `Server` is a `LifeCycleObserver` with a `listening` flag. The framework ships
 two:
 
 - **`RestServer`** ([`@agentback/rest`](../../packages/rest)) — discovers
-  bindings tagged `restController`, builds routes from their decorator metadata,
+  bindings tagged `controller`, builds routes from their decorator metadata,
   validates with Zod, serves `/openapi.json`.
 - **`MCPServer`** ([`@agentback/mcp`](../../packages/mcp)) — discovers
   bindings tagged `mcpServer`, registers their `@tool`/`@resource`/`@prompt`

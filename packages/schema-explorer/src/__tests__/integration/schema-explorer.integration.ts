@@ -5,8 +5,8 @@
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import supertest from 'supertest';
 import {z} from 'zod';
-import {extensionFor} from '@agentback/core';
-import {RestApplication, REST_CONTROLLER_TAG} from '@agentback/rest';
+import {CoreTags, extensionFor} from '@agentback/core';
+import {RestApplication} from '@agentback/rest';
 import {api, post, get, bindSchema} from '@agentback/openapi';
 import {mcpServer, tool, MCP_SERVERS} from '@agentback/mcp';
 import {installSchemaExplorer} from '../../index.js';
@@ -50,11 +50,11 @@ describe('schema-explorer', () => {
   beforeEach(async () => {
     app = new RestApplication({});
     app.configure('servers.RestServer').to({port: 0, host: '127.0.0.1'});
-    // One binding, both surfaces: restController tag + MCP_SERVERS extension.
+    // One binding, both surfaces: controller tag + MCP_SERVERS extension.
     app
       .bind('controllers.WidgetController')
       .toClass(WidgetController)
-      .tag(REST_CONTROLLER_TAG)
+      .tag(CoreTags.CONTROLLER)
       .apply(extensionFor(MCP_SERVERS));
     // Register the shared entity with a (pretend) table origin.
     bindSchema(app, 'Widget', Widget, {table: 'widgets', kind: 'select'});

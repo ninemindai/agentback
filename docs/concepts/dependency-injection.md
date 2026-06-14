@@ -17,7 +17,7 @@ graph TD
   subgraph Registry["binding registry"]
     B1["'clock' → Clock"]
     B2["services.Greeter → Greeter"]
-    B3["controllers.Foo → Foo  [tag: restController]"]
+    B3["controllers.Foo → Foo  [tag: controller]"]
     B4["servers.RestServer → RestServer  [tag: server]"]
   end
   App --- Registry
@@ -152,10 +152,10 @@ tag instead of by hard-coded references — this is how servers locate your code
 without you registering it in a router.
 
 ```ts
-app.bind('controllers.Foo').toClass(Foo).tag('restController');
+app.bind('controllers.Foo').toClass(Foo).tag('controller');
 
 // find everything tagged — what RestServer does at startup
-const controllers = app.findByTag('restController'); // Binding[]
+const controllers = app.findByTag('controller'); // Binding[]
 ```
 
 You rarely call `.tag()` by hand. The class decorators put the tag in metadata,
@@ -163,9 +163,9 @@ and the registration helpers apply it for you:
 
 | Helper                  | Tag applied                                                    | Found by                   |
 | ----------------------- | -------------------------------------------------------------- | -------------------------- |
-| `app.restController(C)` | `restController`                                               | `RestServer`               |
+| `app.controller(C)`     | `controller` (+ `extensionFor: MCP_SERVERS` if `@mcpServer()`) | `RestServer`               |
+| `app.restController(C)` | `controller` — a thin alias for `app.controller(C)`            | `RestServer`               |
 | `app.service(C)`        | `service` (+ `extensionFor: MCP_SERVERS` if `@mcpServer()`)    | DI / MCP server            |
-| `app.controller(C)`     | `controller` (+ `extensionFor: MCP_SERVERS` if `@mcpServer()`) | binds `controllers.<name>` |
 | `app.component(C)`      | — (registers the component's bindings)                         | —                          |
 | `app.server(C)`         | `server`                                                       | `Application` lifecycle    |
 
@@ -179,9 +179,12 @@ binding automatically — see the
 server discovers it as an `MCP_SERVERS` extension and resolves the instance
 through its binding, so constructor `@inject` is honored regardless of namespace
 (`service`, `controller`, or a manual `bind().apply(extensionFor(MCP_SERVERS))`).
-A dual REST + MCP class (`@api` + `@mcpServer`) needs **both** `restController`
-(the REST routes) and `service` (the MCP extension), since `restController` tags
-it for REST only.
+A dual REST + MCP class (`@api` + `@mcpServer`) needs only **one** registration:
+`app.restController(C)` (or `app.controller(C)`) tags it `controller` so
+`RestServer` mounts its routes, and — because the helper honors the class's
+`@mcpServer` metadata — keeps its `extensionFor: MCP_SERVERS` membership so the
+MCP server discovers its tools. Don't *also* `app.service(C)` the same class:
+explicit calls keep separate bindings, which would register the tool twice.
 
 ## Configuration
 

@@ -27,7 +27,7 @@ await app.start(); // BOTH servers start; each discovers its own bindings by tag
 ```
 
 `app.start()` walks the lifecycle and starts every `servers.*` binding. The REST
-server finds `restController`-tagged bindings; the MCP server finds
+server finds `controller`-tagged bindings; the MCP server finds
 `mcpServer`-tagged ones. They share the container, so they also share any service
 you bind.
 
@@ -35,7 +35,7 @@ you bind.
 graph TD
   subgraph App["one RestApplication (Context)"]
     Svc["services.* (shared business logic)"]
-    Ctl["controllers.* [restController]"]
+    Ctl["controllers.* [controller]"]
     Tool["tools [mcpServer]"]
   end
   Ctl --> RS["RestServer → HTTP + /openapi.json + /explorer"]

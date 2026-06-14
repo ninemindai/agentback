@@ -3,10 +3,10 @@
 // License text available at https://opensource.org/license/mit/
 
 import {getTableName} from 'drizzle-orm';
-import {BindingScope, extensionFor} from '@agentback/core';
+import {BindingScope} from '@agentback/core';
 import {bindSchema} from '@agentback/openapi';
-import {RestApplication, REST_CONTROLLER_TAG} from '@agentback/rest';
-import {MCPComponent, MCP_SERVERS} from '@agentback/mcp';
+import {RestApplication} from '@agentback/rest';
+import {MCPComponent} from '@agentback/mcp';
 import {UsersController} from './controllers/users.controller.js';
 import {users, NewUser, User} from './db/schema.js';
 import {InMemoryUserStore, USER_STORE} from './user-store.js';
@@ -15,10 +15,11 @@ import {InMemoryUserStore, USER_STORE} from './user-store.js';
  * hello-drizzle application: REST + MCP from one DI container, with the
  * `users` table's drizzle-zod schemas as the shared contract.
  *
- * `UsersController` is BOTH `@api` (REST) and `@mcpServer` (MCP). It's bound
- * ONCE, tagged `restController` (so RestServer mounts its routes) and marked an
- * `MCP_SERVERS` extension (so MCPServer discovers its tools), so REST and MCP
- * share a single controller instance and a single injected store.
+ * `UsersController` is BOTH `@api` (REST) and `@mcpServer` (MCP). A single
+ * `restController(...)` registration binds it ONCE: the core `controller` tag
+ * lets RestServer mount its routes, and the `@mcpServer`-inherited
+ * `extensionFor(MCP_SERVERS)` membership lets MCPServer discover its tools — so
+ * REST and MCP share a single controller instance and a single injected store.
  */
 export class HelloDrizzleApplication extends RestApplication {
   constructor() {
@@ -37,12 +38,10 @@ export class HelloDrizzleApplication extends RestApplication {
       .toClass(InMemoryUserStore)
       .inScope(BindingScope.SINGLETON);
 
-    // Register the dual-protocol controller once: REST discovery tag + the
-    // MCP_SERVERS extension marker.
-    this.bind('controllers.UsersController')
-      .toClass(UsersController)
-      .tag(REST_CONTROLLER_TAG)
-      .apply(extensionFor(MCP_SERVERS));
+    // Register the dual-protocol controller once. `restController` honors the
+    // class's `@mcpServer` metadata, so this single binding serves both REST
+    // (via the `controller` tag) and MCP (via the extension membership).
+    this.restController(UsersController);
 
     // Name the shared drizzle-zod schemas in the container and tag their source
     // table. This is *enrichment* — the schemas already work as route + tool

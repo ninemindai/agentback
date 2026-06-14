@@ -14,6 +14,7 @@ import {
   ControllerClass,
   ServiceOrProviderClass,
 } from './application.js';
+import {CoreTags} from './keys.js';
 import {LifeCycleObserver} from './lifecycle.js';
 import {Server} from './server.js';
 
@@ -133,8 +134,19 @@ export function mountComponent(app: Application, component: Component) {
     }
   }
 
+  // A class listed in both `controllers` and `services` is contributed once, as
+  // a single binding (see the `services` loop below) — unlike two explicit
+  // `app.controller()` + `app.service()` calls, which deliberately keep separate
+  // bindings. Registering once also applies the class's `extensionFor` template
+  // a single time, so its extension-point names stay deduped.
+  const serviceClasses = new Set<Function>();
+  for (const s of component.services ?? []) {
+    if (typeof s === 'function') serviceClasses.add(s);
+  }
+
   if (component.controllers) {
     for (const controllerCtor of component.controllers) {
+      if (serviceClasses.has(controllerCtor)) continue;
       app.controller(controllerCtor);
     }
   }
@@ -152,8 +164,14 @@ export function mountComponent(app: Application, component: Component) {
   }
 
   if (component.services) {
+    const controllerClasses = new Set<Function>(component.controllers ?? []);
     for (const service of component.services) {
-      app.service(service);
+      const binding = app.service(service);
+      // Dual-surface class (in both arrays): tag the same binding as a
+      // controller too, so the component yields one binding rather than two.
+      if (typeof service === 'function' && controllerClasses.has(service)) {
+        binding.tag(CoreTags.CONTROLLER);
+      }
     }
   }
 

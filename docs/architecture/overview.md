@@ -19,7 +19,7 @@ graph TD
   subgraph Container["Application — one DI Context"]
     direction TB
     Schemas["Zod schemas (shared)"]
-    Ctrls["controllers.* [restController]"]
+    Ctrls["controllers.* [controller]"]
     Tools["tool classes [mcpServer]"]
     Svcs["services.* / providers / config"]
     Ctrls -. @inject .-> Svcs
@@ -31,7 +31,7 @@ graph TD
   Container --> RS["RestServer<br/>(servers.RestServer)"]
   Container --> MS["MCPServer<br/>(servers.MCPServer)"]
 
-  RS -->|findByTag restController| Ctrls
+  RS -->|findByTag controller| Ctrls
   MS -->|findByTag mcpServer| Tools
 
   RS --> HTTP["HTTP + /openapi.json"]
@@ -91,10 +91,10 @@ container at start time.
 
 ```mermaid
 graph LR
-  Dec["@api / @mcpServer class"] -->|"app.restController / app.service"| Bind["binding + tag<br/>(restController · mcpServer)"]
+  Dec["@api + @mcpServer class"] -->|"app.restController (one call)"| Bind["one binding + tags<br/>(controller · extensionFor MCP_SERVERS)"]
   Start["app.start()"] --> SrvR["RestServer"]
   Start --> SrvM["MCPServer"]
-  SrvR -->|"findByTag('restController')"| Bind
+  SrvR -->|"findByTag('controller')"| Bind
   SrvM -->|"findByTag('mcpServer')"| Bind
   SrvR -->|read decorator metadata| Routes["routes + Zod bundles"]
   SrvM -->|reflect @tool/@resource/@prompt| Reg["SDK registrations"]

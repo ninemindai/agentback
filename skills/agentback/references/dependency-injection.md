@@ -196,7 +196,7 @@ import {MCPApplication} from '@agentback/mcp'; // pre-mounts MCPComponent
 import {MCPComponent} from '@agentback/mcp';
 
 const restApp = new RestApplication({name: 'api'});
-restApp.restController(HelloController); // tags binding with REST_CONTROLLER_TAG
+restApp.restController(HelloController); // tags binding CoreTags.CONTROLLER (RestServer discovers it)
 restApp.component(MCPComponent); // hybrid REST + MCP
 
 await restApp.start(); // init() → start() on all lifecycle observers
@@ -207,7 +207,7 @@ await restApp.stop(); // stop() in reverse order
 
 ```ts
 app.controller(MyController); // CoreTags.CONTROLLER, TRANSIENT scope
-app.restController(MyRestController); // adds REST_CONTROLLER_TAG for discovery
+app.restController(MyRestController); // alias for app.controller(); RestServer discovers by CoreTags.CONTROLLER
 app.service(MyService); // CoreTags.SERVICE, SINGLETON scope
 app.server(MyServer); // CoreTags.SERVER + asLifeCycleObserver, SINGLETON
 app.component(MyComponent); // recursively mounts the component
@@ -318,7 +318,7 @@ export class WeatherService {
 app.service(WeatherService);
 ```
 
-Parallel pattern: `RestServer` uses `ctx.findByTag(REST_CONTROLLER_TAG)` to
+Parallel pattern: `RestServer` uses `ctx.findByTag(CoreTags.CONTROLLER)` to
 mount routes; `LifeCycleObserverRegistry` uses
 `filterByTag(CoreTags.LIFE_CYCLE_OBSERVER)` to drive `init`/`start`/`stop`.
 

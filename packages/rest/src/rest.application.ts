@@ -3,10 +3,11 @@
 // License text available at https://opensource.org/license/mit/
 
 import {Application, ApplicationConfig} from '@agentback/core';
+import type {Binding} from '@agentback/context';
 import {MiddlewareMixin} from '@agentback/express';
 import {loggers} from '@agentback/common';
 import {RestServer} from './rest.server.js';
-import {RestBindings, REST_CONTROLLER_TAG} from './keys.js';
+import {RestBindings} from './keys.js';
 import type {RestServerConfig} from './types.js';
 
 const log = loggers('agentback:rest:application');
@@ -63,14 +64,17 @@ export class RestApplication extends MiddlewareMixin(Application) {
   }
 
   /**
-   * Bind a controller class — delegates to Application.controller and adds
-   * the REST tag so RestServer mounts its routes on start.
+   * Bind a controller class. A thin, REST-flavored alias for
+   * `Application.controller`: the `RestServer` discovers controllers by the core
+   * `controller` tag (which `Application.controller` applies), so this exists for
+   * call-site readability and parity with the other surface helpers — it adds no
+   * separate tag. The class's own binding metadata (scope, key, namespace, tags)
+   * is honored; a dual `@api` + `@mcpServer` class keeps its
+   * `extensionFor(MCP_SERVERS)` membership, so one registration serves both REST
+   * (via the `controller` tag) and MCP (via the extension membership).
    */
-  restController<T>(ctor: new (...args: any[]) => T): void {
-    super.controller(ctor as never);
-    this.bind(`controllers.${ctor.name}`)
-      .toClass(ctor as never)
-      .tag(REST_CONTROLLER_TAG);
+  restController<T>(ctor: new (...args: any[]) => T): Binding<T> {
+    return super.controller<T>(ctor as never);
   }
 
   get restServer(): Promise<RestServer> {

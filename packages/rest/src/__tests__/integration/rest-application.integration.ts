@@ -3,6 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
+import {BindingScope, ContextTags, CoreTags, injectable} from '@agentback/core';
 import {RestApplication} from '../../rest.application.js';
 
 describe('RestApplication constructor config', () => {
@@ -73,5 +74,37 @@ describe('RestApplication PORT/HOST env support', () => {
     const app = new RestApplication();
     const server = await app.restServer;
     expect(server.config.port).toBe(3000);
+  });
+});
+
+describe('RestApplication.restController honors class binding metadata', () => {
+  it('falls back to the controllers.<name> key and TRANSIENT scope when the class declares nothing', () => {
+    class PlainController {}
+    const app = new RestApplication();
+    const binding = app.restController(PlainController);
+    expect(binding.key).toBe('controllers.PlainController');
+    expect(binding.scope).toBe(BindingScope.TRANSIENT);
+    // RestServer discovers controllers by the core `controller` tag.
+    expect(binding.tagNames).toContain(CoreTags.CONTROLLER);
+  });
+
+  it('honors a class-declared scope instead of the TRANSIENT default', () => {
+    @injectable({scope: BindingScope.SINGLETON})
+    class SingletonController {}
+    const app = new RestApplication();
+    const binding = app.restController(SingletonController);
+    expect(binding.scope).toBe(BindingScope.SINGLETON);
+    // helper-supplied controller tag still present
+    expect(binding.tagNames).toContain(CoreTags.CONTROLLER);
+  });
+
+  it('honors a class-declared binding key instead of the controllers.<name> default', () => {
+    @injectable({tags: {[ContextTags.KEY]: 'custom.controllers.Widget'}})
+    class WidgetController {}
+    const app = new RestApplication();
+    const binding = app.restController(WidgetController);
+    expect(binding.key).toBe('custom.controllers.Widget');
+    // still discoverable for REST routing via the core `controller` tag
+    expect(binding.tagNames).toContain(CoreTags.CONTROLLER);
   });
 });
