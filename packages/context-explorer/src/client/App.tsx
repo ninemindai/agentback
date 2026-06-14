@@ -4,7 +4,12 @@
 
 import {useEffect, useMemo, useState} from 'react';
 import {makeApi, type BindingNode, type ContextModel} from './api';
-import {facets, configEdges, extensionGroups} from '../lib/selectors';
+import {
+  facets,
+  configEdges,
+  extensionGroups,
+  dualByCtor,
+} from '../lib/selectors';
 import {ApiProvider} from './ApiContext';
 import {FacetNav, type FacetSelection} from './components/FacetNav';
 import {ResultsList} from './components/ResultsList';
@@ -75,6 +80,7 @@ export function App({
   const allFacets = useMemo(() => facets(bindings), [bindings]);
   const cfgEdges = useMemo(() => configEdges(bindings), [bindings]);
   const extGroups = useMemo(() => extensionGroups(bindings), [bindings]);
+  const duals = useMemo(() => dualByCtor(bindings), [bindings]);
 
   // Within-facet OR, across-facet AND.
   const visible = useMemo(() => {
@@ -96,6 +102,12 @@ export function App({
     () => bindings.find(b => b.key === selectedKey) ?? null,
     [bindings, selectedKey],
   );
+
+  const siblings = selected?.source
+    ? (duals.get(selected.source) ?? [])
+        .filter(b => b.key !== selected.key)
+        .map(b => b.key)
+    : [];
 
   if (error) return <p className="err">Failed to load model: {error}</p>;
 
@@ -190,6 +202,7 @@ export function App({
                     )
                   : []
               }
+              siblings={siblings}
               onSelect={setSelectedKey}
             />
           </div>

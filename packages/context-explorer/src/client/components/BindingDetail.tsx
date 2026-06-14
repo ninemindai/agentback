@@ -14,6 +14,8 @@ interface Props {
   configuredBy: string[];
   /** extensions contributing to THIS point (if it is an extension point). */
   extensions: string[];
+  /** other bindings sharing this binding's source class (dual registration). */
+  siblings: string[];
   onSelect: (key: string) => void;
 }
 
@@ -24,6 +26,7 @@ export function BindingDetail({
   dependedOnBy,
   configuredBy,
   extensions,
+  siblings,
   onSelect,
 }: Props) {
   if (!binding) {
@@ -72,6 +75,13 @@ export function BindingDetail({
           </div>
         ))}
       </dl>
+      {siblings.length > 0 && (
+        <DepList
+          title="Sibling registration"
+          keys={siblings}
+          onSelect={onSelect}
+        />
+      )}
       <DepList title="Depends on" keys={dependsOn} onSelect={onSelect} />
       <DepList title="Depended on by" keys={dependedOnBy} onSelect={onSelect} />
       {binding.extensionPoint && (
@@ -123,7 +133,7 @@ function RouteList({routes}: {routes: NonNullable<BindingNode['routes']>}) {
       </h3>
       <ul>
         {routes.map(r => (
-          <li key={r.verb + r.path}>
+          <li key={`${r.verb} ${r.path}`}>
             <code>
               {r.verb} {r.path}
             </code>
