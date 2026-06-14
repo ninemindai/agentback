@@ -32,10 +32,16 @@
 - `model.ts` *(new)* — Zod schemas (`ContextModel`, `BindingNode`, …) + `buildModel(ctx)`. The crux. One responsibility: turn a `Context` into the derived model, metadata-only.
 - `index.ts` *(modify)* — controller now serves `/model` (+ keeps `/inspect`), drops `/bindings` + `/graph`; imports schemas/builder from `model.ts`; `contextConsoleFeature()` unchanged in shape.
 
+**Pure logic (`packages/context-explorer/src/lib/`) — tsc-compiled, NOT under `src/client`**
+
+> IMPORTANT: `tsconfig.json` excludes `src/client` from the `tsc -b` program (the client tree is bundled by esbuild only). Vitest runs against `dist/`, so any module a unit test imports must be tsc-compiled. Therefore the pure selectors/hierarchy live in `src/lib/` (compiled to `dist/lib/`), NOT `src/client/lib/`. They `import type {BindingNode, ContextNode} from '../model.js'` (the tsc-compiled types) — a type-only import, which esbuild strips, so the browser bundle gains no `zod`/`@agentback/*` runtime dep. Client components import these modules with `../lib/...` / `../../lib/...` (esbuild resolves `src/lib` fine).
+
+- `lib/selectors.ts` *(new)* — pure functions over the model: `facets()`, `extensionGroups()`, `configEdges()`, `dualByCtor()`. Unit-tested.
+- `lib/hierarchy.ts` *(new)* — `buildContextTree(contexts, bindings)`. Unit-tested.
+- The existing `client/lib/layout.ts` stays where it is (client-only, esbuild-bundled, no unit test).
+
 **Client (`packages/context-explorer/src/client/`)**
 - `api.ts` *(modify)* — `fetchModel()` + model types; drop `fetchBindings`/`fetchGraph`.
-- `lib/selectors.ts` *(new)* — pure functions over the model: `facets()`, `extensionGroups()`, `configEdges()`, `dependencyMaps()`, `dualByCtor()`. Unit-tested.
-- `lib/hierarchy.ts` *(new)* — `buildContextTree(contexts, bindings)`. Unit-tested.
 - `App.tsx` *(modify)* — three-pane facet shell + view switch (Explore/Graph/Hierarchy/Raw); owns state; selectors over the model.
 - `components/FacetNav.tsx` *(new)* — left facet nav.
 - `components/ResultsList.tsx` *(new, replaces BindingList.tsx)* — center list, color badges, tag chips.
@@ -1048,9 +1054,9 @@ git commit -m "test(console): repoint context-explorer assertions from /bindings
 // This file is licensed under the MIT License.
 
 import {describe, expect, it} from 'vitest';
-import {facets, extensionGroups, configEdges, dualByCtor} from '../../client/lib/selectors.js';
-import {buildContextTree} from '../../client/lib/hierarchy.js';
-import type {BindingNode, ContextNode} from '../../client/api.js';
+import {facets, extensionGroups, configEdges, dualByCtor} from '../../lib/selectors.js';
+import {buildContextTree} from '../../lib/hierarchy.js';
+import type {BindingNode, ContextNode} from '../../model.js';
 
 const node = (p: Partial<BindingNode> & {key: string}): BindingNode => ({
   key: p.key, context: p.context ?? 'Application', scope: p.scope ?? 'Singleton',
@@ -1124,17 +1130,32 @@ Expected: FAIL — modules not found.
 ## Task 9: Implement selectors + hierarchy
 
 **Files:**
-- Create: `packages/context-explorer/src/client/lib/selectors.ts`
-- Create: `packages/context-explorer/src/client/lib/hierarchy.ts`
+- Modify: `packages/context-explorer/src/model.ts` (export the node types)
+- Create: `packages/context-explorer/src/lib/selectors.ts`
+- Create: `packages/context-explorer/src/lib/hierarchy.ts`
 
-- [ ] **Step 1: Write `selectors.ts`**
+- [ ] **Step 0: Export the node types from `model.ts`**
+
+The selectors and the unit test need the `BindingNode`/`ContextNode` TS types. `model.ts` already declares them as local `z.infer` aliases; export them. In `model.ts` change:
+
+```ts
+type BindingNode = z.infer<typeof BindingNode>;
+```
+to:
+```ts
+export type BindingNode = z.infer<typeof BindingNode>;
+export type ContextNode = z.infer<typeof ContextNode>;
+```
+(Add the `ContextNode` type export right after the `BindingNode` one. The `const BindingNode`/`const ContextNode` Zod schemas remain exported as before — name merging means each identifier is both a value and a type.)
+
+- [ ] **Step 1: Write `src/lib/selectors.ts`** (pure logic, tsc-compiled, type-only import from `model.js` so esbuild keeps the browser bundle clean)
 
 ```ts
 // Copyright ninemind.ai and LoopBack contributors. All Rights Reserved.
 // Node module: @agentback/context-explorer
 // This file is licensed under the MIT License.
 
-import type {BindingNode} from '../api';
+import type {BindingNode} from '../model.js';
 
 export interface Facets {
   kind: Map<string, number>;
@@ -1203,14 +1224,14 @@ export function dualByCtor(bindings: BindingNode[]): Map<string, BindingNode[]> 
 }
 ```
 
-- [ ] **Step 2: Write `hierarchy.ts`**
+- [ ] **Step 2: Write `src/lib/hierarchy.ts`**
 
 ```ts
 // Copyright ninemind.ai and LoopBack contributors. All Rights Reserved.
 // Node module: @agentback/context-explorer
 // This file is licensed under the MIT License.
 
-import type {BindingNode, ContextNode} from '../api';
+import type {BindingNode, ContextNode} from '../model.js';
 
 export interface ContextTreeNode {
   name: string;
@@ -1254,7 +1275,7 @@ Expected: PASS.
 
 ```bash
 pnpm -F @agentback/context-explorer lint:fix
-git add packages/context-explorer/src/client/lib packages/context-explorer/src/__tests__/unit
+git add packages/context-explorer/src/lib packages/context-explorer/src/model.ts packages/context-explorer/src/__tests__/unit
 git commit -m "feat(context-explorer): pure selectors (facets, extensions, config, hierarchy, dual join)"
 ```
 
@@ -1273,7 +1294,7 @@ git commit -m "feat(context-explorer): pure selectors (facets, extensions, confi
 // Node module: @agentback/context-explorer
 // This file is licensed under the MIT License.
 
-import type {Facets} from '../lib/selectors';
+import type {Facets} from '../../lib/selectors';
 
 export interface FacetSelection {
   kind: Set<string>;
@@ -1418,7 +1439,7 @@ export function ResultsList({bindings, selectedKey, onSelect}: Props) {
 Add `facets`/`FacetNav`/`FacetSelection` imports and selection state; replace the `browse` block. Selection filtering: within-facet OR, across-facet AND.
 
 ```tsx
-import {facets} from './lib/selectors';
+import {facets} from '../lib/selectors';
 import {FacetNav, type FacetSelection} from './components/FacetNav';
 import {ResultsList} from './components/ResultsList';
 // ...
@@ -1601,7 +1622,7 @@ function ToolList({tools}: {tools: NonNullable<BindingNode['tools']>}) {
 - [ ] **Step 2: Compute and pass `configuredBy` + `extensions` in `App.tsx`**
 
 ```tsx
-import {configEdges, extensionGroups} from './lib/selectors';
+import {configEdges, extensionGroups} from '../lib/selectors';
 // ...
 const cfgEdges = useMemo(() => configEdges(bindings), [bindings]);
 const extGroups = useMemo(() => extensionGroups(bindings), [bindings]);
@@ -1647,7 +1668,7 @@ git commit -m "feat(context-explorer): detail-pane config + extension wiring (it
 // Node module: @agentback/context-explorer
 // This file is licensed under the MIT License.
 
-import {buildContextTree, type ContextTreeNode} from '../lib/hierarchy';
+import {buildContextTree, type ContextTreeNode} from '../../lib/hierarchy';
 import type {BindingNode, ContextNode} from '../api';
 
 interface Props {
@@ -1751,7 +1772,7 @@ When the selected binding shares a `source` with another binding (the two-bindin
 In `App.tsx`:
 
 ```tsx
-import {dualByCtor} from './lib/selectors';
+import {dualByCtor} from '../lib/selectors';
 // ...
 const duals = useMemo(() => dualByCtor(bindings), [bindings]);
 const siblings = selected?.source
