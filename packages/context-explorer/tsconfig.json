@@ -15,6 +15,12 @@
       "path": "../core"
     },
     {
+      "path": "../mcp"
+    },
+    {
+      "path": "../metadata"
+    },
+    {
       "path": "../openapi"
     },
     {

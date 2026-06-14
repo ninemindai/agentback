@@ -646,6 +646,12 @@ importers:
       '@agentback/core':
         specifier: workspace:~
         version: link:../core
+      '@agentback/mcp':
+        specifier: workspace:~
+        version: link:../mcp
+      '@agentback/metadata':
+        specifier: workspace:~
+        version: link:../metadata
       '@agentback/openapi':
         specifier: workspace:~
         version: link:../openapi
