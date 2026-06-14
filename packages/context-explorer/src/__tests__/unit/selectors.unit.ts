@@ -42,11 +42,12 @@ describe('selectors', () => {
     ]);
     // 'greeters' has a binding -> edges anchor on 'pt'; 'mcpServers' has no
     // binding -> a synthetic point node + an edge to it.
+    // Edges run extension -> point ("extends").
     expect(g.edges).toEqual(
       expect.arrayContaining([
-        {from: 'pt', to: 'e1'},
-        {from: 'pt', to: 'e2'},
-        {from: 'extension-point:mcpServers', to: 'e2'},
+        {from: 'e1', to: 'pt'},
+        {from: 'e2', to: 'pt'},
+        {from: 'e2', to: 'extension-point:mcpServers'},
       ]),
     );
     expect(g.edges).toHaveLength(3);

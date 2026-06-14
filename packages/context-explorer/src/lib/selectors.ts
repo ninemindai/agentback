@@ -65,7 +65,7 @@ export interface ExtensionGraph {
    * MCP server via a tag filter). `id` is prefixed; `name` is the bare point.
    */
   points: {id: string; name: string}[];
-  /** `from` (point node id) -> `to` (extension binding key). */
+  /** `from` (extension binding key) -> `to` (point node id): "extends". */
   edges: {from: string; to: string}[];
 }
 
@@ -90,7 +90,7 @@ export function extensionGraph(bindings: BindingNode[]): ExtensionGraph {
         pointId = EXTENSION_POINT_PREFIX + name;
         synthetic.set(name, pointId);
       }
-      if (pointId !== b.key) edges.push({from: pointId, to: b.key});
+      if (pointId !== b.key) edges.push({from: b.key, to: pointId});
     }
   }
   return {

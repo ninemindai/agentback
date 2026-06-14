@@ -325,7 +325,7 @@ function GraphLegend() {
             strokeDasharray="5 4"
           />
         </svg>{' '}
-        extension point → extension
+        extension → extension point
       </span>
     </div>
   );
