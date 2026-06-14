@@ -45,7 +45,7 @@ export function App({
     const out = new Map<string, string[]>();
     const inc = new Map<string, string[]>();
     for (const b of bindings) {
-      out.set(b.key, b.dependsOn);
+      out.set(b.key, [...b.dependsOn]);
       for (const to of b.dependsOn) {
         (inc.get(to) ?? inc.set(to, []).get(to)!).push(b.key);
       }

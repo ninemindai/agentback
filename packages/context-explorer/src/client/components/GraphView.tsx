@@ -66,14 +66,21 @@ export function GraphView({selectedKey, onSelect, bindings}: Props) {
   const [hover, setHover] = useState<Hover | null>(null);
 
   // Build the layout graph from the model: nodes are bindings, edges come from
-  // each binding's `dependsOn` ("from depends on to").
-  const graph = useMemo<LayoutGraph>(
-    () => ({
-      nodes: bindings.map(b => ({key: b.key, scope: b.scope, type: b.type})),
+  // each binding's `dependsOn` ("from depends on to"). The model can repeat the
+  // same binding key across contexts in the parent chain, so dedup nodes by key
+  // (keep the first occurrence) to avoid duplicate React Flow ids.
+  const graph = useMemo<LayoutGraph>(() => {
+    const byKey = new Map<string, LayoutGraph['nodes'][number]>();
+    for (const b of bindings) {
+      if (!byKey.has(b.key)) {
+        byKey.set(b.key, {key: b.key, scope: b.scope, type: b.type});
+      }
+    }
+    return {
+      nodes: [...byKey.values()],
       edges: bindings.flatMap(b => b.dependsOn.map(to => ({from: b.key, to}))),
-    }),
-    [bindings],
-  );
+    };
+  }, [bindings]);
 
   const base = useMemo(() => layoutGraph(graph), [graph]);
 
