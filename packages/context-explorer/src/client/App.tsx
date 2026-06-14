@@ -11,7 +11,7 @@ import {
   dualByCtor,
 } from '../lib/selectors';
 import {ApiProvider} from './ApiContext';
-import {FacetNav, type FacetSelection} from './components/FacetNav';
+import {FacetNav, type FacetChoice} from './components/FacetNav';
 import {ResultsList} from './components/ResultsList';
 import {BindingDetail} from './components/BindingDetail';
 import {GraphView} from './components/GraphView';
@@ -19,16 +19,6 @@ import {HierarchyView} from './components/HierarchyView';
 import {RawTree} from './components/RawTree';
 
 type View = 'browse' | 'graph' | 'hierarchy' | 'raw';
-
-const emptySel = (): FacetSelection => ({
-  kind: new Set(),
-  scope: new Set(),
-  type: new Set(),
-  tag: new Set(),
-  extensionPoint: new Set(),
-  lifeCycleGroup: new Set(),
-  context: new Set(),
-});
 
 /**
  * Root component. Owns all UI state (model, selection, filters, view);
@@ -47,17 +37,18 @@ export function App({
   const [model, setModel] = useState<ContextModel | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
-  const [sel, setSel] = useState<FacetSelection>(emptySel());
+  // Single-select: one active facet filter across the whole panel (or none).
+  const [choice, setChoice] = useState<FacetChoice>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [view, setView] = useState<View>('browse');
 
-  const toggle = (facet: keyof FacetSelection, value: string) =>
-    setSel(prev => {
-      const next: FacetSelection = {...prev, [facet]: new Set(prev[facet])};
-      if (next[facet].has(value)) next[facet].delete(value);
-      else next[facet].add(value);
-      return next;
-    });
+  // Pick a facet value; picking the active one again clears the filter.
+  const pick = (facet: NonNullable<FacetChoice>['facet'], value: string) =>
+    setChoice(prev =>
+      prev && prev.facet === facet && prev.value === value
+        ? null
+        : {facet, value},
+    );
 
   useEffect(() => {
     api.fetchModel().then(setModel, e => setError(String(e)));
@@ -84,23 +75,37 @@ export function App({
   const extGroups = useMemo(() => extensionGroups(bindings), [bindings]);
   const duals = useMemo(() => dualByCtor(bindings), [bindings]);
 
-  // Within-facet OR, across-facet AND.
+  // The single active facet filter, applied alongside the free-text key filter.
+  const matchChoice = (b: BindingNode): boolean => {
+    if (!choice) return true;
+    switch (choice.facet) {
+      case 'kind':
+        return b.kinds.includes(choice.value);
+      case 'scope':
+        return b.scope === choice.value;
+      case 'type':
+        return b.type === choice.value;
+      case 'extensionPoint':
+        return b.extensionPoint === choice.value;
+      case 'lifeCycleGroup':
+        return b.lifeCycleGroup === choice.value;
+      case 'context':
+        return b.context === choice.value;
+      case 'tag':
+        return b.tags.some(t => t.name === choice.value);
+      default:
+        return true;
+    }
+  };
+
   const visible = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    const inFacet = (vals: Set<string>, has: (v: string) => boolean) =>
-      vals.size === 0 || [...vals].some(has);
     return bindings.filter(
-      b =>
-        (!q || b.key.toLowerCase().includes(q)) &&
-        inFacet(sel.kind, v => b.kinds.includes(v)) &&
-        inFacet(sel.scope, v => b.scope === v) &&
-        inFacet(sel.type, v => b.type === v) &&
-        inFacet(sel.extensionPoint, v => b.extensionPoint === v) &&
-        inFacet(sel.lifeCycleGroup, v => b.lifeCycleGroup === v) &&
-        inFacet(sel.context, v => b.context === v) &&
-        inFacet(sel.tag, v => b.tags.some(t => t.name === v)),
+      b => (!q || b.key.toLowerCase().includes(q)) && matchChoice(b),
     );
-  }, [bindings, filter, sel]);
+    // matchChoice closes over `choice`; listing it keeps the memo correct.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bindings, filter, choice]);
 
   const selected = useMemo(
     () => bindings.find(b => b.key === selectedKey) ?? null,
@@ -177,7 +182,7 @@ export function App({
 
       {view === 'browse' && (
         <div className="shell">
-          <FacetNav facets={allFacets} selection={sel} onToggle={toggle} />
+          <FacetNav facets={allFacets} selected={choice} onPick={pick} />
           <div className="list">
             <input
               className="filter"
