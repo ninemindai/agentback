@@ -26,6 +26,7 @@ export interface BindingNode {
   tags: TagEntry[];
   kinds: string[];
   dependsOn: string[];
+  injectsTags?: string[];
   extensionPoint?: string;
   extensionFor?: string[];
   configurationFor?: string;

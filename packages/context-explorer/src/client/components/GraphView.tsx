@@ -14,7 +14,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import {type BindingNode} from '../api';
 import {layoutGraph, type LayoutGraph} from '../lib/layout';
-import {extensionGraph, referenceEdges} from '../../lib/selectors';
+import {extensionGraph, referenceEdges, viewEdges} from '../../lib/selectors';
 import type {EdgeKind} from '../lib/layout';
 
 // Violet matches the extension edges + the `type-provider` token; used for the
@@ -27,6 +27,7 @@ const EXT_POINT_BORDER = '#7a4fa3';
 // accent-red while keeping its dash pattern.
 const EDGE_STYLE: Record<EdgeKind, {color: string; dash?: string}> = {
   dep: {color: '#b6ab95'},
+  view: {color: '#3f8f7a', dash: '2 3'},
   extension: {color: '#7a4fa3', dash: '5 4'},
   config: {color: '#3f6d8c', dash: '1 3'},
   alias: {color: '#b07a2e', dash: '6 3'},
@@ -128,6 +129,8 @@ export function GraphView({selectedKey, onSelect, bindings}: Props) {
     for (const e of ext.edges) edges.push({...e, kind: 'extension'});
     // Config-binding -> configured binding, and alias -> alias target.
     for (const e of referenceEdges(bindings)) edges.push(e);
+    // Tag-view injections: injector -> every binding carrying the tag.
+    for (const e of viewEdges(bindings)) edges.push(e);
     return {nodes: [...byKey.values()], edges};
   }, [bindings]);
 
@@ -291,6 +294,7 @@ export function GraphView({selectedKey, onSelect, bindings}: Props) {
 
 const LEGEND: {kind: EdgeKind; label: string}[] = [
   {kind: 'dep', label: 'depends on'},
+  {kind: 'view', label: 'injects by tag'},
   {kind: 'extension', label: 'extension → extension point'},
   {kind: 'config', label: 'configures'},
   {kind: 'alias', label: 'alias → target'},

@@ -44,6 +44,9 @@ export const BindingNode = z.object({
   tags: z.array(TagEntry),
   kinds: z.array(z.string()),
   dependsOn: z.array(z.string()),
+  /** Tag patterns this binding injects as a view/collection (`@inject.view`/
+   * `@inject.tag`) — resolved to edges client-side against tag membership. */
+  injectsTags: z.array(z.string()).optional(),
   extensionPoint: z.string().optional(),
   extensionFor: z.array(z.string()).optional(),
   configurationFor: z.string().optional(),
@@ -109,21 +112,33 @@ function asArray(raw: unknown): string[] | undefined {
 // only strip the `#` suffix to recover the bound key.
 const baseKey = (addr: string) => addr.split('#')[0]!;
 
-/** Direct-key injection targets (constructor args + properties). */
-function injectionKeys(b: JSONObject): string[] {
+/**
+ * Inspect a binding's injections (constructor args + properties), separating
+ * resolvable forms: direct binding `keys` (`@inject('foo')`) and tag patterns
+ * (`@inject.view`/`@inject.tag('bar')`). An empty `bindingKey` (`@inject.context`
+ * — injects the context itself) has no specific target and is skipped; filter
+ * functions (`bindingFilter`) cannot be resolved from metadata and are ignored.
+ */
+function injectionTargets(b: JSONObject): {keys: string[]; tags: string[]} {
   const inj = b.injections as JSONObject | undefined;
-  if (!inj) return [];
-  const out: string[] = [];
-  const ctor = (inj.constructorArguments as JSONObject[] | undefined) ?? [];
-  for (const a of ctor) {
-    if (typeof a?.bindingKey === 'string') out.push(baseKey(a.bindingKey));
+  if (!inj) return {keys: [], tags: []};
+  const keys: string[] = [];
+  const tags: string[] = [];
+  const all = [
+    ...((inj.constructorArguments as JSONObject[] | undefined) ?? []),
+    ...Object.values(
+      (inj.properties as Record<string, JSONObject> | undefined) ?? {},
+    ),
+  ];
+  for (const a of all) {
+    if (typeof a?.bindingKey === 'string' && a.bindingKey !== '') {
+      keys.push(baseKey(a.bindingKey));
+    }
+    if (typeof a?.bindingTagPattern === 'string') {
+      tags.push(a.bindingTagPattern);
+    }
   }
-  const props =
-    (inj.properties as Record<string, JSONObject> | undefined) ?? {};
-  for (const p of Object.values(props)) {
-    if (typeof p?.bindingKey === 'string') out.push(baseKey(p.bindingKey));
-  }
-  return out;
+  return {keys, tags};
 }
 
 // ---- Build ------------------------------------------------------------------
@@ -184,6 +199,7 @@ export function buildModel(ctx: Context): ContextModel {
       if (key.startsWith('servers.')) kinds.push('server');
 
       const epRaw = tagMap[CoreTags.EXTENSION_POINT];
+      const injectTags = injectionTargets(b).tags;
       const node: BindingNode = {
         key,
         context: ctxName,
@@ -194,6 +210,7 @@ export function buildModel(ctx: Context): ContextModel {
         tags: tagEntries(tagMap),
         kinds,
         dependsOn: [],
+        injectsTags: injectTags.length ? injectTags : undefined,
         extensionPoint: typeof epRaw === 'string' ? epRaw : undefined,
         extensionFor: asArray(tagMap[CoreTags.EXTENSION_FOR]),
         configurationFor:
@@ -218,7 +235,7 @@ export function buildModel(ctx: Context): ContextModel {
       const n = byKey.get(key);
       if (!n) continue;
       const seen = new Set<string>();
-      for (const to of injectionKeys(b)) {
+      for (const to of injectionTargets(b).keys) {
         if (to === key || !knownKeys.has(to) || seen.has(to)) continue;
         seen.add(to);
         n.dependsOn.push(to);

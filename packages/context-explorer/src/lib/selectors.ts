@@ -124,6 +124,33 @@ export function referenceEdges(
   return edges;
 }
 
+/**
+ * Tag-view injection edges: a binding that injects a view of a tag
+ * (`@inject.view`/`@inject.tag`, exposed as `injectsTags`) -> every binding
+ * carrying that tag. Self-edges are dropped. This surfaces collection wiring
+ * (e.g. the lifecycle registry injecting all `lifeCycleObserver` bindings) that
+ * direct-key `dependsOn` cannot capture.
+ */
+export function viewEdges(
+  bindings: BindingNode[],
+): {from: string; to: string; kind: 'view'}[] {
+  const byTag = new Map<string, string[]>();
+  for (const b of bindings) {
+    for (const t of b.tags) {
+      (byTag.get(t.name) ?? byTag.set(t.name, []).get(t.name)!).push(b.key);
+    }
+  }
+  const edges: {from: string; to: string; kind: 'view'}[] = [];
+  for (const b of bindings) {
+    for (const tag of b.injectsTags ?? []) {
+      for (const to of byTag.get(tag) ?? []) {
+        if (to !== b.key) edges.push({from: b.key, to, kind: 'view'});
+      }
+    }
+  }
+  return edges;
+}
+
 /** target key -> config binding keys that configure it. */
 export function configEdges(bindings: BindingNode[]): Map<string, string[]> {
   const e = new Map<string, string[]>();

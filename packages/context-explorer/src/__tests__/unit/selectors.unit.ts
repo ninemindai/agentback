@@ -8,6 +8,7 @@ import {
   extensionGroups,
   extensionGraph,
   referenceEdges,
+  viewEdges,
   configEdges,
   dualByCtor,
 } from '../../lib/selectors.js';
@@ -90,6 +91,28 @@ describe('selectors', () => {
       ]),
     );
     // the dangling config + alias targets are dropped
+    expect(e).toHaveLength(2);
+  });
+
+  it('viewEdges links a tag-view injector to every binding carrying the tag', () => {
+    const e = viewEdges([
+      node({key: 'registry', injectsTags: ['lifeCycleObserver']}),
+      node({
+        key: 'servers.RestServer',
+        tags: [{name: 'lifeCycleObserver', value: true}],
+      }),
+      node({
+        key: 'servers.MCPServer',
+        tags: [{name: 'lifeCycleObserver', value: true}],
+      }),
+      node({key: 'unrelated', tags: [{name: 'service', value: true}]}),
+    ]);
+    expect(e).toEqual(
+      expect.arrayContaining([
+        {from: 'registry', to: 'servers.RestServer', kind: 'view'},
+        {from: 'registry', to: 'servers.MCPServer', kind: 'view'},
+      ]),
+    );
     expect(e).toHaveLength(2);
   });
 

@@ -9,10 +9,11 @@ export const NODE_W = 230;
 export const NODE_H = 44;
 
 /**
- * Kind of a graph edge: an injection dependency, extension-point wiring, a
+ * Kind of a graph edge: an injection dependency, a tag-view injection (a
+ * binding injecting all bindings carrying a tag), extension-point wiring, a
  * config binding to the binding it configures, or an alias to its target.
  */
-export type EdgeKind = 'dep' | 'extension' | 'config' | 'alias';
+export type EdgeKind = 'dep' | 'view' | 'extension' | 'config' | 'alias';
 
 /** Whether a graph node is a real binding or a synthetic extension point. */
 export type NodeKind = 'binding' | 'extensionPoint';
