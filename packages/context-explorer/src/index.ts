@@ -263,6 +263,13 @@ pre.raw { background:var(--card); border:1px solid var(--line-2); padding:1rem; 
 .badge.scope-singleton { color:#4f7d5b; } .badge.scope-transient { color:#9a6b2f; } .badge.scope-context { color:#3f6d8c; }
 .badge.type-class { color:var(--blue); } .badge.type-provider { color:#7a4fa3; } .badge.type-constant { color:var(--muted); } .badge.type-alias { color:#9a6b2f; }
 .kindtag { font-size:.7rem; padding:.05rem .35rem; border-radius:3px; border:1px solid var(--line-2); color:var(--accent); }
+.appcard { font-family:var(--mono); font-size:.78rem; color:var(--muted); border:1px solid var(--line-2); border-radius:4px; padding:.1rem .45rem; }
+.hierarchy { font-size:13px; }
+.ctxnode { border-left:2px solid var(--line-2); padding-left:.8rem; margin:.4rem 0; }
+.ctxhead { display:flex; gap:.6rem; align-items:baseline; margin-bottom:.2rem; }
+.ctxname { font-family:var(--mono); font-weight:600; color:var(--accent); }
+.ctxbindings { list-style:none; margin:.2rem 0; padding:0; }
+.ctxchildren { margin-left:.6rem; }
 `;
 
 function escapeHtml(s: string): string {

@@ -10,9 +10,10 @@ import {FacetNav, type FacetSelection} from './components/FacetNav';
 import {ResultsList} from './components/ResultsList';
 import {BindingDetail} from './components/BindingDetail';
 import {GraphView} from './components/GraphView';
+import {HierarchyView} from './components/HierarchyView';
 import {RawTree} from './components/RawTree';
 
-type View = 'browse' | 'graph' | 'raw';
+type View = 'browse' | 'graph' | 'hierarchy' | 'raw';
 
 const emptySel = (): FacetSelection => ({
   kind: new Set(),
@@ -98,10 +99,11 @@ export function App({
 
   if (error) return <p className="err">Failed to load model: {error}</p>;
 
-  const views: View[] = ['browse', 'graph', 'raw'];
+  const views: View[] = ['browse', 'graph', 'hierarchy', 'raw'];
   const labels: Record<View, string> = {
     browse: 'Explore',
     graph: 'Graph',
+    hierarchy: 'Hierarchy',
     raw: 'Raw tree',
   };
 
@@ -109,6 +111,12 @@ export function App({
     <ApiProvider value={api}>
       <header>
         <h1>{title}</h1>
+        {model?.app.name && (
+          <span className="appcard">
+            {model.app.name}
+            {model.app.version ? ` v${model.app.version}` : ''}
+          </span>
+        )}
         <span className="count">
           {visible.length} / {bindings.length} bindings
         </span>
@@ -137,6 +145,16 @@ export function App({
             selectedKey={selectedKey}
             onSelect={setSelectedKey}
             bindings={bindings}
+          />
+        </div>
+      )}
+
+      {view === 'hierarchy' && (
+        <div style={{padding: '1.25rem 1.5rem', overflow: 'auto'}}>
+          <HierarchyView
+            contexts={model?.contexts ?? []}
+            bindings={bindings}
+            onSelect={setSelectedKey}
           />
         </div>
       )}
