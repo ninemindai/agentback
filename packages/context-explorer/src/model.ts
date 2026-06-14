@@ -50,6 +50,8 @@ export const BindingNode = z.object({
   extensionPoint: z.string().optional(),
   extensionFor: z.array(z.string()).optional(),
   configurationFor: z.string().optional(),
+  /** Binding key of the component this binding was contributed by, if any. */
+  fromComponent: z.string().optional(),
   lifeCycleGroup: z.string().optional(),
   routes: z.array(RouteInfo).optional(),
   tools: z.array(ToolInfo).optional(),
@@ -216,6 +218,10 @@ export function buildModel(ctx: Context): ContextModel {
         configurationFor:
           tagMap[ContextTags.CONFIGURATION_FOR] != null
             ? String(tagMap[ContextTags.CONFIGURATION_FOR])
+            : undefined,
+        fromComponent:
+          tagMap[CoreTags.FROM_COMPONENT] != null
+            ? String(tagMap[CoreTags.FROM_COMPONENT])
             : undefined,
         lifeCycleGroup:
           tagMap[CoreTags.LIFE_CYCLE_OBSERVER_GROUP] != null

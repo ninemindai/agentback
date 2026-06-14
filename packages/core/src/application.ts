@@ -486,7 +486,7 @@ export class Application extends Context implements LifeCycleObserver {
     this.add(binding);
     // Assuming components can be synchronously instantiated
     const instance = this.getSync<Component>(binding.key);
-    mountComponent(this, instance);
+    mountComponent(this, instance, binding.key);
     return binding;
   }
 

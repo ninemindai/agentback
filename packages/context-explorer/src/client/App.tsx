@@ -8,6 +8,7 @@ import {
   facets,
   configEdges,
   extensionGroups,
+  componentMembers,
   dualByCtor,
 } from '../lib/selectors';
 import {ApiProvider} from './ApiContext';
@@ -73,6 +74,7 @@ export function App({
   const allFacets = useMemo(() => facets(bindings), [bindings]);
   const cfgEdges = useMemo(() => configEdges(bindings), [bindings]);
   const extGroups = useMemo(() => extensionGroups(bindings), [bindings]);
+  const compMembers = useMemo(() => componentMembers(bindings), [bindings]);
   const duals = useMemo(() => dualByCtor(bindings), [bindings]);
 
   // The single active facet filter, applied alongside the free-text key filter.
@@ -217,6 +219,7 @@ export function App({
                   : []
               }
               siblings={siblings}
+              contains={selected ? (compMembers.get(selected.key) ?? []) : []}
               onSelect={setSelectedKey}
             />
           </div>

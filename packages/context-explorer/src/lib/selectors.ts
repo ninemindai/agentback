@@ -151,6 +151,19 @@ export function viewEdges(
   return edges;
 }
 
+/** component binding key -> keys of the bindings it contributed (`fromComponent`). */
+export function componentMembers(
+  bindings: BindingNode[],
+): Map<string, string[]> {
+  const m = new Map<string, string[]>();
+  for (const b of bindings) {
+    const c = b.fromComponent;
+    if (!c) continue;
+    (m.get(c) ?? m.set(c, []).get(c)!).push(b.key);
+  }
+  return m;
+}
+
 /** target key -> config binding keys that configure it. */
 export function configEdges(bindings: BindingNode[]): Map<string, string[]> {
   const e = new Map<string, string[]>();

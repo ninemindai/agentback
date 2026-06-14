@@ -9,6 +9,7 @@ import {
   extensionGraph,
   referenceEdges,
   viewEdges,
+  componentMembers,
   configEdges,
   dualByCtor,
 } from '../../lib/selectors.js';
@@ -114,6 +115,20 @@ describe('selectors', () => {
       ]),
     );
     expect(e).toHaveLength(2);
+  });
+
+  it('componentMembers groups bindings by their fromComponent', () => {
+    const m = componentMembers([
+      node({key: 'components.X', kinds: ['component']}),
+      node({key: 'servers.A', fromComponent: 'components.X'}),
+      node({key: 'widget.value', fromComponent: 'components.X'}),
+      node({key: 'unowned'}),
+    ]);
+    expect(m.get('components.X')?.sort()).toEqual([
+      'servers.A',
+      'widget.value',
+    ]);
+    expect(m.has('unowned')).toBe(false);
   });
 
   it('extensionGroups maps point name -> extension keys', () => {

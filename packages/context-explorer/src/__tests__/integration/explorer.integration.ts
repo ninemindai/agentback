@@ -5,6 +5,7 @@
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import supertest from 'supertest';
 import {
+  Binding,
   BindingScope,
   CoreTags,
   extensionPoint,
@@ -64,6 +65,12 @@ class DualTwo {
   }
 }
 
+// A component contributing a binding — its members should be tagged with
+// `fromComponent` so the explorer can show what the component contains.
+class WidgetComponent {
+  bindings = [Binding.bind('widget.value').to(42)];
+}
+
 // A provider that throws if instantiated — proves we never resolve.
 class ExplodingProvider {
   constructor() {
@@ -117,6 +124,7 @@ describe('context-explorer model', () => {
     app.restController(DualOne); // single binding: REST + MCP
     app.controller(DualTwo); // two bindings...
     app.service(DualTwo); // ...same class
+    app.component(WidgetComponent);
 
     await installContextExplorer(app, {title: 'Test Explorer'});
     await app.start();
@@ -140,6 +148,7 @@ describe('context-explorer model', () => {
         extensionPoint?: string;
         extensionFor?: string[];
         configurationFor?: string;
+        fromComponent?: string;
         routes?: {verb: string; path: string}[];
         tools?: {name: string}[];
       }[];
@@ -211,6 +220,15 @@ describe('context-explorer model', () => {
     const cfg = m.bindings.find(b => b.configurationFor != null);
     expect(cfg).toBeDefined();
     expect(cfg!.kinds).toContain('config');
+  });
+
+  it('tags component-contributed bindings with fromComponent', async () => {
+    const m = await getModel();
+    const widget = find(m, 'widget.value');
+    expect(widget.fromComponent).toBe('components.WidgetComponent');
+    // and the component is discoverable as the contributor
+    const comp = find(m, 'components.WidgetComponent');
+    expect(comp.kinds).toContain('component');
   });
 
   it('dual via restController() is ONE node with both kinds, routes AND tools', async () => {

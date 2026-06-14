@@ -30,6 +30,7 @@ export interface BindingNode {
   extensionPoint?: string;
   extensionFor?: string[];
   configurationFor?: string;
+  fromComponent?: string;
   lifeCycleGroup?: string;
   routes?: RouteInfo[];
   tools?: ToolInfo[];

@@ -117,6 +117,12 @@ export namespace CoreTags {
   export const COMPONENT = 'component';
 
   /**
+   * Provenance tag recording the component a binding came from. The value is
+   * the contributing component's binding key. Set by `mountComponent`.
+   */
+  export const FROM_COMPONENT = 'fromComponent';
+
+  /**
    * Binding tag for servers
    */
   export const SERVER = 'server';

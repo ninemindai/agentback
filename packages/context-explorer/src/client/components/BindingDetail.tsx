@@ -16,6 +16,8 @@ interface Props {
   extensions: string[];
   /** other bindings sharing this binding's source class (dual registration). */
   siblings: string[];
+  /** keys this binding contributed, if it is a component (`fromComponent`). */
+  contains: string[];
   onSelect: (key: string) => void;
 }
 
@@ -27,6 +29,7 @@ export function BindingDetail({
   configuredBy,
   extensions,
   siblings,
+  contains,
   onSelect,
 }: Props) {
   if (!binding) {
@@ -75,6 +78,16 @@ export function BindingDetail({
           </div>
         ))}
       </dl>
+      {contains.length > 0 && (
+        <DepList title="Contains" keys={contains} onSelect={onSelect} />
+      )}
+      {binding.fromComponent && (
+        <DepList
+          title="Component"
+          keys={[binding.fromComponent]}
+          onSelect={onSelect}
+        />
+      )}
       {siblings.length > 0 && (
         <DepList
           title="Sibling registration"

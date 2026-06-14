@@ -108,13 +108,29 @@ export interface Component {
  *
  * @param app - Application
  * @param component - Component instance
+ * @param componentKey - Binding key of the component being mounted; every
+ * binding the component contributes is tagged `fromComponent` with this value so
+ * provenance is recorded without resolving the component. Defaults to the
+ * component's class name when not supplied.
  */
-export function mountComponent(app: Application, component: Component) {
+export function mountComponent(
+  app: Application,
+  component: Component,
+  componentKey?: string,
+) {
+  const owner = componentKey ?? component.constructor?.name;
+  // Provenance is last-wins: if a binding is contributed by more than one
+  // component the most recent owner is kept (which also matches the surviving
+  // binding when a key is re-registered).
+  const fromComponent = <T>(binding: Binding<T>): Binding<T> =>
+    owner ? binding.tag({[CoreTags.FROM_COMPONENT]: owner}) : binding;
+
   if (component.classes) {
     for (const classKey in component.classes) {
       const binding = createBindingFromClass(component.classes[classKey], {
         key: classKey,
       });
+      fromComponent(binding);
       app.add(binding);
     }
   }
@@ -124,12 +140,14 @@ export function mountComponent(app: Application, component: Component) {
       const binding = createBindingFromClass(component.providers[providerKey], {
         key: providerKey,
       });
+      fromComponent(binding);
       app.add(binding);
     }
   }
 
   if (component.bindings) {
     for (const binding of component.bindings) {
+      fromComponent(binding);
       app.add(binding);
     }
   }
@@ -147,26 +165,26 @@ export function mountComponent(app: Application, component: Component) {
   if (component.controllers) {
     for (const controllerCtor of component.controllers) {
       if (serviceClasses.has(controllerCtor)) continue;
-      app.controller(controllerCtor);
+      fromComponent(app.controller(controllerCtor));
     }
   }
 
   if (component.servers) {
     for (const serverKey in component.servers) {
-      app.server(component.servers[serverKey], serverKey);
+      fromComponent(app.server(component.servers[serverKey], serverKey));
     }
   }
 
   if (component.lifeCycleObservers) {
     for (const observer of component.lifeCycleObservers) {
-      app.lifeCycleObserver(observer);
+      fromComponent(app.lifeCycleObserver(observer));
     }
   }
 
   if (component.services) {
     const controllerClasses = new Set<Function>(component.controllers ?? []);
     for (const service of component.services) {
-      const binding = app.service(service);
+      const binding = fromComponent(app.service(service));
       // Dual-surface class (in both arrays): tag the same binding as a
       // controller too, so the component yields one binding rather than two.
       if (typeof service === 'function' && controllerClasses.has(service)) {
@@ -178,7 +196,7 @@ export function mountComponent(app: Application, component: Component) {
   if (component.components) {
     for (const c of component.components) {
       if (c === component) continue;
-      app.component(c);
+      fromComponent(app.component(c));
     }
   }
 }
