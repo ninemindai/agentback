@@ -3,6 +3,7 @@
 // This file is licensed under the MIT License.
 
 import type {Facets} from '../../lib/selectors';
+import {slug} from '../../lib/slug';
 
 export interface FacetSelection {
   kind: Set<string>;
@@ -61,5 +62,3 @@ export function FacetNav({facets, selection, onToggle}: Props) {
     </nav>
   );
 }
-
-const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');

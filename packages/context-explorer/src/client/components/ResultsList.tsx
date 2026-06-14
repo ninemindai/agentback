@@ -3,14 +3,13 @@
 // This file is licensed under the MIT License.
 
 import type {BindingNode} from '../api';
+import {slug} from '../../lib/slug';
 
 interface Props {
   bindings: BindingNode[];
   selectedKey: string | null;
   onSelect: (key: string) => void;
 }
-
-const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
 export function ResultsList({bindings, selectedKey, onSelect}: Props) {
   if (bindings.length === 0) return <p className="empty">No bindings match.</p>;
