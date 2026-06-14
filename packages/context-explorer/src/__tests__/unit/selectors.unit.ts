@@ -7,6 +7,7 @@ import {
   facets,
   extensionGroups,
   extensionGraph,
+  referenceEdges,
   configEdges,
   dualByCtor,
 } from '../../lib/selectors.js';
@@ -54,6 +55,42 @@ describe('selectors', () => {
     expect(g.points).toEqual([
       {id: 'extension-point:mcpServers', name: 'mcpServers'},
     ]);
+  });
+
+  it('referenceEdges links config->target and alias->target', () => {
+    const e = referenceEdges([
+      node({key: 'application.instance', type: 'Constant'}),
+      node({key: 'application.config', type: 'Constant'}),
+      node({
+        key: 'application.instance:$config',
+        type: 'Alias',
+        source: 'application.config',
+        configurationFor: 'application.instance',
+      }),
+      // dangling: configures/aliases something not bound -> dropped
+      node({
+        key: 'x:$config',
+        type: 'Alias',
+        source: 'gone',
+        configurationFor: 'missing',
+      }),
+    ]);
+    expect(e).toEqual(
+      expect.arrayContaining([
+        {
+          from: 'application.instance:$config',
+          to: 'application.instance',
+          kind: 'config',
+        },
+        {
+          from: 'application.instance:$config',
+          to: 'application.config',
+          kind: 'alias',
+        },
+      ]),
+    );
+    // the dangling config + alias targets are dropped
+    expect(e).toHaveLength(2);
   });
 
   it('extensionGroups maps point name -> extension keys', () => {

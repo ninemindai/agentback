@@ -14,12 +14,23 @@ import {
 import '@xyflow/react/dist/style.css';
 import {type BindingNode} from '../api';
 import {layoutGraph, type LayoutGraph} from '../lib/layout';
-import {extensionGraph} from '../../lib/selectors';
+import {extensionGraph, referenceEdges} from '../../lib/selectors';
+import type {EdgeKind} from '../lib/layout';
 
 // Violet matches the extension edges + the `type-provider` token; used for the
 // synthetic extension-point nodes that have no backing binding.
 const EXT_POINT_FILL = '#efe7f3';
 const EXT_POINT_BORDER = '#7a4fa3';
+
+// Per-kind edge styling. Each kind gets a distinct hue + dash so the four
+// relationship types stay legible; any edge incident to the selection turns
+// accent-red while keeping its dash pattern.
+const EDGE_STYLE: Record<EdgeKind, {color: string; dash?: string}> = {
+  dep: {color: '#b6ab95'},
+  extension: {color: '#7a4fa3', dash: '5 4'},
+  config: {color: '#3f6d8c', dash: '1 3'},
+  alias: {color: '#b07a2e', dash: '6 3'},
+};
 
 interface Props {
   selectedKey: string | null;
@@ -115,6 +126,8 @@ export function GraphView({selectedKey, onSelect, bindings}: Props) {
       }
     }
     for (const e of ext.edges) edges.push({...e, kind: 'extension'});
+    // Config-binding -> configured binding, and alias -> alias target.
+    for (const e of referenceEdges(bindings)) edges.push(e);
     return {nodes: [...byKey.values()], edges};
   }, [bindings]);
 
@@ -143,9 +156,8 @@ export function GraphView({selectedKey, onSelect, bindings}: Props) {
     const out = new Map<string, number>();
     const inc = new Map<string, number>();
     for (const e of base.edges) {
-      if ((e.data as {kind?: string} | undefined)?.kind === 'extension') {
-        continue;
-      }
+      // Only injection dependencies count toward the "deps" figures.
+      if ((e.data as {kind?: string} | undefined)?.kind !== 'dep') continue;
       out.set(e.source, (out.get(e.source) ?? 0) + 1);
       inc.set(e.target, (inc.get(e.target) ?? 0) + 1);
     }
@@ -212,13 +224,10 @@ export function GraphView({selectedKey, onSelect, bindings}: Props) {
         const on =
           selectedKey != null &&
           (e.source === selectedKey || e.target === selectedKey);
-        const isExt =
-          (e.data as {kind?: string} | undefined)?.kind === 'extension';
-        // Dashed violet for extension wiring, solid grey for deps; either turns
-        // accent-red when incident to the selected node. Dashing always marks
-        // extension edges so the two kinds stay distinguishable when highlighted.
-        const baseColor = isExt ? '#7a4fa3' : '#b6ab95';
-        const color = on ? '#9a3324' : baseColor;
+        const kind = (e.data as {kind?: EdgeKind} | undefined)?.kind ?? 'dep';
+        const sty = EDGE_STYLE[kind];
+        // Each kind keeps its hue + dash; incident edges turn accent-red.
+        const color = on ? '#9a3324' : sty.color;
         const markerEnd =
           typeof e.markerEnd === 'string' || e.markerEnd == null
             ? e.markerEnd
@@ -229,7 +238,7 @@ export function GraphView({selectedKey, onSelect, bindings}: Props) {
           style: {
             stroke: color,
             strokeWidth: on ? 2 : 1.2,
-            strokeDasharray: isExt ? '5 4' : undefined,
+            strokeDasharray: sty.dash,
           },
           markerEnd,
         };
@@ -280,7 +289,14 @@ export function GraphView({selectedKey, onSelect, bindings}: Props) {
   );
 }
 
-/** Bottom-left key explaining the two edge kinds. */
+const LEGEND: {kind: EdgeKind; label: string}[] = [
+  {kind: 'dep', label: 'depends on'},
+  {kind: 'extension', label: 'extension → extension point'},
+  {kind: 'config', label: 'configures'},
+  {kind: 'alias', label: 'alias → target'},
+];
+
+/** Bottom-left key explaining the edge kinds. */
 function GraphLegend() {
   return (
     <div
@@ -300,33 +316,22 @@ function GraphLegend() {
         pointerEvents: 'none',
       }}
     >
-      <span>
-        <svg width="22" height="8" style={{verticalAlign: 'middle'}}>
-          <line
-            x1="0"
-            y1="4"
-            x2="22"
-            y2="4"
-            stroke="#b6ab95"
-            strokeWidth="1.6"
-          />
-        </svg>{' '}
-        depends on
-      </span>
-      <span>
-        <svg width="22" height="8" style={{verticalAlign: 'middle'}}>
-          <line
-            x1="0"
-            y1="4"
-            x2="22"
-            y2="4"
-            stroke="#7a4fa3"
-            strokeWidth="1.6"
-            strokeDasharray="5 4"
-          />
-        </svg>{' '}
-        extension → extension point
-      </span>
+      {LEGEND.map(({kind, label}) => (
+        <span key={kind}>
+          <svg width="22" height="8" style={{verticalAlign: 'middle'}}>
+            <line
+              x1="0"
+              y1="4"
+              x2="22"
+              y2="4"
+              stroke={EDGE_STYLE[kind].color}
+              strokeWidth="1.6"
+              strokeDasharray={EDGE_STYLE[kind].dash}
+            />
+          </svg>{' '}
+          {label}
+        </span>
+      ))}
     </div>
   );
 }

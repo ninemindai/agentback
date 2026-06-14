@@ -99,6 +99,31 @@ export function extensionGraph(bindings: BindingNode[]): ExtensionGraph {
   };
 }
 
+/**
+ * Reference edges for the graph that follow a binding to another binding it
+ * names: a config binding -> the binding it configures (`configurationFor`), and
+ * an alias binding -> its target (`source`, for `Alias`-typed bindings). Targets
+ * that aren't bound (dangling) and self-edges are dropped.
+ */
+export function referenceEdges(
+  bindings: BindingNode[],
+): {from: string; to: string; kind: 'config' | 'alias'}[] {
+  const keys = new Set(bindings.map(b => b.key));
+  const edges: {from: string; to: string; kind: 'config' | 'alias'}[] = [];
+  for (const b of bindings) {
+    const cfg = b.configurationFor;
+    if (cfg && cfg !== b.key && keys.has(cfg)) {
+      edges.push({from: b.key, to: cfg, kind: 'config'});
+    }
+    if (b.type === 'Alias' && b.source && b.source !== b.key) {
+      if (keys.has(b.source)) {
+        edges.push({from: b.key, to: b.source, kind: 'alias'});
+      }
+    }
+  }
+  return edges;
+}
+
 /** target key -> config binding keys that configure it. */
 export function configEdges(bindings: BindingNode[]): Map<string, string[]> {
   const e = new Map<string, string[]>();

@@ -8,8 +8,11 @@ import {MarkerType, Position, type Edge, type Node} from '@xyflow/react';
 export const NODE_W = 230;
 export const NODE_H = 44;
 
-/** Kind of a graph edge: an injection dependency or extension-point wiring. */
-export type EdgeKind = 'dep' | 'extension';
+/**
+ * Kind of a graph edge: an injection dependency, extension-point wiring, a
+ * config binding to the binding it configures, or an alias to its target.
+ */
+export type EdgeKind = 'dep' | 'extension' | 'config' | 'alias';
 
 /** Whether a graph node is a real binding or a synthetic extension point. */
 export type NodeKind = 'binding' | 'extensionPoint';
