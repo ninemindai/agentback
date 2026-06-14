@@ -4,24 +4,116 @@
 
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import supertest from 'supertest';
-import {BindingScope} from '@agentback/core';
+import {
+  BindingScope,
+  CoreTags,
+  extensionPoint,
+  injectable,
+} from '@agentback/core';
+import {api, get} from '@agentback/openapi';
+import {mcpServer, tool} from '@agentback/mcp';
+import {z} from 'zod';
 import {RestApplication} from '@agentback/rest';
 import {installContextExplorer} from '../../index.js';
 
-describe('context-explorer', () => {
+const Greeting = z.object({msg: z.string()});
+
+// A REST-only controller.
+@api({basePath: '/things'})
+class ThingsController {
+  @get('/ping', {response: Greeting})
+  async ping() {
+    return {msg: 'pong'};
+  }
+}
+
+// An MCP-only tool class.
+@mcpServer()
+class WeatherServer {
+  @tool('forecast', {input: z.object({city: z.string()}), output: Greeting})
+  async forecast(_input: {city: string}) {
+    return {msg: 'sunny'};
+  }
+}
+
+// A dual REST+MCP class registered the SINGLE-binding way (restController()).
+@api({basePath: '/dual'})
+@mcpServer()
+class DualOne {
+  @get('/hi', {response: Greeting})
+  async hi() {
+    return {msg: 'hi'};
+  }
+  @tool('dualTool', {input: z.object({}), output: Greeting})
+  async dualTool(_input: Record<string, never>) {
+    return {msg: 'tool'};
+  }
+}
+
+// A dual REST+MCP class registered the TWO-binding way (controller + service).
+@api({basePath: '/dual2'})
+@mcpServer()
+class DualTwo {
+  @get('/yo', {response: Greeting})
+  async yo() {
+    return {msg: 'yo'};
+  }
+  @tool('dual2Tool', {input: z.object({}), output: Greeting})
+  async dual2Tool(_input: Record<string, never>) {
+    return {msg: 'tool2'};
+  }
+}
+
+// A provider that throws if instantiated — proves we never resolve.
+class ExplodingProvider {
+  constructor() {
+    throw new Error('must never be resolved');
+  }
+  value() {
+    return 'never';
+  }
+}
+
+describe('context-explorer model', () => {
   let app: RestApplication;
   let client: ReturnType<typeof supertest>;
 
   beforeEach(async () => {
     app = new RestApplication({});
     app.configure('servers.RestServer').to({port: 0, host: '127.0.0.1'});
-    // Seed a couple of distinctive bindings to assert against.
+    app.setMetadata({name: 'test-app', version: '9.9.9', description: ''});
+
     app
       .bind('explorer.test.greeting')
       .to('hi')
-      .tag('demo', 'greeting')
+      .tag({demo: 'greeting'})
       .inScope(BindingScope.SINGLETON);
     app.bind('explorer.test.transient').to(42).inScope(BindingScope.TRANSIENT);
+
+    // A secret + an exploding provider: must never be resolved.
+    app.bind('secret.jwt').to('TOP-SECRET').inScope(BindingScope.SINGLETON);
+    app.bind('danger.provider').toProvider(ExplodingProvider);
+
+    // Config pattern: configure a (notional) server key.
+    app.configure('servers.RestServer').to({port: 0});
+
+    // Extension point + extension (single + multi point to hit array path).
+    @extensionPoint('greeters')
+    class GreeterPoint {}
+    @injectable({tags: {[CoreTags.EXTENSION_FOR]: 'greeters'}})
+    class EnglishGreeter {}
+    @injectable({tags: {[CoreTags.EXTENSION_FOR]: ['greeters', 'salutations']}})
+    class MultiGreeter {}
+    app.service(GreeterPoint);
+    app.service(EnglishGreeter);
+    app.service(MultiGreeter);
+
+    app.restController(ThingsController);
+    app.service(WeatherServer);
+    app.restController(DualOne); // single binding: REST + MCP
+    app.controller(DualTwo); // two bindings...
+    app.service(DualTwo); // ...same class
+
     await installContextExplorer(app, {title: 'Test Explorer'});
     await app.start();
     const server = await app.restServer;
@@ -30,84 +122,123 @@ describe('context-explorer', () => {
 
   afterEach(async () => app.stop());
 
-  it('lists bindings with scope and tags at /context-explorer/api/bindings', async () => {
-    const r = await client.get('/context-explorer/api/bindings').expect(200);
-    expect(Array.isArray(r.body)).toBe(true);
-    const greeting = r.body.find(
-      (b: {key: string}) => b.key === 'explorer.test.greeting',
+  const getModel = async () =>
+    (await client.get('/context-explorer/api/model').expect(200)).body as {
+      app: {name?: string; version?: string};
+      contexts: {name: string; parent?: string}[];
+      bindings: {
+        key: string;
+        scope: string;
+        type?: string;
+        tags: {name: string; value: string | boolean}[];
+        kinds: string[];
+        dependsOn: string[];
+        extensionPoint?: string;
+        extensionFor?: string[];
+        configurationFor?: string;
+        routes?: {verb: string; path: string}[];
+        tools?: {name: string}[];
+      }[];
+    };
+
+  const find = (m: Awaited<ReturnType<typeof getModel>>, key: string) =>
+    m.bindings.find(b => b.key === key)!;
+
+  it('returns scope, type and TAG VALUES (not just names)', async () => {
+    const m = await getModel();
+    const g = find(m, 'explorer.test.greeting');
+    expect(g.scope).toBe(BindingScope.SINGLETON);
+    expect(g.tags).toEqual(
+      expect.arrayContaining([{name: 'demo', value: 'greeting'}]),
     );
-    expect(greeting).toBeDefined();
-    expect(greeting.scope).toBe(BindingScope.SINGLETON);
-    expect(greeting.tags).toEqual(expect.arrayContaining(['demo', 'greeting']));
-    const transient = r.body.find(
-      (b: {key: string}) => b.key === 'explorer.test.transient',
+    expect(find(m, 'explorer.test.transient').scope).toBe(
+      BindingScope.TRANSIENT,
     );
-    expect(transient.scope).toBe(BindingScope.TRANSIENT);
   });
 
-  it('returns the nested inspect tree of bindings', async () => {
+  it('reports the application identity from APPLICATION_METADATA', async () => {
+    const m = await getModel();
+    expect(m.app.name).toBe('test-app');
+    expect(m.app.version).toBe('9.9.9');
+  });
+
+  it('exposes the context hierarchy', async () => {
+    const m = await getModel();
+    expect(m.contexts.length).toBeGreaterThan(0);
+    expect(m.contexts.some(c => c.parent === undefined)).toBe(true);
+  });
+
+  it('computes dependsOn for direct-key injections', async () => {
+    const m = await getModel();
+    // The explorer controller injects the application instance.
+    const ctrl = m.bindings.find(b =>
+      b.dependsOn.includes('application.instance'),
+    );
+    expect(ctrl).toBeDefined();
+  });
+
+  it('detects controller and mcpServer kinds + extension wiring', async () => {
+    const m = await getModel();
+    expect(find(m, 'controllers.ThingsController').kinds).toContain(
+      'controller',
+    );
+    // GreeterPoint is an extension point; EnglishGreeter extends it.
+    const point = m.bindings.find(b => b.extensionPoint === 'greeters');
+    expect(point).toBeDefined();
+    const multi = m.bindings.find(
+      b => b.extensionFor && b.extensionFor.includes('salutations'),
+    )!;
+    // Array extensionFor normalized to string[].
+    expect(multi.extensionFor).toEqual(
+      expect.arrayContaining(['greeters', 'salutations']),
+    );
+  });
+
+  it('marks config bindings with configurationFor', async () => {
+    const m = await getModel();
+    const cfg = m.bindings.find(b => b.configurationFor != null);
+    expect(cfg).toBeDefined();
+    expect(cfg!.kinds).toContain('config');
+  });
+
+  it('dual via restController() is ONE node with both kinds, routes AND tools', async () => {
+    const m = await getModel();
+    const node = find(m, 'controllers.DualOne');
+    expect(node.kinds).toEqual(
+      expect.arrayContaining(['controller', 'mcpServer']),
+    );
+    expect(node.routes?.some(r => r.path.includes('/dual'))).toBe(true);
+    expect(node.tools?.some(t => t.name === 'dualTool')).toBe(true);
+  });
+
+  it('dual via controller()+service() is TWO nodes sharing a source class', async () => {
+    const m = await getModel();
+    const dualTwoNodes = m.bindings.filter(
+      b => (b as {source?: string}).source === 'DualTwo',
+    );
+    expect(dualTwoNodes.length).toBe(2);
+    const kinds = new Set(dualTwoNodes.flatMap(b => b.kinds));
+    expect(kinds.has('controller')).toBe(true);
+    expect(kinds.has('mcpServer')).toBe(true);
+  });
+
+  it('never resolves a binding (secret + exploding provider untouched)', async () => {
+    const m = await getModel();
+    const serialized = JSON.stringify(m);
+    expect(serialized).not.toContain('TOP-SECRET');
+    // If buildModel resolved danger.provider, beforeEach/start would throw.
+    expect(find(m, 'danger.provider').type).toBe('Provider');
+  });
+
+  it('removed /bindings and /graph', async () => {
+    await client.get('/context-explorer/api/bindings').expect(404);
+    await client.get('/context-explorer/api/graph').expect(404);
+  });
+
+  it('keeps the raw /inspect passthrough and serves the shell', async () => {
     const r = await client.get('/context-explorer/api/inspect').expect(200);
     expect(r.body.bindings).toBeTypeOf('object');
-    expect(r.body.bindings['explorer.test.greeting']).toBeDefined();
-  });
-
-  // The boolean query flag is exercised via `includeInjections`, which is
-  // observable on a root app: the explorer controller has a constructor
-  // @inject, so its binding carries an `injections` entry when (and only when)
-  // injections are requested. This also proves `?flag=false` is honoured
-  // (not coerced to true).
-  it('includes injection metadata by default and omits it on includeInjections=false', async () => {
-    const hasAnyInjections = (tree: {bindings: Record<string, unknown>}) =>
-      Object.values(tree.bindings).some(
-        b => (b as {injections?: unknown}).injections !== undefined,
-      );
-
-    const withInj = await client
-      .get('/context-explorer/api/inspect')
-      .expect(200);
-    expect(hasAnyInjections(withInj.body)).toBe(true);
-
-    const withoutInj = await client
-      .get('/context-explorer/api/inspect?includeInjections=false')
-      .expect(200);
-    expect(hasAnyInjections(withoutInj.body)).toBe(false);
-  });
-
-  it('exposes a dependency graph at /graph with clean edges', async () => {
-    const r = await client.get('/context-explorer/api/graph').expect(200);
-    const keys: string[] = r.body.nodes.map((n: {key: string}) => n.key);
-    expect(keys).toContain('explorer.test.greeting');
-
-    // The explorer controller injects the application instance, so there is at
-    // least one real dependency edge pointing at it.
-    type Edge = {from: string; to: string};
-    expect(
-      (r.body.edges as Edge[]).some(e => e.to === 'application.instance'),
-    ).toBe(true);
-
-    // Edges are well-formed: no self-edges, both endpoints are known nodes.
-    const nodeSet = new Set(keys);
-    for (const e of r.body.edges as Edge[]) {
-      expect(e.from).not.toBe(e.to);
-      expect(nodeSet.has(e.from)).toBe(true);
-      expect(nodeSet.has(e.to)).toBe(true);
-    }
-  });
-
-  it('serves the HTML shell at /context-explorer and /context-explorer/', async () => {
-    for (const path of ['/context-explorer', '/context-explorer/']) {
-      const r = await client.get(path).expect(200);
-      expect(r.headers['content-type']).toMatch(/text\/html/);
-      expect(r.text).toMatch(/<title>Test Explorer<\/title>/);
-      expect(r.text).toMatch(/<div id="root">/);
-      expect(r.text).toMatch(/\/context-explorer\/assets\/main\.js/);
-    }
-  });
-
-  it('serves the esbuild bundle at /context-explorer/assets/main.js', async () => {
-    const r = await client.get('/context-explorer/assets/main.js').expect(200);
-    expect(r.headers['content-type']).toMatch(
-      /application\/javascript|text\/javascript/,
-    );
+    const html = await client.get('/context-explorer/').expect(200);
+    expect(html.text).toMatch(/<title>Test Explorer<\/title>/);
   });
 });

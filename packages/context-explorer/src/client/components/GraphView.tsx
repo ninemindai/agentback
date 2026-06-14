@@ -2,7 +2,7 @@
 // Node module: @agentback/context-explorer
 // This file is licensed under the MIT License.
 
-import {useEffect, useMemo, useState} from 'react';
+import {useMemo, useState} from 'react';
 import {
   Background,
   Controls,
@@ -12,14 +12,13 @@ import {
   type Node,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import {type BindingSummary, type ContextGraph} from '../api';
-import {useApi} from '../ApiContext';
-import {layoutGraph} from '../lib/layout';
+import {type BindingNode} from '../api';
+import {layoutGraph, type LayoutGraph} from '../lib/layout';
 
 interface Props {
   selectedKey: string | null;
   onSelect: (key: string) => void;
-  bindings: BindingSummary[];
+  bindings: BindingNode[];
 }
 
 interface Hover {
@@ -28,14 +27,24 @@ interface Hover {
   y: number;
 }
 
-// Warm paper-palette tint per binding type so kinds are scannable at a glance.
-const TYPE_FILL: Record<string, string> = {
-  Class: '#e6ece2',
-  Provider: '#efe5d6',
-  Constant: '#ece6d8',
-  Alias: '#e1eae6',
-  Function: '#f0e6db',
+// Node fill keyed on scope (matching the `.fdot.scope-*` tokens) so the graph
+// is scannable by lifecycle scope: singleton green, transient amber, context
+// blue, else a neutral paper tint.
+const SCOPE_FILL: Record<string, string> = {
+  Singleton: '#4f7d5b',
+  Transient: '#9a6b2f',
+  Context: '#3f6d8c',
 };
+
+function scopeFill(scope: string): string {
+  return SCOPE_FILL[scope] ?? '#ece6d8';
+}
+
+// White text reads on the saturated scope fills; dark text on the neutral
+// default keeps the paper look for unscoped/finer-grained scopes.
+function scopeText(scope: string): string {
+  return scope in SCOPE_FILL ? '#f6f1e6' : '#221d16';
+}
 
 function nodeLabel(key: string, scope: string, type: string) {
   return (
@@ -58,28 +67,36 @@ function nodeLabel(key: string, scope: string, type: string) {
 }
 
 /**
- * Dependency graph view. Fetches `/graph`, lays it out left-to-right (deps on
- * the left), and renders it with React Flow (pan/zoom/drag, minimap, controls).
- * Selecting a node highlights it and its incident dependency edges.
+ * Dependency graph view. Derives its nodes/edges from the model's binding
+ * `dependsOn` lists, lays it out left-to-right (deps on the left), and renders
+ * it with React Flow (pan/zoom/drag, minimap, controls). Selecting a node
+ * highlights it and its incident dependency edges.
  */
 export function GraphView({selectedKey, onSelect, bindings}: Props) {
-  const api = useApi();
-  const [graph, setGraph] = useState<ContextGraph | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [hover, setHover] = useState<Hover | null>(null);
 
-  useEffect(() => {
-    api.fetchGraph().then(setGraph, e => setError(String(e)));
-  }, [api]);
+  // Build the layout graph from the model: nodes are bindings, edges come from
+  // each binding's `dependsOn` ("from depends on to"). The model can repeat the
+  // same binding key across contexts in the parent chain, so dedup nodes by key
+  // (keep the first occurrence) to avoid duplicate React Flow ids.
+  const graph = useMemo<LayoutGraph>(() => {
+    const byKey = new Map<string, LayoutGraph['nodes'][number]>();
+    for (const b of bindings) {
+      if (!byKey.has(b.key)) {
+        byKey.set(b.key, {key: b.key, scope: b.scope, type: b.type});
+      }
+    }
+    return {
+      nodes: [...byKey.values()],
+      edges: bindings.flatMap(b => b.dependsOn.map(to => ({from: b.key, to}))),
+    };
+  }, [bindings]);
 
-  const base = useMemo(
-    () => (graph ? layoutGraph(graph) : {nodes: [], edges: []}),
-    [graph],
-  );
+  const base = useMemo(() => layoutGraph(graph), [graph]);
 
   // Lookups for the hover tooltip: full binding metadata + dependency counts.
   const byKey = useMemo(() => {
-    const m = new Map<string, BindingSummary>();
+    const m = new Map<string, BindingNode>();
     for (const b of bindings) m.set(b.key, b);
     return m;
   }, [bindings]);
@@ -125,8 +142,8 @@ export function GraphView({selectedKey, onSelect, bindings}: Props) {
             padding: 6,
             borderRadius: 5,
             border: isSel ? '1.5px solid #9a3324' : '1px solid #cabfa6',
-            background: TYPE_FILL[data.type] ?? '#ece6d8',
-            color: '#221d16',
+            background: scopeFill(data.scope),
+            color: scopeText(data.scope),
             fontFamily: "'JetBrains Mono',ui-monospace,monospace",
             opacity: dimmed ? 0.28 : 1,
             boxShadow: isSel
@@ -164,8 +181,6 @@ export function GraphView({selectedKey, onSelect, bindings}: Props) {
     [base.edges, selectedKey],
   );
 
-  if (error) return <p className="err">Failed to load graph: {error}</p>;
-  if (!graph) return <p className="empty">Loading graph…</p>;
   if (graph.nodes.length === 0) {
     return <p className="empty">No bindings to graph.</p>;
   }
@@ -215,7 +230,7 @@ function NodeTooltip({
   x,
   y,
 }: {
-  binding: BindingSummary | undefined;
+  binding: BindingNode | undefined;
   fallbackKey: string;
   dependsOn: number;
   dependedOnBy: number;
@@ -254,7 +269,13 @@ function NodeTooltip({
             {binding.tags.length > 0 && (
               <>
                 <dt>Tags</dt>
-                <dd>{binding.tags.join(', ')}</dd>
+                <dd>
+                  {binding.tags
+                    .map(t =>
+                      t.value === true ? t.name : `${t.name}=${t.value}`,
+                    )
+                    .join(', ')}
+                </dd>
               </>
             )}
           </>

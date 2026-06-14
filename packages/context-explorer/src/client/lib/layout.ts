@@ -4,10 +4,16 @@
 
 import dagre from '@dagrejs/dagre';
 import {MarkerType, Position, type Edge, type Node} from '@xyflow/react';
-import type {ContextGraph} from '../api';
 
 export const NODE_W = 230;
 export const NODE_H = 44;
+
+/** Minimal graph shape consumed by the layout (derived from the model). */
+export interface LayoutGraph {
+  nodes: {key: string; scope: string; type?: string}[];
+  /** `from` depends on `to` (i.e. `from` injects the binding `to`). */
+  edges: {from: string; to: string}[];
+}
 
 /**
  * Lay out the dependency graph left-to-right with dagre and produce React Flow
@@ -16,7 +22,7 @@ export const NODE_H = 44;
  * `to` (the dependency) gets the lower rank. The rendered React Flow edge keeps
  * the semantic direction (arrow points from dependent to dependency).
  */
-export function layoutGraph(graph: ContextGraph): {
+export function layoutGraph(graph: LayoutGraph): {
   nodes: Node[];
   edges: Edge[];
 } {

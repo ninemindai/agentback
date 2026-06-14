@@ -92,8 +92,8 @@ describe('mcp/rest/context unified console', () => {
 
   describe('aggregated panel APIs', () => {
     it('mounts the context-explorer API', async () => {
-      const r = await client.get('/context-explorer/api/bindings').expect(200);
-      expect(Array.isArray(r.body)).toBe(true);
+      const r = await client.get('/context-explorer/api/model').expect(200);
+      expect(r.body.bindings).toBeTypeOf('object');
     });
 
     it('mounts the mcp-inspector API', async () => {
@@ -121,7 +121,7 @@ describe('mcp/rest/context unified console', () => {
     it('gates the UI and the aggregated APIs without the key', async () => {
       await g.get('/console').expect(401);
       await g.get('/mcp-inspector/api/manifest').expect(401);
-      await g.get('/context-explorer/api/bindings').expect(401);
+      await g.get('/context-explorer/api/model').expect(401);
       await g.get('/mcp-connect/api/targets').expect(401);
     });
 

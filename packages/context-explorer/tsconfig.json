@@ -12,7 +12,16 @@
       "path": "../console-theme"
     },
     {
+      "path": "../context"
+    },
+    {
       "path": "../core"
+    },
+    {
+      "path": "../mcp"
+    },
+    {
+      "path": "../metadata"
     },
     {
       "path": "../openapi"

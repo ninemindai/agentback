@@ -8,14 +8,10 @@ import {fileURLToPath} from 'node:url';
 import express from 'express';
 import {z} from 'zod';
 import {api, get} from '@agentback/openapi';
-import {
-  CoreBindings,
-  inject,
-  type Context,
-  type JSONObject,
-} from '@agentback/core';
+import {CoreBindings, inject, type Context} from '@agentback/core';
 import {THEME_CSS, THEME_FONTS_HREF} from '@agentback/console-theme';
 import type {RestApplication, RestServer} from '@agentback/rest';
+import {ContextModel, buildModel} from './model.js';
 
 /** Fixed base path of the JSON API exposed by {@link ContextExplorerController}. */
 const API_BASE = '/context-explorer/api';
@@ -59,134 +55,6 @@ const ContextInspection = z
   })
   .loose();
 
-const BindingSummary = z.object({
-  key: z.string(),
-  context: z.string(),
-  scope: z.string(),
-  type: z.string().optional(),
-  source: z.string().optional(),
-  tags: z.array(z.string()),
-  isLocked: z.boolean().optional(),
-});
-
-const BindingSummaryList = z.array(BindingSummary);
-
-type BindingSummary = z.infer<typeof BindingSummary>;
-
-const GraphNode = z.object({
-  key: z.string(),
-  scope: z.string(),
-  type: z.string().optional(),
-});
-
-// `from` depends on `to` (i.e. `from` injects the binding `to`).
-const GraphEdge = z.object({
-  from: z.string(),
-  to: z.string(),
-});
-
-const ContextGraph = z.object({
-  nodes: z.array(GraphNode),
-  edges: z.array(GraphEdge),
-});
-
-type ContextGraph = z.infer<typeof ContextGraph>;
-
-// ---- Flatten ----------------------------------------------------------------
-
-/**
- * Flatten a `Context.inspect()` tree into a sortable list of binding summaries,
- * walking the parent-context chain. Each summary records which context owns the
- * binding so the UI can group by context.
- */
-function flattenInspection(node: JSONObject): BindingSummary[] {
-  const out: BindingSummary[] = [];
-  const ctxName = typeof node.name === 'string' ? node.name : '';
-  const bindings = (node.bindings ?? {}) as Record<string, JSONObject>;
-  for (const [key, b] of Object.entries(bindings)) {
-    const source =
-      (b.valueConstructor as string | undefined) ??
-      (b.providerConstructor as string | undefined) ??
-      (b.alias as string | undefined);
-    out.push({
-      key,
-      context: ctxName,
-      scope: String(b.scope ?? ''),
-      type: b.type != null ? String(b.type) : undefined,
-      source,
-      tags: Object.keys((b.tags as JSONObject | undefined) ?? {}),
-      isLocked: typeof b.isLocked === 'boolean' ? b.isLocked : undefined,
-    });
-  }
-  const parent = node.parent as JSONObject | undefined;
-  if (parent) out.push(...flattenInspection(parent));
-  return out;
-}
-
-/**
- * Build a dependency graph from an `inspect({includeInjections: true})` tree.
- * Each binding becomes a node; each injection (constructor arg or property)
- * whose target is also a known binding becomes a `from -> to` edge meaning
- * "`from` depends on `to`". Edges to unbound keys (e.g. optional injections)
- * and self-edges are dropped so the graph only contains resolvable wiring.
- */
-function extractGraph(node: JSONObject): ContextGraph {
-  const nodes = new Map<string, z.infer<typeof GraphNode>>();
-  const edgeSet = new Set<string>();
-  const edges: ContextGraph['edges'] = [];
-
-  // Pass 1: collect every binding as a node (across the parent chain).
-  (function collect(n: JSONObject) {
-    const bindings = (n.bindings ?? {}) as Record<string, JSONObject>;
-    for (const [key, b] of Object.entries(bindings)) {
-      if (!nodes.has(key)) {
-        nodes.set(key, {
-          key,
-          scope: String(b.scope ?? ''),
-          type: b.type != null ? String(b.type) : undefined,
-        });
-      }
-    }
-    if (n.parent) collect(n.parent as JSONObject);
-  })(node);
-
-  // A binding address may carry a property path after `#` (e.g.
-  // `restServer.config#port`); the key itself contains dots, so only strip
-  // the `#` suffix to recover the bound key.
-  const baseKey = (addr: string) => addr.split('#')[0]!;
-
-  // Pass 2: walk injections into edges.
-  (function link(n: JSONObject) {
-    const bindings = (n.bindings ?? {}) as Record<string, JSONObject>;
-    for (const [key, b] of Object.entries(bindings)) {
-      const inj = b.injections as JSONObject | undefined;
-      if (!inj) continue;
-      const targets: string[] = [];
-      const ctorArgs =
-        (inj.constructorArguments as JSONObject[] | undefined) ?? [];
-      for (const a of ctorArgs) {
-        if (typeof a?.bindingKey === 'string') targets.push(a.bindingKey);
-      }
-      const props =
-        (inj.properties as Record<string, JSONObject> | undefined) ?? {};
-      for (const p of Object.values(props)) {
-        if (typeof p?.bindingKey === 'string') targets.push(p.bindingKey);
-      }
-      for (const t of targets) {
-        const to = baseKey(t);
-        if (to === key || !nodes.has(to)) continue; // drop self/dangling edges
-        const id = key + '' + to;
-        if (edgeSet.has(id)) continue;
-        edgeSet.add(id);
-        edges.push({from: key, to});
-      }
-    }
-    if (n.parent) link(n.parent as JSONObject);
-  })(node);
-
-  return {nodes: [...nodes.values()], edges};
-}
-
 // ---- Controller (the dogfooded REST API) ------------------------------------
 
 /**
@@ -202,13 +70,13 @@ export class ContextExplorerController {
     @inject(CoreBindings.APPLICATION_INSTANCE) private readonly app: Context,
   ) {}
 
-  /** Flattened, sortable summary of every binding across the context chain. */
-  @get('/bindings', {response: BindingSummaryList})
-  async bindings(): Promise<BindingSummary[]> {
-    return flattenInspection(this.app.inspect({includeParent: true}));
+  /** Consolidated, derived model of the container (see model.ts). */
+  @get('/model', {response: ContextModel})
+  async model(): Promise<z.infer<typeof ContextModel>> {
+    return buildModel(this.app);
   }
 
-  /** Full nested `inspect()` tree, including the parent-context chain. */
+  /** Full nested `inspect()` tree — raw passthrough for the Raw view. */
   @get('/inspect', {query: InspectQuery, response: ContextInspection})
   async inspect(input: {
     query: z.infer<typeof InspectQuery>;
@@ -217,17 +85,6 @@ export class ContextExplorerController {
       includeInjections: input.query.includeInjections ?? true,
       includeParent: input.query.includeParent ?? true,
     }) as z.infer<typeof ContextInspection>;
-  }
-
-  /**
-   * Dependency graph of the container: a node per binding and a `from -> to`
-   * edge for each injection (`from` depends on `to`). Drives the graph view.
-   */
-  @get('/graph', {response: ContextGraph})
-  async graph(): Promise<ContextGraph> {
-    return extractGraph(
-      this.app.inspect({includeInjections: true, includeParent: true}),
-    );
   }
 }
 
@@ -392,6 +249,27 @@ button.dep:hover { color:var(--accent); text-decoration:underline; text-underlin
 .empty { padding:2rem 0; }
 pre.raw { background:var(--card); border:1px solid var(--line-2); padding:1rem; border-radius:6px; white-space:pre-wrap; word-break:break-word; font-size:12px; font-family:var(--mono); }
 .err { color:var(--accent); padding:1.5rem; font-family:var(--mono); }
+.shell { display:grid; grid-template-columns:220px minmax(320px,420px) 1fr; height:calc(100vh - 56px); }
+.facets { border-right:1px solid var(--line-2); overflow:auto; padding:.8rem .6rem; }
+.facetgroup { margin-bottom:1rem; }
+.facetgroup h3 { font-family:var(--sans); font-size:.7rem; font-weight:600; text-transform:uppercase; letter-spacing:.07em; color:var(--faint); margin:0 0 .4rem .3rem; }
+.facet { width:100%; display:flex; align-items:center; gap:.45rem; border:1px solid transparent; background:none; color:inherit; padding:.28rem .35rem; border-radius:5px; cursor:pointer; font:inherit; font-size:12.5px; }
+.facet:hover { background:var(--card); }
+.facet.on { background:var(--card); border-color:var(--line-2); box-shadow:inset 3px 0 0 var(--accent); }
+.facet .flabel { flex:1; text-align:left; font-family:var(--mono); word-break:break-all; }
+.facet .fcount { color:var(--muted); font-family:var(--mono); font-size:11px; }
+.fdot { width:8px; height:8px; border-radius:2px; background:var(--line); flex:none; }
+.fdot.scope-singleton { background:#4f7d5b; } .fdot.scope-transient { background:#9a6b2f; } .fdot.scope-context { background:#3f6d8c; }
+.badge.scope-singleton { color:#4f7d5b; } .badge.scope-transient { color:#9a6b2f; } .badge.scope-context { color:#3f6d8c; }
+.badge.type-class { color:var(--blue); } .badge.type-provider { color:#7a4fa3; } .badge.type-constant { color:var(--muted); } .badge.type-alias { color:#9a6b2f; }
+.kindtag { font-size:.7rem; padding:.05rem .35rem; border-radius:3px; border:1px solid var(--line-2); color:var(--accent); }
+.appcard { font-family:var(--mono); font-size:.78rem; color:var(--muted); border:1px solid var(--line-2); border-radius:4px; padding:.1rem .45rem; }
+.hierarchy { font-size:13px; }
+.ctxnode { border-left:2px solid var(--line-2); padding-left:.8rem; margin:.4rem 0; }
+.ctxhead { display:flex; gap:.6rem; align-items:baseline; margin-bottom:.2rem; }
+.ctxname { font-family:var(--mono); font-weight:600; color:var(--accent); }
+.ctxbindings { list-style:none; margin:.2rem 0; padding:0; }
+.ctxchildren { margin-left:.6rem; }
 `;
 
 function escapeHtml(s: string): string {
