@@ -2,10 +2,10 @@
 // Node module: @agentback/context-explorer
 // This file is licensed under the MIT License.
 
-import type {BindingSummary} from '../api';
+import type {BindingNode} from '../api';
 
 interface Props {
-  binding: BindingSummary | null;
+  binding: BindingNode | null;
   /** Keys this binding injects (depends on). */
   dependsOn: string[];
   /** Keys that inject this binding (depend on it). */
@@ -30,7 +30,14 @@ export function BindingDetail({
   ];
   if (binding.type) rows.push(['Type', binding.type]);
   if (binding.source) rows.push(['Source', binding.source]);
-  rows.push(['Tags', binding.tags.length ? binding.tags.join(', ') : '—']);
+  rows.push([
+    'Tags',
+    binding.tags.length
+      ? binding.tags
+          .map(t => (t.value === true ? t.name : `${t.name}=${t.value}`))
+          .join(', ')
+      : '—',
+  ]);
   if (binding.isLocked !== undefined) {
     rows.push(['Locked', String(binding.isLocked)]);
   }

@@ -2,10 +2,10 @@
 // Node module: @agentback/context-explorer
 // This file is licensed under the MIT License.
 
-import type {BindingSummary} from '../api';
+import type {BindingNode} from '../api';
 
 interface Props {
-  bindings: BindingSummary[];
+  bindings: BindingNode[];
   selectedKey: string | null;
   onSelect: (key: string) => void;
   onTag: (tag: string) => void;
@@ -30,14 +30,14 @@ export function BindingList({bindings, selectedKey, onSelect, onTag}: Props) {
             {b.type && <span className="badge">{b.type}</span>}
             {b.tags.map(t => (
               <span
-                key={t}
+                key={t.name}
                 className="badge tag"
                 onClick={e => {
                   e.stopPropagation();
-                  onTag(t);
+                  onTag(t.name);
                 }}
               >
-                {t}
+                {t.value === true ? t.name : `${t.name}=${t.value}`}
               </span>
             ))}
           </div>

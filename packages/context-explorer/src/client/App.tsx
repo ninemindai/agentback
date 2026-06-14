@@ -3,7 +3,7 @@
 // This file is licensed under the MIT License.
 
 import {useEffect, useMemo, useState} from 'react';
-import {makeApi, type BindingSummary, type GraphEdge} from './api';
+import {makeApi, type BindingNode, type ContextModel} from './api';
 import {ApiProvider} from './ApiContext';
 import {BindingList} from './components/BindingList';
 import {BindingDetail} from './components/BindingDetail';
@@ -13,7 +13,7 @@ import {RawTree} from './components/RawTree';
 type View = 'browse' | 'graph' | 'raw';
 
 /**
- * Root component. Owns all UI state (bindings, selection, filters, view);
+ * Root component. Owns all UI state (model, selection, filters, view);
  * the panes are pure functions of this state. No router, no global store.
  * `apiBase` is supplied by the standalone shell or the console, so the panel
  * is reusable under any mount path.
@@ -26,41 +26,39 @@ export function App({
   title?: string;
 }) {
   const api = useMemo(() => makeApi(apiBase), [apiBase]);
-  const [bindings, setBindings] = useState<BindingSummary[]>([]);
+  const [model, setModel] = useState<ContextModel | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
   const [tag, setTag] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [edges, setEdges] = useState<GraphEdge[]>([]);
   const [view, setView] = useState<View>('browse');
 
   useEffect(() => {
-    api.fetchBindings().then(setBindings, e => setError(String(e)));
-    // Edges power the detail pane's dependency lists; failure is non-fatal.
-    api.fetchGraph().then(
-      g => setEdges(g.edges),
-      () => {},
-    );
+    api.fetchModel().then(setModel, e => setError(String(e)));
   }, [api]);
 
-  // Adjacency maps from the dependency edges. An edge {from, to} means
-  // "from depends on to".
+  const bindings: BindingNode[] = model?.bindings ?? [];
+
+  // Adjacency maps derived from each node's `dependsOn`. An entry "from -> to"
+  // means "from depends on to" (from injects the binding to).
   const {dependsOn, dependedOnBy} = useMemo(() => {
     const out = new Map<string, string[]>();
     const inc = new Map<string, string[]>();
-    for (const e of edges) {
-      (out.get(e.from) ?? out.set(e.from, []).get(e.from)!).push(e.to);
-      (inc.get(e.to) ?? inc.set(e.to, []).get(e.to)!).push(e.from);
+    for (const b of bindings) {
+      out.set(b.key, b.dependsOn);
+      for (const to of b.dependsOn) {
+        (inc.get(to) ?? inc.set(to, []).get(to)!).push(b.key);
+      }
     }
     return {dependsOn: out, dependedOnBy: inc};
-  }, [edges]);
+  }, [bindings]);
 
   const visible = useMemo(() => {
     const q = filter.trim().toLowerCase();
     return bindings.filter(
       b =>
         (!q || b.key.toLowerCase().includes(q)) &&
-        (!tag || b.tags.includes(tag)),
+        (!tag || b.tags.some(t => t.name === tag)),
     );
   }, [bindings, filter, tag]);
 
@@ -69,7 +67,7 @@ export function App({
     [bindings, selectedKey],
   );
 
-  if (error) return <p className="err">Failed to load bindings: {error}</p>;
+  if (error) return <p className="err">Failed to load model: {error}</p>;
 
   const views: View[] = ['browse', 'graph', 'raw'];
   const labels: Record<View, string> = {

@@ -2,7 +2,7 @@
 // Node module: @agentback/context-explorer
 // This file is licensed under the MIT License.
 
-import {useEffect, useMemo, useState} from 'react';
+import {useMemo, useState} from 'react';
 import {
   Background,
   Controls,
@@ -12,14 +12,13 @@ import {
   type Node,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import {type BindingSummary, type ContextGraph} from '../api';
-import {useApi} from '../ApiContext';
-import {layoutGraph} from '../lib/layout';
+import {type BindingNode} from '../api';
+import {layoutGraph, type LayoutGraph} from '../lib/layout';
 
 interface Props {
   selectedKey: string | null;
   onSelect: (key: string) => void;
-  bindings: BindingSummary[];
+  bindings: BindingNode[];
 }
 
 interface Hover {
@@ -58,28 +57,29 @@ function nodeLabel(key: string, scope: string, type: string) {
 }
 
 /**
- * Dependency graph view. Fetches `/graph`, lays it out left-to-right (deps on
- * the left), and renders it with React Flow (pan/zoom/drag, minimap, controls).
- * Selecting a node highlights it and its incident dependency edges.
+ * Dependency graph view. Derives its nodes/edges from the model's binding
+ * `dependsOn` lists, lays it out left-to-right (deps on the left), and renders
+ * it with React Flow (pan/zoom/drag, minimap, controls). Selecting a node
+ * highlights it and its incident dependency edges.
  */
 export function GraphView({selectedKey, onSelect, bindings}: Props) {
-  const api = useApi();
-  const [graph, setGraph] = useState<ContextGraph | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [hover, setHover] = useState<Hover | null>(null);
 
-  useEffect(() => {
-    api.fetchGraph().then(setGraph, e => setError(String(e)));
-  }, [api]);
-
-  const base = useMemo(
-    () => (graph ? layoutGraph(graph) : {nodes: [], edges: []}),
-    [graph],
+  // Build the layout graph from the model: nodes are bindings, edges come from
+  // each binding's `dependsOn` ("from depends on to").
+  const graph = useMemo<LayoutGraph>(
+    () => ({
+      nodes: bindings.map(b => ({key: b.key, scope: b.scope, type: b.type})),
+      edges: bindings.flatMap(b => b.dependsOn.map(to => ({from: b.key, to}))),
+    }),
+    [bindings],
   );
+
+  const base = useMemo(() => layoutGraph(graph), [graph]);
 
   // Lookups for the hover tooltip: full binding metadata + dependency counts.
   const byKey = useMemo(() => {
-    const m = new Map<string, BindingSummary>();
+    const m = new Map<string, BindingNode>();
     for (const b of bindings) m.set(b.key, b);
     return m;
   }, [bindings]);
@@ -164,8 +164,6 @@ export function GraphView({selectedKey, onSelect, bindings}: Props) {
     [base.edges, selectedKey],
   );
 
-  if (error) return <p className="err">Failed to load graph: {error}</p>;
-  if (!graph) return <p className="empty">Loading graph…</p>;
   if (graph.nodes.length === 0) {
     return <p className="empty">No bindings to graph.</p>;
   }
@@ -215,7 +213,7 @@ function NodeTooltip({
   x,
   y,
 }: {
-  binding: BindingSummary | undefined;
+  binding: BindingNode | undefined;
   fallbackKey: string;
   dependsOn: number;
   dependedOnBy: number;
@@ -254,7 +252,13 @@ function NodeTooltip({
             {binding.tags.length > 0 && (
               <>
                 <dt>Tags</dt>
-                <dd>{binding.tags.join(', ')}</dd>
+                <dd>
+                  {binding.tags
+                    .map(t =>
+                      t.value === true ? t.name : `${t.name}=${t.value}`,
+                    )
+                    .join(', ')}
+                </dd>
               </>
             )}
           </>
