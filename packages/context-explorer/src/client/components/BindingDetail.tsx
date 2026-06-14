@@ -10,14 +10,20 @@ interface Props {
   dependsOn: string[];
   /** Keys that inject this binding (depend on it). */
   dependedOnBy: string[];
+  /** config keys configuring THIS binding (target side). */
+  configuredBy: string[];
+  /** extensions contributing to THIS point (if it is an extension point). */
+  extensions: string[];
   onSelect: (key: string) => void;
 }
 
-/** Right pane: full metadata for the selected binding plus its dependencies. */
+/** Right pane: full metadata for the selected binding plus its wiring. */
 export function BindingDetail({
   binding,
   dependsOn,
   dependedOnBy,
+  configuredBy,
+  extensions,
   onSelect,
 }: Props) {
   if (!binding) {
@@ -30,6 +36,7 @@ export function BindingDetail({
   ];
   if (binding.type) rows.push(['Type', binding.type]);
   if (binding.source) rows.push(['Source', binding.source]);
+  if (binding.kinds.length) rows.push(['Kinds', binding.kinds.join(', ')]);
   rows.push([
     'Tags',
     binding.tags.length
@@ -38,9 +45,22 @@ export function BindingDetail({
           .join(', ')
       : '—',
   ]);
+  if (binding.extensionPoint) {
+    rows.push(['Extension point', binding.extensionPoint]);
+  }
+  if (binding.extensionFor?.length) {
+    rows.push(['Extends', binding.extensionFor.join(', ')]);
+  }
+  if (binding.configurationFor) {
+    rows.push(['Configures', binding.configurationFor]);
+  }
+  if (binding.lifeCycleGroup) {
+    rows.push(['Lifecycle group', binding.lifeCycleGroup]);
+  }
   if (binding.isLocked !== undefined) {
     rows.push(['Locked', String(binding.isLocked)]);
   }
+
   return (
     <>
       <h2>{binding.key}</h2>
@@ -54,6 +74,12 @@ export function BindingDetail({
       </dl>
       <DepList title="Depends on" keys={dependsOn} onSelect={onSelect} />
       <DepList title="Depended on by" keys={dependedOnBy} onSelect={onSelect} />
+      {binding.extensionPoint && (
+        <DepList title="Extensions" keys={extensions} onSelect={onSelect} />
+      )}
+      <DepList title="Configured by" keys={configuredBy} onSelect={onSelect} />
+      {binding.routes?.length ? <RouteList routes={binding.routes} /> : null}
+      {binding.tools?.length ? <ToolList tools={binding.tools} /> : null}
     </>
   );
 }
@@ -85,6 +111,49 @@ function DepList({
           ))}
         </ul>
       )}
+    </section>
+  );
+}
+
+function RouteList({routes}: {routes: NonNullable<BindingNode['routes']>}) {
+  return (
+    <section className="deps">
+      <h3>
+        Routes <span className="count">({routes.length})</span>
+      </h3>
+      <ul>
+        {routes.map(r => (
+          <li key={r.verb + r.path}>
+            <code>
+              {r.verb} {r.path}
+            </code>
+          </li>
+        ))}
+      </ul>
+      <a className="dep" href="/explorer" target="_blank" rel="noreferrer">
+        open in API explorer ↗
+      </a>
+    </section>
+  );
+}
+
+function ToolList({tools}: {tools: NonNullable<BindingNode['tools']>}) {
+  return (
+    <section className="deps">
+      <h3>
+        Tools <span className="count">({tools.length})</span>
+      </h3>
+      <ul>
+        {tools.map(t => (
+          <li key={t.name}>
+            <code>{t.name}</code>
+            {t.description ? ` — ${t.description}` : ''}
+          </li>
+        ))}
+      </ul>
+      <a className="dep" href="/mcp-inspector" target="_blank" rel="noreferrer">
+        open in MCP inspector ↗
+      </a>
     </section>
   );
 }

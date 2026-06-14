@@ -4,7 +4,7 @@
 
 import {useEffect, useMemo, useState} from 'react';
 import {makeApi, type BindingNode, type ContextModel} from './api';
-import {facets} from '../lib/selectors';
+import {facets, configEdges, extensionGroups} from '../lib/selectors';
 import {ApiProvider} from './ApiContext';
 import {FacetNav, type FacetSelection} from './components/FacetNav';
 import {ResultsList} from './components/ResultsList';
@@ -72,6 +72,8 @@ export function App({
   }, [bindings]);
 
   const allFacets = useMemo(() => facets(bindings), [bindings]);
+  const cfgEdges = useMemo(() => configEdges(bindings), [bindings]);
+  const extGroups = useMemo(() => extensionGroups(bindings), [bindings]);
 
   // Within-facet OR, across-facet AND.
   const visible = useMemo(() => {
@@ -161,6 +163,14 @@ export function App({
               dependsOn={selected ? (dependsOn.get(selected.key) ?? []) : []}
               dependedOnBy={
                 selected ? (dependedOnBy.get(selected.key) ?? []) : []
+              }
+              configuredBy={selected ? (cfgEdges.get(selected.key) ?? []) : []}
+              extensions={
+                selected?.extensionPoint
+                  ? (extGroups.get(selected.extensionPoint) ?? []).map(
+                      b => b.key,
+                    )
+                  : []
               }
               onSelect={setSelectedKey}
             />
