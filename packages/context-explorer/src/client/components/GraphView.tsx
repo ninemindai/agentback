@@ -14,7 +14,12 @@ import {
 import '@xyflow/react/dist/style.css';
 import {type BindingNode} from '../api';
 import {layoutGraph, type LayoutGraph} from '../lib/layout';
-import {extensionEdges} from '../../lib/selectors';
+import {extensionGraph} from '../../lib/selectors';
+
+// Violet matches the extension edges + the `type-provider` token; used for the
+// synthetic extension-point nodes that have no backing binding.
+const EXT_POINT_FILL = '#efe7f3';
+const EXT_POINT_BORDER = '#7a4fa3';
 
 interface Props {
   selectedKey: string | null;
@@ -47,7 +52,12 @@ function scopeText(scope: string): string {
   return scope in SCOPE_FILL ? '#f6f1e6' : '#221d16';
 }
 
-function nodeLabel(key: string, scope: string, type: string) {
+function nodeLabel(
+  label: string,
+  scope: string,
+  type: string,
+  isPoint: boolean,
+) {
   return (
     <div style={{lineHeight: 1.15, textAlign: 'left'}}>
       <div
@@ -57,11 +67,10 @@ function nodeLabel(key: string, scope: string, type: string) {
           wordBreak: 'break-all',
         }}
       >
-        {key}
+        {label}
       </div>
       <div style={{fontSize: 9, opacity: 0.7, marginTop: 2}}>
-        {scope}
-        {type ? ' · ' + type : ''}
+        {isPoint ? 'extension point' : scope + (type ? ' · ' + type : '')}
       </div>
     </div>
   );
@@ -91,10 +100,21 @@ export function GraphView({selectedKey, onSelect, bindings}: Props) {
       b.dependsOn.map(to => ({from: b.key, to, kind: 'dep' as const})),
     );
     // Extension wiring is tag-based (absent from `dependsOn`): connect each
-    // extension point to the extensions registered for it.
-    for (const e of extensionEdges(bindings)) {
-      edges.push({...e, kind: 'extension'});
+    // extension point to the extensions registered for it. Points with no
+    // declared binding (e.g. `mcpServers`) get a synthetic node so the edge
+    // still has somewhere to land.
+    const ext = extensionGraph(bindings);
+    for (const p of ext.points) {
+      if (!byKey.has(p.id)) {
+        byKey.set(p.id, {
+          key: p.id,
+          scope: '',
+          nodeKind: 'extensionPoint',
+          label: p.name,
+        });
+      }
     }
+    for (const e of ext.edges) edges.push({...e, kind: 'extension'});
     return {nodes: [...byKey.values()], edges};
   }, [bindings]);
 
@@ -106,6 +126,16 @@ export function GraphView({selectedKey, onSelect, bindings}: Props) {
     for (const b of bindings) m.set(b.key, b);
     return m;
   }, [bindings]);
+
+  // Synthetic extension-point node id -> display name, for the hover tooltip.
+  const pointNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const n of base.nodes) {
+      const d = n.data as {label: string; nodeKind?: string};
+      if (d.nodeKind === 'extensionPoint') m.set(n.id, d.label);
+    }
+    return m;
+  }, [base.nodes]);
 
   // Dependency counts for the tooltip exclude extension edges (those are not
   // "deps"), so the "X out · Y in" figures stay true to injection wiring.
@@ -139,22 +169,32 @@ export function GraphView({selectedKey, onSelect, bindings}: Props) {
   const nodes: Node[] = useMemo(
     () =>
       base.nodes.map(n => {
-        const data = n.data as {label: string; scope: string; type: string};
+        const data = n.data as {
+          label: string;
+          scope: string;
+          type: string;
+          nodeKind?: string;
+        };
+        const isPoint = data.nodeKind === 'extensionPoint';
         const isSel = n.id === selectedKey;
         const dimmed = selectedKey != null && !isSel && !incident.has(n.id);
         return {
           ...n,
           data: {
             ...n.data,
-            label: nodeLabel(data.label, data.scope, data.type),
+            label: nodeLabel(data.label, data.scope, data.type, isPoint),
           },
           style: {
             width: n.width,
             padding: 6,
             borderRadius: 5,
-            border: isSel ? '1.5px solid #9a3324' : '1px solid #cabfa6',
-            background: scopeFill(data.scope),
-            color: scopeText(data.scope),
+            border: isSel
+              ? '1.5px solid #9a3324'
+              : isPoint
+                ? '1.5px dashed ' + EXT_POINT_BORDER
+                : '1px solid #cabfa6',
+            background: isPoint ? EXT_POINT_FILL : scopeFill(data.scope),
+            color: isPoint ? EXT_POINT_BORDER : scopeText(data.scope),
             fontFamily: "'JetBrains Mono',ui-monospace,monospace",
             opacity: dimmed ? 0.28 : 1,
             boxShadow: isSel
@@ -228,7 +268,8 @@ export function GraphView({selectedKey, onSelect, bindings}: Props) {
       {hover && (
         <NodeTooltip
           binding={byKey.get(hover.key)}
-          fallbackKey={hover.key}
+          fallbackKey={pointNameById.get(hover.key) ?? hover.key}
+          isPoint={pointNameById.has(hover.key)}
           dependsOn={counts.out.get(hover.key) ?? 0}
           dependedOnBy={counts.inc.get(hover.key) ?? 0}
           x={hover.x}
@@ -293,6 +334,7 @@ function GraphLegend() {
 function NodeTooltip({
   binding,
   fallbackKey,
+  isPoint,
   dependsOn,
   dependedOnBy,
   x,
@@ -300,6 +342,7 @@ function NodeTooltip({
 }: {
   binding: BindingNode | undefined;
   fallbackKey: string;
+  isPoint: boolean;
   dependsOn: number;
   dependedOnBy: number;
   x: number;
@@ -348,10 +391,19 @@ function NodeTooltip({
             )}
           </>
         )}
-        <dt>Deps</dt>
-        <dd>
-          {dependsOn} out · {dependedOnBy} in
-        </dd>
+        {isPoint ? (
+          <>
+            <dt>Kind</dt>
+            <dd>extension point</dd>
+          </>
+        ) : (
+          <>
+            <dt>Deps</dt>
+            <dd>
+              {dependsOn} out · {dependedOnBy} in
+            </dd>
+          </>
+        )}
       </dl>
     </div>
   );

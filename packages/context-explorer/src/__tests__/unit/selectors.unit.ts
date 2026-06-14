@@ -6,7 +6,7 @@ import {describe, expect, it} from 'vitest';
 import {
   facets,
   extensionGroups,
-  extensionEdges,
+  extensionGraph,
   configEdges,
   dualByCtor,
 } from '../../lib/selectors.js';
@@ -34,22 +34,25 @@ describe('selectors', () => {
     expect(f.kind.get('mcpServer')).toBe(1);
   });
 
-  it('extensionEdges connects point binding key -> extension key', () => {
-    const e = extensionEdges([
+  it('extensionGraph anchors edges on point bindings, synthesizes missing ones', () => {
+    const g = extensionGraph([
       node({key: 'pt', extensionPoint: 'greeters'}),
       node({key: 'e1', extensionFor: ['greeters']}),
-      node({key: 'e2', extensionFor: ['greeters', 'other']}),
-      // orphan: extends a point with no binding -> dropped
-      node({key: 'e3', extensionFor: ['nobody']}),
+      node({key: 'e2', extensionFor: ['greeters', 'mcpServers']}),
     ]);
-    expect(e).toEqual(
+    // 'greeters' has a binding -> edges anchor on 'pt'; 'mcpServers' has no
+    // binding -> a synthetic point node + an edge to it.
+    expect(g.edges).toEqual(
       expect.arrayContaining([
         {from: 'pt', to: 'e1'},
         {from: 'pt', to: 'e2'},
+        {from: 'extension-point:mcpServers', to: 'e2'},
       ]),
     );
-    // 'other' and 'nobody' have no point binding -> only the two 'greeters' edges
-    expect(e).toHaveLength(2);
+    expect(g.edges).toHaveLength(3);
+    expect(g.points).toEqual([
+      {id: 'extension-point:mcpServers', name: 'mcpServers'},
+    ]);
   });
 
   it('extensionGroups maps point name -> extension keys', () => {

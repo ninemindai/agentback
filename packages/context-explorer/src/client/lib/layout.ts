@@ -11,9 +11,20 @@ export const NODE_H = 44;
 /** Kind of a graph edge: an injection dependency or extension-point wiring. */
 export type EdgeKind = 'dep' | 'extension';
 
+/** Whether a graph node is a real binding or a synthetic extension point. */
+export type NodeKind = 'binding' | 'extensionPoint';
+
 /** Minimal graph shape consumed by the layout (derived from the model). */
 export interface LayoutGraph {
-  nodes: {key: string; scope: string; type?: string}[];
+  nodes: {
+    key: string;
+    scope: string;
+    type?: string;
+    /** Defaults to `binding`; `extensionPoint` for synthetic point nodes. */
+    nodeKind?: NodeKind;
+    /** Display label (defaults to `key`); synthetic points show the bare name. */
+    label?: string;
+  }[];
   /**
    * `from` depends on `to`. For `dep` edges `from` injects the binding `to`;
    * for `extension` edges `from` is the extension point and `to` an extension
@@ -57,7 +68,12 @@ export function layoutGraph(graph: LayoutGraph): {
       id: n.key,
       // dagre gives center coords; React Flow wants top-left.
       position: {x: pos.x - NODE_W / 2, y: pos.y - NODE_H / 2},
-      data: {label: n.key, scope: n.scope, type: n.type ?? ''},
+      data: {
+        label: n.label ?? n.key,
+        scope: n.scope,
+        type: n.type ?? '',
+        nodeKind: n.nodeKind ?? 'binding',
+      },
       // The semantic edge runs dependent -> dependency, i.e. right -> left,
       // so the edge leaves a node on its left and arrives on its right.
       sourcePosition: Position.Left,

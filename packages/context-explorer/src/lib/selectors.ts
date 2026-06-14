@@ -54,28 +54,49 @@ export function extensionGroups(
   return g;
 }
 
+/** Prefix for synthetic extension-point node ids (points with no binding). */
+export const EXTENSION_POINT_PREFIX = 'extension-point:';
+
+/** Extension-point wiring for the graph: edges plus any synthetic point nodes. */
+export interface ExtensionGraph {
+  /**
+   * Synthetic nodes for extension points referenced by `extensionFor` that have
+   * NO declared `@extensionPoint` binding (e.g. `mcpServers`, consumed by the
+   * MCP server via a tag filter). `id` is prefixed; `name` is the bare point.
+   */
+  points: {id: string; name: string}[];
+  /** `from` (point node id) -> `to` (extension binding key). */
+  edges: {from: string; to: string}[];
+}
+
 /**
- * Extension-point wiring as graph edges: each `{from: point key, to: extension
- * key}` connects an extension point binding to an extension registered for it.
- * `extensionFor` names the point(s); a name resolves to its point binding's key.
- * Extensions whose point has no binding (orphans) and self-edges are dropped.
+ * Build extension-point wiring. Each binding's `extensionFor` names the point(s)
+ * it registers with. A point with a declared `@extensionPoint` binding anchors
+ * the edge on that binding's key; a point with no binding gets a synthetic node
+ * (`EXTENSION_POINT_PREFIX + name`) so the wiring is still visible. Self-edges
+ * are dropped.
  */
-export function extensionEdges(
-  bindings: BindingNode[],
-): {from: string; to: string}[] {
+export function extensionGraph(bindings: BindingNode[]): ExtensionGraph {
   const pointKeyByName = new Map<string, string>();
   for (const b of bindings) {
     if (b.extensionPoint) pointKeyByName.set(b.extensionPoint, b.key);
   }
+  const synthetic = new Map<string, string>(); // name -> synthetic node id
   const edges: {from: string; to: string}[] = [];
   for (const b of bindings) {
     for (const name of b.extensionFor ?? []) {
-      const pointKey = pointKeyByName.get(name);
-      if (pointKey && pointKey !== b.key)
-        edges.push({from: pointKey, to: b.key});
+      let pointId = pointKeyByName.get(name);
+      if (!pointId) {
+        pointId = EXTENSION_POINT_PREFIX + name;
+        synthetic.set(name, pointId);
+      }
+      if (pointId !== b.key) edges.push({from: pointId, to: b.key});
     }
   }
-  return edges;
+  return {
+    points: [...synthetic].map(([name, id]) => ({id, name})),
+    edges,
+  };
 }
 
 /** target key -> config binding keys that configure it. */
