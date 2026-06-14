@@ -29,31 +29,34 @@
 ## File Structure
 
 **Server (`packages/context-explorer/src/`)**
-- `model.ts` *(new)* — Zod schemas (`ContextModel`, `BindingNode`, …) + `buildModel(ctx)`. The crux. One responsibility: turn a `Context` into the derived model, metadata-only.
-- `index.ts` *(modify)* — controller now serves `/model` (+ keeps `/inspect`), drops `/bindings` + `/graph`; imports schemas/builder from `model.ts`; `contextConsoleFeature()` unchanged in shape.
+
+- `model.ts` _(new)_ — Zod schemas (`ContextModel`, `BindingNode`, …) + `buildModel(ctx)`. The crux. One responsibility: turn a `Context` into the derived model, metadata-only.
+- `index.ts` _(modify)_ — controller now serves `/model` (+ keeps `/inspect`), drops `/bindings` + `/graph`; imports schemas/builder from `model.ts`; `contextConsoleFeature()` unchanged in shape.
 
 **Pure logic (`packages/context-explorer/src/lib/`) — tsc-compiled, NOT under `src/client`**
 
 > IMPORTANT: `tsconfig.json` excludes `src/client` from the `tsc -b` program (the client tree is bundled by esbuild only). Vitest runs against `dist/`, so any module a unit test imports must be tsc-compiled. Therefore the pure selectors/hierarchy live in `src/lib/` (compiled to `dist/lib/`), NOT `src/client/lib/`. They `import type {BindingNode, ContextNode} from '../model.js'` (the tsc-compiled types) — a type-only import, which esbuild strips, so the browser bundle gains no `zod`/`@agentback/*` runtime dep. Client components import these modules with `../lib/...` / `../../lib/...` (esbuild resolves `src/lib` fine).
 
-- `lib/selectors.ts` *(new)* — pure functions over the model: `facets()`, `extensionGroups()`, `configEdges()`, `dualByCtor()`. Unit-tested.
-- `lib/hierarchy.ts` *(new)* — `buildContextTree(contexts, bindings)`. Unit-tested.
+- `lib/selectors.ts` _(new)_ — pure functions over the model: `facets()`, `extensionGroups()`, `configEdges()`, `dualByCtor()`. Unit-tested.
+- `lib/hierarchy.ts` _(new)_ — `buildContextTree(contexts, bindings)`. Unit-tested.
 - The existing `client/lib/layout.ts` stays where it is (client-only, esbuild-bundled, no unit test).
 
 **Client (`packages/context-explorer/src/client/`)**
-- `api.ts` *(modify)* — `fetchModel()` + model types; drop `fetchBindings`/`fetchGraph`.
-- `App.tsx` *(modify)* — three-pane facet shell + view switch (Explore/Graph/Hierarchy/Raw); owns state; selectors over the model.
-- `components/FacetNav.tsx` *(new)* — left facet nav.
-- `components/ResultsList.tsx` *(new, replaces BindingList.tsx)* — center list, color badges, tag chips.
-- `components/BindingDetail.tsx` *(modify)* — add Configures/Configured-by, extension wiring, Routes, Tools.
-- `components/HierarchyView.tsx` *(new)* — context tree view.
-- `components/GraphView.tsx` *(modify)* — consume model edges; color-by-scope.
-- `console-page.tsx`, `main.tsx` *(unchanged)* — already pass `apiBase` to `App`.
+
+- `api.ts` _(modify)_ — `fetchModel()` + model types; drop `fetchBindings`/`fetchGraph`.
+- `App.tsx` _(modify)_ — three-pane facet shell + view switch (Explore/Graph/Hierarchy/Raw); owns state; selectors over the model.
+- `components/FacetNav.tsx` _(new)_ — left facet nav.
+- `components/ResultsList.tsx` _(new, replaces BindingList.tsx)_ — center list, color badges, tag chips.
+- `components/BindingDetail.tsx` _(modify)_ — add Configures/Configured-by, extension wiring, Routes, Tools.
+- `components/HierarchyView.tsx` _(new)_ — context tree view.
+- `components/GraphView.tsx` _(modify)_ — consume model edges; color-by-scope.
+- `console-page.tsx`, `main.tsx` _(unchanged)_ — already pass `apiBase` to `App`.
 
 **Tests**
-- `src/__tests__/integration/explorer.integration.ts` *(rewrite)* — model shape, kinds, dual paths, no-resolve.
-- `src/__tests__/unit/selectors.unit.ts` *(new)* — selectors + hierarchy.
-- `packages/console/src/__tests__/integration/console.integration.ts` *(modify)* — repoint `/bindings` → `/model`.
+
+- `src/__tests__/integration/explorer.integration.ts` _(rewrite)_ — model shape, kinds, dual paths, no-resolve.
+- `src/__tests__/unit/selectors.unit.ts` _(new)_ — selectors + hierarchy.
+- `packages/console/src/__tests__/integration/console.integration.ts` _(modify)_ — repoint `/bindings` → `/model`.
 
 ---
 
@@ -62,6 +65,7 @@
 ## Task 1: Add `mcp` + `metadata` deps and wire project references
 
 **Files:**
+
 - Modify: `packages/context-explorer/package.json`
 - Modify: `packages/context-explorer/tsconfig.json`
 
@@ -104,6 +108,7 @@ git commit -m "build(context-explorer): add @agentback/mcp + metadata deps for m
 ## Task 2: Model schemas + `buildModel` — write the failing integration test
 
 **Files:**
+
 - Modify (rewrite): `packages/context-explorer/src/__tests__/integration/explorer.integration.ts`
 
 This task writes the new integration test FIRST (it will fail to compile/run until Tasks 3–4 land). We assert the full model contract here so the builder is built to it.
@@ -369,6 +374,7 @@ Expected: FAIL — `installContextExplorer` still works, but the test imports/as
 ## Task 3: Implement `model.ts` (schemas + `buildModel`)
 
 **Files:**
+
 - Create: `packages/context-explorer/src/model.ts`
 
 - [ ] **Step 1: Write `model.ts`**
@@ -448,7 +454,9 @@ type BindingNode = z.infer<typeof BindingNode>;
 // ---- Helpers ----------------------------------------------------------------
 
 /** Normalize a `tagMap` into flat {name,value} entries; arrays fan out. */
-function tagEntries(tagMap: Record<string, unknown>): z.infer<typeof TagEntry>[] {
+function tagEntries(
+  tagMap: Record<string, unknown>,
+): z.infer<typeof TagEntry>[] {
   const out: z.infer<typeof TagEntry>[] = [];
   for (const [name, raw] of Object.entries(tagMap)) {
     if (Array.isArray(raw)) {
@@ -482,7 +490,8 @@ function injectionKeys(b: JSONObject): string[] {
   for (const a of ctor) {
     if (typeof a?.bindingKey === 'string') out.push(baseKey(a.bindingKey));
   }
-  const props = (inj.properties as Record<string, JSONObject> | undefined) ?? {};
+  const props =
+    (inj.properties as Record<string, JSONObject> | undefined) ?? {};
   for (const p of Object.values(props)) {
     if (typeof p?.bindingKey === 'string') out.push(baseKey(p.bindingKey));
   }
@@ -506,7 +515,9 @@ export function buildModel(ctx: Context): ContextModel {
   const controllerKeys = new Set(
     ctx.findByTag(CoreTags.CONTROLLER).map(b => b.key),
   );
-  const mcpKeys = new Set(ctx.find(extensionFilter(MCP_SERVERS)).map(b => b.key));
+  const mcpKeys = new Set(
+    ctx.find(extensionFilter(MCP_SERVERS)).map(b => b.key),
+  );
 
   const contexts: z.infer<typeof ContextNode>[] = [];
   const bindings: BindingNode[] = [];
@@ -538,7 +549,8 @@ export function buildModel(ctx: Context): ContextModel {
         kinds.push('component');
       if (tagMap[CoreTags.LIFE_CYCLE_OBSERVER] != null)
         kinds.push('lifeCycleObserver');
-      if (tagMap[CoreTags.EXTENSION_POINT] != null) kinds.push('extensionPoint');
+      if (tagMap[CoreTags.EXTENSION_POINT] != null)
+        kinds.push('extensionPoint');
       if (tagMap[CoreTags.EXTENSION_FOR] != null) kinds.push('extension');
       if (tagMap[ContextTags.CONFIGURATION_FOR] != null) kinds.push('config');
       if (key.startsWith('servers.')) kinds.push('server');
@@ -651,7 +663,7 @@ export function buildModel(ctx: Context): ContextModel {
 function joinPath(base: string | undefined, path: string): string {
   const a = (base ?? '').replace(/\/$/, '');
   const b = path.startsWith('/') ? path : '/' + path;
-  return (a + b) || '/';
+  return a + b || '/';
 }
 ```
 
@@ -670,6 +682,7 @@ Expected: `model.ts` compiles (the integration test still fails — `index.ts` d
 ## Task 4: Wire the controller to `/model` (drop `/bindings`, `/graph`)
 
 **Files:**
+
 - Modify: `packages/context-explorer/src/index.ts`
 
 - [ ] **Step 1: Replace the schema + controller section**
@@ -730,6 +743,7 @@ git commit -m "feat(context-explorer): consolidated /model endpoint (tags values
 ## Task 5: Client `api.ts` — `fetchModel` + types
 
 **Files:**
+
 - Modify: `packages/context-explorer/src/client/api.ts`
 
 - [ ] **Step 1: Rewrite `api.ts`**
@@ -815,6 +829,7 @@ Expected: FAIL in `App.tsx`/`GraphView.tsx` (they still import removed types). P
 This keeps the app compiling/working on the new model **before** the redesign, so P0 lands green. The facet UI arrives in P1.
 
 **Files:**
+
 - Modify: `packages/context-explorer/src/client/App.tsx`
 - Modify: `packages/context-explorer/src/client/components/GraphView.tsx`
 - Modify: `packages/context-explorer/src/client/components/BindingList.tsx`
@@ -835,7 +850,13 @@ import {RawTree} from './components/RawTree';
 
 type View = 'browse' | 'graph' | 'raw';
 
-export function App({apiBase, title = 'Context Explorer'}: {apiBase: string; title?: string}) {
+export function App({
+  apiBase,
+  title = 'Context Explorer',
+}: {
+  apiBase: string;
+  title?: string;
+}) {
   const api = useMemo(() => makeApi(apiBase), [apiBase]);
   const [model, setModel] = useState<ContextModel | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -879,16 +900,26 @@ export function App({apiBase, title = 'Context Explorer'}: {apiBase: string; tit
   if (error) return <p className="err">Failed to load model: {error}</p>;
 
   const views: View[] = ['browse', 'graph', 'raw'];
-  const labels: Record<View, string> = {browse: 'Browse', graph: 'Graph', raw: 'Raw tree'};
+  const labels: Record<View, string> = {
+    browse: 'Browse',
+    graph: 'Graph',
+    raw: 'Raw tree',
+  };
 
   return (
     <ApiProvider value={api}>
       <header>
         <h1>{title}</h1>
-        <span className="count">{visible.length} / {bindings.length} bindings</span>
+        <span className="count">
+          {visible.length} / {bindings.length} bindings
+        </span>
         <div className="views">
           {views.map(v => (
-            <button key={v} className={v === view ? 'btn' : 'ghost'} onClick={() => setView(v)}>
+            <button
+              key={v}
+              className={v === view ? 'btn' : 'ghost'}
+              onClick={() => setView(v)}
+            >
               {labels[v]}
             </button>
           ))}
@@ -903,28 +934,45 @@ export function App({apiBase, title = 'Context Explorer'}: {apiBase: string; tit
 
       {view === 'graph' && (
         <div className="graphpane">
-          <GraphView selectedKey={selectedKey} onSelect={setSelectedKey} bindings={bindings} />
+          <GraphView
+            selectedKey={selectedKey}
+            onSelect={setSelectedKey}
+            bindings={bindings}
+          />
         </div>
       )}
 
       {view === 'browse' && (
         <div className="layout">
           <div className="list">
-            <input className="filter" placeholder="Filter by key…" value={filter}
-              onChange={e => setFilter(e.target.value)} />
+            <input
+              className="filter"
+              placeholder="Filter by key…"
+              value={filter}
+              onChange={e => setFilter(e.target.value)}
+            />
             {tag && (
               <div className="tagfilter">
                 tag: <span className="badge">{tag}</span>
-                <button className="ghost" onClick={() => setTag(null)}>clear</button>
+                <button className="ghost" onClick={() => setTag(null)}>
+                  clear
+                </button>
               </div>
             )}
-            <BindingList bindings={visible} selectedKey={selectedKey} onSelect={setSelectedKey} onTag={setTag} />
+            <BindingList
+              bindings={visible}
+              selectedKey={selectedKey}
+              onSelect={setSelectedKey}
+              onTag={setTag}
+            />
           </div>
           <div className="detail">
             <BindingDetail
               binding={selected}
               dependsOn={selected ? (dependsOn.get(selected.key) ?? []) : []}
-              dependedOnBy={selected ? (dependedOnBy.get(selected.key) ?? []) : []}
+              dependedOnBy={
+                selected ? (dependedOnBy.get(selected.key) ?? []) : []
+              }
               onSelect={setSelectedKey}
             />
           </div>
@@ -954,16 +1002,24 @@ export function BindingList({bindings, selectedKey, onSelect, onTag}: Props) {
   return (
     <>
       {bindings.map(b => (
-        <button key={b.context + '|' + b.key}
+        <button
+          key={b.context + '|' + b.key}
           className={'row' + (b.key === selectedKey ? ' sel' : '')}
-          onClick={() => onSelect(b.key)}>
+          onClick={() => onSelect(b.key)}
+        >
           <div className="key">{b.key}</div>
           <div className="meta">
             <span className="badge">{b.scope}</span>
             {b.type && <span className="badge">{b.type}</span>}
             {b.tags.map(t => (
-              <span key={t.name} className="badge tag"
-                onClick={e => {e.stopPropagation(); onTag(t.name);}}>
+              <span
+                key={t.name}
+                className="badge tag"
+                onClick={e => {
+                  e.stopPropagation();
+                  onTag(t.name);
+                }}
+              >
                 {t.value === true ? t.name : `${t.name}=${t.value}`}
               </span>
             ))}
@@ -1008,18 +1064,23 @@ git commit -m "refactor(context-explorer): client consumes /model; derive edges 
 ## Task 7: Repoint the console integration test to `/model`
 
 **Files:**
+
 - Modify: `packages/console/src/__tests__/integration/console.integration.ts:95,124`
 
 - [ ] **Step 1: Change both `/bindings` assertions to `/model`**
 
 Line ~95:
+
 ```ts
 const r = await client.get('/context-explorer/api/model').expect(200);
 ```
+
 Line ~124:
+
 ```ts
 await g.get('/context-explorer/api/model').expect(401);
 ```
+
 (Keep the surrounding assertions; if line 96 asserts `Array.isArray(r.body)`, change it to `expect(r.body.bindings).toBeTypeOf('object')`.)
 
 - [ ] **Step 2: Build + run console integration**
@@ -1044,6 +1105,7 @@ git commit -m "test(console): repoint context-explorer assertions from /bindings
 ## Task 8: Pure selectors — write failing unit tests
 
 **Files:**
+
 - Create: `packages/context-explorer/src/__tests__/unit/selectors.unit.ts`
 
 - [ ] **Step 1: Write the unit test**
@@ -1054,13 +1116,22 @@ git commit -m "test(console): repoint context-explorer assertions from /bindings
 // This file is licensed under the MIT License.
 
 import {describe, expect, it} from 'vitest';
-import {facets, extensionGroups, configEdges, dualByCtor} from '../../lib/selectors.js';
+import {
+  facets,
+  extensionGroups,
+  configEdges,
+  dualByCtor,
+} from '../../lib/selectors.js';
 import {buildContextTree} from '../../lib/hierarchy.js';
 import type {BindingNode, ContextNode} from '../../model.js';
 
 const node = (p: Partial<BindingNode> & {key: string}): BindingNode => ({
-  key: p.key, context: p.context ?? 'Application', scope: p.scope ?? 'Singleton',
-  tags: p.tags ?? [], kinds: p.kinds ?? [], dependsOn: p.dependsOn ?? [],
+  key: p.key,
+  context: p.context ?? 'Application',
+  scope: p.scope ?? 'Singleton',
+  tags: p.tags ?? [],
+  kinds: p.kinds ?? [],
+  dependsOn: p.dependsOn ?? [],
   ...p,
 });
 
@@ -1082,7 +1153,12 @@ describe('selectors', () => {
       node({key: 'e1', extensionFor: ['greeters']}),
       node({key: 'e2', extensionFor: ['greeters', 'other']}),
     ]);
-    expect(g.get('greeters')?.map(b => b.key).sort()).toEqual(['e1', 'e2']);
+    expect(
+      g
+        .get('greeters')
+        ?.map(b => b.key)
+        .sort(),
+    ).toEqual(['e1', 'e2']);
     expect(g.get('other')?.map(b => b.key)).toEqual(['e2']);
   });
 
@@ -1106,7 +1182,8 @@ describe('selectors', () => {
 
   it('buildContextTree nests children under parents', () => {
     const contexts: ContextNode[] = [
-      {name: 'Application'}, {name: 'RestServer', parent: 'Application'},
+      {name: 'Application'},
+      {name: 'RestServer', parent: 'Application'},
     ];
     const tree = buildContextTree(contexts, [
       node({key: 'a', context: 'Application'}),
@@ -1130,6 +1207,7 @@ Expected: FAIL — modules not found.
 ## Task 9: Implement selectors + hierarchy
 
 **Files:**
+
 - Modify: `packages/context-explorer/src/model.ts` (export the node types)
 - Create: `packages/context-explorer/src/lib/selectors.ts`
 - Create: `packages/context-explorer/src/lib/hierarchy.ts`
@@ -1141,11 +1219,14 @@ The selectors and the unit test need the `BindingNode`/`ContextNode` TS types. `
 ```ts
 type BindingNode = z.infer<typeof BindingNode>;
 ```
+
 to:
+
 ```ts
 export type BindingNode = z.infer<typeof BindingNode>;
 export type ContextNode = z.infer<typeof ContextNode>;
 ```
+
 (Add the `ContextNode` type export right after the `BindingNode` one. The `const BindingNode`/`const ContextNode` Zod schemas remain exported as before — name merging means each identifier is both a value and a type.)
 
 - [ ] **Step 1: Write `src/lib/selectors.ts`** (pure logic, tsc-compiled, type-only import from `model.js` so esbuild keeps the browser bundle clean)
@@ -1174,8 +1255,13 @@ const bump = (m: Map<string, number>, k: string | undefined) => {
 
 export function facets(bindings: BindingNode[]): Facets {
   const f: Facets = {
-    kind: new Map(), scope: new Map(), type: new Map(), tag: new Map(),
-    extensionPoint: new Map(), lifeCycleGroup: new Map(), context: new Map(),
+    kind: new Map(),
+    scope: new Map(),
+    type: new Map(),
+    tag: new Map(),
+    extensionPoint: new Map(),
+    lifeCycleGroup: new Map(),
+    context: new Map(),
   };
   for (const b of bindings) {
     for (const k of b.kinds) bump(f.kind, k);
@@ -1214,7 +1300,9 @@ export function configEdges(bindings: BindingNode[]): Map<string, string[]> {
 }
 
 /** source class name -> bindings sharing it (dual-binding join, finding A). */
-export function dualByCtor(bindings: BindingNode[]): Map<string, BindingNode[]> {
+export function dualByCtor(
+  bindings: BindingNode[],
+): Map<string, BindingNode[]> {
   const m = new Map<string, BindingNode[]>();
   for (const b of bindings) {
     if (!b.source) continue;
@@ -1284,6 +1372,7 @@ git commit -m "feat(context-explorer): pure selectors (facets, extensions, confi
 ## Task 10: FacetNav component + scope/type color tokens
 
 **Files:**
+
 - Create: `packages/context-explorer/src/client/components/FacetNav.tsx`
 - Modify: `packages/context-explorer/src/index.ts` (extend `EXPLORER_CSS`)
 
@@ -1310,7 +1399,11 @@ interface Props {
   onToggle: (facet: keyof FacetSelection, value: string) => void;
 }
 
-const GROUPS: {facet: keyof FacetSelection; label: string; map: keyof Facets}[] = [
+const GROUPS: {
+  facet: keyof FacetSelection;
+  label: string;
+  map: keyof Facets;
+}[] = [
   {facet: 'kind', label: 'Kind', map: 'kind'},
   {facet: 'scope', label: 'Scope', map: 'scope'},
   {facet: 'type', label: 'Type', map: 'type'},
@@ -1322,7 +1415,9 @@ export function FacetNav({facets, selection, onToggle}: Props) {
   return (
     <nav className="facets">
       {GROUPS.map(g => {
-        const entries = [...facets[g.map].entries()].sort((a, b) => b[1] - a[1]);
+        const entries = [...facets[g.map].entries()].sort(
+          (a, b) => b[1] - a[1],
+        );
         if (!entries.length) return null;
         return (
           <section key={g.facet} className="facetgroup">
@@ -1330,9 +1425,11 @@ export function FacetNav({facets, selection, onToggle}: Props) {
             {entries.map(([value, count]) => {
               const on = selection[g.facet].has(value);
               return (
-                <button key={value}
+                <button
+                  key={value}
                   className={'facet' + (on ? ' on' : '')}
-                  onClick={() => onToggle(g.facet, value)}>
+                  onClick={() => onToggle(g.facet, value)}
+                >
                   <span className={'fdot ' + g.facet + '-' + slug(value)} />
                   <span className="flabel">{value}</span>
                   <span className="fcount">{count}</span>
@@ -1354,20 +1451,105 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 Append to the `EXPLORER_CSS` template string:
 
 ```css
-.shell { display:grid; grid-template-columns:220px minmax(320px,420px) 1fr; height:calc(100vh - 56px); }
-.facets { border-right:1px solid var(--line-2); overflow:auto; padding:.8rem .6rem; }
-.facetgroup { margin-bottom:1rem; }
-.facetgroup h3 { font-family:var(--sans); font-size:.7rem; font-weight:600; text-transform:uppercase; letter-spacing:.07em; color:var(--faint); margin:0 0 .4rem .3rem; }
-.facet { width:100%; display:flex; align-items:center; gap:.45rem; border:1px solid transparent; background:none; color:inherit; padding:.28rem .35rem; border-radius:5px; cursor:pointer; font:inherit; font-size:12.5px; }
-.facet:hover { background:var(--card); }
-.facet.on { background:var(--card); border-color:var(--line-2); box-shadow:inset 3px 0 0 var(--accent); }
-.facet .flabel { flex:1; text-align:left; font-family:var(--mono); word-break:break-all; }
-.facet .fcount { color:var(--muted); font-family:var(--mono); font-size:11px; }
-.fdot { width:8px; height:8px; border-radius:2px; background:var(--line); flex:none; }
-.fdot.scope-singleton { background:#4f7d5b; } .fdot.scope-transient { background:#9a6b2f; } .fdot.scope-context { background:#3f6d8c; }
-.badge.scope-singleton { color:#4f7d5b; } .badge.scope-transient { color:#9a6b2f; } .badge.scope-context { color:#3f6d8c; }
-.badge.type-class { color:var(--blue); } .badge.type-provider { color:#7a4fa3; } .badge.type-constant { color:var(--muted); } .badge.type-alias { color:#9a6b2f; }
-.kindtag { font-size:.7rem; padding:.05rem .35rem; border-radius:3px; border:1px solid var(--line-2); color:var(--accent); }
+.shell {
+  display: grid;
+  grid-template-columns: 220px minmax(320px, 420px) 1fr;
+  height: calc(100vh - 56px);
+}
+.facets {
+  border-right: 1px solid var(--line-2);
+  overflow: auto;
+  padding: 0.8rem 0.6rem;
+}
+.facetgroup {
+  margin-bottom: 1rem;
+}
+.facetgroup h3 {
+  font-family: var(--sans);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--faint);
+  margin: 0 0 0.4rem 0.3rem;
+}
+.facet {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+  padding: 0.28rem 0.35rem;
+  border-radius: 5px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+}
+.facet:hover {
+  background: var(--card);
+}
+.facet.on {
+  background: var(--card);
+  border-color: var(--line-2);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.facet .flabel {
+  flex: 1;
+  text-align: left;
+  font-family: var(--mono);
+  word-break: break-all;
+}
+.facet .fcount {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.fdot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--line);
+  flex: none;
+}
+.fdot.scope-singleton {
+  background: #4f7d5b;
+}
+.fdot.scope-transient {
+  background: #9a6b2f;
+}
+.fdot.scope-context {
+  background: #3f6d8c;
+}
+.badge.scope-singleton {
+  color: #4f7d5b;
+}
+.badge.scope-transient {
+  color: #9a6b2f;
+}
+.badge.scope-context {
+  color: #3f6d8c;
+}
+.badge.type-class {
+  color: var(--blue);
+}
+.badge.type-provider {
+  color: #7a4fa3;
+}
+.badge.type-constant {
+  color: var(--muted);
+}
+.badge.type-alias {
+  color: #9a6b2f;
+}
+.kindtag {
+  font-size: 0.7rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 3px;
+  border: 1px solid var(--line-2);
+  color: var(--accent);
+}
 ```
 
 - [ ] **Step 3: Build client**
@@ -1388,6 +1570,7 @@ git commit -m "feat(context-explorer): FacetNav component + scope/type color tok
 ## Task 11: Three-pane shell — wire FacetNav + ResultsList into App
 
 **Files:**
+
 - Create: `packages/context-explorer/src/client/components/ResultsList.tsx`
 - Modify: `packages/context-explorer/src/client/App.tsx`
 
@@ -1413,14 +1596,22 @@ export function ResultsList({bindings, selectedKey, onSelect}: Props) {
   return (
     <>
       {bindings.map(b => (
-        <button key={b.context + '|' + b.key}
+        <button
+          key={b.context + '|' + b.key}
           className={'row' + (b.key === selectedKey ? ' sel' : '')}
-          onClick={() => onSelect(b.key)}>
+          onClick={() => onSelect(b.key)}
+        >
           <div className="key">{b.key}</div>
           <div className="meta">
             <span className={'badge scope-' + slug(b.scope)}>{b.scope}</span>
-            {b.type && <span className={'badge type-' + slug(b.type)}>{b.type}</span>}
-            {b.kinds.map(k => <span key={k} className="kindtag">{k}</span>)}
+            {b.type && (
+              <span className={'badge type-' + slug(b.type)}>{b.type}</span>
+            )}
+            {b.kinds.map(k => (
+              <span key={k} className="kindtag">
+                {k}
+              </span>
+            ))}
             {b.tags.map(t => (
               <span key={t.name} className="badge tag">
                 {t.value === true ? t.name : `${t.name}=${t.value}`}
@@ -1444,7 +1635,11 @@ import {FacetNav, type FacetSelection} from './components/FacetNav';
 import {ResultsList} from './components/ResultsList';
 // ...
 const emptySel = (): FacetSelection => ({
-  kind: new Set(), scope: new Set(), type: new Set(), tag: new Set(), context: new Set(),
+  kind: new Set(),
+  scope: new Set(),
+  type: new Set(),
+  tag: new Set(),
+  context: new Set(),
 });
 const [sel, setSel] = useState<FacetSelection>(emptySel());
 const toggle = (facet: keyof FacetSelection, value: string) =>
@@ -1461,13 +1656,14 @@ const visible = useMemo(() => {
   const q = filter.trim().toLowerCase();
   const inFacet = (vals: Set<string>, has: (v: string) => boolean) =>
     vals.size === 0 || [...vals].some(has);
-  return bindings.filter(b =>
-    (!q || b.key.toLowerCase().includes(q)) &&
-    inFacet(sel.kind, v => b.kinds.includes(v)) &&
-    inFacet(sel.scope, v => b.scope === v) &&
-    inFacet(sel.type, v => b.type === v) &&
-    inFacet(sel.context, v => b.context === v) &&
-    inFacet(sel.tag, v => b.tags.some(t => t.name === v)),
+  return bindings.filter(
+    b =>
+      (!q || b.key.toLowerCase().includes(q)) &&
+      inFacet(sel.kind, v => b.kinds.includes(v)) &&
+      inFacet(sel.scope, v => b.scope === v) &&
+      inFacet(sel.type, v => b.type === v) &&
+      inFacet(sel.context, v => b.context === v) &&
+      inFacet(sel.tag, v => b.tags.some(t => t.name === v)),
   );
 }, [bindings, filter, sel]);
 ```
@@ -1475,22 +1671,34 @@ const visible = useMemo(() => {
 Replace the browse JSX:
 
 ```tsx
-{view === 'browse' && (
-  <div className="shell">
-    <FacetNav facets={allFacets} selection={sel} onToggle={toggle} />
-    <div className="list">
-      <input className="filter" placeholder="Filter by key…" value={filter}
-        onChange={e => setFilter(e.target.value)} />
-      <ResultsList bindings={visible} selectedKey={selectedKey} onSelect={setSelectedKey} />
+{
+  view === 'browse' && (
+    <div className="shell">
+      <FacetNav facets={allFacets} selection={sel} onToggle={toggle} />
+      <div className="list">
+        <input
+          className="filter"
+          placeholder="Filter by key…"
+          value={filter}
+          onChange={e => setFilter(e.target.value)}
+        />
+        <ResultsList
+          bindings={visible}
+          selectedKey={selectedKey}
+          onSelect={setSelectedKey}
+        />
+      </div>
+      <div className="detail">
+        <BindingDetail
+          binding={selected}
+          dependsOn={selected ? (dependsOn.get(selected.key) ?? []) : []}
+          dependedOnBy={selected ? (dependedOnBy.get(selected.key) ?? []) : []}
+          onSelect={setSelectedKey}
+        />
+      </div>
     </div>
-    <div className="detail">
-      <BindingDetail binding={selected}
-        dependsOn={selected ? (dependsOn.get(selected.key) ?? []) : []}
-        dependedOnBy={selected ? (dependedOnBy.get(selected.key) ?? []) : []}
-        onSelect={setSelectedKey} />
-    </div>
-  </div>
-)}
+  );
+}
 ```
 
 Remove the now-unused `tag`/`setTag`/`onTag` state and the `BindingList` import. Change the `browse` label to `Explore`.
@@ -1519,6 +1727,7 @@ git commit -m "feat(context-explorer): three-pane facet shell with scope/type vi
 ## Task 12: BindingDetail — config + extension wiring sections
 
 **Files:**
+
 - Modify: `packages/context-explorer/src/client/components/BindingDetail.tsx`
 - Modify: `packages/context-explorer/src/client/App.tsx` (pass model-derived edges)
 
@@ -1543,30 +1752,51 @@ interface Props {
 }
 
 export function BindingDetail({
-  binding, dependsOn, dependedOnBy, configuredBy, extensions, onSelect,
+  binding,
+  dependsOn,
+  dependedOnBy,
+  configuredBy,
+  extensions,
+  onSelect,
 }: Props) {
-  if (!binding) return <p className="empty">Select a binding to see its details.</p>;
+  if (!binding)
+    return <p className="empty">Select a binding to see its details.</p>;
   const rows: [string, string][] = [
-    ['Key', binding.key], ['Context', binding.context], ['Scope', binding.scope],
+    ['Key', binding.key],
+    ['Context', binding.context],
+    ['Scope', binding.scope],
   ];
   if (binding.type) rows.push(['Type', binding.type]);
   if (binding.source) rows.push(['Source', binding.source]);
   if (binding.kinds.length) rows.push(['Kinds', binding.kinds.join(', ')]);
-  rows.push(['Tags', binding.tags.length
-    ? binding.tags.map(t => (t.value === true ? t.name : `${t.name}=${t.value}`)).join(', ')
-    : '—']);
-  if (binding.extensionPoint) rows.push(['Extension point', binding.extensionPoint]);
-  if (binding.extensionFor?.length) rows.push(['Extends', binding.extensionFor.join(', ')]);
-  if (binding.configurationFor) rows.push(['Configures', binding.configurationFor]);
-  if (binding.lifeCycleGroup) rows.push(['Lifecycle group', binding.lifeCycleGroup]);
-  if (binding.isLocked !== undefined) rows.push(['Locked', String(binding.isLocked)]);
+  rows.push([
+    'Tags',
+    binding.tags.length
+      ? binding.tags
+          .map(t => (t.value === true ? t.name : `${t.name}=${t.value}`))
+          .join(', ')
+      : '—',
+  ]);
+  if (binding.extensionPoint)
+    rows.push(['Extension point', binding.extensionPoint]);
+  if (binding.extensionFor?.length)
+    rows.push(['Extends', binding.extensionFor.join(', ')]);
+  if (binding.configurationFor)
+    rows.push(['Configures', binding.configurationFor]);
+  if (binding.lifeCycleGroup)
+    rows.push(['Lifecycle group', binding.lifeCycleGroup]);
+  if (binding.isLocked !== undefined)
+    rows.push(['Locked', String(binding.isLocked)]);
 
   return (
     <>
       <h2>{binding.key}</h2>
       <dl>
         {rows.map(([k, v]) => (
-          <div key={k} style={{display: 'contents'}}><dt>{k}</dt><dd>{v}</dd></div>
+          <div key={k} style={{display: 'contents'}}>
+            <dt>{k}</dt>
+            <dd>{v}</dd>
+          </div>
         ))}
       </dl>
       <DepList title="Depends on" keys={dependsOn} onSelect={onSelect} />
@@ -1581,14 +1811,32 @@ export function BindingDetail({
   );
 }
 
-function DepList({title, keys, onSelect}: {title: string; keys: string[]; onSelect: (k: string) => void}) {
+function DepList({
+  title,
+  keys,
+  onSelect,
+}: {
+  title: string;
+  keys: string[];
+  onSelect: (k: string) => void;
+}) {
   return (
     <section className="deps">
-      <h3>{title} <span className="count">({keys.length})</span></h3>
-      {keys.length === 0 ? <p className="empty">none</p> : (
-        <ul>{keys.map(k => (
-          <li key={k}><button className="dep" onClick={() => onSelect(k)}>{k}</button></li>
-        ))}</ul>
+      <h3>
+        {title} <span className="count">({keys.length})</span>
+      </h3>
+      {keys.length === 0 ? (
+        <p className="empty">none</p>
+      ) : (
+        <ul>
+          {keys.map(k => (
+            <li key={k}>
+              <button className="dep" onClick={() => onSelect(k)}>
+                {k}
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   );
@@ -1597,11 +1845,21 @@ function DepList({title, keys, onSelect}: {title: string; keys: string[]; onSele
 function RouteList({routes}: {routes: NonNullable<BindingNode['routes']>}) {
   return (
     <section className="deps">
-      <h3>Routes <span className="count">({routes.length})</span></h3>
-      <ul>{routes.map(r => (
-        <li key={r.verb + r.path}><code>{r.verb} {r.path}</code></li>
-      ))}</ul>
-      <a className="dep" href="/explorer" target="_blank" rel="noreferrer">open in API explorer ↗</a>
+      <h3>
+        Routes <span className="count">({routes.length})</span>
+      </h3>
+      <ul>
+        {routes.map(r => (
+          <li key={r.verb + r.path}>
+            <code>
+              {r.verb} {r.path}
+            </code>
+          </li>
+        ))}
+      </ul>
+      <a className="dep" href="/explorer" target="_blank" rel="noreferrer">
+        open in API explorer ↗
+      </a>
     </section>
   );
 }
@@ -1609,11 +1867,20 @@ function RouteList({routes}: {routes: NonNullable<BindingNode['routes']>}) {
 function ToolList({tools}: {tools: NonNullable<BindingNode['tools']>}) {
   return (
     <section className="deps">
-      <h3>Tools <span className="count">({tools.length})</span></h3>
-      <ul>{tools.map(t => (
-        <li key={t.name}><code>{t.name}</code>{t.description ? ` — ${t.description}` : ''}</li>
-      ))}</ul>
-      <a className="dep" href="/mcp-inspector" target="_blank" rel="noreferrer">open in MCP inspector ↗</a>
+      <h3>
+        Tools <span className="count">({tools.length})</span>
+      </h3>
+      <ul>
+        {tools.map(t => (
+          <li key={t.name}>
+            <code>{t.name}</code>
+            {t.description ? ` — ${t.description}` : ''}
+          </li>
+        ))}
+      </ul>
+      <a className="dep" href="/mcp-inspector" target="_blank" rel="noreferrer">
+        open in MCP inspector ↗
+      </a>
     </section>
   );
 }
@@ -1627,7 +1894,8 @@ import {configEdges, extensionGroups} from '../lib/selectors';
 const cfgEdges = useMemo(() => configEdges(bindings), [bindings]);
 const extGroups = useMemo(() => extensionGroups(bindings), [bindings]);
 // in the detail JSX:
-<BindingDetail binding={selected}
+<BindingDetail
+  binding={selected}
   dependsOn={selected ? (dependsOn.get(selected.key) ?? []) : []}
   dependedOnBy={selected ? (dependedOnBy.get(selected.key) ?? []) : []}
   configuredBy={selected ? (cfgEdges.get(selected.key) ?? []) : []}
@@ -1636,7 +1904,8 @@ const extGroups = useMemo(() => extensionGroups(bindings), [bindings]);
       ? (extGroups.get(selected.extensionPoint) ?? []).map(b => b.key)
       : []
   }
-  onSelect={setSelectedKey} />
+  onSelect={setSelectedKey}
+/>;
 ```
 
 - [ ] **Step 3: Build + run integration test**
@@ -1657,6 +1926,7 @@ git commit -m "feat(context-explorer): detail-pane config + extension wiring (it
 ## Task 13: Hierarchy view + App identity card
 
 **Files:**
+
 - Create: `packages/context-explorer/src/client/components/HierarchyView.tsx`
 - Modify: `packages/context-explorer/src/client/App.tsx` (add `hierarchy` view + app card)
 - Modify: `packages/context-explorer/src/index.ts` (CSS for the tree + app card)
@@ -1681,12 +1951,20 @@ export function HierarchyView({contexts, bindings, onSelect}: Props) {
   const tree = buildContextTree(contexts, bindings);
   return (
     <div className="hierarchy">
-      {tree.map(n => <Ctx key={n.name} node={n} onSelect={onSelect} />)}
+      {tree.map(n => (
+        <Ctx key={n.name} node={n} onSelect={onSelect} />
+      ))}
     </div>
   );
 }
 
-function Ctx({node, onSelect}: {node: ContextTreeNode; onSelect: (k: string) => void}) {
+function Ctx({
+  node,
+  onSelect,
+}: {
+  node: ContextTreeNode;
+  onSelect: (k: string) => void;
+}) {
   return (
     <div className="ctxnode">
       <div className="ctxhead">
@@ -1695,12 +1973,18 @@ function Ctx({node, onSelect}: {node: ContextTreeNode; onSelect: (k: string) => 
       </div>
       <ul className="ctxbindings">
         {node.bindings.map(b => (
-          <li key={b.key}><button className="dep" onClick={() => onSelect(b.key)}>{b.key}</button></li>
+          <li key={b.key}>
+            <button className="dep" onClick={() => onSelect(b.key)}>
+              {b.key}
+            </button>
+          </li>
         ))}
       </ul>
       {node.children.length > 0 && (
         <div className="ctxchildren">
-          {node.children.map(c => <Ctx key={c.name} node={c} onSelect={onSelect} />)}
+          {node.children.map(c => (
+            <Ctx key={c.name} node={c} onSelect={onSelect} />
+          ))}
         </div>
       )}
     </div>
@@ -1713,19 +1997,30 @@ function Ctx({node, onSelect}: {node: ContextTreeNode; onSelect: (k: string) => 
 Add `'hierarchy'` to `View` type, `views` array, and `labels` (`hierarchy: 'Hierarchy'`). Render in the header an app card when `model.app.name` exists:
 
 ```tsx
-{model?.app.name && (
-  <span className="appcard">{model.app.name}{model.app.version ? ` v${model.app.version}` : ''}</span>
-)}
+{
+  model?.app.name && (
+    <span className="appcard">
+      {model.app.name}
+      {model.app.version ? ` v${model.app.version}` : ''}
+    </span>
+  );
+}
 ```
 
 Add the view block:
 
 ```tsx
-{view === 'hierarchy' && (
-  <div style={{padding: '1.25rem 1.5rem', overflow: 'auto'}}>
-    <HierarchyView contexts={model?.contexts ?? []} bindings={bindings} onSelect={setSelectedKey} />
-  </div>
-)}
+{
+  view === 'hierarchy' && (
+    <div style={{padding: '1.25rem 1.5rem', overflow: 'auto'}}>
+      <HierarchyView
+        contexts={model?.contexts ?? []}
+        bindings={bindings}
+        onSelect={setSelectedKey}
+      />
+    </div>
+  );
+}
 ```
 
 Import `HierarchyView`.
@@ -1733,13 +2028,41 @@ Import `HierarchyView`.
 - [ ] **Step 3: Add CSS for `.hierarchy`, `.ctxnode`, `.appcard` to `EXPLORER_CSS`**
 
 ```css
-.appcard { font-family:var(--mono); font-size:.78rem; color:var(--muted); border:1px solid var(--line-2); border-radius:4px; padding:.1rem .45rem; }
-.hierarchy { font-size:13px; }
-.ctxnode { border-left:2px solid var(--line-2); padding-left:.8rem; margin:.4rem 0; }
-.ctxhead { display:flex; gap:.6rem; align-items:baseline; margin-bottom:.2rem; }
-.ctxname { font-family:var(--mono); font-weight:600; color:var(--accent); }
-.ctxbindings { list-style:none; margin:.2rem 0; padding:0; }
-.ctxchildren { margin-left:.6rem; }
+.appcard {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--muted);
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  padding: 0.1rem 0.45rem;
+}
+.hierarchy {
+  font-size: 13px;
+}
+.ctxnode {
+  border-left: 2px solid var(--line-2);
+  padding-left: 0.8rem;
+  margin: 0.4rem 0;
+}
+.ctxhead {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  margin-bottom: 0.2rem;
+}
+.ctxname {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--accent);
+}
+.ctxbindings {
+  list-style: none;
+  margin: 0.2rem 0;
+  padding: 0;
+}
+.ctxchildren {
+  margin-left: 0.6rem;
+}
 ```
 
 - [ ] **Step 4: Build + integration test + commit**
@@ -1762,6 +2085,7 @@ git commit -m "feat(context-explorer): hierarchy view + app identity card (items
 ## Task 14: Dual-binding join + MCP/controller facet affordances
 
 **Files:**
+
 - Modify: `packages/context-explorer/src/client/components/BindingDetail.tsx`
 - Modify: `packages/context-explorer/src/client/App.tsx`
 
@@ -1776,7 +2100,9 @@ import {dualByCtor} from '../lib/selectors';
 // ...
 const duals = useMemo(() => dualByCtor(bindings), [bindings]);
 const siblings = selected?.source
-  ? (duals.get(selected.source) ?? []).filter(b => b.key !== selected.key).map(b => b.key)
+  ? (duals.get(selected.source) ?? [])
+      .filter(b => b.key !== selected.key)
+      .map(b => b.key)
   : [];
 // pass siblings={siblings} to BindingDetail
 ```
@@ -1784,7 +2110,11 @@ const siblings = selected?.source
 In `BindingDetail.tsx` add `siblings: string[]` to Props and render after the metadata `dl`:
 
 ```tsx
-{siblings.length > 0 && <DepList title="Sibling registration" keys={siblings} onSelect={onSelect} />}
+{
+  siblings.length > 0 && (
+    <DepList title="Sibling registration" keys={siblings} onSelect={onSelect} />
+  );
+}
 ```
 
 - [ ] **Step 2: Build + integration test**
@@ -1805,6 +2135,7 @@ git commit -m "feat(context-explorer): dual-binding sibling join in detail pane 
 ## Task 15: Docs + full verification
 
 **Files:**
+
 - Modify: `packages/context-explorer/README.md`
 
 - [ ] **Step 1: Rewrite the README views + API sections**

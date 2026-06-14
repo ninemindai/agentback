@@ -60,13 +60,13 @@ Surface the container **as wired architecture**, indexed by facet:
   the `LifeCycleObserverRegistry` and depends on configured group order;
   surfacing it faithfully would require resolving the registry. Out of scope —
   the explorer shows declared grouping only (see Decisions). **Expectation-setting
-  (review finding 7):** the `lifeCycleObserverGroup` tag is set *only* by the
+  (review finding 7):** the `lifeCycleObserverGroup` tag is set _only_ by the
   `@lifeCycleObserver(group)` decorator. The common registration paths
   (`app.lifeCycleObserver()`, component mounting, servers, every
   `.apply(asLifeCycleObserver)`) set only the `lifeCycleObserver` tag, **not** a
   group. So in a typical app most observers have `lifeCycleGroup === undefined`
   and land in a single "default" bucket — the Lifecycle facet is a faithful view
-  of *declared* groups, which will often be sparse, not a rich grouping. This is
+  of _declared_ groups, which will often be sparse, not a rich grouping. This is
   acceptable: the facet's job is to enumerate observers and surface whatever
   grouping was declared, not to reconstruct boot order.
 - **No new top-level npm dependency.** Reuse React Flow (already a dep for the
@@ -91,13 +91,13 @@ single-key `getSync(APPLICATION_METADATA, {optional: true})` guarded in a
 
 ## Architecture decisions locked during brainstorming
 
-### One consolidated model endpoint, split by data *source* not by UI surface
+### One consolidated model endpoint, split by data _source_ not by UI surface
 
 The nine features are almost all **different views of the same dataset**. The
 flat list, the nested tree, and the dependency graph are three projections of
 one binding set; extension wiring, config edges, lifecycle grouping, hierarchy,
 and the kind facets are all derivations of binding tags + the parent chain.
-Splitting one-endpoint-per-feature would return the *same* binding node from
+Splitting one-endpoint-per-feature would return the _same_ binding node from
 multiple endpoints and force the client to re-join by key.
 
 Two facts make a single model endpoint not just tidier but **correct**:
@@ -108,11 +108,11 @@ Two facts make a single model endpoint not just tidier but **correct**:
   `controllers`/`services` arrays is **ONE binding** carrying both the
   `controller` tag and `extensionFor(MCP_SERVERS)` membership — one node that is
   simultaneously a controller (with routes) and an MCP server (with tools).
-  **Caveat (review finding A):** this single-binding outcome is *conditional*.
+  **Caveat (review finding A):** this single-binding outcome is _conditional_.
   The commit message is explicit that explicit `app.controller(C)` **plus**
   `app.service(C)` for the same class keep **two separate bindings** (no magic) —
   and CLAUDE.md still documents that two-call pattern. So the same dual class can
-  appear as **one binding** (routes+tools) *or* **two bindings** sharing a
+  appear as **one binding** (routes+tools) _or_ **two bindings** sharing a
   `valueConstructor`. The model must therefore **join dual identity by
   `valueConstructor` name, not by binding key**: the UI groups the controller and
   mcpServer facets of a class together when they share a source class, whether
@@ -156,7 +156,7 @@ Discovery patterns are mirrored verbatim from `schema-explorer/src/inventory.ts`
   `try/catch` (a routeless controller yields empty paths — a safe no-op).
 - **MCP servers:** `ctx.find(extensionFilter(MCP_SERVERS))` →
   `b.valueConstructor` → `MetadataInspector.getAllMethodMetadata<ToolMetadata>(
-  MCPKeys.TOOL, ctor.prototype)` → tool `name` / `title` / `description`.
+MCPKeys.TOOL, ctor.prototype)` → tool `name` / `title` / `description`.
 
 Neither read instantiates a class, so the safety invariant holds.
 
@@ -202,16 +202,16 @@ ContextModel = {
 
 Computed server-side from authoritative filters/tags:
 
-| kind | detected by |
-| --- | --- |
-| `controller` | `findByTag(CoreTags.CONTROLLER)` membership |
-| `mcpServer` | `find(extensionFilter(MCP_SERVERS))` membership |
-| `component` | `CoreTags.COMPONENT` type tag / `components.*` namespace |
-| `lifeCycleObserver` | `CoreTags.LIFE_CYCLE_OBSERVER` tag |
-| `extensionPoint` | `CoreTags.EXTENSION_POINT` tag present |
-| `extension` | `CoreTags.EXTENSION_FOR` tag present |
-| `config` | `ContextTags.CONFIGURATION_FOR` tag present |
-| `server` | `servers.*` namespace / server tag |
+| kind                | detected by                                              |
+| ------------------- | -------------------------------------------------------- |
+| `controller`        | `findByTag(CoreTags.CONTROLLER)` membership              |
+| `mcpServer`         | `find(extensionFilter(MCP_SERVERS))` membership          |
+| `component`         | `CoreTags.COMPONENT` type tag / `components.*` namespace |
+| `lifeCycleObserver` | `CoreTags.LIFE_CYCLE_OBSERVER` tag                       |
+| `extensionPoint`    | `CoreTags.EXTENSION_POINT` tag present                   |
+| `extension`         | `CoreTags.EXTENSION_FOR` tag present                     |
+| `config`            | `ContextTags.CONFIGURATION_FOR` tag present              |
+| `server`            | `servers.*` namespace / server tag                       |
 
 A binding with none of these has an empty `kinds` set ("plain"). A dual
 REST+MCP class registered as one binding has `['controller', 'mcpServer', ...]`;
@@ -314,7 +314,7 @@ coherent. A small legend renders in the facet nav.
   `HierarchyView`; `GraphView` gains color-by-scope.
 - `packages/context-explorer/src/client/lib/` — pure selector functions
   (facets, extension grouping, config edges, hierarchy tree) — unit-testable.
-- `packages/console` — the SPA bundles context-explorer's client *source*
+- `packages/console` — the SPA bundles context-explorer's client _source_
   (`console/src/client/pages.ts` imports the TSX), so client fetch changes are
   picked up automatically; no console client wiring to change. **But
   `packages/console/src/__tests__/integration/console.integration.ts` asserts
