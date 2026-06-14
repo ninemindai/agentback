@@ -80,4 +80,34 @@ describe('selectors', () => {
     expect(tree[0].children[0].name).toBe('RestServer');
     expect(tree[0].children[0].bindings.map(b => b.key)).toEqual(['b']);
   });
+
+  it('buildContextTree treats a context with an unknown parent as a root', () => {
+    const contexts: ContextNode[] = [
+      {name: 'Application'},
+      {name: 'Orphaned', parent: 'Missing'},
+    ];
+    const tree = buildContextTree(contexts, []);
+    expect(tree.map(n => n.name).sort()).toEqual(['Application', 'Orphaned']);
+    expect(tree.every(n => n.children.length === 0)).toBe(true);
+  });
+
+  it('buildContextTree ignores bindings whose context has no node', () => {
+    const contexts: ContextNode[] = [{name: 'Application'}];
+    const tree = buildContextTree(contexts, [
+      node({key: 'a', context: 'Application'}),
+      node({key: 'ghost', context: 'Nowhere'}),
+    ]);
+    expect(tree.length).toBe(1);
+    expect(tree[0].bindings.map(b => b.key)).toEqual(['a']);
+  });
+
+  it('buildContextTree emits a duplicate-named context exactly once', () => {
+    const contexts: ContextNode[] = [
+      {name: 'Application'},
+      {name: 'Application'},
+    ];
+    const tree = buildContextTree(contexts, []);
+    expect(tree.length).toBe(1);
+    expect(tree[0].name).toBe('Application');
+  });
 });

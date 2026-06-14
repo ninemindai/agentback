@@ -16,19 +16,29 @@ export function buildContextTree(
   bindings: BindingNode[],
 ): ContextTreeNode[] {
   const byName = new Map<string, ContextTreeNode>();
+  // Remember each context's first-seen parent (deduped by name) so the placement
+  // loop can run off the deduped set rather than the raw `contexts` array.
+  const parentByName = new Map<string, string | undefined>();
   for (const c of contexts) {
     if (!byName.has(c.name)) {
       byName.set(c.name, {name: c.name, bindings: [], children: []});
+      parentByName.set(c.name, c.parent);
     }
   }
   for (const b of bindings) {
+    // Orphan bindings (context with no matching node) are silently ignored.
     byName.get(b.context)?.bindings.push(b);
   }
   const roots: ContextTreeNode[] = [];
-  for (const c of contexts) {
-    const node = byName.get(c.name)!;
-    if (c.parent && byName.has(c.parent)) {
-      byName.get(c.parent)!.children.push(node);
+  // Iterate the deduped contexts so each name is placed exactly once, even if
+  // `contexts` contained the same name twice (preserving first-seen order).
+  for (const [name, node] of byName) {
+    const parent = parentByName.get(name);
+    // Root when there's no parent, the parent is unknown, or it's a self-parent;
+    // otherwise attach as a child of its (existing, non-self) parent. The `!` is
+    // safe because `parent` was just confirmed present in `byName`.
+    if (parent && parent !== name && byName.has(parent)) {
+      byName.get(parent)!.children.push(node);
     } else {
       roots.push(node);
     }
