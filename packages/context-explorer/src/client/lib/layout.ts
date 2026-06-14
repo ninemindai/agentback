@@ -8,11 +8,18 @@ import {MarkerType, Position, type Edge, type Node} from '@xyflow/react';
 export const NODE_W = 230;
 export const NODE_H = 44;
 
+/** Kind of a graph edge: an injection dependency or extension-point wiring. */
+export type EdgeKind = 'dep' | 'extension';
+
 /** Minimal graph shape consumed by the layout (derived from the model). */
 export interface LayoutGraph {
   nodes: {key: string; scope: string; type?: string}[];
-  /** `from` depends on `to` (i.e. `from` injects the binding `to`). */
-  edges: {from: string; to: string}[];
+  /**
+   * `from` depends on `to`. For `dep` edges `from` injects the binding `to`;
+   * for `extension` edges `from` is the extension point and `to` an extension
+   * it aggregates. Both rank `to` to the left of `from`.
+   */
+  edges: {from: string; to: string; kind?: EdgeKind}[];
 }
 
 /**
@@ -60,12 +67,16 @@ export function layoutGraph(graph: LayoutGraph): {
     };
   });
 
-  const edges: Edge[] = graph.edges.map(e => ({
-    id: e.from + '->' + e.to,
-    source: e.from,
-    target: e.to,
-    markerEnd: {type: MarkerType.ArrowClosed, width: 16, height: 16},
-  }));
+  const edges: Edge[] = graph.edges.map(e => {
+    const kind: EdgeKind = e.kind ?? 'dep';
+    return {
+      id: e.from + '->' + e.to + ':' + kind,
+      source: e.from,
+      target: e.to,
+      data: {kind},
+      markerEnd: {type: MarkerType.ArrowClosed, width: 16, height: 16},
+    };
+  });
 
   return {nodes, edges};
 }

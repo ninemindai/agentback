@@ -14,6 +14,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import {type BindingNode} from '../api';
 import {layoutGraph, type LayoutGraph} from '../lib/layout';
+import {extensionEdges} from '../../lib/selectors';
 
 interface Props {
   selectedKey: string | null;
@@ -75,10 +76,10 @@ function nodeLabel(key: string, scope: string, type: string) {
 export function GraphView({selectedKey, onSelect, bindings}: Props) {
   const [hover, setHover] = useState<Hover | null>(null);
 
-  // Build the layout graph from the model: nodes are bindings, edges come from
-  // each binding's `dependsOn` ("from depends on to"). The model can repeat the
-  // same binding key across contexts in the parent chain, so dedup nodes by key
-  // (keep the first occurrence) to avoid duplicate React Flow ids.
+  // Build the layout graph from the model: nodes are bindings; edges are
+  // injection dependencies (`dependsOn`) PLUS extension-point wiring. The model
+  // can repeat the same binding key across contexts in the parent chain, so
+  // dedup nodes by key (keep the first occurrence) to avoid duplicate ids.
   const graph = useMemo<LayoutGraph>(() => {
     const byKey = new Map<string, LayoutGraph['nodes'][number]>();
     for (const b of bindings) {
@@ -86,10 +87,15 @@ export function GraphView({selectedKey, onSelect, bindings}: Props) {
         byKey.set(b.key, {key: b.key, scope: b.scope, type: b.type});
       }
     }
-    return {
-      nodes: [...byKey.values()],
-      edges: bindings.flatMap(b => b.dependsOn.map(to => ({from: b.key, to}))),
-    };
+    const edges: LayoutGraph['edges'] = bindings.flatMap(b =>
+      b.dependsOn.map(to => ({from: b.key, to, kind: 'dep' as const})),
+    );
+    // Extension wiring is tag-based (absent from `dependsOn`): connect each
+    // extension point to the extensions registered for it.
+    for (const e of extensionEdges(bindings)) {
+      edges.push({...e, kind: 'extension'});
+    }
+    return {nodes: [...byKey.values()], edges};
   }, [bindings]);
 
   const base = useMemo(() => layoutGraph(graph), [graph]);
@@ -101,10 +107,15 @@ export function GraphView({selectedKey, onSelect, bindings}: Props) {
     return m;
   }, [bindings]);
 
+  // Dependency counts for the tooltip exclude extension edges (those are not
+  // "deps"), so the "X out · Y in" figures stay true to injection wiring.
   const counts = useMemo(() => {
     const out = new Map<string, number>();
     const inc = new Map<string, number>();
     for (const e of base.edges) {
+      if ((e.data as {kind?: string} | undefined)?.kind === 'extension') {
+        continue;
+      }
       out.set(e.source, (out.get(e.source) ?? 0) + 1);
       inc.set(e.target, (inc.get(e.target) ?? 0) + 1);
     }
@@ -161,19 +172,24 @@ export function GraphView({selectedKey, onSelect, bindings}: Props) {
         const on =
           selectedKey != null &&
           (e.source === selectedKey || e.target === selectedKey);
+        const isExt =
+          (e.data as {kind?: string} | undefined)?.kind === 'extension';
+        // Dashed violet for extension wiring, solid grey for deps; either turns
+        // accent-red when incident to the selected node. Dashing always marks
+        // extension edges so the two kinds stay distinguishable when highlighted.
+        const baseColor = isExt ? '#7a4fa3' : '#b6ab95';
+        const color = on ? '#9a3324' : baseColor;
         const markerEnd =
           typeof e.markerEnd === 'string' || e.markerEnd == null
             ? e.markerEnd
-            : {
-                ...e.markerEnd,
-                color: on ? '#9a3324' : '#b6ab95',
-              };
+            : {...e.markerEnd, color};
         return {
           ...e,
           animated: on,
           style: {
-            stroke: on ? '#9a3324' : '#b6ab95',
+            stroke: color,
             strokeWidth: on ? 2 : 1.2,
+            strokeDasharray: isExt ? '5 4' : undefined,
           },
           markerEnd,
         };
@@ -208,6 +224,7 @@ export function GraphView({selectedKey, onSelect, bindings}: Props) {
         <Controls showInteractive={false} />
         <MiniMap pannable zoomable />
       </ReactFlow>
+      <GraphLegend />
       {hover && (
         <NodeTooltip
           binding={byKey.get(hover.key)}
@@ -219,6 +236,57 @@ export function GraphView({selectedKey, onSelect, bindings}: Props) {
         />
       )}
     </>
+  );
+}
+
+/** Bottom-left key explaining the two edge kinds. */
+function GraphLegend() {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: 12,
+        bottom: 12,
+        zIndex: 5,
+        display: 'grid',
+        gap: 4,
+        padding: '.5rem .6rem',
+        background: 'var(--card)',
+        border: '1px solid var(--line-2)',
+        borderRadius: 6,
+        font: '11px var(--mono)',
+        color: 'var(--muted)',
+        pointerEvents: 'none',
+      }}
+    >
+      <span>
+        <svg width="22" height="8" style={{verticalAlign: 'middle'}}>
+          <line
+            x1="0"
+            y1="4"
+            x2="22"
+            y2="4"
+            stroke="#b6ab95"
+            strokeWidth="1.6"
+          />
+        </svg>{' '}
+        depends on
+      </span>
+      <span>
+        <svg width="22" height="8" style={{verticalAlign: 'middle'}}>
+          <line
+            x1="0"
+            y1="4"
+            x2="22"
+            y2="4"
+            stroke="#7a4fa3"
+            strokeWidth="1.6"
+            strokeDasharray="5 4"
+          />
+        </svg>{' '}
+        extension point → extension
+      </span>
+    </div>
   );
 }
 

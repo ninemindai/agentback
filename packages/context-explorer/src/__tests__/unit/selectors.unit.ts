@@ -6,6 +6,7 @@ import {describe, expect, it} from 'vitest';
 import {
   facets,
   extensionGroups,
+  extensionEdges,
   configEdges,
   dualByCtor,
 } from '../../lib/selectors.js';
@@ -31,6 +32,24 @@ describe('selectors', () => {
     expect(f.scope.get('Transient')).toBe(1);
     expect(f.kind.get('controller')).toBe(2);
     expect(f.kind.get('mcpServer')).toBe(1);
+  });
+
+  it('extensionEdges connects point binding key -> extension key', () => {
+    const e = extensionEdges([
+      node({key: 'pt', extensionPoint: 'greeters'}),
+      node({key: 'e1', extensionFor: ['greeters']}),
+      node({key: 'e2', extensionFor: ['greeters', 'other']}),
+      // orphan: extends a point with no binding -> dropped
+      node({key: 'e3', extensionFor: ['nobody']}),
+    ]);
+    expect(e).toEqual(
+      expect.arrayContaining([
+        {from: 'pt', to: 'e1'},
+        {from: 'pt', to: 'e2'},
+      ]),
+    );
+    // 'other' and 'nobody' have no point binding -> only the two 'greeters' edges
+    expect(e).toHaveLength(2);
   });
 
   it('extensionGroups maps point name -> extension keys', () => {

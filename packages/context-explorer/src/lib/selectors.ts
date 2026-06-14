@@ -54,6 +54,30 @@ export function extensionGroups(
   return g;
 }
 
+/**
+ * Extension-point wiring as graph edges: each `{from: point key, to: extension
+ * key}` connects an extension point binding to an extension registered for it.
+ * `extensionFor` names the point(s); a name resolves to its point binding's key.
+ * Extensions whose point has no binding (orphans) and self-edges are dropped.
+ */
+export function extensionEdges(
+  bindings: BindingNode[],
+): {from: string; to: string}[] {
+  const pointKeyByName = new Map<string, string>();
+  for (const b of bindings) {
+    if (b.extensionPoint) pointKeyByName.set(b.extensionPoint, b.key);
+  }
+  const edges: {from: string; to: string}[] = [];
+  for (const b of bindings) {
+    for (const name of b.extensionFor ?? []) {
+      const pointKey = pointKeyByName.get(name);
+      if (pointKey && pointKey !== b.key)
+        edges.push({from: pointKey, to: b.key});
+    }
+  }
+  return edges;
+}
+
 /** target key -> config binding keys that configure it. */
 export function configEdges(bindings: BindingNode[]): Map<string, string[]> {
   const e = new Map<string, string[]>();
