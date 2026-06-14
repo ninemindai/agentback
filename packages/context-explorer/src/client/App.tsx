@@ -4,13 +4,23 @@
 
 import {useEffect, useMemo, useState} from 'react';
 import {makeApi, type BindingNode, type ContextModel} from './api';
+import {facets} from '../lib/selectors';
 import {ApiProvider} from './ApiContext';
-import {BindingList} from './components/BindingList';
+import {FacetNav, type FacetSelection} from './components/FacetNav';
+import {ResultsList} from './components/ResultsList';
 import {BindingDetail} from './components/BindingDetail';
 import {GraphView} from './components/GraphView';
 import {RawTree} from './components/RawTree';
 
 type View = 'browse' | 'graph' | 'raw';
+
+const emptySel = (): FacetSelection => ({
+  kind: new Set(),
+  scope: new Set(),
+  type: new Set(),
+  tag: new Set(),
+  context: new Set(),
+});
 
 /**
  * Root component. Owns all UI state (model, selection, filters, view);
@@ -29,9 +39,17 @@ export function App({
   const [model, setModel] = useState<ContextModel | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
-  const [tag, setTag] = useState<string | null>(null);
+  const [sel, setSel] = useState<FacetSelection>(emptySel());
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [view, setView] = useState<View>('browse');
+
+  const toggle = (facet: keyof FacetSelection, value: string) =>
+    setSel(prev => {
+      const next: FacetSelection = {...prev, [facet]: new Set(prev[facet])};
+      if (next[facet].has(value)) next[facet].delete(value);
+      else next[facet].add(value);
+      return next;
+    });
 
   useEffect(() => {
     api.fetchModel().then(setModel, e => setError(String(e)));
@@ -53,14 +71,23 @@ export function App({
     return {dependsOn: out, dependedOnBy: inc};
   }, [bindings]);
 
+  const allFacets = useMemo(() => facets(bindings), [bindings]);
+
+  // Within-facet OR, across-facet AND.
   const visible = useMemo(() => {
     const q = filter.trim().toLowerCase();
+    const inFacet = (vals: Set<string>, has: (v: string) => boolean) =>
+      vals.size === 0 || [...vals].some(has);
     return bindings.filter(
       b =>
         (!q || b.key.toLowerCase().includes(q)) &&
-        (!tag || b.tags.some(t => t.name === tag)),
+        inFacet(sel.kind, v => b.kinds.includes(v)) &&
+        inFacet(sel.scope, v => b.scope === v) &&
+        inFacet(sel.type, v => b.type === v) &&
+        inFacet(sel.context, v => b.context === v) &&
+        inFacet(sel.tag, v => b.tags.some(t => t.name === v)),
     );
-  }, [bindings, filter, tag]);
+  }, [bindings, filter, sel]);
 
   const selected = useMemo(
     () => bindings.find(b => b.key === selectedKey) ?? null,
@@ -71,7 +98,7 @@ export function App({
 
   const views: View[] = ['browse', 'graph', 'raw'];
   const labels: Record<View, string> = {
-    browse: 'Browse',
+    browse: 'Explore',
     graph: 'Graph',
     raw: 'Raw tree',
   };
@@ -113,7 +140,8 @@ export function App({
       )}
 
       {view === 'browse' && (
-        <div className="layout">
+        <div className="shell">
+          <FacetNav facets={allFacets} selection={sel} onToggle={toggle} />
           <div className="list">
             <input
               className="filter"
@@ -121,19 +149,10 @@ export function App({
               value={filter}
               onChange={e => setFilter(e.target.value)}
             />
-            {tag && (
-              <div className="tagfilter">
-                tag: <span className="badge">{tag}</span>
-                <button className="ghost" onClick={() => setTag(null)}>
-                  clear
-                </button>
-              </div>
-            )}
-            <BindingList
+            <ResultsList
               bindings={visible}
               selectedKey={selectedKey}
               onSelect={setSelectedKey}
-              onTag={setTag}
             />
           </div>
           <div className="detail">
