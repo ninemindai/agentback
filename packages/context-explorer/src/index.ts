@@ -8,14 +8,10 @@ import {fileURLToPath} from 'node:url';
 import express from 'express';
 import {z} from 'zod';
 import {api, get} from '@agentback/openapi';
-import {
-  CoreBindings,
-  inject,
-  type Context,
-  type JSONObject,
-} from '@agentback/core';
+import {CoreBindings, inject, type Context} from '@agentback/core';
 import {THEME_CSS, THEME_FONTS_HREF} from '@agentback/console-theme';
 import type {RestApplication, RestServer} from '@agentback/rest';
+import {ContextModel, buildModel} from './model.js';
 
 /** Fixed base path of the JSON API exposed by {@link ContextExplorerController}. */
 const API_BASE = '/context-explorer/api';
@@ -59,134 +55,6 @@ const ContextInspection = z
   })
   .loose();
 
-const BindingSummary = z.object({
-  key: z.string(),
-  context: z.string(),
-  scope: z.string(),
-  type: z.string().optional(),
-  source: z.string().optional(),
-  tags: z.array(z.string()),
-  isLocked: z.boolean().optional(),
-});
-
-const BindingSummaryList = z.array(BindingSummary);
-
-type BindingSummary = z.infer<typeof BindingSummary>;
-
-const GraphNode = z.object({
-  key: z.string(),
-  scope: z.string(),
-  type: z.string().optional(),
-});
-
-// `from` depends on `to` (i.e. `from` injects the binding `to`).
-const GraphEdge = z.object({
-  from: z.string(),
-  to: z.string(),
-});
-
-const ContextGraph = z.object({
-  nodes: z.array(GraphNode),
-  edges: z.array(GraphEdge),
-});
-
-type ContextGraph = z.infer<typeof ContextGraph>;
-
-// ---- Flatten ----------------------------------------------------------------
-
-/**
- * Flatten a `Context.inspect()` tree into a sortable list of binding summaries,
- * walking the parent-context chain. Each summary records which context owns the
- * binding so the UI can group by context.
- */
-function flattenInspection(node: JSONObject): BindingSummary[] {
-  const out: BindingSummary[] = [];
-  const ctxName = typeof node.name === 'string' ? node.name : '';
-  const bindings = (node.bindings ?? {}) as Record<string, JSONObject>;
-  for (const [key, b] of Object.entries(bindings)) {
-    const source =
-      (b.valueConstructor as string | undefined) ??
-      (b.providerConstructor as string | undefined) ??
-      (b.alias as string | undefined);
-    out.push({
-      key,
-      context: ctxName,
-      scope: String(b.scope ?? ''),
-      type: b.type != null ? String(b.type) : undefined,
-      source,
-      tags: Object.keys((b.tags as JSONObject | undefined) ?? {}),
-      isLocked: typeof b.isLocked === 'boolean' ? b.isLocked : undefined,
-    });
-  }
-  const parent = node.parent as JSONObject | undefined;
-  if (parent) out.push(...flattenInspection(parent));
-  return out;
-}
-
-/**
- * Build a dependency graph from an `inspect({includeInjections: true})` tree.
- * Each binding becomes a node; each injection (constructor arg or property)
- * whose target is also a known binding becomes a `from -> to` edge meaning
- * "`from` depends on `to`". Edges to unbound keys (e.g. optional injections)
- * and self-edges are dropped so the graph only contains resolvable wiring.
- */
-function extractGraph(node: JSONObject): ContextGraph {
-  const nodes = new Map<string, z.infer<typeof GraphNode>>();
-  const edgeSet = new Set<string>();
-  const edges: ContextGraph['edges'] = [];
-
-  // Pass 1: collect every binding as a node (across the parent chain).
-  (function collect(n: JSONObject) {
-    const bindings = (n.bindings ?? {}) as Record<string, JSONObject>;
-    for (const [key, b] of Object.entries(bindings)) {
-      if (!nodes.has(key)) {
-        nodes.set(key, {
-          key,
-          scope: String(b.scope ?? ''),
-          type: b.type != null ? String(b.type) : undefined,
-        });
-      }
-    }
-    if (n.parent) collect(n.parent as JSONObject);
-  })(node);
-
-  // A binding address may carry a property path after `#` (e.g.
-  // `restServer.config#port`); the key itself contains dots, so only strip
-  // the `#` suffix to recover the bound key.
-  const baseKey = (addr: string) => addr.split('#')[0]!;
-
-  // Pass 2: walk injections into edges.
-  (function link(n: JSONObject) {
-    const bindings = (n.bindings ?? {}) as Record<string, JSONObject>;
-    for (const [key, b] of Object.entries(bindings)) {
-      const inj = b.injections as JSONObject | undefined;
-      if (!inj) continue;
-      const targets: string[] = [];
-      const ctorArgs =
-        (inj.constructorArguments as JSONObject[] | undefined) ?? [];
-      for (const a of ctorArgs) {
-        if (typeof a?.bindingKey === 'string') targets.push(a.bindingKey);
-      }
-      const props =
-        (inj.properties as Record<string, JSONObject> | undefined) ?? {};
-      for (const p of Object.values(props)) {
-        if (typeof p?.bindingKey === 'string') targets.push(p.bindingKey);
-      }
-      for (const t of targets) {
-        const to = baseKey(t);
-        if (to === key || !nodes.has(to)) continue; // drop self/dangling edges
-        const id = key + '' + to;
-        if (edgeSet.has(id)) continue;
-        edgeSet.add(id);
-        edges.push({from: key, to});
-      }
-    }
-    if (n.parent) link(n.parent as JSONObject);
-  })(node);
-
-  return {nodes: [...nodes.values()], edges};
-}
-
 // ---- Controller (the dogfooded REST API) ------------------------------------
 
 /**
@@ -202,13 +70,13 @@ export class ContextExplorerController {
     @inject(CoreBindings.APPLICATION_INSTANCE) private readonly app: Context,
   ) {}
 
-  /** Flattened, sortable summary of every binding across the context chain. */
-  @get('/bindings', {response: BindingSummaryList})
-  async bindings(): Promise<BindingSummary[]> {
-    return flattenInspection(this.app.inspect({includeParent: true}));
+  /** Consolidated, derived model of the container (see model.ts). */
+  @get('/model', {response: ContextModel})
+  async model(): Promise<z.infer<typeof ContextModel>> {
+    return buildModel(this.app);
   }
 
-  /** Full nested `inspect()` tree, including the parent-context chain. */
+  /** Full nested `inspect()` tree — raw passthrough for the Raw view. */
   @get('/inspect', {query: InspectQuery, response: ContextInspection})
   async inspect(input: {
     query: z.infer<typeof InspectQuery>;
@@ -217,17 +85,6 @@ export class ContextExplorerController {
       includeInjections: input.query.includeInjections ?? true,
       includeParent: input.query.includeParent ?? true,
     }) as z.infer<typeof ContextInspection>;
-  }
-
-  /**
-   * Dependency graph of the container: a node per binding and a `from -> to`
-   * edge for each injection (`from` depends on `to`). Drives the graph view.
-   */
-  @get('/graph', {response: ContextGraph})
-  async graph(): Promise<ContextGraph> {
-    return extractGraph(
-      this.app.inspect({includeInjections: true, includeParent: true}),
-    );
   }
 }
 

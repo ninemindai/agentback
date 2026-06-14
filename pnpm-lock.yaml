@@ -643,6 +643,9 @@ importers:
       '@agentback/console-theme':
         specifier: workspace:~
         version: link:../console-theme
+      '@agentback/context':
+        specifier: workspace:~
+        version: link:../context
       '@agentback/core':
         specifier: workspace:~
         version: link:../core

@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@agentback/console-theme": "workspace:~",
+    "@agentback/context": "workspace:~",
     "@agentback/core": "workspace:~",
     "@agentback/mcp": "workspace:~",
     "@agentback/metadata": "workspace:~",

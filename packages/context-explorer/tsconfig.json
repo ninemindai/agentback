@@ -12,6 +12,9 @@
       "path": "../console-theme"
     },
     {
+      "path": "../context"
+    },
+    {
       "path": "../core"
     },
     {
