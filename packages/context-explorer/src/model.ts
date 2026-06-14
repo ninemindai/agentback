@@ -67,7 +67,8 @@ export const ContextModel = z.object({
 });
 
 export type ContextModel = z.infer<typeof ContextModel>;
-type BindingNode = z.infer<typeof BindingNode>;
+export type BindingNode = z.infer<typeof BindingNode>;
+export type ContextNode = z.infer<typeof ContextNode>;
 
 // ---- Helpers ----------------------------------------------------------------
 
