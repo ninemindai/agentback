@@ -1,6 +1,6 @@
 {
   "name": "@agentback/testing",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "First-class test harness: createTestApp with binding overrides, typed in-process REST client, supertest bridge, and in-memory MCP client",
   "type": "module",
   "main": "dist/index.js",

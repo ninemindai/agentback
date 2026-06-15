@@ -1,6 +1,6 @@
 {
   "name": "@agentback/context",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Dependency Injection container (ported from @loopback/context)",
   "type": "module",
   "main": "dist/index.js",
