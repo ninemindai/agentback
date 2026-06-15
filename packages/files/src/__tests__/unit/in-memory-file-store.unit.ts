@@ -5,6 +5,9 @@
 import {Readable} from 'node:stream';
 import {describe, it, expect, beforeEach} from 'vitest';
 import {InMemoryFileStore, FileNotFoundError, type FileStore} from '../../index.js';
+import {runFileStoreConformance} from '../../testing/conformance.js';
+
+runFileStoreConformance('InMemoryFileStore', () => new InMemoryFileStore());
 
 /** Drain a RetrievedFile's stream back to a Buffer for assertions. */
 async function drain(stream: Readable): Promise<Buffer> {

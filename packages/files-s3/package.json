@@ -1,7 +1,7 @@
 {
-  "name": "@agentback/files",
+  "name": "@agentback/files-s3",
   "version": "0.2.2",
-  "description": "Transport-agnostic file storage port (FileStore) with an in-memory adapter",
+  "description": "S3-backed FileStore adapter for @agentback/files (AWS SDK v3 + lib-storage streaming)",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -9,10 +9,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./testing": {
-      "types": "./dist/testing/conformance.d.ts",
-      "import": "./dist/testing/conformance.js"
     }
   },
   "files": [
@@ -24,7 +20,10 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@agentback/core": "workspace:~",
+    "@agentback/files": "workspace:~",
+    "@aws-sdk/client-s3": "^3.658.0",
+    "@aws-sdk/lib-storage": "^3.658.0",
+    "@aws-sdk/s3-request-presigner": "^3.658.0",
     "tslib": "^2.8.1"
   },
   "devDependencies": {

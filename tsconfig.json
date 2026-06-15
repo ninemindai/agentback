@@ -34,6 +34,7 @@
     {"path": "packages/common"},
     {"path": "packages/messaging"},
     {"path": "packages/files"},
+    {"path": "packages/files-s3"},
     {"path": "packages/metering"},
     {"path": "packages/payments"},
     {"path": "packages/messaging-bullmq"},
