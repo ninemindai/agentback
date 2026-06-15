@@ -65,21 +65,57 @@ function fileStoreStorage(
  * route's Zod body schema validates them. Mounted automatically by
  * `RestServer` for any route whose `body:` schema declares a file field.
  */
+/**
+ * Default upload cap (25 MiB) applied to any `fileField()` that omits
+ * `maxSize`, so uploads are **never unbounded** (a DoS guard). Fields that set
+ * `maxSize` keep their own limit; raise this per field for large assets.
+ */
+export const DEFAULT_MAX_FILE_SIZE = 25 * 1024 * 1024;
+
+/**
+ * The single global `fileSize` multer enforces pre-stream: the largest
+ * per-field effective limit (`maxSize ?? DEFAULT`). multer can't do per-field
+ * size, so a field with a smaller declared `maxSize` than a sibling is capped
+ * coarsely here and exactly by its Zod `fileField` refine post-parse.
+ */
+export function multerFileSizeLimit(fileFields: FileFieldEntry[]): number {
+  return Math.max(
+    ...fileFields.map(f => f.options.maxSize ?? DEFAULT_MAX_FILE_SIZE),
+  );
+}
+
 export function makeMultipartMiddleware(
   fileFields: FileFieldEntry[],
   context: Context,
 ): RequestHandler {
-  const maxSize = fileFields.reduce<number | undefined>((m, f) => {
-    const s = f.options.maxSize;
-    if (s == null) return m;
-    return m == null ? s : Math.max(m, s);
-  }, undefined);
+  const allowedByField = new Map(
+    fileFields.map(f => [f.name, f.options.mimeTypes]),
+  );
 
   const upload = multer({
     storage: fileStoreStorage(() =>
       context.get<FileStore>(FILE_STORE, {optional: true}),
     ),
-    ...(maxSize != null ? {limits: {fileSize: maxSize}} : {}),
+    limits: {fileSize: multerFileSizeLimit(fileFields)},
+    // Reject a disallowed MIME type BEFORE streaming a byte to the store —
+    // so a bad upload never lands as an orphaned object. The Zod fileField
+    // refine re-checks post-parse as defense in depth.
+    fileFilter(_req, file, cb) {
+      const allowed = allowedByField.get(file.fieldname);
+      if (allowed && allowed.length && !allowed.includes(file.mimetype)) {
+        cb(
+          Object.assign(
+            new Error(
+              `Unsupported content type '${file.mimetype}' for field ` +
+                `'${file.fieldname}'.`,
+            ),
+            {code: 'UNSUPPORTED_MEDIA_TYPE'},
+          ),
+        );
+        return;
+      }
+      cb(null, true);
+    },
   });
   const run = upload.fields(fileFields.map(f => ({name: f.name, maxCount: 1})));
 
@@ -92,12 +128,17 @@ export function makeMultipartMiddleware(
   };
 }
 
-/** Map a multer error to an HTTP error: oversize → 413, otherwise → 400. */
+/** Map a multer error to HTTP: oversize → 413, bad type → 415, else → 400. */
 function toHttpError(err: unknown): Error {
   const e = err as {code?: string; message?: string};
   if (e?.code === 'LIMIT_FILE_SIZE') {
     const h = createError(413, 'Uploaded file exceeds the maximum allowed size.');
     (h as {code?: string}).code = 'payload_too_large';
+    return h;
+  }
+  if (e?.code === 'UNSUPPORTED_MEDIA_TYPE') {
+    const h = createError(415, e.message || 'Unsupported media type.');
+    (h as {code?: string}).code = 'unsupported_media_type';
     return h;
   }
   const h = createError(400, e?.message || 'Invalid multipart request.');

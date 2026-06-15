@@ -45,11 +45,13 @@ class FileController {
 async function boot(opts: {withStore: boolean}) {
   const app = new RestApplication({});
   app.configure('servers.RestServer').to({port: 0, host: '127.0.0.1'});
-  if (opts.withStore) app.bind(FILE_STORE).to(new InMemoryFileStore());
+  const store = opts.withStore ? new InMemoryFileStore() : undefined;
+  if (store) app.bind(FILE_STORE).to(store);
   app.restController(FileController);
   await app.start();
   return {
     app,
+    store,
     client: supertest((await app.restServer).url),
     stop: () => app.stop(),
   };
@@ -103,17 +105,18 @@ describe('multipart upload + file download', () => {
       .expect(413);
   });
 
-  it('rejects a disallowed mime type via the fileField schema', async () => {
-    const {client, stop: s} = await boot({withStore: true});
+  it('rejects a disallowed mime type pre-stream (415, no orphan stored)', async () => {
+    const {client, store, stop: s} = await boot({withStore: true});
     stop = s;
-    const res = await client
+    await client
       .post('/files/')
       .attach('file', Buffer.from('{}'), {
         filename: 'data.json',
-        contentType: 'application/json',
-      });
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(res.status).toBeLessThan(500);
+        contentType: 'application/json', // not in the text/plain allowlist
+      })
+      .expect(415);
+    // The fileFilter rejected before _handleFile ran → nothing was stored.
+    expect(store!.count).toBe(0);
   });
 
   it('buffers in memory when no FileStore is bound', async () => {
