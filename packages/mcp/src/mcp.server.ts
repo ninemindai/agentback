@@ -17,7 +17,7 @@ import {
   type AuthorizationMetadata,
 } from '@agentback/authorization';
 import {SecurityBindings, type UserProfile} from '@agentback/security';
-import {CoreBindings, extensionFilter, Server} from '@agentback/core';
+import {extensionFilter, Server} from '@agentback/core';
 import {MetadataInspector} from '@agentback/metadata';
 import {
   buildErrorEnvelope,
@@ -86,7 +86,15 @@ export class MCPServer implements Server {
   };
 
   constructor(
-    @inject(CoreBindings.APPLICATION_INSTANCE)
+    // Inject the binding's own resolution context rather than the app root.
+    // For the app-level singleton this still resolves to the application
+    // context (a singleton resolves against its owner context), so existing
+    // behavior is unchanged. But when MCPServer is bound request/user-scoped
+    // in a child context, `this.context` becomes that child — so tool
+    // discovery (`find(extensionFilter(MCP_SERVERS))`, a chain walk) and the
+    // per-request children built off it (`requestContextFor`) see both the
+    // shared app-level tools AND any tools bound into the user context.
+    @inject.context()
     protected context: Context,
     @config()
     cfg: MCPServerConfig = {},

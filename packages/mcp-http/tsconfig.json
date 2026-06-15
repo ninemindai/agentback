@@ -12,6 +12,9 @@
       "path": "../authentication"
     },
     {
+      "path": "../common"
+    },
+    {
       "path": "../core"
     },
     {

@@ -17,7 +17,9 @@ import {metadataHandler} from '@modelcontextprotocol/sdk/server/auth/handlers/me
 import type {OAuthTokenVerifier} from '@modelcontextprotocol/sdk/server/auth/provider.js';
 import type {AuthInfo} from '@modelcontextprotocol/sdk/server/auth/types.js';
 import type {OAuthProtectedResourceMetadata} from '@modelcontextprotocol/sdk/shared/auth.js';
-import {MCPBindings, type MCPServer} from '@agentback/mcp';
+import {MCPBindings, MCPServer} from '@agentback/mcp';
+import {BindingScope, Context} from '@agentback/core';
+import {loggers} from '@agentback/common';
 import {
   AX_SECTION_TAG,
   type AxSection,
@@ -90,7 +92,63 @@ export interface McpHttpOptions {
    * gets its own bucket; configure a default plus per-tool overrides.
    */
   rateLimit?: McpToolRateLimitOptions;
+  /**
+   * Opt into a **per-session** MCPServer for per-user/per-tenant tool
+   * _discovery_. Each new Streamable-HTTP session gets its own DI context
+   * (parented on the application); this binder populates it before the session's
+   * server resolves. Because `MCPServer` injects its own resolution context
+   * (`@inject.context()`) and discovers tools via a chain-walking `find`, the
+   * session server surfaces the shared app-level tools **plus** whatever the
+   * binder adds — so different users can see different tool sets. Compose with
+   * scope filtering: a session-local tool can still be scope-gated.
+   *
+   * Runs **once per session** — including each reconnect that mints a new
+   * session id (a resumed session reuses its context). Keep it cheap, or cache
+   * keyed on the authenticated principal.
+   *
+   * ⚠️ **Security:** key the binder off `req.auth` (set by the `auth` /
+   * `strategyAuth` guards, which run before this), **never** off a raw header —
+   * a spoofable header means cross-tenant tool exposure. The binder must only
+   * mutate `sessionCtx`; never reach up to the application context.
+   *
+   * The session context is `close()`d when its transport closes, and all
+   * outstanding sessions are closed when the application stops.
+   * {@link installMcpHttp} wires the app context automatically; direct
+   * {@link mountMcpHttp} callers must pass {@link McpHttpOptions.appContext}.
+   *
+   * @example
+   *   await installMcpHttp(app, {
+   *     strategyAuth: {...},
+   *     perSession(ctx, req) {
+   *       const principal = req.auth as AuthInfo | undefined; // validated by the guard
+   *       if (!principal) return;                             // anonymous -> shared set only
+   *       for (const ToolClass of entitlements.toolsFor(principal.clientId)) {
+   *         addTool(ctx, ToolClass);                          // mirrors app.service(ToolClass)
+   *       }
+   *     },
+   *   });
+   */
+  perSession?: SessionBinder;
+  /**
+   * DI root each per-session context is parented on (the application).
+   * {@link installMcpHttp} fills this in automatically; only direct
+   * {@link mountMcpHttp} callers using {@link perSession} must supply it.
+   */
+  appContext?: Context;
 }
+
+/**
+ * Populate a per-session DI context before its `MCPServer` is resolved. Bind the
+ * authenticated principal (from `req.auth`) and any user-specific `@mcpServer`
+ * tool classes (via `addTool(sessionCtx, ToolClass)`) so they are discovered
+ * only for this session/user. May be async (e.g. an entitlement lookup).
+ *
+ * Mutate **only** `sessionCtx`. See {@link McpHttpOptions.perSession}.
+ */
+export type SessionBinder = (
+  sessionCtx: Context,
+  req: Request,
+) => void | Promise<void>;
 
 export interface McpHttpAuthOptions {
   /**
@@ -114,6 +172,17 @@ export interface McpHttpAuthOptions {
 
 const DEFAULT_PATH = '/mcp';
 const PROTECTED_RESOURCE_PATH = '/.well-known/oauth-protected-resource';
+const log = loggers('agentback:mcp-http');
+
+/** Handle returned by {@link mountMcpHttp} for lifecycle management. */
+export interface McpHttpHandle {
+  /**
+   * Close every outstanding session transport (which cascades to closing each
+   * per-session DI context). Wired to `app.onStop` by {@link installMcpHttp};
+   * direct {@link mountMcpHttp} callers should call it on their own shutdown.
+   */
+  closeAll(): Promise<void>;
+}
 
 /**
  * Expose the application's in-process MCP server over the MCP **Streamable
@@ -144,12 +213,19 @@ export async function installMcpHttp(
   }
   const mcp = await app.get(MCPBindings.SERVER);
   const server = await app.restServer;
-  // Supply the DI context for strategy-based auth from the application.
-  const opts: McpHttpOptions =
-    options.strategyAuth && !options.strategyAuth.context
-      ? {...options, strategyAuth: {...options.strategyAuth, context: app}}
-      : options;
-  mountMcpHttp(mcp, server.expressApp, opts);
+  // Supply the DI context for strategy-based auth and per-session resolution
+  // from the application, so callers don't have to pass `app` twice.
+  let opts: McpHttpOptions = options;
+  if (opts.strategyAuth && !opts.strategyAuth.context) {
+    opts = {...opts, strategyAuth: {...opts.strategyAuth, context: app}};
+  }
+  if (opts.perSession && !opts.appContext) {
+    opts = {...opts, appContext: app};
+  }
+  const handle = mountMcpHttp(mcp, server.expressApp, opts);
+  // Close every outstanding session context + transport on shutdown, so a
+  // long-running app doesn't leak per-session DI contexts.
+  app.onStop(() => handle.closeAll());
 
   // Contribute an AX section so the REST server's /llms.txt advertises the
   // MCP surface. Dynamic value: the tool list is computed per request, so
@@ -186,14 +262,45 @@ export function mountMcpHttp(
   mcp: MCPServer,
   expressApp: Express,
   options: McpHttpOptions = {},
-): void {
+): McpHttpHandle {
   const path = options.path ?? DEFAULT_PATH;
   // Default DNS-rebinding protection on when an allowlist is configured.
   const enableDnsRebindingProtection =
     options.enableDnsRebindingProtection ??
     (options.allowedHosts != null || options.allowedOrigins != null);
   const transports: Record<string, StreamableHTTPServerTransport> = {};
+  // For per-session servers: the principal that owns each session, so a later
+  // request on the same session id can't be served to a different principal.
+  const sessionOwners: Record<string, string | undefined> = {};
   const auth = options.auth;
+  const perSession = options.perSession;
+  const authEnabled = Boolean(options.auth || options.strategyAuth);
+
+  // Fail fast (at wire-up, like strategyAuth.context) rather than on the first
+  // client connection.
+  if (perSession && !options.appContext) {
+    throw new Error(
+      '@agentback/mcp-http: options.appContext is required when `perSession` ' +
+        'is set (installMcpHttp sets it automatically).',
+    );
+  }
+  if (perSession && !authEnabled) {
+    log.warn(
+      'perSession is configured without `auth` or `strategyAuth`: the binder ' +
+        'has no authenticated principal (req.auth) to key off and scope ' +
+        'filtering is disabled. Key per-session tools off validated identity, ' +
+        'never spoofable request data. See McpHttpOptions.perSession.',
+    );
+  }
+
+  const principalOf = (req: Request): string | undefined =>
+    (req.auth as AuthInfo | undefined)?.clientId;
+  // A request may only touch a session owned by its own principal. Only
+  // enforced when auth is on (otherwise there is no principal to pin).
+  const ownsSession = (req: Request, id: string): boolean =>
+    !authEnabled ||
+    sessionOwners[id] === undefined ||
+    sessionOwners[id] === principalOf(req);
 
   // Resource-server auth: advertise protected-resource metadata + guard /mcp.
   const guards: RequestHandler[] = [];
@@ -255,6 +362,13 @@ export function mountMcpHttp(
       const sessionId = req.headers['mcp-session-id'] as string | undefined;
       let transport = sessionId ? transports[sessionId] : undefined;
 
+      // Pin an existing session to its owning principal (defense in depth: the
+      // session id is a random UUID, but it must never serve another tenant).
+      if (transport && sessionId && !ownsSession(req, sessionId)) {
+        rpcError(res, 403, `MCP session belongs to a different principal`);
+        return;
+      }
+
       if (!transport) {
         if (sessionId) {
           rpcError(res, 404, `Unknown MCP session: ${sessionId}`);
@@ -268,6 +382,10 @@ export function mountMcpHttp(
           );
           return;
         }
+        // Per-session DI context: when `perSession` is set, the session gets its
+        // own MCPServer resolved from a child context the binder populates
+        // (principal + user-specific tools). Closed on every teardown path.
+        let sessionCtx: Context | undefined;
         transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           enableDnsRebindingProtection,
@@ -278,20 +396,49 @@ export function mountMcpHttp(
           ...(options.eventStore ? {eventStore: options.eventStore} : {}),
           onsessioninitialized: id => {
             transports[id] = transport!;
+            if (authEnabled) sessionOwners[id] = principalOf(req);
           },
         });
         transport.onclose = () => {
           const id = transport!.sessionId;
-          if (id && transports[id]) delete transports[id];
+          if (id) {
+            delete transports[id];
+            delete sessionOwners[id];
+          }
+          // Release the per-session context's subscriptions/bindings.
+          sessionCtx?.close();
         };
         // A fresh SDK server per session — one McpServer can only be connected to
         // a single live transport at a time. When auth is on, the session only
         // sees tools whose `scope` is covered by the caller's granted scopes.
-        const scopes =
-          auth || strategyAuth
-            ? ((req.auth as AuthInfo | undefined)?.scopes ?? [])
-            : undefined;
-        await mcp.buildServer({scopes}).connect(transport);
+        const scopes = authEnabled
+          ? ((req.auth as AuthInfo | undefined)?.scopes ?? [])
+          : undefined;
+
+        // If anything in session setup throws (binder, schema lowering, connect),
+        // close the orphaned context — onclose won't fire on an unconnected
+        // transport.
+        try {
+          let sessionMcp = mcp;
+          if (perSession) {
+            // Parent on the app context; SINGLETON binding OWNED by sessionCtx
+            // resolves against sessionCtx, so `@inject.context()` hands the new
+            // server THIS context — its tool discovery then walks
+            // sessionCtx -> app (app config still resolves up the chain), one
+            // server per session.
+            sessionCtx = new Context(options.appContext!, 'mcp.session');
+            await perSession(sessionCtx, req);
+            sessionCtx
+              .bind(MCPBindings.SERVER.key)
+              .toClass(MCPServer)
+              .inScope(BindingScope.SINGLETON);
+            sessionMcp = await sessionCtx.get(MCPBindings.SERVER);
+          }
+          await sessionMcp.buildServer({scopes}).connect(transport);
+        } catch (err) {
+          sessionCtx?.close();
+          throw err;
+        }
       }
 
       await transport.handleRequest(req, res, req.body);
@@ -303,12 +450,28 @@ export function mountMcpHttp(
   const onSessionRequest = async (req: Request, res: Response) => {
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
     const transport = sessionId ? transports[sessionId] : undefined;
-    if (!transport) {
+    if (!transport || !sessionId) {
       res.status(400).send('Missing or unknown Mcp-Session-Id');
+      return;
+    }
+    if (!ownsSession(req, sessionId)) {
+      res.status(403).send('MCP session belongs to a different principal');
       return;
     }
     await transport.handleRequest(req, res);
   };
   expressApp.get(path, ...guards, onSessionRequest);
   expressApp.delete(path, ...guards, onSessionRequest);
+
+  return {
+    async closeAll() {
+      await Promise.all(
+        Object.values(transports).map(t =>
+          t.close().catch(() => {
+            /* best-effort on shutdown */
+          }),
+        ),
+      );
+    },
+  };
 }

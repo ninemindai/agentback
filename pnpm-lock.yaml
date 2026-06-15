@@ -1156,6 +1156,12 @@ importers:
       '@agentback/authentication':
         specifier: workspace:~
         version: link:../authentication
+      '@agentback/common':
+        specifier: workspace:~
+        version: link:../common
+      '@agentback/core':
+        specifier: workspace:~
+        version: link:../core
       '@agentback/mcp':
         specifier: workspace:~
         version: link:../mcp
@@ -1181,9 +1187,6 @@ importers:
         specifier: ^2.8.1
         version: 2.8.1
     devDependencies:
-      '@agentback/core':
-        specifier: workspace:~
-        version: link:../core
       '@agentback/testlab':
         specifier: workspace:~
         version: link:../testlab

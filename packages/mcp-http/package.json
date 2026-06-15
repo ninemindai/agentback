@@ -20,6 +20,8 @@
   },
   "dependencies": {
     "@agentback/authentication": "workspace:~",
+    "@agentback/common": "workspace:~",
+    "@agentback/core": "workspace:~",
     "@agentback/mcp": "workspace:~",
     "@agentback/rest": "workspace:~",
     "@agentback/security": "workspace:~",
@@ -33,7 +35,6 @@
     "node": ">=22.13"
   },
   "devDependencies": {
-    "@agentback/core": "workspace:~",
     "@agentback/testlab": "workspace:~",
     "vitest": "~4.1.8",
     "zod": "^4.4.3"

@@ -28,16 +28,17 @@ await app.start();
 
 Options:
 
-| option                         | default | meaning                                                         |
-| ------------------------------ | ------- | --------------------------------------------------------------- |
-| `path`                         | `/mcp`  | URL path the transport is mounted at                            |
-| `allowedHosts`                 | —       | allowlist of `Host` header values                               |
-| `allowedOrigins`               | —       | allowlist of `Origin` header values                             |
-| `enableDnsRebindingProtection` | auto¹   | reject requests with non-allowlisted Host/Origin                |
-| `eventStore`                   | —       | enable resumable sessions (see below)                           |
-| `auth`                         | —       | OAuth 2.1 resource-server protection (see below)                |
-| `strategyAuth`                 | —       | authenticate `/mcp` with framework auth strategies (see below)  |
-| `rateLimit`                    | —       | per-tool, per-caller rate limiting for `tools/call` (see below) |
+| option                         | default | meaning                                                                   |
+| ------------------------------ | ------- | ------------------------------------------------------------------------- |
+| `path`                         | `/mcp`  | URL path the transport is mounted at                                      |
+| `allowedHosts`                 | —       | allowlist of `Host` header values                                         |
+| `allowedOrigins`               | —       | allowlist of `Origin` header values                                       |
+| `enableDnsRebindingProtection` | auto¹   | reject requests with non-allowlisted Host/Origin                          |
+| `eventStore`                   | —       | enable resumable sessions (see below)                                     |
+| `auth`                         | —       | OAuth 2.1 resource-server protection (see below)                          |
+| `strategyAuth`                 | —       | authenticate `/mcp` with framework auth strategies (see below)            |
+| `rateLimit`                    | —       | per-tool, per-caller rate limiting for `tools/call` (see below)           |
+| `perSession`                   | —       | per-user/per-tenant tool _discovery_ via a session DI context (see below) |
 
 ¹ Defaults to `true` when `allowedHosts` or `allowedOrigins` is set, otherwise
 `false` (so the default dev experience isn't blocked).
@@ -176,6 +177,66 @@ Scopes are derived from the principal's `scopes` (user) or `allowedScopes`
 `required: false` for optional auth (anonymous sessions still get an unscoped
 tool set). `installMcpHttp` supplies the DI `context` automatically; pass it
 explicitly to `mountMcpHttp`.
+
+## Per-session tools (per-user / per-tenant discovery)
+
+Scope ACL (above) **filters** a fixed, global tool set. `perSession` goes
+further: it lets different sessions _discover **different tools**_ — a tool that
+exists for one user and **does not exist** (no name, no schema in `tools/list`)
+for another. Use it for multi-tenant surfaces, per-user plugins, or tools
+synthesized from the caller's account.
+
+Each new session gets its own DI context (parented on the app). Your binder
+populates it; the session's `MCPServer` then discovers the shared app-level tools
+**plus** whatever the binder added. Register session-local tool classes with
+`addTool(ctx, ToolClass)` — the session-scoped counterpart to `app.service(...)`.
+
+```ts
+import {addTool} from '@agentback/mcp';
+import type {AuthInfo} from '@agentback/mcp-http';
+
+await installMcpHttp(app, {
+  auth: {verifier /* … */},
+  perSession(ctx, req) {
+    const principal = req.auth as AuthInfo | undefined; // validated by the guard
+    if (!principal) return; // anonymous → shared tool set only
+    for (const ToolClass of entitlements.toolsFor(principal.clientId)) {
+      addTool(ctx, ToolClass); // discovered only for this session
+    }
+  },
+});
+```
+
+> ⚠️ **Security — key the binder off `req.auth`, never a header.** `req.auth` is
+> set by the `auth` / `strategyAuth` guards (which run before the binder) and is
+> validated. A raw header (`req.headers['x-…']`) is attacker-controlled — keying
+> tool discovery off one means any client can request another tenant's tools.
+> The binder must mutate **only** `sessionCtx`; never reach up to the app
+> context. `perSession` without `auth`/`strategyAuth` logs a warning (no
+> validated principal, and scope filtering is disabled).
+
+How it composes and behaves:
+
+- **Composes with scope ACL** — `buildServer({scopes})` still runs on the
+  per-session server, so a session-local tool can itself be `scope`-gated.
+- **Register session-local tools in the binder only** — not also via
+  `app.service(...)`, or the class binds twice for that session.
+- **Runs once per session**, including each reconnect that mints a new session id
+  (a resumed session reuses its context). Keep it cheap or cache on the principal.
+- **Session→principal pinning** — when auth is on, a session is pinned to the
+  principal that created it; a later request replaying its `Mcp-Session-Id` with
+  a different principal gets `403`.
+- **Lifecycle** — the session context is `close()`d when its transport closes
+  (DELETE or disconnect) and when the app stops, so binder-bound resources are
+  released. (Idle sessions that never DELETE are bounded at shutdown; a TTL
+  reaper is a future addition.)
+- **`mountMcpHttp`** callers must pass `appContext` (the DI root); `installMcpHttp`
+  fills it automatically.
+
+Why it works: `MCPServer` injects its own resolution context (`@inject.context()`)
+and discovers tools via a chain-walking `find`, so a server resolved from a child
+context sees that child's tools **and** the app's, while sibling sessions never
+see each other's. See `docs/superpowers/specs/2026-06-15-session-scoped-mcp-server-design.md`.
 
 ## Per-tool rate limiting
 

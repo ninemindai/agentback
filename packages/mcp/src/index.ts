@@ -2,6 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+export * from './add-tool.js';
 export * from './keys.js';
 export * from './types.js';
 export * from './decorators/index.js';
