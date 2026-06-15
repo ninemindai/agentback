@@ -2,7 +2,6 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {randomUUID} from 'node:crypto';
 import {auth} from '@modelcontextprotocol/sdk/client/auth.js';
 import type {OAuthClientProvider} from '@modelcontextprotocol/sdk/client/auth.js';
 import type {FetchLike} from '@modelcontextprotocol/sdk/shared/transport.js';
@@ -96,7 +95,10 @@ export class LoopbackOAuthProvider implements OAuthClientProvider {
   }
 
   state(): string {
-    return (this.store.state ??= randomUUID());
+    // Web Crypto's randomUUID is on `globalThis.crypto` in browsers and Node
+    // ≥19, so this module stays isomorphic — no `node:crypto` import means
+    // `@agentback/mcp-client` bundles for the browser.
+    return (this.store.state ??= globalThis.crypto.randomUUID());
   }
 
   clientInformation(): OAuthClientInformationMixed | undefined {
