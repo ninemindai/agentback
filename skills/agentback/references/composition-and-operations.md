@@ -347,6 +347,41 @@ if (isMain(import.meta)) {
 Now `npm start` runs the server while a test imports `buildApp`, starts it on
 port `0`, and asserts against it.
 
+### Serverless deployment (`listen: false`)
+
+The same `buildApp` factory also deploys to a serverless platform (Vercel,
+AWS Lambda). Set `listen: false` on the RestServer config: `app.start()` then
+mounts every route — middleware, controllers, framework routes (`/openapi.json`,
+explorers, …) — but **skips `app.listen()`**. The platform owns the HTTP
+listener; you hand it the fully-mounted Express app via `RestServer.expressApp`.
+
+```ts
+export async function buildApp({listen = true} = {}) {
+  const app = new RestApplication({rest: {listen}});
+  // … register controllers / services / installConsole / installMcpHttp …
+  await app.start();            // listen:false → routes mounted, no port bound
+  return app;
+}
+
+// api/index.ts (Vercel) — one function for the whole app, built once (memoized)
+let appP;
+export default async function handler(req, res) {
+  appP ??= buildApp({listen: false}).then(async a => (await a.restServer).expressApp);
+  (await appP)(req, res);
+}
+```
+
+`new RestApplication({rest: {listen: false}})` is the toggle; default `true`
+binds a port as a normal long-running server. Two deploy notes:
+
+- **On-disk static assets** served by `installConsole` / `rest-explorer` (the
+  console client bundle, `swagger-ui-dist`) are read at runtime, not imported,
+  so the platform's file tracer misses them — list them in Vercel's
+  `includeFiles` (or the equivalent) for the function.
+- **Workspace symlinks** (pnpm `workspace:*`) break serverless function
+  packaging; deploy from a project that installs `@agentback/*` as normal
+  (copied) dependencies.
+
 ## Key Rules
 
 - **ESM `.js` extensions on all relative imports** — `import {foo} from './bar.js'`
