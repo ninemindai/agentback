@@ -1,6 +1,6 @@
 {
   "name": "@agentback/authentication-jwt",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "JWT bearer authentication strategy (minimal port of @loopback/authentication-jwt — no repository deps)",
   "type": "module",
   "main": "dist/index.js",
