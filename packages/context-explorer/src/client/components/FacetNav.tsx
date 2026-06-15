@@ -17,21 +17,43 @@ interface Props {
 }
 
 const GROUPS: {facet: keyof Facets; label: string}[] = [
+  {facet: 'context', label: 'Context'},
   {facet: 'kind', label: 'Kind'},
-  {facet: 'scope', label: 'Scope'},
   {facet: 'type', label: 'Type'},
+  {facet: 'scope', label: 'Scope'},
   {facet: 'extensionPoint', label: 'Extension point'},
   {facet: 'lifeCycleGroup', label: 'Lifecycle group'},
-  {facet: 'context', label: 'Context'},
   {facet: 'tag', label: 'Tag'},
 ];
+
+/**
+ * Fixed display order for the `kind` facet values (other facets stay
+ * sorted by count). Tokens match `model.ts`'s pushed kind strings; any
+ * value not listed here (e.g. `extensionPoint`) sorts to the end.
+ */
+const KIND_ORDER = [
+  'component',
+  'lifeCycleObserver',
+  'extension',
+  'config',
+  'server',
+  'controller',
+  'mcpServer',
+];
+
+const kindRank = (k: string) => {
+  const i = KIND_ORDER.indexOf(k);
+  return i < 0 ? KIND_ORDER.length : i;
+};
 
 export function FacetNav({facets, selected, onPick}: Props) {
   return (
     <nav className="facets">
       {GROUPS.map(g => {
-        const entries = [...facets[g.facet].entries()].sort(
-          (a, b) => b[1] - a[1],
+        const entries = [...facets[g.facet].entries()].sort((a, b) =>
+          g.facet === 'kind'
+            ? kindRank(a[0]) - kindRank(b[0])
+            : b[1] - a[1],
         );
         if (!entries.length) return null;
         return (
