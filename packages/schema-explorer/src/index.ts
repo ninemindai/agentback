@@ -329,9 +329,12 @@ const EXPLORER_CSS = `
 .schemax .hovercard .hc-fields .fn { color:var(--ink); }
 .schemax .hovercard .hc-fields .ft { color:var(--blue); }
 .schemax .hovercard .hc-fields .more { color:var(--faint); font-style:italic; justify-content:flex-start; }
-.schemax .drawer { position:absolute; top:0; right:0; height:100%; width:360px; max-width:86%; overflow:auto; background:var(--paper); border-left:1px solid var(--line-2); box-shadow:-18px 0 40px -28px rgba(34,29,22,.5); padding:2rem 1.4rem 1.4rem; z-index:61; animation:slidein .18s cubic-bezier(.2,.7,.3,1) both; }
+.schemax .drawer { position:absolute; top:12px; right:12px; max-height:calc(100% - 24px); width:560px; max-width:92%; overflow:auto; background:var(--paper); border:1px solid var(--line-2); border-radius:8px; box-shadow:0 24px 50px -28px rgba(34,29,22,.55); padding:2rem 1.6rem 1.4rem; z-index:61; animation:slidein .18s cubic-bezier(.2,.7,.3,1) both; }
 .schemax .drawer-close { position:absolute; top:.5rem; right:.6rem; border:1px solid var(--line-2); background:var(--card); color:var(--ink); width:26px; height:26px; border-radius:5px; font-size:16px; line-height:1; cursor:pointer; }
 .schemax .drawer-close:hover { border-color:var(--accent); color:var(--accent); }
+/* Drawer is narrower than the Browse detail pane — long route-derived schema
+   names (e.g. "GET /x/api/inspect · response") need a smaller masthead. */
+.schemax .drawer .detail h2 { font-size:1.2rem; line-height:1.2; word-break:normal; overflow-wrap:break-word; }
 @keyframes slidein { from { transform:translateX(12px); opacity:0; } to { transform:none; opacity:1; } }
 `;
 

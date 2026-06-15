@@ -258,7 +258,7 @@ button.dep:hover { color:var(--accent); text-decoration:underline; text-underlin
 .empty { padding:2rem 0; }
 pre.raw { background:var(--card); border:1px solid var(--line-2); padding:1rem; border-radius:6px; white-space:pre-wrap; word-break:break-word; font-size:12px; font-family:var(--mono); }
 .err { color:var(--accent); padding:1.5rem; font-family:var(--mono); }
-.shell { display:grid; grid-template-columns:220px minmax(320px,420px) 1fr; height:calc(100vh - 56px); }
+.shell { display:grid; grid-template-columns:200px minmax(280px,340px) 1fr; height:calc(100vh - 56px); }
 .facets { border-right:1px solid var(--line-2); overflow:auto; padding:.8rem .6rem; }
 .facetgroup { margin-bottom:1rem; }
 .facetgroup h3 { font-family:var(--sans); font-size:.7rem; font-weight:600; text-transform:uppercase; letter-spacing:.07em; color:var(--faint); margin:0 0 .4rem .3rem; }
