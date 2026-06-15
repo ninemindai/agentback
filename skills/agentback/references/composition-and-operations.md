@@ -5,6 +5,7 @@
 - [Components](#components)
 - [Middleware](#middleware)
 - [CORS](#cors)
+- [Body parsing](#body-parsing)
 - [Subclassing the Dispatcher](#subclassing-the-dispatcher)
 - [Operational Extensions](#operational-extensions)
 - [Lifecycle Observers](#lifecycle-observers)
@@ -61,8 +62,31 @@ app.expressMiddleware(morgan, 'combined');
 existing Express middleware drops in without adaptation. Middleware that calls
 `res.send()` without calling `next()` **short-circuits the chain** — that is
 how CORS preflights, rate-limit `429` responses, and `/health` probes bypass
-route handlers. Sort order is controlled by the `group` option in `asMiddleware`;
-the defaults are correct for most cases.
+route handlers.
+
+The chain is mounted as the **first** Express handler in the `RestServer`
+**constructor** (matching upstream LB4's `ExpressServer`), so it fronts *every*
+route — including ones `install*` helpers (`installMcpHttp`'s `/mcp`,
+`installConsole`, `installExplorer`, …) mount **before** `app.start()`.
+`toExpressMiddleware` resolves and **group-sorts** the chain lazily per request,
+so middleware bound any time before the first request still participate; sort
+order is the topological order of `group` tags plus `upstreamGroups`/
+`downstreamGroups` edges, **not** registration order. CORS and body parsing are
+themselves chain entries (groups `cors` and `parseBody`) — the built-ins run
+`cors → parseBody → middleware` (your default group). Position custom middleware
+relative to them with `RestMiddlewareGroups.{CORS, PARSE_BODY, MIDDLEWARE}`:
+
+```ts
+import {RestMiddlewareGroups} from '@agentback/rest';
+
+// Run BEFORE body parsing — needs its OWN group (a middleware in the default
+// `middleware` group can't point downstream at parseBody: parseBody already
+// runs ahead of `middleware`, so that's a cycle).
+app.middleware(captureRawBody, {
+  group: 'pre-parse',
+  downstreamGroups: [RestMiddlewareGroups.PARSE_BODY],
+});
+```
 
 ## CORS
 
@@ -85,9 +109,42 @@ const corsOptions: CorsOptions = {
 const app2 = new RestApplication({rest: {port: 3000, cors: corsOptions}});
 ```
 
-When `cors` is set, `RestServer` mounts the `cors` package globally in its
-constructor — before `express.json()` and before any route handlers. Omitting
+When `cors` is set, `RestServer` registers the `cors` package **into the
+middleware chain** under the `cors` group (not a bare `app.use`), so it runs
+ahead of body parsing and your own middleware, and fronts every route. Omitting
 the key disables CORS entirely.
+
+## Body parsing
+
+Request body parsing is also a chain entry (group `parseBody`, after `cors`,
+before your middleware) and is configurable via `RestServerConfig.bodyParser`.
+The default is **JSON-only** — set `bodyParser: false` to mount no parser (e.g.
+to consume the raw stream yourself), or enable `json` / `urlencoded` / `text` /
+`raw` to accept media types beyond `application/json`. Each takes `true` (the
+parser's defaults) or the matching Express parser's options.
+
+```ts
+// JSON only (default) — equivalent to omitting `bodyParser`
+new RestApplication({rest: {bodyParser: {json: true}}});
+
+// Accept text/csv and form posts too; raise the JSON limit
+new RestApplication({
+  rest: {
+    bodyParser: {
+      json: {limit: '5mb'},
+      urlencoded: {extended: true},
+      text: {type: 'text/csv'},
+    },
+  },
+});
+
+// Mount no parser — read req as a raw stream / accept arbitrary types
+new RestApplication({rest: {bodyParser: false}});
+```
+
+Because parsing runs in the chain ahead of the `middleware` group, both your
+`app.middleware(...)` and route handlers observe a populated `req.body`. For
+multipart/file uploads, drop `multer` in via `restServer.expressApp.use(...)`.
 
 ## Subclassing the Dispatcher
 
@@ -351,9 +408,10 @@ port `0`, and asserts against it.
 
 The same `buildApp` factory also deploys to a serverless platform (Vercel,
 AWS Lambda). Set `listen: false` on the RestServer config: `app.start()` then
-mounts every route — middleware, controllers, framework routes (`/openapi.json`,
-explorers, …) — but **skips `app.listen()`**. The platform owns the HTTP
-listener; you hand it the fully-mounted Express app via `RestServer.expressApp`.
+mounts the remaining routes — controllers, framework routes (`/openapi.json`,
+explorers, …) behind the already-mounted middleware chain — but **skips
+`app.listen()`**. The platform owns the HTTP listener; you hand it the
+fully-mounted Express app via `RestServer.expressApp`.
 
 ```ts
 export async function buildApp({listen = true} = {}) {
