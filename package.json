@@ -13,6 +13,7 @@
     "build:watch": "tsc -b --watch",
     "clean": "tsc -b --clean && pnpm -r exec rm -rf dist",
     "typecheck:client": "pnpm -r --if-present run typecheck:client",
+    "verify": "pnpm build && pnpm typecheck:client && pnpm test && node scripts/validate-templates.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint . && prettier --check \"**/*.{ts,json,md}\"",
