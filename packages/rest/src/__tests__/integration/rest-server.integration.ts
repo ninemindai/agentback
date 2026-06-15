@@ -421,4 +421,28 @@ describe('RestServer (registration-time guardrails)', () => {
       /URL has placeholders \{id\} but no path: schema is declared/,
     );
   });
+
+  describe('serverless (listen: false)', () => {
+    it('mounts routes but binds no port, exposing a ready expressApp', async () => {
+      const app = new RestApplication({rest: {listen: false}});
+      app.restController(GreetingController);
+      await app.start();
+      const server = await app.restServer;
+
+      // start() resolved without binding a TCP listener.
+      expect(server.listening).toBe(false);
+
+      // ...yet the routes are fully mounted, so the bare Express app
+      // (the seam a serverless platform would `export default`) serves them.
+      const res = await supertest(server.expressApp).get('/greet/hello/World');
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({greeting: 'Hello, World!'});
+
+      // Framework routes are mounted too.
+      const spec = await supertest(server.expressApp).get('/openapi.json');
+      expect(spec.status).toBe(200);
+
+      await app.stop();
+    });
+  });
 });

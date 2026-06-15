@@ -8,6 +8,23 @@ export interface RestServerConfig {
   port?: number;
   host?: string;
   basePath?: string;
+  /**
+   * Whether `start()` binds a TCP listener. Default `true` — the server calls
+   * `app.listen(port, host)` like a normal long-running process.
+   *
+   * Set to `false` for serverless / FaaS targets (Vercel, AWS Lambda) where
+   * the platform owns the HTTP listener: `start()` still mounts all
+   * middleware, controllers, and framework routes, but skips `app.listen`.
+   * Boot the app, then hand the platform the fully-mounted Express instance:
+   *
+   * ```ts
+   * const app = new RestApplication({rest: {listen: false}});
+   * app.restController(MyController);
+   * await app.start();
+   * export default (await app.restServer).expressApp;
+   * ```
+   */
+  listen?: boolean;
   openApiSpec?: {
     /** URL path where the OpenAPI document is served. Default '/openapi.json'. */
     path?: string;
@@ -63,6 +80,7 @@ export const DEFAULT_REST_CONFIG: Required<
   port: 3000,
   host: '127.0.0.1',
   basePath: '',
+  listen: true,
   openApiSpec: {
     path: '/openapi.json',
   },

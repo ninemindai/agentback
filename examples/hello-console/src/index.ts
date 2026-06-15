@@ -87,8 +87,16 @@ class EchoTools {
 
 // ---- Bootstrap ----
 
-async function main() {
-  const app = new RestApplication();
+/**
+ * Build and start the app. Shared by the CLI entry (below) and the Vercel
+ * serverless handler (`api/index.ts`).
+ *
+ * `listen: false` makes `app.start()` mount every route but bind no TCP port —
+ * the serverless platform owns the listener and drives the returned app's
+ * `expressApp` directly. Default `true` is the normal long-running server.
+ */
+export async function buildApp(opts: {listen?: boolean} = {}) {
+  const app = new RestApplication({rest: {listen: opts.listen ?? true}});
 
   app.component(MCPComponent);
   app.configure('servers.MCPServer').to({
@@ -103,11 +111,20 @@ async function main() {
   await app.get<MCPServer>('servers.MCPServer');
 
   // One call mounts the whole console: the context, API, and MCP panels behind
-  // a shared shell at /console. (Add `auth` in production — the console
-  // aggregates DI internals and outbound MCP connections.)
-  await installConsole(app, {title: 'hello-console'});
+  // a shared shell at /console. This is a public showcase with no secrets, so
+  // we allow unauthenticated access; gate with `auth` in any real deployment —
+  // the console aggregates DI internals and outbound MCP connections.
+  await installConsole(app, {
+    title: 'hello-console',
+    unsafeAllowUnauthenticated: true,
+  });
 
   await app.start();
+  return app;
+}
+
+async function main() {
+  const app = await buildApp();
   const server = await app.restServer;
   console.log(`hello-console listening at ${server.url}`);
   console.log(`  Console:  ${server.url}/console/`);

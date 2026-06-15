@@ -827,6 +827,9 @@ export class RestServer implements Server {
 
     this.mountAllControllers();
     this.mountFrameworkRoutes();
+    // Serverless targets (Vercel, Lambda) own the HTTP listener: routes are
+    // now fully mounted, so the caller exports `expressApp` and we bind nothing.
+    if (!this.config.listen) return;
     await new Promise<void>(resolve => {
       this.httpServer = this.app.listen(
         this.config.port,
