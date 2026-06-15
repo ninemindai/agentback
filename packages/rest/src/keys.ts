@@ -42,6 +42,24 @@ export namespace RestBindings {
   export const IDEMPOTENCY_STORE = BindingKey.create<IdempotencyStore>(
     'rest.idempotencyStore',
   );
+  /**
+   * The raw Express {@link Request} for the in-flight request, bound into the
+   * per-request context. Inject it (always optionally) for the escape-hatch
+   * cases the typed input bundle can't model — multipart uploads, raw-stream
+   * bodies, response streaming:
+   *
+   * ```ts
+   * @inject(RestBindings.HTTP_REQUEST, {optional: true}) req?: Request
+   * ```
+   *
+   * Prefer the validated slot-0 bundle for normal routes; reach for this only
+   * when you genuinely need the raw transport object.
+   */
+  export const HTTP_REQUEST: BindingKey<Request> =
+    BindingKey.create<Request>('rest.http.request');
+  /** The raw Express {@link Response}. See {@link HTTP_REQUEST}. */
+  export const HTTP_RESPONSE: BindingKey<Response> =
+    BindingKey.create<Response>('rest.http.response');
 }
 
 /**

@@ -377,6 +377,13 @@ export class RestServer implements Server {
     schemas: RouteSchemas,
     reqCtx: Context,
   ): Promise<unknown> {
+    // Bind the raw Express request/response so handlers can opt in via
+    // `@inject(RestBindings.HTTP_REQUEST, {optional: true})` — the seam for
+    // file uploads, downloads, and streaming. Bound before auth so even
+    // auth-less routes can reach them. Two cheap binds per request.
+    reqCtx.bind(RestBindings.HTTP_REQUEST).to(req);
+    reqCtx.bind(RestBindings.HTTP_RESPONSE).to(res);
+
     const auth = await this.authenticate(req, ctor, methodName);
     if (auth.user) reqCtx.bind(SecurityBindings.USER).to(auth.user);
     if (auth.clientApplication) {
