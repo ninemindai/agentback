@@ -238,7 +238,7 @@ The fixed pipeline in `RestServer.dispatch` (see `packages/rest/src/rest.server.
 
 ```
 HTTP request
-  → CORS / Express middleware chain
+  → middleware chain (group-sorted: cors → parseBody → middleware)
   → Route match  (no match → 404)
   → Zod validate body / path / query / headers
       body invalid → 422 + ZodError.issues
@@ -373,8 +373,8 @@ malformed `PORT` warns and falls back, and `PORT=0` is honored (ephemeral).
 
 **CORS** is enabled via `RestServerConfig.cors`. Pass `true` for permissive
 defaults (the `cors` package's defaults) or a `CorsOptions` object for
-fine-grained control. CORS runs as the first Express middleware, before the
-LoopBack middleware chain:
+fine-grained control. CORS is a chain entry under the `cors` group, so it runs
+first — ahead of body parsing and your own middleware:
 
 ```ts
 new RestApplication({rest: {cors: true}});
@@ -387,8 +387,9 @@ new RestApplication({
 });
 ```
 
-**Application middleware** runs between the CORS layer and the route handlers.
-It can short-circuit responses (rate limiting, CORS preflights, health probes):
+**Application middleware** (the default `middleware` group) runs after `cors`
+and `parseBody`, before the route handlers — so it sees a parsed `req.body`. It
+can short-circuit responses (rate limiting, CORS preflights, health probes):
 
 ```ts
 import helmet from 'helmet';
@@ -404,9 +405,14 @@ app.middleware((ctx, next) => {
 ```
 
 Both APIs are provided by `MiddlewareMixin` (applied to `RestApplication`). The
-middleware chain runs through `toExpressMiddleware(this.context)` inside
-`RestServer.start()`, so middleware registered at any point before `start()` is
-included.
+middleware chain is mounted via `toExpressMiddleware(this.context)` as the first
+Express handler in the `RestServer` **constructor**, so it fronts every route —
+including ones `install*` helpers mount before `start()` (e.g. mcp-http's
+`/mcp`). It resolves and group-sorts lazily per request, so middleware
+registered at any point before the first request is included. Body parsing is
+configurable via `RestServerConfig.bodyParser` (JSON-only by default; `false`
+mounts none; or enable `json`/`urlencoded`/`text`/`raw`). See
+[composition-and-operations](composition-and-operations.md#body-parsing).
 
 ## Subclassing RestServer
 
