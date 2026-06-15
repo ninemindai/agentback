@@ -226,6 +226,7 @@ graph BT
   subgraph runtime["agent-facing substrates"]
     messaging["messaging"]; bullmq["messaging-bullmq"]
     mcphost["mcp-host"]; mcpclient["mcp-client"]; plugin["plugin"]
+    files["files"]; filess3["files-s3"]
   end
   subgraph platform["platform concerns"]
     auth["authentication / authorization"]
@@ -239,6 +240,9 @@ graph BT
   mcp --> core
   messaging --> core
   bullmq --> messaging
+  files --> core
+  filess3 --> files
+  rest --> files
   mcphost --> mcpclient
   plugin --> core
   auth --> core

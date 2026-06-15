@@ -93,6 +93,16 @@ All accept a `RouteOptions` object as their second argument:
 
 Only the keys you declare are present in the input bundle at runtime.
 
+**File uploads/downloads.** Put a `fileField()` (from `@agentback/openapi`) in
+the `body:` object schema: the route auto-mounts a multipart parser that streams
+each file to the bound `FileStore` (`@agentback/files` / `files-s3`) under a
+server UUID, the handler receives validated `UploadedFile` handles, and the body
+emits as `multipart/form-data` (`format: binary`). For downloads, `return
+fileResponse(stream, …)` / `fileDownload(retrieved)` — the server streams it
+instead of JSON-encoding. See
+[composition-and-operations](composition-and-operations.md) and
+`examples/hello-uploads`.
+
 ## Slot-0: The Input Bundle
 
 **When any of `body`, `path`, `query`, or `headers` is declared, the validated

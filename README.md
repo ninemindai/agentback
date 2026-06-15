@@ -134,6 +134,8 @@ The DI framework is the foundation; everything else is built on it.
 | `@agentback/messaging`             | Zod-typed JobQueue/EventBus/Scheduler ports with in-memory adapter |
 | `@agentback/messaging-bullmq`      | BullMQ + Redis Streams durable adapter for messaging ports         |
 | `@agentback/drizzle`               | Drizzle ORM binding and drizzle-zod recipe                         |
+| `@agentback/files`                 | `FileStore` port for uploads/downloads + in-memory & filesystem adapters |
+| `@agentback/files-s3`              | S3 `FileStore` adapter (streaming via AWS SDK v3)                  |
 | `@agentback/plugin`                | Plugin discovery, gating, and component mounting                   |
 | `@agentback/testing`               | Test harness with typed REST client, supertest, and in-memory MCP  |
 | `@agentback/testlab`               | Lower-level test helpers used by the package test suites           |
