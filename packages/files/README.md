@@ -43,6 +43,8 @@ flowchart LR
 ## Adapters
 
 - **`InMemoryFileStore`** (here) — buffers in a `Map`; tests/dev only.
+- **`FsFileStore`** (here) — local filesystem; streams to/from `<baseDir>/<key>`
+  with a metadata sidecar. Single-node / self-hosted / dev-with-persistence.
 - **`S3FileStore`** (`@agentback/files-s3`) — streams to S3 via AWS SDK v3.
 
 ## Testing
