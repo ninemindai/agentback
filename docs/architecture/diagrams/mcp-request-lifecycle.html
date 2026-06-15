@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgentBack — /mcp Request Lifecycle</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'JetBrains Mono', monospace; background: #020617; min-height: 100vh; padding: 2rem; color: white; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot { width: 12px; height: 12px; background: #22d3ee; border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container { background: rgba(15, 23, 42, 0.5); border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto; }
+    svg { width: 100%; min-width: 980px; display: block; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 2rem; }
+    .card { background: rgba(15, 23, 42, 0.5); border-radius: 0.75rem; border: 1px solid #1e293b; padding: 1.25rem; }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .card-dot.cyan { background: #22d3ee; }
+    .card-dot.emerald { background: #34d399; }
+    .card-dot.violet { background: #a78bfa; }
+    .card-dot.amber { background: #fbbf24; }
+    .card-dot.rose { background: #fb7185; }
+    .card-dot.orange { background: #fb923c; }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
+    .card li { margin-bottom: 0.375rem; }
+    .card code { color: #cbd5e1; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+    .toolbar { display: flex; gap: 0.5rem; margin-left: auto; flex-shrink: 0; align-items: center; }
+    .toolbar-toggle { background: transparent; border: none; color: #475569; cursor: pointer; font-size: 1.25rem; line-height: 1; padding: 0.25rem 0.5rem; border-radius: 0.375rem; transition: color 0.2s, background 0.2s; }
+    .toolbar-toggle:hover { color: #94a3b8; background: rgba(30, 41, 59, 0.5); }
+    .toolbar-actions { display: none; gap: 0.5rem; }
+    .toolbar.expanded .toolbar-actions { display: flex; }
+    .toolbar-actions button { background: rgba(30, 41, 59, 0.8); border: 1px solid #334155; color: #94a3b8; padding: 0.375rem 0.75rem; border-radius: 0.375rem; font-family: inherit; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+    .toolbar-actions button:hover { background: rgba(51, 65, 85, 0.8); color: white; border-color: #475569; }
+    @media print { body { background: #020617; padding: 1rem; } .toolbar { display: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="container" id="report-container">
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>AgentBack — /mcp Request Lifecycle</h1>
+        <div class="toolbar">
+          <div class="toolbar-actions">
+            <button onclick="copyAsImage(this)">📋 Copy</button>
+            <button onclick="downloadPNG(this)">🖼️ PNG</button>
+            <button onclick="downloadPDF(this)">📄 PDF</button>
+          </div>
+          <button class="toolbar-toggle" onclick="this.parentElement.classList.toggle('expanded')" title="Export options" aria-label="Export options">⋯</button>
+        </div>
+      </div>
+      <p class="subtitle">A POST flows ①→⑦ through the group-sorted cascade into the route; an OPTIONS preflight short-circuits at ①. Companion to middleware-chain.html.</p>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1100 900">
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <marker id="arrowhead-rose" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#fb7185" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- ============ ARROWS (drawn first → behind boxes) ============ -->
+        <!-- client → front door -->
+        <line x1="190" y1="73" x2="236" y2="73" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <!-- spine cascade -->
+        <line x1="400" y1="106" x2="400" y2="136" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="400" y1="204" x2="400" y2="252" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="400" y1="320" x2="400" y2="368" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="400" y1="436" x2="400" y2="484" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="400" y1="718" x2="400" y2="744" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <!-- short-circuit branches (rose, dashed) -->
+        <line x1="560" y1="172" x2="698" y2="172" stroke="#fb7185" stroke-width="1.4" stroke-dasharray="5,4" marker-end="url(#arrowhead-rose)"/>
+        <line x1="560" y1="404" x2="698" y2="404" stroke="#fb7185" stroke-width="1.4" stroke-dasharray="5,4" marker-end="url(#arrowhead-rose)"/>
+        <line x1="560" y1="549" x2="698" y2="549" stroke="#fb7185" stroke-width="1.4" stroke-dasharray="5,4" marker-end="url(#arrowhead-rose)"/>
+
+        <!-- cascade next() labels -->
+        <text x="414" y="232" fill="#94a3b8" font-size="8">next()</text>
+        <text x="414" y="348" fill="#94a3b8" font-size="8">next()</text>
+        <text x="414" y="464" fill="#94a3b8" font-size="8">next() → router</text>
+        <!-- branch labels -->
+        <text x="566" y="166" fill="#fb7185" font-size="7">OPTIONS preflight</text>
+        <text x="566" y="398" fill="#fb7185" font-size="7">over rate limit</text>
+        <text x="566" y="543" fill="#fb7185" font-size="7">guard rejects</text>
+
+        <!-- ============ CLIENT ============ -->
+        <rect x="40" y="45" width="150" height="56" rx="6" fill="#0f172a"/>
+        <rect x="40" y="45" width="150" height="56" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="115" y="71" fill="white" font-size="11" font-weight="600" text-anchor="middle">Client / Browser</text>
+        <text x="115" y="87" fill="#94a3b8" font-size="8" text-anchor="middle">POST or OPTIONS /mcp</text>
+
+        <!-- ============ CHAIN FRONT DOOR ============ -->
+        <rect x="240" y="40" width="320" height="66" rx="6" fill="#0f172a"/>
+        <rect x="240" y="40" width="320" height="66" rx="6" fill="rgba(251, 146, 60, 0.18)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="400" y="62" fill="white" font-size="11" font-weight="600" text-anchor="middle">Chain front door</text>
+        <text x="400" y="78" fill="#fb923c" font-size="8" text-anchor="middle">app.use(toExpressMiddleware) — mounted 1st (constructor)</text>
+        <text x="400" y="94" fill="#94a3b8" font-size="8" text-anchor="middle">resolves + group-sorts the chain per request</text>
+
+        <!-- ① cors -->
+        <rect x="240" y="138" width="320" height="66" rx="6" fill="#0f172a"/>
+        <rect x="240" y="138" width="320" height="66" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="400" y="160" fill="white" font-size="12" font-weight="600" text-anchor="middle">① group: cors</text>
+        <text x="400" y="178" fill="#94a3b8" font-size="9" text-anchor="middle">stamp Access-Control-* headers</text>
+        <text x="400" y="194" fill="#fb7185" font-size="8" text-anchor="middle">POST → next()   ·   OPTIONS preflight → 204 (✗ next)</text>
+
+        <!-- ② parseBody -->
+        <rect x="240" y="254" width="320" height="66" rx="6" fill="#0f172a"/>
+        <rect x="240" y="254" width="320" height="66" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="400" y="276" fill="white" font-size="12" font-weight="600" text-anchor="middle">② group: parseBody</text>
+        <text x="400" y="294" fill="#94a3b8" font-size="9" text-anchor="middle">express.json() → req.body</text>
+        <text x="400" y="310" fill="#fbbf24" font-size="8" text-anchor="middle">marks req._body = true</text>
+
+        <!-- ③ middleware -->
+        <rect x="240" y="370" width="320" height="66" rx="6" fill="#0f172a"/>
+        <rect x="240" y="370" width="320" height="66" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="400" y="392" fill="white" font-size="12" font-weight="600" text-anchor="middle">③ group: middleware</text>
+        <text x="400" y="410" fill="#94a3b8" font-size="9" text-anchor="middle">app.middleware(rateLimiter)</text>
+        <text x="400" y="426" fill="#34d399" font-size="8" text-anchor="middle">under limit → next()</text>
+
+        <!-- /mcp route -->
+        <rect x="240" y="486" width="320" height="232" rx="6" fill="#0f172a"/>
+        <rect x="240" y="486" width="320" height="232" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="400" y="508" fill="white" font-size="11" font-weight="600" text-anchor="middle">POST /mcp route</text>
+        <text x="400" y="524" fill="#22d3ee" font-size="8" text-anchor="middle">installMcpHttp — mounted before start(), behind the chain</text>
+        <text x="256" y="548" fill="#94a3b8" font-size="8">④ ...guards — authenticate</text>
+        <text x="272" y="562" fill="#94a3b8" font-size="8">→ set req.auth { scopes }</text>
+        <text x="256" y="582" fill="#94a3b8" font-size="8">⑤ express.json() — req._body set in ② → SKIP</text>
+        <text x="256" y="602" fill="#94a3b8" font-size="8">⑥ handler — isInitializeRequest(req.body) ✓</text>
+        <text x="272" y="618" fill="#94a3b8" font-size="8">buildServer({ scopes }).connect(transport)</text>
+        <text x="256" y="640" fill="#94a3b8" font-size="8">⑦ transport.handleRequest(req, res, req.body)</text>
+        <text x="272" y="656" fill="#22d3ee" font-size="8">→ JSON-RPC initialize result</text>
+        <text x="256" y="690" fill="#64748b" font-size="7">guards (④) come from strategyAuth / OAuth — per-route,</text>
+        <text x="256" y="702" fill="#64748b" font-size="7">not in the chain (MCP auth is session/scope-aware)</text>
+
+        <!-- response -->
+        <rect x="240" y="746" width="320" height="56" rx="6" fill="#0f172a"/>
+        <rect x="240" y="746" width="320" height="56" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="400" y="770" fill="white" font-size="11" font-weight="600" text-anchor="middle">200 — SSE / JSON-RPC stream</text>
+        <text x="400" y="786" fill="#94a3b8" font-size="8" text-anchor="middle">server → client over Streamable HTTP</text>
+
+        <!-- short-circuit exit chips (rose, dashed) -->
+        <rect x="700" y="146" width="320" height="54" rx="6" fill="#0f172a"/>
+        <rect x="700" y="146" width="320" height="54" rx="6" fill="rgba(136, 19, 55, 0.3)" stroke="#fb7185" stroke-width="1.3" stroke-dasharray="4,3"/>
+        <text x="860" y="168" fill="white" font-size="10" font-weight="600" text-anchor="middle">OPTIONS preflight → 204</text>
+        <text x="860" y="184" fill="#94a3b8" font-size="8" text-anchor="middle">cascade STOPS at ① — no body, no auth, no transport</text>
+
+        <rect x="700" y="378" width="320" height="54" rx="6" fill="#0f172a"/>
+        <rect x="700" y="378" width="320" height="54" rx="6" fill="rgba(136, 19, 55, 0.3)" stroke="#fb7185" stroke-width="1.3" stroke-dasharray="4,3"/>
+        <text x="860" y="400" fill="white" font-size="10" font-weight="600" text-anchor="middle">over limit → 429</text>
+        <text x="860" y="416" fill="#94a3b8" font-size="8" text-anchor="middle">short-circuits before the router</text>
+
+        <rect x="700" y="522" width="320" height="54" rx="6" fill="#0f172a"/>
+        <rect x="700" y="522" width="320" height="54" rx="6" fill="rgba(136, 19, 55, 0.3)" stroke="#fb7185" stroke-width="1.3" stroke-dasharray="4,3"/>
+        <text x="860" y="544" fill="white" font-size="10" font-weight="600" text-anchor="middle">guard reject → 401 + WWW-Authenticate</text>
+        <text x="860" y="560" fill="#94a3b8" font-size="8" text-anchor="middle">transport never built</text>
+
+        <!-- ============ LEGEND (outside boundary) ============ -->
+        <text x="240" y="838" fill="white" font-size="10" font-weight="600">Legend</text>
+        <rect x="300" y="830" width="16" height="10" rx="2" fill="rgba(251, 146, 60, 0.18)" stroke="#fb923c" stroke-width="1"/>
+        <text x="322" y="838" fill="#94a3b8" font-size="8">chain front door</text>
+        <rect x="430" y="830" width="16" height="10" rx="2" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1"/>
+        <text x="452" y="838" fill="#94a3b8" font-size="8">cors / short-circuit</text>
+        <rect x="580" y="830" width="16" height="10" rx="2" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="602" y="838" fill="#94a3b8" font-size="8">parseBody</text>
+        <rect x="700" y="830" width="16" height="10" rx="2" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1"/>
+        <text x="722" y="838" fill="#94a3b8" font-size="8">middleware / success</text>
+        <rect x="870" y="830" width="16" height="10" rx="2" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="892" y="838" fill="#94a3b8" font-size="8">install* route (/mcp)</text>
+
+        <line x1="300" y1="861" x2="316" y2="861" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <text x="322" y="864" fill="#94a3b8" font-size="8">next() (cascade continues)</text>
+        <line x1="520" y1="861" x2="536" y2="861" stroke="#fb7185" stroke-width="1.4" stroke-dasharray="4,3" marker-end="url(#arrowhead-rose)"/>
+        <text x="542" y="864" fill="#94a3b8" font-size="8">short-circuit exit (✗ next)</text>
+      </svg>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot orange"></div>
+          <h3>Resolved order (POST)</h3>
+        </div>
+        <ul>
+          <li>• Chain is the 1st handler; cascade is group-sorted: <code>cors → parseBody → middleware</code></li>
+          <li>• Each calls <code>next()</code>; on cascade end, <code>toExpressMiddleware</code> calls Express <code>next()</code> → router</li>
+          <li>• <code>/mcp</code> route (mounted by <code>installMcpHttp</code>) is the destination behind the chain</li>
+          <li>• ⑤ the route's own <code>express.json()</code> no-ops (<code>req._body</code> set in ②)</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot rose"></div>
+          <h3>Short-circuit exits</h3>
+        </div>
+        <ul>
+          <li>• <code>OPTIONS</code> preflight → <code>cors</code> ends 204 at ①, no <code>next()</code> (cheapest exit)</li>
+          <li>• rate limit exceeded → <code>429</code> at ③, before the router</li>
+          <li>• auth guard rejects → <code>401</code> at ④, transport never built</li>
+          <li>• A non-preflight <code>POST</code> never short-circuits at ① — cors just stamps headers</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot cyan"></div>
+          <h3>Layering</h3>
+        </div>
+        <ul>
+          <li>• Edge concerns (cors, body, rate-limit) live in the chain — uniform across all routes</li>
+          <li>• Identity (④ <code>req.auth</code>/scopes) lives on the <code>/mcp</code> route — session/scope-aware</li>
+          <li>• Different layers, no collision: that's why the chain-first + per-session changes compose</li>
+          <li>• <code>bodyParser:false</code> → ② skipped, ⑤ becomes the real parser; <code>/mcp</code> still works</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="footer">
+      @agentback/rest rest.server.ts:128 (chain mount) · @agentback/mcp-http index.ts:356 (/mcp route) · companion: middleware-chain.html
+    </p>
+  </div>
+
+  <script>
+    async function copyAsImage(btn) {
+      const orig = btn.textContent;
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        btn.textContent = '✓ Copied!';
+      } catch (e) {
+        btn.textContent = '✗ Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function downloadPNG(btn) {
+      const orig = btn.textContent;
+      btn.textContent = '⏳ ...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const link = document.createElement('a');
+        link.download = 'mcp-request-lifecycle.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        btn.textContent = '✓ Done!';
+      } catch (e) {
+        btn.textContent = '✗ Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function downloadPDF(btn) {
+      const orig = btn.textContent;
+      btn.textContent = '⏳ ...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const imgData = canvas.toDataURL('image/png');
+        const { jsPDF } = window.jspdf;
+        const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
+        const pdf = new jsPDF({ orientation, unit: 'px', format: [canvas.width, canvas.height], hotfixes: ['px_scaling'] });
+        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+        pdf.save('mcp-request-lifecycle.pdf');
+        btn.textContent = '✓ Done!';
+      } catch (e) {
+        btn.textContent = '✗ Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+  </script>
+</body>
+</html>

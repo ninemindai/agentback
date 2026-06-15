@@ -49,10 +49,13 @@ discovering bindings by tag; schemas radiating out to every contract.**
 
 ## How a REST request flows
 
-> A polished, standalone diagram of the middleware chain — the group-sorted
-> cascade (`cors → parseBody → middleware`) that fronts every route — lives at
-> [`diagrams/middleware-chain.html`](diagrams/middleware-chain.html); open it in
-> a browser.
+> Two standalone diagrams cover the middleware layer: the **structure** — the
+> group-sorted cascade (`cors → parseBody → middleware`) that fronts every route
+> — at [`diagrams/middleware-chain.html`](diagrams/middleware-chain.html), and a
+> live **request trace** through the resolved order (POST `/mcp` ①→⑦, plus the
+> OPTIONS-preflight short-circuit) at
+> [`diagrams/mcp-request-lifecycle.html`](diagrams/mcp-request-lifecycle.html).
+> Open them in a browser.
 
 ```mermaid
 sequenceDiagram

@@ -23,10 +23,12 @@ customization lives on decorator options; cross-cutting concerns go in Express m
 
 ## Request pipeline
 
-> A standalone diagram of the middleware chain that fronts this pipeline — the
-> group-sorted `cors → parseBody → middleware` cascade, mounted as the first
-> Express handler — lives at
-> [`docs/architecture/diagrams/middleware-chain.html`](../../docs/architecture/diagrams/middleware-chain.html).
+> Standalone diagrams of the middleware chain that fronts this pipeline: the
+> structure (group-sorted `cors → parseBody → middleware`, mounted as the first
+> Express handler) —
+> [`middleware-chain.html`](../../docs/architecture/diagrams/middleware-chain.html);
+> and a live request trace (POST `/mcp` ①→⑦, OPTIONS-preflight short-circuit) —
+> [`mcp-request-lifecycle.html`](../../docs/architecture/diagrams/mcp-request-lifecycle.html).
 
 ```mermaid
 flowchart LR
