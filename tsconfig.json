@@ -50,6 +50,7 @@
     {"path": "examples/hello-client"},
     {"path": "examples/hello-console"},
     {"path": "examples/hello-oauth2"},
-    {"path": "examples/hello-x402"}
+    {"path": "examples/hello-x402"},
+    {"path": "examples/hello-uploads"}
   ]
 }
