@@ -160,6 +160,68 @@ await app.start();</code></pre>
           Click any binding in any view and you land on its detail.
         </p>
 
+        <h2>The other three panels, same model</h2>
+        <p>
+          The Context panel is the unusual one. The other three are the surfaces
+          the framework already derives from the same registry, side by side
+          under one shell.
+        </p>
+
+        <p>
+          <strong>API</strong> is Swagger over the live
+          <code>/openapi.json</code> — the routes the REST server discovered, not
+          a hand-kept spec.
+        </p>
+
+        <figure class="post-figure">
+          <img
+            src="../images/console-api.png"
+            alt="The API panel: Swagger UI rendering the application's OpenAPI document with its REST routes listed."
+            loading="lazy"
+          />
+          <figcaption>
+            API: Swagger over <code>/openapi.json</code>, served from the same
+            bindings.
+          </figcaption>
+        </figure>
+
+        <p>
+          <strong>MCP</strong> is an in-process inspector: every
+          <code>@tool</code> with its input form, ready to call, plus resources
+          and prompts.
+        </p>
+
+        <figure class="post-figure">
+          <img
+            src="../images/console-mcp.png"
+            alt="The MCP panel: the inspector listing the echo and add tools with their input forms and a Run button, plus a resources section."
+            loading="lazy"
+          />
+          <figcaption>
+            MCP: the in-process inspector — each tool's input schema rendered as
+            a callable form.
+          </figcaption>
+        </figure>
+
+        <p>
+          <strong>Schema</strong> inverts the view: it indexes the app by Zod
+          entity and shows every boundary each schema reaches — which REST
+          routes, MCP tools, and tables use it — joined by object identity, not
+          by name.
+        </p>
+
+        <figure class="post-figure">
+          <img
+            src="../images/console-schema.png"
+            alt="The Schema panel: a list of Zod schemas on the left and a detail pane showing the selected 'add · input' schema, the MCP tool that uses it, and its fields."
+            loading="lazy"
+          />
+          <figcaption>
+            Schema: one entity, every surface that uses it — here an MCP tool's
+            input, with its fields.
+          </figcaption>
+        </figure>
+
         <h2>It never resolves a binding</h2>
         <p>
           The console is strictly read-only, and "read-only" here has a precise
