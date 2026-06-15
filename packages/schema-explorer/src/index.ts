@@ -316,6 +316,23 @@ const EXPLORER_CSS = `
 .schemax .empty { padding:2rem 0; color:var(--muted); }
 .schemax .err { color:var(--accent); padding:1.5rem; font-family:var(--mono); }
 .schemax .gtooltip { position:fixed; z-index:62; pointer-events:none; max-width:280px; background:var(--card); color:var(--ink); border:1px solid var(--line-2); border-radius:6px; padding:.6rem .7rem; box-shadow:0 14px 34px -18px rgba(34,29,22,.5); font-size:12px; }
+/* ---- graph: hover peek + detail drawer ---- */
+.schemax .graphwrap { position:relative; width:100%; height:100%; }
+.schemax .hovercard { position:absolute; z-index:60; pointer-events:none; max-width:240px; background:var(--card); border:1px solid var(--line-2); border-radius:6px; padding:.55rem .65rem; box-shadow:0 14px 34px -18px rgba(34,29,22,.5); }
+.schemax .hovercard .hc-eyebrow { font-family:var(--sans); font-size:.56rem; font-weight:700; text-transform:uppercase; letter-spacing:.13em; color:var(--accent); }
+.schemax .hovercard .hc-name { font-family:var(--mono); font-size:13px; color:var(--ink); margin:.15rem 0 .3rem; word-break:break-word; }
+.schemax .hovercard .hc-meta { display:flex; flex-wrap:wrap; gap:.5rem; font-size:11px; color:var(--faint); margin-bottom:.35rem; }
+.schemax .hovercard .hc-tag { font-family:var(--mono); color:var(--ink); }
+.schemax .hovercard .hc-tag .g { color:var(--accent-soft); margin-right:.2rem; }
+.schemax .hovercard .hc-fields { list-style:none; margin:0; padding:.3rem 0 0; border-top:1px solid var(--line); }
+.schemax .hovercard .hc-fields li { display:flex; justify-content:space-between; gap:.7rem; font-family:var(--mono); font-size:11.5px; padding:.1rem 0; }
+.schemax .hovercard .hc-fields .fn { color:var(--ink); }
+.schemax .hovercard .hc-fields .ft { color:var(--blue); }
+.schemax .hovercard .hc-fields .more { color:var(--faint); font-style:italic; justify-content:flex-start; }
+.schemax .drawer { position:absolute; top:0; right:0; height:100%; width:360px; max-width:86%; overflow:auto; background:var(--paper); border-left:1px solid var(--line-2); box-shadow:-18px 0 40px -28px rgba(34,29,22,.5); padding:2rem 1.4rem 1.4rem; z-index:61; animation:slidein .18s cubic-bezier(.2,.7,.3,1) both; }
+.schemax .drawer-close { position:absolute; top:.5rem; right:.6rem; border:1px solid var(--line-2); background:var(--card); color:var(--ink); width:26px; height:26px; border-radius:5px; font-size:16px; line-height:1; cursor:pointer; }
+.schemax .drawer-close:hover { border-color:var(--accent); color:var(--accent); }
+@keyframes slidein { from { transform:translateX(12px); opacity:0; } to { transform:none; opacity:1; } }
 `;
 
 function escapeHtml(s: string): string {
