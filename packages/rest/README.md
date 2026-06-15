@@ -23,9 +23,14 @@ customization lives on decorator options; cross-cutting concerns go in Express m
 
 ## Request pipeline
 
+> A standalone diagram of the middleware chain that fronts this pipeline — the
+> group-sorted `cors → parseBody → middleware` cascade, mounted as the first
+> Express handler — lives at
+> [`docs/architecture/diagrams/middleware-chain.html`](../../docs/architecture/diagrams/middleware-chain.html).
+
 ```mermaid
 flowchart LR
-    A[HTTP request] --> B[CORS / Express middleware chain]
+    A[HTTP request] --> B[group-sorted middleware chain\ncors → parseBody → middleware]
     B --> C[Route match]
     C -->|no match| E1[404]
     C --> D[Zod validate\nbody / path / query / headers]

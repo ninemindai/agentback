@@ -240,6 +240,56 @@ describe('mcp-http (Streamable HTTP transport)', () => {
   });
 });
 
+describe('mcp-http (app-level middleware chain fronts /mcp)', () => {
+  // Regression: the RestServer mounts the LB-style middleware chain as its
+  // FIRST handler (in the constructor), so a middleware bound via
+  // `app.middleware(...)` before `app.start()` must run for `/mcp` requests —
+  // even though `installMcpHttp` mounts the `/mcp` routes before `start()`.
+  // Previously the chain was mounted in `start()`, behind those routes, so the
+  // MCP handler owned the response and the chain never ran for `/mcp`.
+  it('runs a bound app.middleware() for a POST /mcp request', async () => {
+    const app = new RestApplication({});
+    app.configure('servers.RestServer').to({port: 0, host: '127.0.0.1'});
+    app.component(MCPComponent);
+    app.configure('servers.MCPServer').to({
+      name: 'mw-test',
+      version: '0.0.0',
+      transports: {stdio: false},
+    });
+    app.service(DemoTools);
+
+    const seenPaths: string[] = [];
+    app.middleware(async (ctx, next) => {
+      seenPaths.push(ctx.request.path);
+      // Prove the chain runs BEFORE the MCP handler flushes by stamping a
+      // header that survives onto the HTTP response.
+      ctx.response.setHeader('x-mw-ran', 'yes');
+      return next();
+    });
+
+    await app.get<MCPServer>('servers.MCPServer');
+    await installMcpHttp(app);
+    await app.start();
+    try {
+      const url = new URL((await app.restServer).url + '/mcp');
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream',
+        },
+        body: initBody,
+      });
+      // The initialize handshake succeeds AND the chain observed the request.
+      expect(res.status).toBeLessThan(400);
+      expect(res.headers.get('x-mw-ran')).toBe('yes');
+      expect(seenPaths).toContain('/mcp');
+    } finally {
+      await app.stop();
+    }
+  });
+});
+
 describe('mcp-http (OAuth resource-server + scope ACL)', () => {
   let app: RestApplication;
   let mcpUrl: URL;

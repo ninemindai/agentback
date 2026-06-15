@@ -9,6 +9,10 @@ sorted on every change, and executed in order before route handlers. Per-request
 extends `Context` so middleware and route handlers can inject from the DI container scoped to each
 request.
 
+> **Diagram:** the group-sorted cascade (`cors → parseBody → middleware`), how it mounts as the first
+> Express handler, and why `install*` routes sit behind it —
+> [`docs/architecture/diagrams/middleware-chain.html`](../../docs/architecture/diagrams/middleware-chain.html).
+
 ## What it provides
 
 **Servers & applications**

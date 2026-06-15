@@ -4,6 +4,33 @@
 
 import type {CorsOptions} from 'cors';
 
+/** Options for each built-in body parser — the matching Express parser's. */
+type JsonOptions = NonNullable<Parameters<typeof import('express').json>[0]>;
+type UrlencodedOptions = NonNullable<
+  Parameters<typeof import('express').urlencoded>[0]
+>;
+type TextOptions = NonNullable<Parameters<typeof import('express').text>[0]>;
+type RawOptions = NonNullable<Parameters<typeof import('express').raw>[0]>;
+
+/**
+ * Request body parsing. Each parser only acts on bodies whose `Content-Type`
+ * it recognizes (Express skips non-matching types), so several can be enabled
+ * together. JSON is on by default; enable `text` / `urlencoded` / `raw` to
+ * accept other media types. Each field takes `true` (parser defaults) or the
+ * matching Express parser's options, e.g. `{text: {type: 'text/csv'}}` or
+ * `{raw: {type: 'application/octet-stream', limit: '5mb'}}`.
+ */
+export interface BodyParserConfig {
+  /** `application/json`. Default: enabled. Set `false` to disable. */
+  json?: boolean | JsonOptions;
+  /** `application/x-www-form-urlencoded`. Default: disabled. */
+  urlencoded?: boolean | UrlencodedOptions;
+  /** `text/*`. Default: disabled. */
+  text?: boolean | TextOptions;
+  /** Raw `Buffer` for unmatched types (default `application/octet-stream`). */
+  raw?: boolean | RawOptions;
+}
+
 export interface RestServerConfig {
   port?: number;
   host?: string;
@@ -44,6 +71,17 @@ export interface RestServerConfig {
    */
   cors?: boolean | CorsOptions;
   /**
+   * Request body parsing. See {@link BodyParserConfig}. Omit for JSON-only
+   * (the default); set `false` to mount no parser at all (e.g. to consume the
+   * raw request stream yourself, or accept arbitrary media types downstream).
+   *
+   * Parsing runs inside the middleware chain under the `parseBody` group —
+   * after `cors`, before your `app.middleware(...)` — so middleware and route
+   * handlers observe a populated `req.body`. Position custom middleware around
+   * it with the {@link RestMiddlewareGroups} names.
+   */
+  bodyParser?: false | BodyParserConfig;
+  /**
    * AX (agent experience) artifacts. By default the server serves
    * `/llms.txt` (compact endpoint index) and `/llms-full.txt` (full
    * per-endpoint schemas), generated from the same route registry as
@@ -70,12 +108,13 @@ export interface RestServerConfig {
 }
 
 export const DEFAULT_REST_CONFIG: Required<
-  Omit<RestServerConfig, 'openApiSpec' | 'cors' | 'sse' | 'ax'>
+  Omit<RestServerConfig, 'openApiSpec' | 'cors' | 'sse' | 'ax' | 'bodyParser'>
 > & {
   openApiSpec: NonNullable<RestServerConfig['openApiSpec']>;
   cors: RestServerConfig['cors'];
   sse?: RestServerConfig['sse'];
   ax?: RestServerConfig['ax'];
+  bodyParser?: RestServerConfig['bodyParser'];
 } = {
   port: 3000,
   host: '127.0.0.1',

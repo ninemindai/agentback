@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgentBack REST Middleware Chain</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'JetBrains Mono', monospace; background: #020617; min-height: 100vh; padding: 2rem; color: white; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot { width: 12px; height: 12px; background: #fb923c; border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container { background: rgba(15, 23, 42, 0.5); border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto; }
+    svg { width: 100%; min-width: 980px; display: block; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 2rem; }
+    .card { background: rgba(15, 23, 42, 0.5); border-radius: 0.75rem; border: 1px solid #1e293b; padding: 1.25rem; }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .card-dot.cyan { background: #22d3ee; }
+    .card-dot.emerald { background: #34d399; }
+    .card-dot.violet { background: #a78bfa; }
+    .card-dot.amber { background: #fbbf24; }
+    .card-dot.rose { background: #fb7185; }
+    .card-dot.orange { background: #fb923c; }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
+    .card li { margin-bottom: 0.375rem; }
+    .card code { color: #cbd5e1; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+    .toolbar { display: flex; gap: 0.5rem; margin-left: auto; flex-shrink: 0; align-items: center; }
+    .toolbar-toggle { background: transparent; border: none; color: #475569; cursor: pointer; font-size: 1.25rem; line-height: 1; padding: 0.25rem 0.5rem; border-radius: 0.375rem; transition: color 0.2s, background 0.2s; }
+    .toolbar-toggle:hover { color: #94a3b8; background: rgba(30, 41, 59, 0.5); }
+    .toolbar-actions { display: none; gap: 0.5rem; }
+    .toolbar.expanded .toolbar-actions { display: flex; }
+    .toolbar-actions button { background: rgba(30, 41, 59, 0.8); border: 1px solid #334155; color: #94a3b8; padding: 0.375rem 0.75rem; border-radius: 0.375rem; font-family: inherit; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+    .toolbar-actions button:hover { background: rgba(51, 65, 85, 0.8); color: white; border-color: #475569; }
+    @media print { body { background: #020617; padding: 1rem; } .toolbar { display: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="container" id="report-container">
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>AgentBack — REST Middleware Chain</h1>
+        <div class="toolbar">
+          <div class="toolbar-actions">
+            <button onclick="copyAsImage(this)">📋 Copy</button>
+            <button onclick="downloadPNG(this)">🖼️ PNG</button>
+            <button onclick="downloadPDF(this)">📄 PDF</button>
+          </div>
+          <button class="toolbar-toggle" onclick="this.parentElement.classList.toggle('expanded')" title="Export options" aria-label="Export options">⋯</button>
+        </div>
+      </div>
+      <p class="subtitle">Group-sorted cascade mounted as the first Express handler — fronts every route, including install* surfaces.</p>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1080 730">
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <marker id="arrowhead-violet" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa" />
+          </marker>
+          <marker id="arrowhead-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#fb923c" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- ============ FORWARD / RETURN ARROWS (drawn early → behind boxes) ============ -->
+        <!-- request: client -> chain (cors lane) -->
+        <line x1="132" y1="188" x2="208" y2="188" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <!-- response: chain -> client (dashed, unwinds the cascade) -->
+        <line x1="208" y1="214" x2="135" y2="214" stroke="#64748b" stroke-width="1.3" stroke-dasharray="5,4" marker-end="url(#arrowhead)"/>
+
+        <!-- cascade: cors -> parseBody -> middleware (next()) -->
+        <line x1="340" y1="226" x2="340" y2="284" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="340" y1="362" x2="340" y2="420" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <!-- unwind (post-next, dashed up the gutter) -->
+        <line x1="206" y1="470" x2="206" y2="206" stroke="#64748b" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrowhead)"/>
+
+        <!-- chain (middleware lane) -> router junction -> route boxes -->
+        <line x1="470" y1="460" x2="528" y2="460" stroke="#64748b" stroke-width="1.5"/>
+        <circle cx="532" cy="460" r="3.5" fill="#64748b"/>
+        <line x1="532" y1="460" x2="576" y2="288" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <line x1="532" y1="460" x2="576" y2="436" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <!-- result returns toward the cascade (dashed) -->
+        <line x1="578" y1="266" x2="540" y2="448" stroke="#64748b" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrowhead)"/>
+
+        <!-- DI container -> chain (discovers + sorts, dashed violet) -->
+        <line x1="576" y1="572" x2="492" y2="544" stroke="#a78bfa" stroke-width="1.3" stroke-dasharray="5,4" marker-end="url(#arrowhead-violet)"/>
+
+        <!-- ============ EXPRESS APP BOUNDARY ============ -->
+        <rect x="160" y="40" width="900" height="600" rx="12" fill="rgba(251, 191, 36, 0.04)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="174" y="60" fill="#fbbf24" font-size="10" font-weight="600">Express app · one per RestServer · app.expressApp</text>
+
+        <!-- ============ CLIENT ============ -->
+        <rect x="26" y="152" width="106" height="72" rx="6" fill="#0f172a"/>
+        <rect x="26" y="152" width="106" height="72" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="79" y="184" fill="white" font-size="11" font-weight="600" text-anchor="middle">Client</text>
+        <text x="79" y="200" fill="#94a3b8" font-size="9" text-anchor="middle">HTTP / MCP</text>
+        <text x="79" y="214" fill="#94a3b8" font-size="9" text-anchor="middle">request</text>
+        <text x="170" y="183" fill="#94a3b8" font-size="8">request</text>
+        <text x="170" y="232" fill="#64748b" font-size="8">response</text>
+
+        <!-- ============ MIDDLEWARE CHAIN BOUNDARY ============ -->
+        <rect x="190" y="88" width="300" height="504" rx="10" fill="rgba(251, 146, 60, 0.05)" stroke="#fb923c" stroke-width="1.2" stroke-dasharray="4,4"/>
+        <text x="200" y="108" fill="white" font-size="11" font-weight="600">Middleware chain</text>
+        <text x="200" y="122" fill="#fb923c" font-size="8">toExpressMiddleware(ctx) · mounted 1st (constructor)</text>
+
+        <!-- cors lane -->
+        <rect x="210" y="150" width="260" height="76" rx="6" fill="#0f172a"/>
+        <rect x="210" y="150" width="260" height="76" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="340" y="176" fill="white" font-size="12" font-weight="600" text-anchor="middle">group: cors</text>
+        <text x="340" y="194" fill="#94a3b8" font-size="9" text-anchor="middle">CORS headers · preflight short-circuit</text>
+        <text x="340" y="212" fill="#fb7185" font-size="8" text-anchor="middle">RestServerConfig.cors</text>
+
+        <!-- parseBody lane -->
+        <rect x="210" y="286" width="260" height="76" rx="6" fill="#0f172a"/>
+        <rect x="210" y="286" width="260" height="76" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="340" y="312" fill="white" font-size="12" font-weight="600" text-anchor="middle">group: parseBody</text>
+        <text x="340" y="330" fill="#94a3b8" font-size="9" text-anchor="middle">json · text · urlencoded · raw</text>
+        <text x="340" y="348" fill="#fbbf24" font-size="8" text-anchor="middle">RestServerConfig.bodyParser (json default)</text>
+
+        <!-- middleware lane -->
+        <rect x="210" y="422" width="260" height="76" rx="6" fill="#0f172a"/>
+        <rect x="210" y="422" width="260" height="76" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="340" y="448" fill="white" font-size="12" font-weight="600" text-anchor="middle">group: middleware</text>
+        <text x="340" y="466" fill="#94a3b8" font-size="9" text-anchor="middle">app.middleware() · app.expressMiddleware()</text>
+        <text x="340" y="484" fill="#34d399" font-size="8" text-anchor="middle">default user group</text>
+
+        <!-- cascade labels -->
+        <text x="354" y="260" fill="#94a3b8" font-size="8">next()</text>
+        <text x="354" y="396" fill="#94a3b8" font-size="8">next()</text>
+
+        <!-- topological-sort note -->
+        <text x="200" y="520" fill="#fb923c" font-size="8" font-weight="600">topological sort · sortListOfGroups()</text>
+        <text x="200" y="534" fill="#94a3b8" font-size="8">cors → parseBody → middleware</text>
+        <text x="200" y="548" fill="#64748b" font-size="7">edges from group + upstream/downstreamGroups</text>
+
+        <!-- router junction label -->
+        <text x="498" y="452" fill="#94a3b8" font-size="8">next() → router</text>
+        <text x="552" y="372" fill="#64748b" font-size="7">result ↩</text>
+
+        <!-- ============ ROUTES MOUNTED IN start() ============ -->
+        <rect x="580" y="120" width="250" height="218" rx="6" fill="#0f172a"/>
+        <rect x="580" y="120" width="250" height="218" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="705" y="142" fill="white" font-size="11" font-weight="600" text-anchor="middle">Mounted in app.start()</text>
+        <text x="592" y="166" fill="#34d399" font-size="9">@api controllers → RestServer.dispatch:</text>
+        <text x="596" y="182" fill="#94a3b8" font-size="8">• authenticate → 401</text>
+        <text x="596" y="195" fill="#94a3b8" font-size="8">• authorize → 403</text>
+        <text x="596" y="208" fill="#94a3b8" font-size="8">• confirm / idempotency</text>
+        <text x="596" y="221" fill="#94a3b8" font-size="8">• Zod validate input → 400 / 422</text>
+        <text x="596" y="234" fill="#94a3b8" font-size="8">• resolveInjectedArguments (slot 1+)</text>
+        <text x="596" y="247" fill="#94a3b8" font-size="8">• handler — input bundle = slot 0</text>
+        <text x="596" y="260" fill="#94a3b8" font-size="8">• Zod validate response (log on mismatch)</text>
+        <text x="596" y="273" fill="#94a3b8" font-size="8">• sendResult (JSON) ↩</text>
+        <text x="592" y="296" fill="#34d399" font-size="9">framework routes:</text>
+        <text x="596" y="312" fill="#94a3b8" font-size="8">• /openapi.json · /llms.txt · /llms-full.txt</text>
+        <text x="596" y="328" fill="#94a3b8" font-size="8">• error handler — sendError (mounted last)</text>
+
+        <!-- ============ ROUTES MOUNTED BEFORE start() (install*) ============ -->
+        <rect x="580" y="372" width="250" height="152" rx="6" fill="#0f172a"/>
+        <rect x="580" y="372" width="250" height="152" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="705" y="394" fill="white" font-size="11" font-weight="600" text-anchor="middle">Mounted BEFORE app.start()</text>
+        <text x="592" y="416" fill="#22d3ee" font-size="9">via install* helpers:</text>
+        <text x="596" y="432" fill="#94a3b8" font-size="8">• /mcp — StreamableHTTP (mcp-http)</text>
+        <text x="596" y="446" fill="#94a3b8" font-size="8">• /console · /explorer</text>
+        <text x="596" y="460" fill="#94a3b8" font-size="8">• /mcp-inspector</text>
+        <text x="592" y="484" fill="#22d3ee" font-size="8">behind the chain ✓ — chain mounts 1st</text>
+        <text x="592" y="500" fill="#64748b" font-size="7">(in start() these would shadow the chain)</text>
+
+        <!-- ============ DI CONTAINER ============ -->
+        <rect x="580" y="548" width="250" height="78" rx="6" fill="#0f172a"/>
+        <rect x="580" y="548" width="250" height="78" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="705" y="570" fill="white" font-size="11" font-weight="600" text-anchor="middle">DI container · MiddlewareView</text>
+        <text x="592" y="588" fill="#94a3b8" font-size="8">extensionFor(DEFAULT_MIDDLEWARE_CHAIN)</text>
+        <text x="592" y="602" fill="#94a3b8" font-size="8">topo-sorts groups · refreshes on binding change</text>
+        <text x="592" y="616" fill="#a78bfa" font-size="7">resolved lazily, per request</text>
+        <text x="500" y="560" fill="#a78bfa" font-size="7">discovers + sorts</text>
+
+        <!-- ============ LEGEND (outside boundary) ============ -->
+        <text x="190" y="662" fill="white" font-size="10" font-weight="600">Legend</text>
+
+        <rect x="250" y="655" width="16" height="10" rx="2" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1"/>
+        <text x="272" y="663" fill="#94a3b8" font-size="8">group: cors</text>
+        <rect x="360" y="655" width="16" height="10" rx="2" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="382" y="663" fill="#94a3b8" font-size="8">group: parseBody</text>
+        <rect x="500" y="655" width="16" height="10" rx="2" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1"/>
+        <text x="522" y="663" fill="#94a3b8" font-size="8">group: middleware (user)</text>
+        <rect x="690" y="655" width="16" height="10" rx="2" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="712" y="663" fill="#94a3b8" font-size="8">install* surfaces</text>
+        <rect x="830" y="655" width="16" height="10" rx="2" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="852" y="663" fill="#94a3b8" font-size="8">DI / MiddlewareView</text>
+
+        <rect x="250" y="681" width="16" height="10" rx="2" fill="rgba(251, 146, 60, 0.05)" stroke="#fb923c" stroke-width="1" stroke-dasharray="3,3"/>
+        <text x="272" y="689" fill="#94a3b8" font-size="8">chain boundary</text>
+        <line x1="360" y1="686" x2="376" y2="686" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <text x="382" y="689" fill="#94a3b8" font-size="8">next() — cascade</text>
+        <line x1="500" y1="686" x2="516" y2="686" stroke="#64748b" stroke-width="1.3" stroke-dasharray="4,3" marker-end="url(#arrowhead)"/>
+        <text x="522" y="689" fill="#94a3b8" font-size="8">unwind / response</text>
+      </svg>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot orange"></div>
+          <h3>The chain (group model)</h3>
+        </div>
+        <ul>
+          <li>• Cascading: each middleware gets <code>next()</code>; runs code before and after downstream</li>
+          <li>• Order is by <code>group</code>, not registration: <code>cors → parseBody → middleware</code></li>
+          <li>• CORS &amp; body parsers are <em>chain entries</em>, not bare <code>app.use</code></li>
+          <li>• Body parsing configurable: <code>RestServerConfig.bodyParser</code></li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot amber"></div>
+          <h3>Chain-first mount</h3>
+        </div>
+        <ul>
+          <li>• Mounted as the 1st Express handler in the <code>RestServer</code> constructor</li>
+          <li>• Matches upstream LB4 <code>ExpressServer</code> ("1st Express middleware")</li>
+          <li>• Fronts <code>install*</code> routes (<code>/mcp</code>, <code>/console</code>…) mounted before <code>start()</code></li>
+          <li>• Resolved lazily per request — late-bound middleware still join</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot violet"></div>
+          <h3>Ordering API</h3>
+        </div>
+        <ul>
+          <li>• <code>app.middleware(fn, {group, upstreamGroups, downstreamGroups})</code></li>
+          <li>• Names: <code>RestMiddlewareGroups.{CORS, PARSE_BODY, MIDDLEWARE}</code></li>
+          <li>• Topological sort via <code>sortListOfGroups()</code> / <code>MiddlewareView</code></li>
+          <li>• ⚠ A <code>middleware</code>-group fn pointing downstream at <code>parseBody</code> = cycle</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="footer">
+      @agentback/rest · @agentback/express · packages/rest/src/rest.server.ts → registerBuiltinMiddleware()
+    </p>
+  </div>
+
+  <script>
+    async function copyAsImage(btn) {
+      const orig = btn.textContent;
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        btn.textContent = '✓ Copied!';
+      } catch (e) {
+        btn.textContent = '✗ Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function downloadPNG(btn) {
+      const orig = btn.textContent;
+      btn.textContent = '⏳ ...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const link = document.createElement('a');
+        link.download = 'middleware-chain.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        btn.textContent = '✓ Done!';
+      } catch (e) {
+        btn.textContent = '✗ Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function downloadPDF(btn) {
+      const orig = btn.textContent;
+      btn.textContent = '⏳ ...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const imgData = canvas.toDataURL('image/png');
+        const { jsPDF } = window.jspdf;
+        const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
+        const pdf = new jsPDF({ orientation, unit: 'px', format: [canvas.width, canvas.height], hotfixes: ['px_scaling'] });
+        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+        pdf.save('middleware-chain.pdf');
+        btn.textContent = '✓ Done!';
+      } catch (e) {
+        btn.textContent = '✗ Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+  </script>
+</body>
+</html>

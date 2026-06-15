@@ -3,10 +3,29 @@
 // License text available at https://opensource.org/license/mit/
 
 import {BindingKey, type Context} from '@agentback/context';
+import {DEFAULT_MIDDLEWARE_GROUP, MiddlewareGroups} from '@agentback/express';
 import type {ConfirmationStore, IdempotencyStore} from '@agentback/common';
 import type {RouteSchemas} from '@agentback/openapi';
 import type {Request, Response} from 'express';
 import type {RestServer} from './rest.server.js';
+
+/**
+ * Middleware-chain group names the {@link RestServer} mounts its built-in
+ * middleware under. The chain's topological sort runs them `cors` →
+ * `parseBody` → `middleware` (the default group for `app.middleware(fn)`).
+ * Pass these to `app.middleware(fn, {upstreamGroups, downstreamGroups})` to
+ * slot your own middleware relative to CORS and body parsing — e.g.
+ * `{downstreamGroups: [RestMiddlewareGroups.PARSE_BODY]}` to run before bodies
+ * are parsed, or `{upstreamGroups: [RestMiddlewareGroups.PARSE_BODY]}` after.
+ */
+export namespace RestMiddlewareGroups {
+  /** CORS — runs first so preflights short-circuit before anything else. */
+  export const CORS = MiddlewareGroups.CORS;
+  /** Body parsing (`express.json()` et al). Runs after CORS. */
+  export const PARSE_BODY = 'parseBody';
+  /** Default group for user `app.middleware(fn)`. Runs after body parsing. */
+  export const MIDDLEWARE = DEFAULT_MIDDLEWARE_GROUP;
+}
 
 export namespace RestBindings {
   // Application.server(RestServer) binds at `servers.${ClassName}` by default.
