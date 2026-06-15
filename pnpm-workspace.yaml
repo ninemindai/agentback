@@ -14,3 +14,6 @@ allowBuilds:
   cbor-extract: false
   esbuild: true
   msgpackr-extract: false
+
+minimumReleaseAgeExclude:
+  - multer@2.2.0

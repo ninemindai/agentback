@@ -33,6 +33,7 @@ import {
   assembleOpenApiSpec,
   buildErrorEnvelope,
   ErrorCodes,
+  fileFieldsOf,
   getControllerSpec,
   lookupRouteSchemas,
   schemaPropertyInfo,
@@ -73,6 +74,8 @@ import {
   type RestServerConfig,
 } from './types.js';
 import {invalidParameter, invalidRequestBody} from './errors.js';
+import {makeMultipartMiddleware} from './multipart.js';
+import {isFileResponse, type FileResponse} from './file-response.js';
 import {
   AX_SECTION_TAG,
   generateLlmsFullTxt,
@@ -263,7 +266,19 @@ export class RestServer implements Server {
           | 'delete'
           | 'head'
           | 'options';
-        this.app[expressVerb](route, handler);
+        // A body with a `fileField()` gets a per-route multipart parser mounted
+        // ahead of the handler: it streams files to the bound FileStore and
+        // merges UploadedFile handles into req.body for Zod validation.
+        const fileFields = schemas.body ? fileFieldsOf(schemas.body) : [];
+        if (fileFields.length) {
+          this.app[expressVerb](
+            route,
+            makeMultipartMiddleware(fileFields, this.context),
+            handler,
+          );
+        } else {
+          this.app[expressVerb](route, handler);
+        }
       }
     }
   }
@@ -575,12 +590,51 @@ export class RestServer implements Server {
     result: unknown,
     successStatus: number,
   ): void {
+    if (isFileResponse(result)) {
+      this.sendFile(res, result, successStatus);
+      return;
+    }
     if (successStatus !== 200) res.status(successStatus);
     if (successStatus === 204) {
       res.end();
     } else {
       res.json(result);
     }
+  }
+
+  /**
+   * Stream a {@link FileResponse} (download). Sets `Content-Type` /
+   * `Content-Disposition` / `Content-Length`, then writes the buffer or pipes
+   * the stream. A stream error after headers are flushed destroys the socket
+   * (same discipline as `sendStream`). `protected` so subclasses can adjust
+   * headers (e.g. caching) or framing.
+   */
+  protected sendFile(
+    res: Response,
+    file: FileResponse,
+    successStatus: number,
+  ): void {
+    if (file.contentType) res.type(file.contentType);
+    if (file.filename) {
+      const safe = file.filename.replace(/["\r\n]/g, '');
+      res.setHeader(
+        'Content-Disposition',
+        `${file.disposition ?? 'attachment'}; filename="${safe}"`,
+      );
+    }
+    if (file.size != null) res.setHeader('Content-Length', String(file.size));
+    if (successStatus !== 200) res.status(successStatus);
+
+    const body = file.body;
+    if (Buffer.isBuffer(body)) {
+      res.end(body);
+      return;
+    }
+    body.on('error', () => {
+      if (!res.headersSent) res.status(500).end();
+      else res.destroy();
+    });
+    body.pipe(res);
   }
 
   /**
