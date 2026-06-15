@@ -67,6 +67,7 @@ pnpm exec vitest run -t "name of test"
    - `config` — Zod-validated, env-aware config loader (JSONC + YAML) with layered overlays and DI bindings.
    - `drizzle` — the blessed DB recipe: typed Drizzle client binding, lifecycle pool shutdown, `drizzle-zod` re-exports. One artifact chain (Postgres table → Zod → REST route + MCP tool); see `examples/hello-drizzle`.
    - `messaging` + `messaging-bullmq` — transport-agnostic messaging ports (`JobQueue`/`EventBus`/`QueueAdmin`/`Scheduler`) with typed Zod descriptors and an in-memory adapter; the BullMQ package is the durable Redis-backed adapter. See `examples/hello-jobs`.
+   - `files` + `files-s3` — the file-storage `FileStore` port (`put`/`get`/`exists`/`delete` + optional presigned hooks) with an in-memory adapter; `files-s3` is the S3 adapter (AWS SDK v3 streaming). Backs the first-class upload/download recipe (`fileField` + `fileResponse`); `@agentback/files/testing` ships a shared conformance suite. See `examples/hello-uploads`.
    - `metering` — rail-neutral usage metering for REST + MCP calls (per-principal `UsageEvent`s, pluggable sink, per-principal quota).
    - `payments` — `PaymentRail` seam for REST/MCP calls; ships an x402 (HTTP 402) adapter (MPP/Stripe next). Authorizes payment; does not settle. See `examples/hello-x402`.
    - `plugin` — discover, gate, and mount Component-contributing plugins into an Application.
@@ -151,9 +152,7 @@ if (log.debug.enabled) log.debug('Get value for binding %s', this.key);
 
 **Namespace note:** because each level is a sub-namespace, a `loggers('foo:bar')` line logs under `foo:bar:debug` (etc.), not `foo:bar`. Set `DEBUG=foo:bar:*` (or `foo:bar:debug`) to see it. The ported LB4 packages were migrated off raw `debug` to `loggers` in one pass; everything maps to `log.debug` (raw `debug` ≈ debug level) unless a call is semantically a warn/error.
 
-**Not yet implemented**:
-
-- File uploads / multipart — escape hatch via `restServer.expressApp.use(multer(...))`.
+**File uploads / downloads are first-class** (no longer an escape hatch). A `fileField()` (from `@agentback/openapi`) on a route's `body:` schema flips the request to `multipart/form-data` (emitted in OpenAPI as `format: binary`), auto-mounts a per-route multer parser that **streams** each file to the bound `FileStore` (`@agentback/files`) under a **server-generated UUID** key, and delivers `UploadedFile` handles in the validated slot-0 bundle. Downloads `return fileResponse(...)` / `fileDownload(retrieved)`, which `RestServer.sendResult` pipes (Content-Type/Disposition) instead of JSON-encoding. Storage is a port: `InMemoryFileStore` (dev/tests) or `S3FileStore` (`@agentback/files-s3`). `RestBindings.HTTP_REQUEST`/`.HTTP_RESPONSE` are bound per request for raw-stream escape hatches. See `examples/hello-uploads`. (`multer` is currently a direct `rest` dependency — a candidate to optionalize as a peer dep.)
 
 MCP HTTP transport **is** implemented — `@agentback/mcp` runs stdio by default, and `@agentback/mcp-http` adds the Streamable HTTP transport mounted on the REST app's Express (per-session isolation). See the New capability packages list above.
 

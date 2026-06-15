@@ -402,7 +402,6 @@ These are deliberately not in the framework — they reintroduce the upstream co
 
 ### Not yet implemented
 
-- **File uploads / multipart** — drop down to `restServer.expressApp.use(multer().single(...))` for now; first-class support is on the roadmap.
 - **MCP SSE (legacy) transport** — Streamable HTTP is supported; the older SSE transport is not.
 - **MCP resource/prompt aggregation in the gateway** — `@agentback/mcp-host` aggregates upstream **tools** today; resource/prompt routing is a straightforward follow-on.
 
