@@ -9,6 +9,6 @@
     "rootDir": ".",
     "tsBuildInfoFile": "./tsconfig.client.tsbuildinfo"
   },
-  "include": ["src/client/**/*"],
+  "include": ["src/client/**/*", "src/lib/**/*", "src/model.ts"],
   "exclude": ["dist", "node_modules"]
 }
