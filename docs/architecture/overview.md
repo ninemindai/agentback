@@ -49,6 +49,11 @@ discovering bindings by tag; schemas radiating out to every contract.**
 
 ## How a REST request flows
 
+> A polished, standalone diagram of the middleware chain — the group-sorted
+> cascade (`cors → parseBody → middleware`) that fronts every route — lives at
+> [`diagrams/middleware-chain.html`](diagrams/middleware-chain.html); open it in
+> a browser.
+
 ```mermaid
 sequenceDiagram
   participant C as Client

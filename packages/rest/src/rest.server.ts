@@ -23,7 +23,11 @@ import {
 import {SecurityBindings, UserProfile} from '@agentback/security';
 import createError from 'http-errors';
 import {CoreBindings, CoreTags, Server} from '@agentback/core';
-import {toExpressMiddleware} from '@agentback/express';
+import {
+  registerExpressMiddleware,
+  toExpressMiddleware,
+  type ExpressMiddlewareFactory,
+} from '@agentback/express';
 import cors from 'cors';
 import {
   assembleOpenApiSpec,
@@ -59,10 +63,15 @@ import type {Server as HttpServer} from 'http';
 import {
   REST_DISPATCH_HOOK_TAG,
   RestBindings,
+  RestMiddlewareGroups,
   type RestDispatchHook,
   type RestDispatchInfo,
 } from './keys.js';
-import {DEFAULT_REST_CONFIG, type RestServerConfig} from './types.js';
+import {
+  DEFAULT_REST_CONFIG,
+  type BodyParserConfig,
+  type RestServerConfig,
+} from './types.js';
 import {invalidParameter, invalidRequestBody} from './errors.js';
 import {
   AX_SECTION_TAG,
@@ -78,12 +87,13 @@ export class RestServer implements Server {
   private httpServer?: HttpServer;
   private _listening = false;
   readonly config: Required<
-    Omit<RestServerConfig, 'openApiSpec' | 'cors' | 'sse' | 'ax'>
+    Omit<RestServerConfig, 'openApiSpec' | 'cors' | 'sse' | 'ax' | 'bodyParser'>
   > & {
     openApiSpec: NonNullable<RestServerConfig['openApiSpec']>;
     cors?: RestServerConfig['cors'];
     sse?: RestServerConfig['sse'];
     ax?: RestServerConfig['ax'];
+    bodyParser?: RestServerConfig['bodyParser'];
   };
 
   constructor(
@@ -101,10 +111,86 @@ export class RestServer implements Server {
       },
     };
     this.app = express();
+    // CORS and body parsing are themselves entries in the LB middleware chain
+    // (tagged with groups), not bare `app.use` calls — so their order relative
+    // to user middleware is governed by the chain's topological sort, and body
+    // parsing is configurable beyond JSON. See registerBuiltinMiddleware.
+    this.registerBuiltinMiddleware();
+    // Mount the LB-style middleware chain as the FIRST (and only) app-level
+    // handler, matching upstream LB4's ExpressServer ("1st Express
+    // middleware"). `toExpressMiddleware` discovers and sorts the chain lazily
+    // per request, so middleware bound later — via `app.middleware(...)` /
+    // `app.expressMiddleware(...)` before `app.start()` — still participate.
+    // Mounting here (not in `start()`) means it sits in FRONT of every route
+    // mounted afterward, including ones added by `install*` helpers
+    // (mcp-http's `/mcp`, rest-explorer, console, …) before `start()` runs —
+    // otherwise those routes would shadow the chain and bypass it entirely.
+    this.app.use(toExpressMiddleware(this.context));
+  }
+
+  /**
+   * Register the built-in CORS and body-parsing middleware INTO the LB
+   * middleware chain (not as bare `app.use`), each tagged with a group so the
+   * chain's topological sort runs them in order — `cors` → `parseBody` → user
+   * middleware (the default `middleware` group) — and so callers can position
+   * their own middleware relative to them via {@link RestMiddlewareGroups}.
+   *
+   * Body parsing is configurable (`config.bodyParser`): JSON-only by default,
+   * `false` to mount none, or any combination of json/urlencoded/text/raw so
+   * the server accepts media types beyond `application/json`.
+   */
+  protected registerBuiltinMiddleware(): void {
     if (this.config.cors) {
-      this.app.use(this.config.cors === true ? cors() : cors(this.config.cors));
+      registerExpressMiddleware(
+        this.context,
+        cors,
+        this.config.cors === true ? undefined : this.config.cors,
+        {
+          injectConfiguration: false,
+          key: 'middleware.cors',
+          group: RestMiddlewareGroups.CORS,
+          downstreamGroups: [
+            RestMiddlewareGroups.PARSE_BODY,
+            RestMiddlewareGroups.MIDDLEWARE,
+          ],
+        },
+      );
     }
-    this.app.use(express.json());
+
+    const bp = this.config.bodyParser;
+    if (bp === false) return; // explicit opt-out: no body parser at all
+    // Unset → JSON-only default. Otherwise honor each enabled parser.
+    const cfg: BodyParserConfig = bp ?? {json: true};
+    this.registerBodyParser('json', express.json, cfg.json ?? true);
+    this.registerBodyParser('urlencoded', express.urlencoded, cfg.urlencoded);
+    this.registerBodyParser('text', express.text, cfg.text);
+    this.registerBodyParser('raw', express.raw, cfg.raw);
+  }
+
+  /**
+   * Register one Express body parser into the chain under the `parseBody`
+   * group (after `cors`, before user middleware). `opt` of `false`/`undefined`
+   * skips the parser; `true` uses the parser's defaults; an object passes
+   * through as the parser's options.
+   */
+  private registerBodyParser<C>(
+    name: string,
+    factory: ExpressMiddlewareFactory<C>,
+    opt: boolean | C | undefined,
+  ): void {
+    if (!opt) return;
+    registerExpressMiddleware<C>(
+      this.context,
+      factory,
+      opt === true ? undefined : opt,
+      {
+        injectConfiguration: false,
+        key: `middleware.bodyParser.${name}`,
+        group: RestMiddlewareGroups.PARSE_BODY,
+        upstreamGroups: [RestMiddlewareGroups.CORS],
+        downstreamGroups: [RestMiddlewareGroups.MIDDLEWARE],
+      },
+    );
   }
 
   get listening(): boolean {
@@ -820,11 +906,10 @@ export class RestServer implements Server {
   }
 
   async start(): Promise<void> {
-    // User-bound LB-style middleware (e.g. via `app.middleware(...)` or
-    // `app.expressMiddleware(...)`) runs before route handlers so it can
-    // short-circuit responses (CORS preflights, rate limiting, etc).
-    this.app.use(toExpressMiddleware(this.context));
-
+    // The LB-style middleware chain is mounted in the constructor (see there)
+    // so it fronts every route — including `install*`-mounted ones registered
+    // before `start()`. It still picks up middleware bound after construction
+    // because `toExpressMiddleware` resolves the chain lazily per request.
     this.mountAllControllers();
     this.mountFrameworkRoutes();
     // Serverless targets (Vercel, Lambda) own the HTTP listener: routes are
