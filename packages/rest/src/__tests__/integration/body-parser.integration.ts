@@ -85,6 +85,68 @@ describe('RestServer body parsing (group model)', () => {
     expect(captured()).toBe('plain words');
   });
 
+  it('parses urlencoded form bodies (bare `true` → no deprecation)', async () => {
+    // `urlencoded: true` must resolve to `{extended: true}` internally so
+    // express.urlencoded() doesn't log the Express 4 "undefined extended"
+    // deprecation; here we assert the parse actually happens.
+    const {client, captured, stop: s} = await boot({
+      bodyParser: {json: false, urlencoded: true},
+    });
+    stop = s;
+    await client
+      .post('/ping')
+      .type('form')
+      .send({a: '1', b: 'two'})
+      .expect(200);
+    expect(captured()).toEqual({a: '1', b: 'two'});
+  });
+
+  it('parses raw bodies into a Buffer when raw parsing is enabled', async () => {
+    const {client, captured, stop: s} = await boot({
+      bodyParser: {json: false, raw: true},
+    });
+    stop = s;
+    await client
+      .post('/ping')
+      .set('Content-Type', 'application/octet-stream')
+      .send(Buffer.from('raw bytes'))
+      .expect(200);
+    const body = captured();
+    expect(Buffer.isBuffer(body)).toBe(true);
+    expect((body as Buffer).toString()).toBe('raw bytes');
+  });
+
+  it('runs multiple parsers, each handling its own content-type', async () => {
+    const {client, captured, stop: s} = await boot({
+      bodyParser: {json: true, text: true},
+    });
+    stop = s;
+    // A JSON request is parsed to an object…
+    await client.post('/ping').send({n: 1}).expect(200);
+    expect(captured()).toEqual({n: 1});
+    // …and a text request through the same app is parsed to a string.
+    await client
+      .post('/ping')
+      .set('Content-Type', 'text/plain')
+      .send('hello')
+      .expect(200);
+    expect(captured()).toBe('hello');
+  });
+
+  it('short-circuits a CORS preflight in the chain (OPTIONS → 204)', async () => {
+    // Without CORS in the chain, OPTIONS /ping has no matching route → 404.
+    // The cors entry answers the preflight (204 + ACAO) before route matching,
+    // proving it runs ahead of everything as the first chain group.
+    const {client, stop: s} = await boot({cors: true});
+    stop = s;
+    const res = await client
+      .options('/ping')
+      .set('Origin', 'https://app.example.com')
+      .set('Access-Control-Request-Method', 'POST')
+      .expect(204);
+    expect(res.headers['access-control-allow-origin']).toBe('*');
+  });
+
   it('lets a caller run BEFORE parseBody via its own upstream group', async () => {
     // A middleware in its OWN group, ordered upstream of `parseBody`, sees the
     // raw unparsed body; the default-group middleware (which `parseBody` runs

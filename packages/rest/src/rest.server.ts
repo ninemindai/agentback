@@ -162,7 +162,13 @@ export class RestServer implements Server {
     // Unset → JSON-only default. Otherwise honor each enabled parser.
     const cfg: BodyParserConfig = bp ?? {json: true};
     this.registerBodyParser('json', express.json, cfg.json ?? true);
-    this.registerBodyParser('urlencoded', express.urlencoded, cfg.urlencoded);
+    // Bare `true` → `{extended: true}`: `express.urlencoded(undefined)` logs the
+    // Express 4 "undefined extended" deprecation, so supply the option explicitly.
+    this.registerBodyParser(
+      'urlencoded',
+      express.urlencoded,
+      cfg.urlencoded === true ? {extended: true} : cfg.urlencoded,
+    );
     this.registerBodyParser('text', express.text, cfg.text);
     this.registerBodyParser('raw', express.raw, cfg.raw);
   }
