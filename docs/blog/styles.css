@@ -391,6 +391,26 @@ pre code {
   margin: 0;
 }
 
+.post-figure {
+  margin: 32px 0;
+}
+
+.post-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 18px 40px -28px rgba(23, 32, 27, 0.4);
+}
+
+.post-figure figcaption {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-top: 10px;
+  text-align: center;
+}
+
 .site-footer {
   border-top: 1px solid var(--line);
   color: var(--muted);

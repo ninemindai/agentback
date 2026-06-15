@@ -95,6 +95,18 @@ await app.start();</code></pre>
           tools it contributes.
         </p>
 
+        <figure class="post-figure">
+          <img
+            src="../images/console-explore.png"
+            alt="The Context panel's Explore view: a facet nav on the left, a filterable binding list in the center, and a detail pane on the right showing the selected EchoTools service's kinds, tags, the extension point it extends, and the MCP tools it contributes."
+            loading="lazy"
+          />
+          <figcaption>
+            Explore: facets, results, and a detail pane — here an MCP tool class
+            showing the point it extends and the tools it contributes.
+          </figcaption>
+        </figure>
+
         <h2>The graph shows real relationships</h2>
         <p>
           Architecture in AgentBack is encoded in tag conventions, not buried in
@@ -128,6 +140,19 @@ await app.start();</code></pre>
             resolves to.
           </li>
         </ul>
+
+        <figure class="post-figure">
+          <img
+            src="../images/console-graph.png"
+            alt="The Graph view: bindings laid out as nodes colored by scope, connected by the five edge kinds, with a legend in the lower-left and the synthetic mcpServers extension-point node linked to the EchoTools service."
+            loading="lazy"
+          />
+          <figcaption>
+            Graph: nodes colored by scope, edges colored by relationship. The
+            legend names the five kinds; the violet node is a synthetic
+            extension point with no declaring binding.
+          </figcaption>
+        </figure>
 
         <p>
           Hierarchy renders the context parent chain as a tree; Raw is the
@@ -165,6 +190,19 @@ await app.start();</code></pre>
           tag query, not a guess. The console shows what is, because it reads
           what runs.
         </p>
+
+        <figure class="post-figure">
+          <img
+            src="../images/console-component.png"
+            alt="The detail pane for the MCPComponent binding, with a Contains section listing the bindings it contributed: the progress binding and the MCP server."
+            loading="lazy"
+          />
+          <figcaption>
+            Provenance from a tag: a component's detail lists what it
+            <em>Contains</em>, derived from the <code>fromComponent</code> tag on
+            each contributed binding — no component instance is resolved.
+          </figcaption>
+        </figure>
 
         <div class="callout">
           <p>
