@@ -19,6 +19,14 @@ const out = path.join(root, 'website', 'dist');
 const GITHUB = 'https://github.com/ninemindai/agentback';
 const DOMAIN = 'agentback.dev';
 
+// Cloudflare Web Analytics beacon token. Paste yours from the Cloudflare
+// dashboard: Web Analytics → agentback.dev → JS snippet → the "token" value
+// inside data-cf-beacon. It's public by design (it ships in every page's
+// HTML), so committing it is fine. Leave '' to skip injection (e.g. local
+// builds); the CF_WEB_ANALYTICS_TOKEN env var overrides this constant.
+const CF_WEB_ANALYTICS_TOKEN =
+  process.env.CF_WEB_ANALYTICS_TOKEN || '6428f6554fc647d8b84410a726fc0f6a';
+
 // Markdown sources, repo-relative. Each becomes docs/<path>.html.
 const DOC_PAGES = [
   'docs/README.md',
@@ -438,6 +446,28 @@ const stampStylesheets = dir => {
   }
 };
 stampStylesheets(out);
+
+// 6. Cloudflare Web Analytics: inject the beacon into every page (homepage,
+// generated docs, copied blog) in one post-build pass — same shape as the
+// cache-busting walk above. The token is public, so it's safe in the markup.
+if (CF_WEB_ANALYTICS_TOKEN) {
+  const beacon =
+    `<script defer src="https://static.cloudflareinsights.com/beacon.min.js" ` +
+    `data-cf-beacon='{"token":"${CF_WEB_ANALYTICS_TOKEN}"}'></script>`;
+  const injectBeacon = dir => {
+    for (const entry of fs.readdirSync(dir, {withFileTypes: true})) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        injectBeacon(file);
+      } else if (entry.name.endsWith('.html')) {
+        const html = fs.readFileSync(file, 'utf8');
+        if (html.includes('cloudflareinsights.com')) continue; // idempotent
+        fs.writeFileSync(file, html.replace('</head>', `  ${beacon}\n  </head>`));
+      }
+    }
+  };
+  injectBeacon(out);
+}
 
 const count = DOC_PAGES.length;
 console.log(
