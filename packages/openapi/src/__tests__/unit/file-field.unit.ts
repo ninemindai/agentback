@@ -6,7 +6,12 @@ import {describe, it, expect} from 'vitest';
 import {z} from 'zod';
 import {api, post} from '../../decorators/index.js';
 import {getControllerSpec} from '../../controller-spec.js';
-import {fileField, isUploadedFile, type UploadedFile} from '../../file-field.js';
+import {
+  fileField,
+  fileFieldsOf,
+  isUploadedFile,
+  type UploadedFile,
+} from '../../file-field.js';
 
 const aFile = (over: Partial<UploadedFile> = {}): UploadedFile => ({
   filename: 'photo.png',
@@ -38,6 +43,26 @@ describe('fileField — runtime validation', () => {
     expect(f.safeParse(aFile({mimeType: 'application/pdf'})).success).toBe(
       false,
     );
+  });
+});
+
+describe('fileFieldsOf — body discovery', () => {
+  it('finds file fields and their options on an object body', () => {
+    const body = z.object({
+      avatar: fileField({maxSize: 2048, mimeTypes: ['image/png']}),
+      doc: fileField(),
+      title: z.string(),
+    });
+    const found = fileFieldsOf(body);
+    expect(found.map(f => f.name).sort()).toEqual(['avatar', 'doc']);
+    const avatar = found.find(f => f.name === 'avatar')!;
+    expect(avatar.options).toEqual({maxSize: 2048, mimeTypes: ['image/png']});
+  });
+
+  it('returns [] for a body with no file fields or a non-object', () => {
+    expect(fileFieldsOf(z.object({title: z.string()}))).toEqual([]);
+    expect(fileFieldsOf(z.string())).toEqual([]);
+    expect(fileFieldsOf(undefined)).toEqual([]);
   });
 });
 

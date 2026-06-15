@@ -59,6 +59,15 @@ export function isUploadedFile(v: unknown): v is UploadedFile {
  *   @post('/photos', {body: Upload, response: Photo})
  *   async create(input: {body: z.infer<typeof Upload>}) { … input.body.file.size … }
  */
+/**
+ * Runtime config side-table keyed by the exact schema instance `fileField`
+ * returns. Lets the multipart parser discover a body's file fields and their
+ * limits (`maxSize`, `mimeTypes`) without those non-standard constraints
+ * leaking into the emitted OpenAPI schema (the schema carries only the
+ * standard `format: binary`).
+ */
+const FILE_FIELD_REGISTRY = new WeakMap<object, FileFieldOptions>();
+
 export function fileField(opts: FileFieldOptions = {}): ZodType<UploadedFile> {
   let schema: ZodType<UploadedFile> = z.custom<UploadedFile>(isUploadedFile, {
     message: 'Expected an uploaded file',
@@ -75,9 +84,36 @@ export function fileField(opts: FileFieldOptions = {}): ZodType<UploadedFile> {
       message: `Unsupported content type (allowed: ${allowed.join(', ')})`,
     });
   }
-  return schema.meta({
+  const out = schema.meta({
     type: 'string',
     format: 'binary',
     ...(opts.description ? {description: opts.description} : {}),
   }) as ZodType<UploadedFile>;
+  FILE_FIELD_REGISTRY.set(out, opts);
+  return out;
+}
+
+/** A file field discovered on a body schema. */
+export interface FileFieldEntry {
+  name: string;
+  options: FileFieldOptions;
+}
+
+/**
+ * Discover the `fileField()` properties of a request-body schema (a `z.object`
+ * root). Returns each field's form name and its limits so the multipart parser
+ * can configure itself from the same declaration that drives validation +
+ * OpenAPI. Non-object schemas (or objects with no file fields) return `[]`.
+ * File fields must be declared directly on the object (not wrapped in
+ * `.optional()`/`.default()`).
+ */
+export function fileFieldsOf(body: unknown): FileFieldEntry[] {
+  const shape = (body as {shape?: Record<string, object>} | undefined)?.shape;
+  if (!shape || typeof shape !== 'object') return [];
+  const out: FileFieldEntry[] = [];
+  for (const [name, prop] of Object.entries(shape)) {
+    const options = FILE_FIELD_REGISTRY.get(prop);
+    if (options) out.push({name, options});
+  }
+  return out;
 }
