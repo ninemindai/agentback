@@ -1,0 +1,36 @@
+{
+  "name": "@agentback/files",
+  "version": "0.2.2",
+  "description": "Transport-agnostic file storage port (FileStore) with an in-memory adapter",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@agentback/core": "workspace:~",
+    "tslib": "^2.8.1"
+  },
+  "devDependencies": {
+    "vitest": "~4.1.8"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -33,6 +33,7 @@
     {"path": "packages/plugin"},
     {"path": "packages/common"},
     {"path": "packages/messaging"},
+    {"path": "packages/files"},
     {"path": "packages/metering"},
     {"path": "packages/payments"},
     {"path": "packages/messaging-bullmq"},
