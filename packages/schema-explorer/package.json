@@ -1,6 +1,6 @@
 {
   "name": "@agentback/schema-explorer",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Schema/domain entity explorer: every Zod schema as a node, with provenance edges to every REST route, MCP tool, and Drizzle table that uses it",
   "type": "module",
   "main": "dist/index.js",

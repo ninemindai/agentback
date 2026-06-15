@@ -1,6 +1,6 @@
 {
   "name": "@agentback/config",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Zod-validated, env-aware config loader (JSONC + YAML) with layered overlays and DI bindings",
   "type": "module",
   "main": "dist/index.js",
