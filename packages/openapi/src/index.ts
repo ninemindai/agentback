@@ -6,6 +6,7 @@ export * from './types.js';
 export * from './keys.js';
 export * from './standard-schema.js';
 export * from './zod-bridge.js';
+export * from './file-field.js';
 export * from './schema-binding.js';
 export * from './agent-error.js';
 export * from './controller-spec.js';

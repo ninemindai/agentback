@@ -133,11 +133,17 @@ function operationFromOptions(
   if (parameters.length) operation.parameters = parameters;
 
   if (options.body) {
+    const bodySchema = schemaToOpenApiSchema(options.body);
+    // A `fileField()` emits `format: binary` (via Zod meta); its presence flips
+    // the request body to multipart/form-data. Otherwise it's JSON.
+    const mediaType = hasBinaryProperty(bodySchema)
+      ? 'multipart/form-data'
+      : 'application/json';
     const requestBody: RequestBodyObject = {
       required: !isOptionalSchema(options.body),
       content: {
-        'application/json': {
-          schema: schemaToOpenApiSchema(options.body),
+        [mediaType]: {
+          schema: bodySchema,
         },
       },
     };
@@ -340,4 +346,22 @@ function promoteItemSchemas(doc: OpenApiSpec): void {
       }
     }
   }
+}
+
+/**
+ * Walk an emitted OpenAPI schema for any `format: 'binary'` property (produced
+ * by {@link fileField}). Its presence marks the request body as
+ * `multipart/form-data` rather than `application/json`.
+ */
+function hasBinaryProperty(schema: unknown): boolean {
+  if (!schema || typeof schema !== 'object') return false;
+  const s = schema as {
+    format?: string;
+    properties?: Record<string, unknown>;
+    items?: unknown;
+  };
+  if (s.format === 'binary') return true;
+  if (s.properties) return Object.values(s.properties).some(hasBinaryProperty);
+  if (s.items) return hasBinaryProperty(s.items);
+  return false;
 }
