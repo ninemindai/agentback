@@ -50,16 +50,30 @@ The core product claim is **one schema, every boundary**. Compared with common
 Node/TypeScript service stacks, AgentBack optimizes for teams whose APIs
 are consumed by both applications and AI agents.
 
-| Stack             | Runtime contract | Service contract             | Agent/tool contract        |
-| ----------------- | ---------------- | ---------------------------- | -------------------------- |
-| Express + raw Zod | Hand-wired Zod   | Hand-written OpenAPI         | Hand-written tool manifest |
-| tRPC              | Zod              | TypeScript-only              | Custom adapter             |
-| NestJS            | class-validator  | Swagger decorators           | Custom adapter             |
-| FastAPI           | Pydantic         | OpenAPI from the same models | Custom adapter             |
-| **AgentBack**     | **Zod**          | **OpenAPI from same Zod**    | **MCP from same Zod**      |
+| Stack             | Runtime contract     | Service contract               | Agent/tool contract        |
+| ----------------- | -------------------- | ------------------------------ | -------------------------- |
+| Express + raw Zod | Hand-wired Zod       | Hand-written OpenAPI           | Hand-written tool manifest |
+| Fastify           | JSON Schema/TypeBox  | OpenAPI via `@fastify/swagger` | Custom adapter             |
+| Hono              | Zod (validator)      | OpenAPI via `@hono/zod-openapi`| Custom adapter             |
+| tRPC              | Zod                  | TypeScript-only                | Custom adapter             |
+| NestJS            | class-validator      | Swagger decorators             | Custom adapter             |
+| FastAPI           | Pydantic             | OpenAPI from the same models   | Custom adapter             |
+| **AgentBack**     | **Zod**              | **OpenAPI from same Zod**      | **MCP from same Zod**      |
 
 Use it when you need HTTP APIs, MCP tools, docs, typed clients, policy checks,
 and usage rails to stay coherent as the system grows.
+
+**Fastify and Hono are transport runtimes, not competitors.** They solve HTTP
+plumbing — Fastify is fast Node with a plugin ecosystem; Hono is an ultrafast,
+Web-standard, multi-runtime core. AgentBack solves the layer above: one Zod
+schema projected to REST, OpenAPI, *and* MCP through a DI container, sitting on
+a host beneath it (Express today). Hono is the closest sibling in philosophy —
+a Web-standard core, codegen-free typed RPC (mirrored by `@agentback/client`),
+and Zod validation — and AgentBack shares those while adding the MCP tool
+boundary and DI container Hono leaves to the app. Making the REST core
+host-portable (a runtime-neutral `Request → Response` handler that can run on a
+Web-standard runtime like Hono's, or a Fastify host) is active design work, so
+the projection stays the same wherever it runs.
 
 ## Documentation
 
