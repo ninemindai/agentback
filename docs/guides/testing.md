@@ -14,6 +14,23 @@ Naming conventions: `*.unit.ts` for tests of one module in isolation,
 `*.integration.ts` for tests that boot servers, under
 `src/__tests__/unit/` and `src/__tests__/integration/`.
 
+## Gotcha: `TypeError: <name> is not a function` at a decorator line
+
+Decorators live in specific packages — import them from the right one:
+
+- REST verb decorators — `api`, `get`, `post`, `put`, `patch`, `del` — from **`@agentback/openapi`** (not `@agentback/rest`).
+- MCP decorators — `mcpServer`, `tool`, `resource`, `prompt` — from **`@agentback/mcp`**.
+- DI decorators — `injectable`, `inject` — from **`@agentback/context`**.
+
+Import a decorator from the wrong package and it resolves to `undefined`, so
+`@get(...)` throws `TypeError: get is not a function` the moment the class is
+defined. Under `tsc` this is a clean compile error (`TS2305: has no exported
+member 'get'`) — but if your project's test runner transforms `.ts` through
+**esbuild/SWC** (Vitest, Vite, `tsx`), it does **not** type-check, so the same
+mistake only surfaces at runtime as the confusing "not a function". If you hit
+that, check the import source first. (AgentBack's decorators run correctly under
+esbuild — it's the import, not the transform.)
+
 ## `createTestApp` — boot once, get every surface
 
 `@agentback/testing` boots your real application class with test-safe
