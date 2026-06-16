@@ -35,6 +35,12 @@ const EchoOut = z.object({echoed: z.string()});
 const MakePath = z.object({name: z.string().min(1).max(64)});
 const Made = z.object({made: z.string()});
 
+const SearchQuery = z.object({
+  q: z.string(),
+  tag: z.array(z.string()).optional(),
+});
+const SearchOut = z.object({q: z.string(), tags: z.array(z.string())});
+
 @api({basePath: '/p'})
 class ParityController {
   // Success route: path param + response schema.
@@ -51,6 +57,14 @@ class ParityController {
     body: z.infer<typeof EchoIn>;
   }): Promise<z.infer<typeof EchoOut>> {
     return {echoed: input.body.text};
+  }
+
+  // Query-param parity: single-value + multi-value (repeated key → array).
+  @get('/search', {query: SearchQuery, response: SearchOut})
+  async search(input: {
+    query: z.infer<typeof SearchQuery>;
+  }): Promise<z.infer<typeof SearchOut>> {
+    return {q: input.query.q, tags: input.query.tag ?? []};
   }
 
   // AgentError route: handler throws a client-correctable domain error.
@@ -109,6 +123,13 @@ describe('Express<->Web dispatch parity', () => {
       200,
     );
     route('POST', '/echo', 'echo', {body: EchoIn, response: EchoOut}, 200);
+    route(
+      'GET',
+      '/search',
+      'search',
+      {query: SearchQuery, response: SearchOut},
+      200,
+    );
     route('GET', '/boom', 'boom', {}, 200);
     route(
       'POST',
@@ -174,5 +195,27 @@ describe('Express<->Web dispatch parity', () => {
     expect(r2.status).toBe(r1.status);
     expect(b2).toEqual(r1.body);
     expect(r1.status).toBe(400);
+  });
+
+  it('query single-value param parity', async () => {
+    const r1 = await http.get('/p/search?q=hello');
+    const r2 = await web.fetch(new Request('http://x/p/search?q=hello'));
+    const b2 = await r2.json();
+    expect(r2.status).toBe(r1.status);
+    expect(b2).toEqual(r1.body);
+    expect(r1.status).toBe(200);
+    expect(r1.body).toEqual({q: 'hello', tags: []});
+  });
+
+  it('query multi-value param parity (repeated key → array)', async () => {
+    const qs = 'q=hello&tag=a&tag=b';
+    const r1 = await http.get(`/p/search?${qs}`);
+    const r2 = await web.fetch(new Request(`http://x/p/search?${qs}`));
+    const b2 = await r2.json();
+    expect(r2.status).toBe(r1.status);
+    expect(b2).toEqual(r1.body);
+    expect(r1.status).toBe(200);
+    // Verify the array actually arrived — test would fail if repeats were collapsed.
+    expect(r1.body).toEqual({q: 'hello', tags: ['a', 'b']});
   });
 });
