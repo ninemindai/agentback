@@ -19,8 +19,12 @@ export interface FetchHostOptions<T> {
 }
 
 function defaultNotFound(): Response {
+  // Mirror the REST error wire format, which nests the envelope under `error`
+  // (see RestServer.sendError) — so a no-match 404 matches what a thrown
+  // not-found AgentError produces. AgentBack overrides `notFound` with the full
+  // buildErrorEnvelope output in a later part.
   return Response.json(
-    {code: 'not_found', message: 'Not Found'},
+    {error: {code: 'not_found', message: 'Not Found'}},
     {status: 404},
   );
 }
@@ -28,8 +32,8 @@ function defaultNotFound(): Response {
 /**
  * Compose a {@link Router} and a {@link Dispatch} into a {@link FetchHost}.
  * On Workers/Deno/Bun you export `host.fetch`; in tests you call it directly
- * with a `Request` and assert the `Response`. The 404 default mirrors the flat
- * `{code, message}` system error-envelope shape; AgentBack overrides `notFound`
+ * with a `Request` and assert the `Response`. The 404 default mirrors the REST
+ * error wire format (`{error: {code, message}}`); AgentBack overrides `notFound`
  * with `buildErrorEnvelope` in a later part.
  */
 export function createFetchHost<T>(opts: FetchHostOptions<T>): FetchHost {

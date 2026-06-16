@@ -22,14 +22,16 @@ describe('createFetchHost', () => {
     expect(await res.json()).toEqual({value: 'greet', params: {name: 'Ada'}});
   });
 
-  it('returns a flat 404 envelope when nothing matches', async () => {
+  it('returns the nested 404 envelope when nothing matches', async () => {
     const host = createFetchHost({
       router: new Router<string>(),
       dispatch: async () => Response.json({}),
     });
     const res = await host.fetch(new Request('http://x/missing'));
     expect(res.status).toBe(404);
-    expect(await res.json()).toEqual({code: 'not_found', message: 'Not Found'});
+    expect(await res.json()).toEqual({
+      error: {code: 'not_found', message: 'Not Found'},
+    });
   });
 
   it('honors a custom notFound handler', async () => {

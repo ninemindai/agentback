@@ -87,10 +87,12 @@ describe('createNodeListener (end-to-end)', () => {
     expect(await res.json()).toEqual({echoed: 'hi'});
   });
 
-  it('returns the flat 404 envelope for unmatched paths', async () => {
+  it('returns the nested 404 envelope for unmatched paths', async () => {
     const res = await fetch(`${base}/nope`);
     expect(res.status).toBe(404);
-    expect(await res.json()).toEqual({code: 'not_found', message: 'Not Found'});
+    expect(await res.json()).toEqual({
+      error: {code: 'not_found', message: 'Not Found'},
+    });
   });
 
   it('preserves multiple Set-Cookie headers (D1 regression)', async () => {
