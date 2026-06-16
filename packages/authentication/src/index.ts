@@ -3,6 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 export * from './types.js';
+export * from './auth-request.js';
 export * from './keys.js';
 export * from './decorators/index.js';
 export * from './resolver.js';

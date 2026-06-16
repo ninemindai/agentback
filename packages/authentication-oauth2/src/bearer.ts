@@ -2,7 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import type {Request} from 'express';
+import type {AuthRequest} from '@agentback/authentication';
 import createError from 'http-errors';
 
 /**
@@ -10,8 +10,8 @@ import createError from 'http-errors';
  * 401 when it is absent, not a `Bearer` scheme, or empty. Shared by the opaque
  * and JWT OAuth2 strategies so both reject malformed headers identically.
  */
-export function extractBearerToken(request: Request): string {
-  const header = request.headers.authorization;
+export function extractBearerToken(request: AuthRequest): string {
+  const header = request.headerValue('authorization');
   if (!header) {
     throw createError(401, 'Authorization header not found.');
   }

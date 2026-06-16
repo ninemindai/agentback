@@ -2,12 +2,12 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import type {Request} from 'express';
 import {
   securityId,
   type ClientApplication,
   type UserProfile,
 } from '@agentback/security';
+import type {AuthRequest} from './auth-request.js';
 
 /**
  * Authentication metadata attached by the `@authenticate` decorator.
@@ -42,14 +42,14 @@ export interface AuthenticationStrategy {
   /** Unique identifier (matches the `@authenticate(<name>)` argument). */
   name: string;
   authenticate(
-    request: Request,
+    request: AuthRequest,
     options?: Record<string, unknown>,
   ): Promise<UserProfile | AuthenticationResult | undefined>;
 }
 
 /** Function form used by the REST interceptor. */
 export type AuthenticateFn = (
-  request: Request,
+  request: AuthRequest,
 ) => Promise<UserProfile | undefined>;
 
 /**
@@ -69,7 +69,7 @@ export const ANONYMOUS_USER: UserProfile = {
  */
 export type ApiKeyVerifier = (
   apiKey: string,
-  request: Request,
+  request: AuthRequest,
 ) => Promise<UserProfile | undefined> | UserProfile | undefined;
 
 /**
@@ -81,5 +81,5 @@ export type ApiKeyVerifier = (
 export type ClientCredentialsVerifier = (
   clientId: string,
   clientSecret: string,
-  request: Request,
+  request: AuthRequest,
 ) => Promise<ClientApplication | undefined> | ClientApplication | undefined;

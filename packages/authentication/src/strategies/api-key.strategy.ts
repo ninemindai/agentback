@@ -3,9 +3,9 @@
 // License text available at https://opensource.org/license/mit/
 
 import {inject} from '@agentback/context';
-import type {Request} from 'express';
 import type {UserProfile} from '@agentback/security';
 import {API_KEY_VERIFIER} from '../keys.js';
+import type {AuthRequest} from '../auth-request.js';
 import type {ApiKeyVerifier, AuthenticationStrategy} from '../types.js';
 
 /**
@@ -35,13 +35,11 @@ export class ApiKeyAuthenticationStrategy implements AuthenticationStrategy {
     private verify?: ApiKeyVerifier,
   ) {}
 
-  async authenticate(request: Request): Promise<UserProfile | undefined> {
-    const headerKey = request.headers['x-api-key'];
-    const queryKey = (request.query as Record<string, unknown> | undefined)
-      ?.apiKey;
+  async authenticate(request: AuthRequest): Promise<UserProfile | undefined> {
+    const headerKey = request.headerValue('x-api-key');
+    const queryKey = request.query.apiKey;
     const apiKey =
-      (typeof headerKey === 'string' ? headerKey : undefined) ??
-      (typeof queryKey === 'string' ? queryKey : undefined);
+      headerKey ?? (typeof queryKey === 'string' ? queryKey : undefined);
 
     if (!apiKey) throw new Error('Missing API key');
     if (!this.verify) {

@@ -4,12 +4,22 @@
 
 import {describe, it, expect} from 'vitest';
 import {securityId, type UserProfile} from '@agentback/security';
-import type {Request} from 'express';
 import {ANONYMOUS_USER} from '../../types.js';
+import type {AuthRequest} from '../../auth-request.js';
 import {AnonymousAuthenticationStrategy} from '../../strategies/anonymous.strategy.js';
 import {ApiKeyAuthenticationStrategy} from '../../strategies/api-key.strategy.js';
 
-const req = (init: Partial<Request>): Request => init as Request;
+// Build a neutral AuthRequest from a plain {headers, query} init — the shape
+// strategies actually read, independent of any transport.
+const req = (init: {
+  headers?: Record<string, string>;
+  query?: Record<string, string | string[]>;
+  method?: string;
+}): AuthRequest => ({
+  method: init.method ?? 'GET',
+  headerValue: name => init.headers?.[name.toLowerCase()],
+  query: init.query ?? {},
+});
 
 describe('AnonymousAuthenticationStrategy', () => {
   it('returns the anonymous sentinel without throwing', async () => {

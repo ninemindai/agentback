@@ -2,8 +2,8 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import type {Request} from 'express';
 import type {UserProfile} from '@agentback/security';
+import type {AuthRequest} from '../auth-request.js';
 import {ANONYMOUS_USER, type AuthenticationStrategy} from '../types.js';
 
 /**
@@ -15,7 +15,7 @@ import {ANONYMOUS_USER, type AuthenticationStrategy} from '../types.js';
 export class AnonymousAuthenticationStrategy implements AuthenticationStrategy {
   name = 'anonymous';
 
-  async authenticate(_request: Request): Promise<UserProfile | undefined> {
+  async authenticate(_request: AuthRequest): Promise<UserProfile | undefined> {
     return ANONYMOUS_USER;
   }
 }

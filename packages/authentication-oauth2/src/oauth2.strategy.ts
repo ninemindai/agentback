@@ -5,10 +5,10 @@
 import {ContextTags, inject, injectable} from '@agentback/context';
 import {
   AuthenticationBindings,
+  type AuthRequest,
   type AuthenticationResult,
   type AuthenticationStrategy,
 } from '@agentback/authentication';
-import type {Request} from 'express';
 import {OAuth2Bindings} from './keys.js';
 import type {OAuth2IntrospectionService} from './introspection.service.js';
 import {claimsToAuthResult} from './principal-mapping.js';
@@ -38,7 +38,7 @@ export class OAuth2AuthenticationStrategy implements AuthenticationStrategy {
     @inject(OAuth2Bindings.SERVICE) private service: OAuth2IntrospectionService,
   ) {}
 
-  async authenticate(request: Request): Promise<AuthenticationResult> {
+  async authenticate(request: AuthRequest): Promise<AuthenticationResult> {
     const token = extractBearerToken(request);
     const claims = await this.service.introspect(token);
     return claimsToAuthResult(claims);

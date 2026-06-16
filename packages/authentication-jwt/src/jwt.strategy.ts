@@ -4,11 +4,13 @@
 
 import {ContextTags, injectable} from '@agentback/context';
 import {inject} from '@agentback/context';
-import type {AuthenticationStrategy} from '@agentback/authentication';
+import type {
+  AuthRequest,
+  AuthenticationStrategy,
+} from '@agentback/authentication';
 import {AuthenticationBindings} from '@agentback/authentication';
 import type {UserProfile} from '@agentback/security';
 import createError from 'http-errors';
-import type {Request} from 'express';
 import {JWTBindings} from './keys.js';
 import {JWTService} from './jwt.service.js';
 
@@ -23,13 +25,13 @@ export class JWTAuthenticationStrategy implements AuthenticationStrategy {
 
   constructor(@inject(JWTBindings.SERVICE) private tokenService: JWTService) {}
 
-  async authenticate(request: Request): Promise<UserProfile | undefined> {
+  async authenticate(request: AuthRequest): Promise<UserProfile | undefined> {
     const token = this.extractToken(request);
     return this.tokenService.verifyToken(token);
   }
 
-  private extractToken(request: Request): string {
-    const header = request.headers.authorization;
+  private extractToken(request: AuthRequest): string {
+    const header = request.headerValue('authorization');
     if (!header) {
       throw createError(401, 'Authorization header not found.');
     }

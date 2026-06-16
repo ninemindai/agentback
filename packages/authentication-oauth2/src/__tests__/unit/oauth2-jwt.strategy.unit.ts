@@ -3,9 +3,11 @@
 // License text available at https://opensource.org/license/mit/
 
 import {describe, it, expect} from 'vitest';
-import type {Request} from 'express';
 import {securityId, type UserProfile} from '@agentback/security';
-import type {AuthenticationResult} from '@agentback/authentication';
+import type {
+  AuthRequest,
+  AuthenticationResult,
+} from '@agentback/authentication';
 import createError from 'http-errors';
 import type {JWTPayload} from 'jose';
 import {OAuth2JwtAuthenticationStrategy} from '../../oauth2-jwt.strategy.js';
@@ -16,8 +18,13 @@ function stub(payload: JWTPayload): JwtAccessTokenService {
   return {verify: async () => payload} as unknown as JwtAccessTokenService;
 }
 
-function req(authorization?: string): Request {
-  return {headers: authorization ? {authorization} : {}} as Request;
+function req(authorization?: string): AuthRequest {
+  return {
+    method: 'GET',
+    headerValue: name =>
+      name.toLowerCase() === 'authorization' ? authorization : undefined,
+    query: {},
+  };
 }
 
 describe('OAuth2JwtAuthenticationStrategy', () => {
