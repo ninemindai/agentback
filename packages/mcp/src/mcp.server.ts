@@ -743,6 +743,7 @@ export class MCPServer implements Server {
       description?: string;
       inputSchema: Record<string, unknown>;
       outputSchema?: Record<string, unknown>;
+      _meta?: Record<string, unknown>;
     }
     const visible = new Map<
       string,
@@ -836,6 +837,20 @@ export class MCPServer implements Server {
             : {}),
           inputSchema,
           ...(outputSchema ? {outputSchema} : {}),
+          // MCP Apps (SEP-1865): link the tool to its ui:// widget so a
+          // conformant host renders the resource for this tool's results.
+          ...(t.meta.ui
+            ? {
+                _meta: {
+                  ui: {
+                    resourceUri: t.meta.ui.resourceUri,
+                    ...(t.meta.ui.visibility
+                      ? {visibility: t.meta.ui.visibility}
+                      : {}),
+                  },
+                },
+              }
+            : {}),
         },
       });
     }

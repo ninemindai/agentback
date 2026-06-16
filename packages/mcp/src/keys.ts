@@ -143,10 +143,45 @@ export type McpDispatchHook = (
   next: () => Promise<unknown>,
 ) => Promise<unknown>;
 
+/**
+ * Where a host may surface an MCP Apps widget (SEP-1865). `'model'` lets the
+ * model reference the widget; `'app'` lets the host render it in the app
+ * surface. Omitted → host default policy.
+ */
+export type ToolUiVisibility = 'model' | 'app';
+
+/**
+ * MCP Apps (SEP-1865) UI link for a tool. Declared via `@tool(..., {ui})` and
+ * emitted on the tool's `tools/list` entry as `_meta.ui`. The `resourceUri`
+ * names a `@resource('ui://…', {mimeType: MCP_APP_MIME_TYPE})` that returns the
+ * widget HTML; the widget renders the tool result's `structuredContent` (so the
+ * tool should also declare an `output:` schema).
+ */
+export interface ToolUiMeta {
+  /** `ui://` resource URI of the widget HTML this tool renders. */
+  resourceUri: string;
+  /** Where the host may surface the widget; omitted → host default policy. */
+  visibility?: ToolUiVisibility[];
+}
+
+/**
+ * MIME type marking an HTML `@resource` as an MCP Apps widget (SEP-1865).
+ * Use it on the `@resource('ui://…', {mimeType: MCP_APP_MIME_TYPE})` that a
+ * tool's `ui.resourceUri` points at, so conformant hosts render it in an
+ * iframe instead of treating it as opaque text.
+ */
+export const MCP_APP_MIME_TYPE = 'text/html;profile=mcp-app';
+
 export interface ToolMetadata {
   name: string;
   description?: string;
   title?: string;
+  /**
+   * MCP Apps (SEP-1865) UI link. When set, the tool's `tools/list` entry
+   * carries `_meta.ui.resourceUri` (+ optional `visibility`) so a conformant
+   * host renders the named `ui://` widget for this tool's results.
+   */
+  ui?: ToolUiMeta;
   /**
    * Optional schema for the tool's single input argument — a Zod object or
    * any Standard Schema V1 (`~standard`) vendor able to emit JSON Schema

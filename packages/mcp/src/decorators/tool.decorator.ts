@@ -5,7 +5,7 @@
 import {describeInjectedArguments} from '@agentback/context';
 import {MethodDecoratorFactory} from '@agentback/metadata';
 import type {InferSchema, SchemaLike} from '@agentback/openapi';
-import {MCPKeys, ToolMetadata} from '../keys.js';
+import {MCPKeys, ToolMetadata, ToolUiMeta} from '../keys.js';
 
 export interface ToolOptions<S extends SchemaLike> {
   /**
@@ -32,6 +32,14 @@ export interface ToolOptions<S extends SchemaLike> {
    * inputSchema automatically. `{ttlMs}` overrides the 5-minute lifetime.
    */
   confirm?: boolean | {ttlMs?: number};
+  /**
+   * MCP Apps (SEP-1865) UI link: render this tool's results as a widget. The
+   * `resourceUri` names a `@resource('ui://…', {mimeType: MCP_APP_MIME_TYPE})`
+   * that returns the widget HTML; pair it with an `output:` schema so the
+   * widget has `structuredContent` to bind. Emitted as `_meta.ui` on the
+   * tool's `tools/list` entry.
+   */
+  ui?: ToolUiMeta;
 }
 
 export interface ToolOptionsWithOutput<
@@ -53,6 +61,8 @@ export interface ToolOptionsNoInput {
   scope?: string;
   /** Dangerous tool: require a confirmation round-trip (see `ToolOptions.confirm`). */
   confirm?: boolean | {ttlMs?: number};
+  /** MCP Apps (SEP-1865) UI link for this tool's results (see `ToolOptions.ui`). */
+  ui?: ToolUiMeta;
 }
 
 /**
@@ -134,6 +144,7 @@ export function tool(
     title?: string;
     scope?: string;
     confirm?: boolean | {ttlMs?: number};
+    ui?: ToolUiMeta;
   } = {},
 ): MethodDecorator {
   return function toolDecorator(
@@ -165,6 +176,7 @@ export function tool(
       output: options.output,
       scope: options.scope,
       confirm: options.confirm,
+      ui: options.ui,
       methodName,
     };
     MethodDecoratorFactory.createDecorator<ToolMetadata>(MCPKeys.TOOL, meta, {
