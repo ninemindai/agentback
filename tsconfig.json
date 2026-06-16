@@ -43,6 +43,7 @@
     {"path": "packages/testing"},
     {"path": "packages/create-agentback"},
     {"path": "examples/hello-rest"},
+    {"path": "examples/hello-hosts"},
     {"path": "examples/hello-mcp"},
     {"path": "examples/hello-hybrid"},
     {"path": "examples/hello-drizzle"},
