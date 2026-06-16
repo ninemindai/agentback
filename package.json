@@ -7,7 +7,7 @@
   "engines": {
     "node": ">=22.13"
   },
-  "packageManager": "pnpm@11.5.3",
+  "packageManager": "pnpm@11.7.0",
   "scripts": {
     "build": "tsc -b && pnpm -r run build:client",
     "build:watch": "tsc -b --watch",
@@ -26,13 +26,13 @@
   },
   "devDependencies": {
     "@types/node": "^24.12.4",
-    "@typescript-eslint/eslint-plugin": "~8.60.1",
-    "@typescript-eslint/parser": "~8.60.1",
-    "eslint": "~10.4.1",
+    "@typescript-eslint/eslint-plugin": "~8.61.1",
+    "@typescript-eslint/parser": "~8.61.1",
+    "eslint": "~10.5.0",
     "marked": "^18.0.5",
-    "prettier": "^3.8.3",
+    "prettier": "^3.8.4",
     "typescript": "~6.0.3",
-    "vitest": "~4.1.8"
+    "vitest": "~4.1.9"
   },
   "license": "MIT",
   "copyright.owner": "Ninemind.ai",

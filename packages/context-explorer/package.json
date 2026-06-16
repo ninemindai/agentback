@@ -39,16 +39,16 @@
   },
   "devDependencies": {
     "@agentback/testlab": "workspace:~",
-    "@dagrejs/dagre": "^1.1.4",
+    "@dagrejs/dagre": "^3.0.0",
     "@types/react": "~19.2.17",
     "@types/react-dom": "~19.2.3",
     "@types/supertest": "^7.2.0",
     "@xyflow/react": "~12.11.0",
-    "esbuild": "~0.28.0",
+    "esbuild": "~0.28.1",
     "react": "~19.2.7",
     "react-dom": "~19.2.7",
     "supertest": "^7.2.2",
-    "vitest": "~4.1.8"
+    "vitest": "~4.1.9"
   },
   "license": "MIT",
   "repository": {

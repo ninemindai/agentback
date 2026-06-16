@@ -22,7 +22,7 @@
   "dependencies": {
     "@agentback/rest": "workspace:~",
     "@types/express": "^5.0.6",
-    "rate-limiter-flexible": "~11.1.1",
+    "rate-limiter-flexible": "~11.2.0",
     "tslib": "^2.8.1"
   },
   "engines": {

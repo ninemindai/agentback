@@ -25,14 +25,14 @@
     "@types/debug": "^4.1.13",
     "debug": "^4.4.3",
     "hyperid": "^4.0.0",
-    "p-event": "^6.0.1",
+    "p-event": "^7.1.0",
     "tslib": "^2.8.1",
     "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@agentback/testlab": "workspace:~",
     "@types/uuid": "^11.0.0",
-    "vitest": "~4.1.8"
+    "vitest": "~4.1.9"
   },
   "engines": {
     "node": ">=22.13"

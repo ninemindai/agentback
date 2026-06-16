@@ -26,10 +26,10 @@
     "@agentback/metadata": "workspace:~",
     "@types/body-parser": "^1.19.6",
     "@types/express": "^5.0.6",
-    "@types/express-serve-static-core": "^4.19.0",
+    "@types/express-serve-static-core": "^5.1.1",
     "@types/http-errors": "^2.0.5",
     "@types/on-finished": "^2.3.5",
-    "body-parser": "^2.2.2",
+    "body-parser": "^2.3.0",
     "debug": "^4.4.3",
     "express": "^5.2.1",
     "http-errors": "^2.0.1",
@@ -41,7 +41,7 @@
     "@agentback/testlab": "workspace:~",
     "@types/debug": "^4.1.13",
     "@types/toposort": "^2.0.7",
-    "vitest": "~4.1.8"
+    "vitest": "~4.1.9"
   },
   "engines": {
     "node": ">=22.13"

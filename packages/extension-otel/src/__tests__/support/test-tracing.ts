@@ -16,6 +16,7 @@ import {
   SimpleSpanProcessor,
   type ReadableSpan,
 } from '@opentelemetry/sdk-trace-base';
+import {W3CTraceContextPropagator} from '@opentelemetry/core';
 
 /**
  * Minimal context manager for tests: tracks the active context across
@@ -77,13 +78,20 @@ export interface TestTracing {
  * Register a BasicTracerProvider + InMemorySpanExporter as the global OTel
  * SDK (with W3C tracecontext propagation and the sequential test context
  * manager). Call `reset()` after the suite to restore the no-op globals.
+ *
+ * SDK 2.x removed `BasicTracerProvider.register()` (it lives only on the
+ * node/web providers now), so we wire the three globals by hand via the
+ * `@opentelemetry/api` setters — including the W3C propagator that
+ * `register()` used to install by default (the trace-join tests need it).
  */
 export function setupTestTracing(): TestTracing {
   const exporter = new InMemorySpanExporter();
   const provider = new BasicTracerProvider({
     spanProcessors: [new SimpleSpanProcessor(exporter)],
   });
-  provider.register({contextManager: new TestContextManager()});
+  trace.setGlobalTracerProvider(provider);
+  otelContext.setGlobalContextManager(new TestContextManager().enable());
+  propagation.setGlobalPropagator(new W3CTraceContextPropagator());
   return {
     exporter,
     spans: () => exporter.getFinishedSpans(),

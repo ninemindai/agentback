@@ -82,7 +82,7 @@ describe('OTel REST middleware (integration)', () => {
     await waitFor(() => serverSpans(tracing).length === 1);
     const [span] = serverSpans(tracing);
     expect(span.spanContext().traceId).toBe(traceId);
-    expect(span.parentSpanId).toBe(parentSpanId);
+    expect(span.parentSpanContext?.spanId).toBe(parentSpanId);
   });
 
   it('marks 5xx responses with an ERROR span status', async () => {

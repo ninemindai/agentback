@@ -31,7 +31,7 @@
     "@agentback/mcp-http": "workspace:~",
     "@agentback/rest": "workspace:~",
     "@agentback/testlab": "workspace:~",
-    "vitest": "~4.1.8",
+    "vitest": "~4.1.9",
     "zod": "^4.4.3"
   },
   "license": "MIT",

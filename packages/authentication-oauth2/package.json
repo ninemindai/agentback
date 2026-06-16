@@ -33,7 +33,7 @@
   "devDependencies": {
     "@agentback/testlab": "workspace:~",
     "@types/http-errors": "^2.0.5",
-    "vitest": "~4.1.8"
+    "vitest": "~4.1.9"
   },
   "engines": {
     "node": ">=22.13"

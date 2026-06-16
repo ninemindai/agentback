@@ -30,7 +30,7 @@
     "@agentback/testlab": "workspace:~",
     "@types/debug": "^4.1.13",
     "@types/lodash-es": "^4.17.12",
-    "vitest": "~4.1.8"
+    "vitest": "~4.1.9"
   },
   "engines": {
     "node": ">=22.13"

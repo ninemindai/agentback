@@ -66,7 +66,9 @@ describe('OtelJobQueue', () => {
     const producer = tracing.spans().find(s => s.name === 'emails send')!;
     const consumer = tracing.spans().find(s => s.name === 'emails process')!;
     expect(consumer.spanContext().traceId).toBe(producer.spanContext().traceId);
-    expect(consumer.parentSpanId).toBe(producer.spanContext().spanId);
+    expect(consumer.parentSpanContext?.spanId).toBe(
+      producer.spanContext().spanId,
+    );
   });
 
   it('preserves caller-supplied meta while injecting trace context', async () => {

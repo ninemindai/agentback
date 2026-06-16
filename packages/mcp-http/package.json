@@ -28,7 +28,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/express": "^5.0.6",
     "express": "^5.2.1",
-    "rate-limiter-flexible": "~11.1.1",
+    "rate-limiter-flexible": "~11.2.0",
     "tslib": "^2.8.1"
   },
   "engines": {
@@ -36,7 +36,7 @@
   },
   "devDependencies": {
     "@agentback/testlab": "workspace:~",
-    "vitest": "~4.1.8",
+    "vitest": "~4.1.9",
     "zod": "^4.4.3"
   },
   "license": "MIT",

@@ -28,7 +28,7 @@
   "devDependencies": {
     "@agentback/testlab": "workspace:~",
     "@types/stoppable": "^1.1.3",
-    "vitest": "~4.1.8"
+    "vitest": "~4.1.9"
   },
   "engines": {
     "node": ">=22.13"
