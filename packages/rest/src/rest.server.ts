@@ -60,6 +60,7 @@ import express, {
   type Response,
 } from 'express';
 import type {Server as HttpServer} from 'http';
+import {Readable} from 'node:stream';
 import {
   RestBindings,
   RestMiddlewareGroups,
@@ -318,8 +319,20 @@ export class RestServer implements Server {
         // A body with a `fileField()` gets a per-route multipart parser mounted
         // ahead of the handler: it streams files to the bound FileStore and
         // merges UploadedFile handles into req.body for Zod validation.
+        //
+        // In web-dispatch mode the Web `RestHandler` parses multipart itself
+        // (via `parseWebMultipart` / `Request.formData()`), so we must NOT mount
+        // multer ahead of it — multer would consume the stream first. The
+        // web-mode handler streams the raw Express request into its Web Request
+        // instead (see `webRequestForWebDispatch`). A route kept on Express in
+        // web-mode (raw req/res injection, or a seam override) still needs
+        // multer, so mount it whenever the handler is the Express one.
         const fileFields = schemas.body ? fileFieldsOf(schemas.body) : [];
-        if (fileFields.length) {
+        const handlerIsWeb =
+          this.dispatchMode === 'web' &&
+          !injectsRawExpressObjects(ctor, methodName) &&
+          !this.overridesExpressDispatchSeam();
+        if (fileFields.length && !handlerIsWeb) {
           this.app[expressVerb](
             route,
             makeMultipartMiddleware(fileFields, this.context),
@@ -346,11 +359,9 @@ export class RestServer implements Server {
     const successStatus = lookupSuccessStatus(ctor, methodName);
     // Web-dispatch mode: route the matched request through the runtime-neutral
     // RestHandler pipeline instead of the Express invokeRoute path. Upload
-    // routes (fileField body) stay on Express even in web-mode — the Web path
-    // doesn't stream multipart bodies yet (Stage 3).
-    const isUpload = schemas.body
-      ? fileFieldsOf(schemas.body).length > 0
-      : false;
+    // routes (fileField body) now run on the Web path too — `parseWebMultipart`
+    // streams each file to the bound FileStore via `Request.formData()`, the
+    // runtime-neutral mirror of the Express multer parser.
     // Routes that reach for the raw Express request/response objects via
     // @inject(HTTP_REQUEST/HTTP_RESPONSE) are inherently Express-coupled — the
     // Web pipeline binds only WEB_REQUEST — so keep them on Express even in
@@ -358,7 +369,6 @@ export class RestServer implements Server {
     const usesRawExpress = injectsRawExpressObjects(ctor, methodName);
     if (
       this.dispatchMode === 'web' &&
-      !isUpload &&
       !usesRawExpress &&
       !this.overridesExpressDispatchSeam()
     ) {
@@ -1245,20 +1255,32 @@ function webRequestForWebDispatch(req: Request): globalThis.Request {
   }
 
   const init: RequestInit = {method: req.method, headers};
-  // GET/HEAD can't carry a body; for everything else, re-serialize the parsed
-  // body so RestHandler's `await req.json()` reads the SAME value the Express
-  // path validates off `req.body`. `express.json` yields an object/array (it
-  // sets `{}` for an empty body), which we serialize verbatim — including `{}`,
-  // so the Web path's missing-field issue path matches Express's (validating
-  // `{}` vs `undefined` against a `z.object` produces different Zod issues).
   const method = req.method.toUpperCase();
-  if (method !== 'GET' && method !== 'HEAD' && req.body != null) {
-    const body = req.body;
-    const isJsonLike = typeof body === 'object' && !Buffer.isBuffer(body);
-    if (isJsonLike) {
-      init.body = JSON.stringify(body);
-      if (!headers.has('content-type')) {
-        headers.set('content-type', 'application/json');
+  const contentType = (req.get('content-type') ?? '').toLowerCase();
+  if (method !== 'GET' && method !== 'HEAD') {
+    if (contentType.includes('multipart/form-data')) {
+      // Multipart: no body parser ran in web-mode (multer is intentionally not
+      // mounted ahead of the Web handler — see makeRoutes), so the raw Express
+      // request stream is still readable. Pipe it into the Web Request so
+      // RestHandler's `parseWebMultipart` (`Request.formData()`) reads the
+      // original multipart body and streams each file to the FileStore itself.
+      init.body = Readable.toWeb(req) as unknown as ReadableStream<Uint8Array>;
+      // undici requires duplex for a streaming request body.
+      (init as {duplex?: string}).duplex = 'half';
+    } else if (req.body != null) {
+      // Re-serialize the parsed JSON body so RestHandler's `await req.json()`
+      // reads the SAME value the Express path validates off `req.body`.
+      // `express.json` yields an object/array (it sets `{}` for an empty body),
+      // serialized verbatim — including `{}`, so the Web path's missing-field
+      // issue path matches Express's (validating `{}` vs `undefined` against a
+      // `z.object` produces different Zod issues).
+      const body = req.body;
+      const isJsonLike = typeof body === 'object' && !Buffer.isBuffer(body);
+      if (isJsonLike) {
+        init.body = JSON.stringify(body);
+        if (!headers.has('content-type')) {
+          headers.set('content-type', 'application/json');
+        }
       }
     }
   }

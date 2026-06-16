@@ -44,6 +44,9 @@ import {
   executeIdempotent,
 } from '../confirm-idempotency.js';
 import {invalidRequestBody} from '../errors.js';
+import {fileFieldsOf, type FileFieldEntry} from '@agentback/openapi';
+import {FILE_STORE, type FileStore} from '@agentback/files';
+import {parseWebMultipart} from './multipart.js';
 import {isFileResponse, type FileResponse} from '../file-response.js';
 import {Readable} from 'node:stream';
 import {parseSection} from '../validate-sections.js';
@@ -160,13 +163,23 @@ export class RestHandler {
       await this.authorize(auth.user, ctor, methodName, reqCtx);
 
       // Read the Web body ONCE up front when the route declares a body schema
-      // or a confirmation gate: `req.json()` consumes the stream, and BOTH the
+      // or a confirmation gate: reading the stream consumes it, and BOTH the
       // confirmation fingerprint and input validation need the body. Shared
       // here (vs. re-reading in buildBundle) so the stream is never read twice.
+      // A body schema with `fileField()`s + a multipart content-type is parsed
+      // via the Web-standard `Request.formData()` path (streaming each file to
+      // the bound FileStore under a server UUID) — the runtime-neutral mirror of
+      // the Express multer parser; otherwise the body is plain JSON.
+      const fileFields: FileFieldEntry[] =
+        schemas.body != null && this.isMultipart(req)
+          ? fileFieldsOf(schemas.body)
+          : [];
       const needsBody = schemas.body != null || schemas.confirm != null;
-      const body = needsBody
-        ? await req.json().catch(() => undefined)
-        : undefined;
+      const body = !needsBody
+        ? undefined
+        : fileFields.length
+          ? await parseWebMultipart(req, fileFields, await this.fileStore())
+          : await req.json().catch(() => undefined);
 
       // Safety gate AFTER auth/authz, BEFORE input validation — same order as
       // RestServer.invokeRoute. The fingerprint is built from the once-read
@@ -341,6 +354,28 @@ export class RestHandler {
         })) ?? new InMemoryIdempotencyStore();
     }
     return this.idempotencyStoreCache;
+  }
+
+  /** Does the request carry a `multipart/form-data` body? */
+  private isMultipart(req: Request): boolean {
+    return (req.headers.get('content-type') ?? '')
+      .toLowerCase()
+      .includes('multipart/form-data');
+  }
+
+  /**
+   * Resolve the bound {@link FileStore} (optional). Cached: the binding is
+   * fixed for the app's lifetime. `undefined` makes {@link parseWebMultipart}
+   * buffer files in memory — the dev/test fallback, matching the Express engine.
+   */
+  private fileStoreCache?: {store: FileStore | undefined};
+  private async fileStore(): Promise<FileStore | undefined> {
+    if (!this.fileStoreCache) {
+      this.fileStoreCache = {
+        store: await this.context.get<FileStore>(FILE_STORE, {optional: true}),
+      };
+    }
+    return this.fileStoreCache.store;
   }
 
   /**
