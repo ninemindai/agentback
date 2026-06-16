@@ -68,6 +68,14 @@ export namespace RestBindings {
    */
   export const WEB_REQUEST: BindingKey<globalThis.Request> =
     BindingKey.create<globalThis.Request>('rest.web.request');
+  /**
+   * Binding tag for runtime-neutral Web middleware entries (the `app.webMiddleware`
+   * tier). The {@link RestServer.fetchHandler} collects every binding tagged with
+   * this and folds the resolved `WebMiddlewareEntry` values into the Web onion,
+   * group-sorted (parity with the Express chain). This is ADDITIVE — separate
+   * from the Express `app.middleware` chain, which is unchanged.
+   */
+  export const WEB_MIDDLEWARE = 'rest.web.middleware';
 }
 
 /**

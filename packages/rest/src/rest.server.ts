@@ -87,6 +87,12 @@ import {collectRoutes} from './web/collect-routes.js';
 import {Router} from './web/router.js';
 import {RestHandler} from './web/rest-handler.js';
 import {createFetchHost, type FetchHost} from './host/fetch.js';
+import {
+  collectWebMiddleware,
+  runWebOnion,
+  type WebMiddlewareEntry,
+} from './web/middleware.js';
+import {createCorsWebMiddleware} from './web/cors-middleware.js';
 import type {RouteValue} from './web/route-value.js';
 import {resolveControllerInstance} from './controller-resolver.js';
 
@@ -1027,10 +1033,42 @@ export class RestServer implements Server {
       for (const r of collectRoutes(this.context, this.config.basePath ?? '')) {
         router.add(r);
       }
-      this._fetchHost = createFetchHost({
+      const core = createFetchHost({
         router,
         dispatch: new RestHandler(this.context).dispatch,
       });
+
+      // The runtime-neutral Web middleware onion (additive; the Express chain is
+      // untouched). Built once, lazily, like the route table: the built-in CORS
+      // entry (when `cors` is configured) plus any user `app.webMiddleware`
+      // entries collected from the context. `runWebOnion` group-sorts them
+      // (parity with the Express chain) and short-circuits when an entry returns
+      // a Response without calling `next`. With zero entries, `fetchHandler()`
+      // still works — the onion folds straight to `core.fetch`.
+      let entries: Promise<WebMiddlewareEntry[]> | undefined;
+      const collect = (): Promise<WebMiddlewareEntry[]> => {
+        if (!entries) {
+          entries = collectWebMiddleware(this.context).then(userEntries => {
+            const builtins: WebMiddlewareEntry[] = [];
+            if (this.config.cors) {
+              builtins.push(createCorsWebMiddleware(this.config.cors));
+            }
+            return [...builtins, ...userEntries];
+          });
+        }
+        return entries;
+      };
+
+      this._fetchHost = {
+        // `Request`/`Response` are shadowed by the `express` import in this
+        // file; the Web onion deals in the global (WHATWG) types, so name them
+        // explicitly via `globalThis`.
+        fetch: async (req: globalThis.Request): Promise<globalThis.Response> => {
+          const list = await collect();
+          if (list.length === 0) return core.fetch(req);
+          return runWebOnion(list, req, this.context, () => core.fetch(req));
+        },
+      };
     }
     return this._fetchHost;
   }

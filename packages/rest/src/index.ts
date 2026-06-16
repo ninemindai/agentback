@@ -12,6 +12,8 @@ export * from './web/dispatch.js';
 export * from './web/route-value.js';
 export * from './web/rest-handler.js';
 export * from './web/collect-routes.js';
+export * from './web/middleware.js';
+export * from './web/cors-middleware.js';
 export * from './host/fetch.js';
 export * from './host/node.js';
 export * from './rest.server.js';

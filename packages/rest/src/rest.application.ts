@@ -9,6 +9,9 @@ import {loggers} from '@agentback/common';
 import {RestServer} from './rest.server.js';
 import {RestBindings} from './keys.js';
 import type {RestServerConfig} from './types.js';
+import type {WebMiddleware, WebMiddlewareEntry} from './web/middleware.js';
+
+let webMiddlewareSeq = 0;
 
 const log = loggers('agentback:rest:application');
 
@@ -75,6 +78,33 @@ export class RestApplication extends MiddlewareMixin(Application) {
    */
   restController<T>(ctor: new (...args: any[]) => T): Binding<T> {
     return super.controller<T>(ctor as never);
+  }
+
+  /**
+   * Register a runtime-neutral {@link WebMiddleware} on the Web (`fetch`) path —
+   * the neutral tier. It runs through {@link RestServer.fetchHandler}'s onion
+   * (group-sorted, parity with the Express chain) on Workers/Deno/Bun and in
+   * tests, fronting every `@api` route. A middleware that returns a `Response`
+   * without calling `next` short-circuits the route handler.
+   *
+   * This is ADDITIVE and SEPARATE from `app.middleware(fn)` (the Express chain,
+   * which is unchanged): use `app.middleware` for the Express server, and
+   * `app.webMiddleware` for the runtime-neutral fetch path. Order via
+   * `group`/`upstreamGroups`/`downstreamGroups` ({@link RestMiddlewareGroups}).
+   *
+   * Bindings must be registered before the first `fetchHandler()` call (the
+   * onion is built lazily and cached on first request).
+   */
+  webMiddleware(
+    middleware: WebMiddleware,
+    opts: Omit<WebMiddlewareEntry, 'middleware'> = {},
+  ): Binding<WebMiddlewareEntry> {
+    const entry: WebMiddlewareEntry = {middleware, ...opts};
+    return this.bind<WebMiddlewareEntry>(
+      `rest.web.middleware.${webMiddlewareSeq++}`,
+    )
+      .to(entry)
+      .tag(RestBindings.WEB_MIDDLEWARE);
   }
 
   get restServer(): Promise<RestServer> {
