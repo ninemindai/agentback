@@ -710,3 +710,313 @@ git commit -m "feat(rest): export web/host neutral plumbing"
 **Type consistency:** `Router<T>` / `RouteRecord<T>` / `RouteMatch<T>` defined in Task 1 and consumed unchanged in Tasks 3–4. `FetchHost` / `FetchHostOptions<T>` / `createFetchHost` defined in Task 3, consumed in Task 4. `toWebRequest` / `writeWebResponse` defined in Task 2, consumed in Task 4. The 404 envelope shape `{error:{code:'not_found',message:'Not Found'}}` is identical in Task 3's impl and Task 4's assertion. The `value` payloads are `string` throughout the tests (the generic is exercised concretely).
 
 **Build rule:** every test step builds the package before running vitest against `dist/` — consistent with CLAUDE.md.
+
+---
+
+## Eng-Review Revisions (plan-eng-review, 2026-06-16)
+
+These seven decisions SUPERSEDE the tasks above where they conflict. Apply them when executing.
+
+### D1 — Adopt `@hono/node-server` for Node↔Web conversion (replaces `convert.ts`)
+
+`convert.ts` was protocol-compatibility code mis-scoped as a utility, and as written corrupted multiple `Set-Cookie` headers (`Headers.forEach` coalesces them). Use the battle-tested library instead.
+
+- **DELETE Task 2 entirely** (`web/convert.ts` + `web-convert.unit.ts` are not created).
+- **Add dependency:** `pnpm -F @agentback/rest add @hono/node-server` (Node-host-only; the Fetch host needs no conversion).
+- **Task 4 `host/node.ts` becomes a thin wrapper** over Hono's listener — which handles Set-Cookie multiplicity, `AbortSignal`/client-disconnect, HEAD, 204, Content-Length, and stream errors for free:
+
+```ts
+// Copyright Ninemind.ai 2026. All Rights Reserved.
+// This file is licensed under the MIT License.
+// License text available at https://opensource.org/license/mit/
+
+import {getRequestListener} from '@hono/node-server';
+import type {RequestListener} from 'node:http';
+import type {FetchHost} from './fetch.js';
+
+/**
+ * Adapt a {@link FetchHost} to a Node `http` `RequestListener` via
+ * `@hono/node-server`, which owns the Node↔Web conversion (Set-Cookie
+ * multiplicity, client-abort wiring, HEAD/204/Content-Length, stream errors).
+ * Part 3 mounts the underlying `router.match` as the non-greedy Express
+ * fallback; `FetchHost.fetch` itself is terminal (always responds) — correct
+ * for the Workers/Fetch host.
+ */
+export function createNodeListener(host: FetchHost): RequestListener {
+  return getRequestListener(req => host.fetch(req));
+}
+```
+
+- **URL/trust-proxy policy (Codex):** scheme/host reconstruction and `X-Forwarded-*` handling are now owned by `@hono/node-server` (Node host) and Express's `trust proxy` in Part 3. State in Part 3's plan that trust-proxy is an Express-config policy; do not reconstruct URLs by hand.
+
+### D2 — Pin the `Dispatch` contract (keep the staged split)
+
+Before Task 3, add `web/dispatch.ts` declaring the type Part 2's `RestHandler` will implement, so `FetchHost` is validated against the real consumer's needs on paper:
+
+```ts
+// Copyright Ninemind.ai 2026. All Rights Reserved.
+// This file is licensed under the MIT License.
+// License text available at https://opensource.org/license/mit/
+
+import type {RouteMatch} from './router.js';
+
+/**
+ * The contract Part 2's RestHandler implements. Pinned here so Part 1's
+ * FetchHost interface is consumer-validated before RestHandler exists.
+ * `T` carries whatever the router stores per route (Part 2: the route's Zod
+ * schemas + controller ref); the per-request DI Context is derived inside the
+ * dispatch impl from the request, not threaded here.
+ */
+export type Dispatch<T> = (match: RouteMatch<T>, req: Request) => Promise<Response>;
+```
+
+`FetchHostOptions<T>.dispatch` is typed as `Dispatch<T>`.
+
+### D3 — Flat 404 envelope
+
+`defaultNotFound` must match the system-wide `ErrorEnvelope` (flat `{code, message}`, openapi/src/agent-error.ts:19), NOT a nested `{error:{…}}`:
+
+```ts
+function defaultNotFound(): Response {
+  return Response.json({code: 'not_found', message: 'Not Found'}, {status: 404});
+}
+```
+
+Update Task 3's two assertions accordingly (`expect(await res.json()).toEqual({code: 'not_found', message: 'Not Found'})`). FetchHost stays generic (no `@agentback/openapi` import); Part 2 overrides `notFound` with `buildErrorEnvelope`.
+
+### D4 — e2e edge coverage (Task 4)
+
+Add to `host-node.integration.ts`, beyond the three happy-path tests:
+
+- **[REGRESSION — mandatory]** two `Set-Cookie` headers survive intact:
+```ts
+it('preserves multiple Set-Cookie headers (D1 regression)', async () => {
+  router.add({method: 'GET', template: '/multi', value: 'multi'});
+  // dispatch for 'multi' returns:
+  //   new Response(null, {status: 204, headers: new Headers([
+  //     ['set-cookie', 'a=1; Path=/'], ['set-cookie', 'b=2; Path=/']])})
+  const res = await fetch(`${base}/multi`);
+  expect(res.headers.getSetCookie()).toEqual(['a=1; Path=/', 'b=2; Path=/']);
+});
+```
+- **HEAD** request → status + headers, empty body (`await res.text()` is `''`).
+- **Streaming** `ReadableStream` response body → chunks arrive intact (dispatch returns `new Response(stream)`; assert the concatenated text).
+
+(Add the `/multi` + streaming routes to the test's router/dispatch setup.)
+
+### D5 — Keep Part 1 internal until Part 3 (DELETE Task 5's exports)
+
+Do **not** add the modules to `packages/rest/src/index.ts`. The `web/` + `host/` modules stay package-internal until Part 3 proves `RestHandler` parity, then the validated surface is exported in one commit. Task 5 keeps only its regression-guard + lint steps:
+
+- Step 2 (the `export * from` additions) is **removed**.
+- Steps 3–5 (build, full `@agentback/rest` suite green, lint, commit) stay — commit message becomes `test(rest): neutral plumbing internal (router + fetch/node hosts)`.
+
+### D6 — Router decode safety (Task 1)
+
+`decodeURIComponent` throws on malformed input (`%ZZ`). `match()` must be total: catch and treat as a non-match.
+
+### D7 — Router specificity ranking + duplicate rejection (Task 1, REWRITES it)
+
+Replace Task 1's implementation and tests with the version below. Static segments beat params regardless of registration order; structurally-identical routes (same method + same segment pattern modulo param names) throw at registration.
+
+**`web/router.ts`:**
+
+```ts
+// Copyright Ninemind.ai 2026. All Rights Reserved.
+// This file is licensed under the MIT License.
+// License text available at https://opensource.org/license/mit/
+
+export interface RouteRecord<T> {
+  method: string;
+  /** Path template with `{name}` placeholders, e.g. `/greet/hello/{name}`. */
+  template: string;
+  value: T;
+}
+
+export interface RouteMatch<T> {
+  value: T;
+  params: Record<string, string>;
+}
+
+interface CompiledRoute<T> {
+  method: string;
+  segments: string[];
+  value: T;
+}
+
+const isParam = (seg: string): boolean => seg.startsWith('{') && seg.endsWith('}');
+
+function splitPath(p: string): string[] {
+  const trimmed = p.replace(/^\/+/, '').replace(/\/+$/, '');
+  return trimmed === '' ? [] : trimmed.split('/');
+}
+
+/** Structural key: params normalized to `{}` so name differences collide. */
+function structuralKey(method: string, segments: string[]): string {
+  return method + ' ' + segments.map(s => (isParam(s) ? '{}' : s)).join('/');
+}
+
+export class Router<T> {
+  private readonly routes: CompiledRoute<T>[] = [];
+  private readonly seen = new Set<string>();
+
+  add(record: RouteRecord<T>): void {
+    const method = record.method.toUpperCase();
+    const segments = splitPath(record.template);
+    const key = structuralKey(method, segments);
+    if (this.seen.has(key)) {
+      throw new Error(
+        `Router: duplicate route ${record.method} ${record.template} ` +
+          `(a structurally identical route is already registered)`,
+      );
+    }
+    this.seen.add(key);
+    this.routes.push({method, segments, value: record.value});
+    // Specificity order: at the first segment where two routes differ in kind,
+    // a literal is more specific than a param. Stable sort keeps registration
+    // order for equally-specific routes. So /users/me beats /users/{id}
+    // regardless of who was added first.
+    this.routes.sort((a, b) => {
+      const n = Math.min(a.segments.length, b.segments.length);
+      for (let i = 0; i < n; i++) {
+        const ap = isParam(a.segments[i]!);
+        const bp = isParam(b.segments[i]!);
+        if (ap !== bp) return ap ? 1 : -1; // literal (false) sorts first
+      }
+      return 0;
+    });
+  }
+
+  match(method: string, pathname: string): RouteMatch<T> | undefined {
+    const verb = method.toUpperCase();
+    const segs = splitPath(pathname);
+    for (const route of this.routes) {
+      if (route.method !== verb) continue;
+      if (route.segments.length !== segs.length) continue;
+      const params: Record<string, string> = {};
+      let ok = true;
+      for (let i = 0; i < route.segments.length; i++) {
+        const tmpl = route.segments[i]!;
+        const actual = segs[i]!;
+        if (isParam(tmpl)) {
+          try {
+            params[tmpl.slice(1, -1)] = decodeURIComponent(actual);
+          } catch {
+            ok = false; // malformed %-encoding → non-match (D6)
+            break;
+          }
+        } else if (tmpl !== actual) {
+          ok = false;
+          break;
+        }
+      }
+      if (ok) return {value: route.value, params};
+    }
+    return undefined;
+  }
+}
+```
+
+**`web-router.unit.ts`** — keep the literal / param-decode / multi-param / method-case / no-match / segment-count / trailing-slash tests; **replace** the old "returns the first registered match" test (now an illegal structural duplicate) with these three:
+
+```ts
+it('rejects a structurally duplicate route at registration', () => {
+  const r = new Router<string>();
+  r.add({method: 'GET', template: '/x/{a}', value: 'first'});
+  expect(() => r.add({method: 'GET', template: '/x/{b}', value: 'second'})).toThrow(
+    /duplicate route/,
+  );
+});
+
+it('prefers a static segment over a param regardless of order', () => {
+  const r = new Router<string>();
+  r.add({method: 'GET', template: '/users/{id}', value: 'param'});
+  r.add({method: 'GET', template: '/users/me', value: 'static'});
+  expect(r.match('GET', '/users/me')?.value).toBe('static');
+  expect(r.match('GET', '/users/42')?.value).toBe('param');
+});
+
+it('treats malformed percent-encoding as a non-match (never throws)', () => {
+  const r = new Router<string>();
+  r.add({method: 'GET', template: '/greet/{name}', value: 'g'});
+  expect(r.match('GET', '/greet/%ZZ')).toBeUndefined();
+});
+```
+
+---
+
+## NOT in scope (deferred, with rationale)
+
+- **`RestHandler` dispatch (auth/validation/DI/error envelope)** — Part 2; the `Dispatch<T>` contract is pinned here (D2) but not implemented.
+- **Express demotion / non-greedy fallback / `createTestApp` fetch client / parity harness** — Part 3; `FetchHost.fetch` is terminal by design, the Express fallback wraps `router.match` directly.
+- **Middleware onion** — Stage 2. **Multipart uploads + streaming downloads** — Stage 3.
+- **Public exports of the new modules** — deferred to Part 3 (D5).
+- **RegExpRouter** — the deferred matcher optimization; the D7 ranking is the interim correct-but-linear version.
+- **Full request-header `rawHeaders` fidelity, trailers, 1xx** — owned by `@hono/node-server`; not separately exercised.
+- **`FastifyHostAdapter`, real Workers/Deno deploy, neutralizing `install*` UI mounts** — spec-level follow-ups.
+
+## What already exists (reuse vs rebuild)
+
+- `@agentback/http-server` (`http.createServer` wrapper) — complemented, not duplicated; Part 3's Express host uses it.
+- `@agentback/openapi` `buildErrorEnvelope` / `ErrorCodes.NOT_FOUND` — Part 2's dispatch reuses these for the real envelope; Part 1's generic default only mirrors the flat *shape* (D3).
+- `@hono/node-server` — **adopted** (D1) instead of rebuilding Node↔Web conversion.
+- Express routing — intentionally replaced by the core `Router` (the Fetch host has no Express router).
+
+## Failure modes (per new codepath)
+
+| Codepath | Realistic failure | Test? | Error handling? | User sees |
+|---|---|---|---|---|
+| `Router.match` | malformed `%`-encoding throws | ✅ D6 test | ✅ caught → non-match | clean 404 |
+| `Router.add` | duplicate/shadowing route | ✅ D7 test | ✅ throws at `add()` (startup) | startup error, not prod misroute |
+| `host/node` (Hono) | multiple `Set-Cookie` corrupted | ✅ D4 regression | ✅ library `getSetCookie` | both cookies set |
+| `host/node` (Hono) | client disconnect mid-stream | ⚠️ not unit-tested | ✅ library wires `AbortSignal` | stream aborted, no leak |
+| `FetchHost.fetch` | unmatched path | ✅ Task 3 | ✅ flat 404 (D3) | `{code:'not_found'}` |
+
+No critical gaps (no failure mode is simultaneously untested, unhandled, and silent).
+
+## Worktree parallelization
+
+Sequential — all tasks touch `packages/rest/src/{web,host}/` and depend on the prior (Router → Dispatch type → FetchHost → Node host → guard). No parallelization opportunity.
+
+## Implementation Tasks
+
+Synthesized from this review's findings. Each derives from a specific finding above.
+
+- [ ] **T1 (P1, human: ~2h / CC: ~20min)** — host/node — Adopt `@hono/node-server`; delete `convert.ts`/its test; rewrite `createNodeListener` as a `getRequestListener` wrapper.
+  - Surfaced by: Architecture D1 + Codex (Set-Cookie corruption, abort, header multiplicity)
+  - Files: `packages/rest/package.json`, `packages/rest/src/host/node.ts`; delete `packages/rest/src/web/convert.ts`
+  - Verify: `pnpm -F @agentback/rest build && pnpm exec vitest run packages/rest/dist/__tests__/integration/host-node.integration.js`
+- [ ] **T2 (P1, human: ~45min / CC: ~10min)** — host/node — Add e2e edge tests: multi-`Set-Cookie` regression (mandatory), HEAD, streaming body.
+  - Surfaced by: Test review D4 + REGRESSION RULE
+  - Files: `packages/rest/src/__tests__/integration/host-node.integration.ts`
+  - Verify: the three new `it(...)` cases pass
+- [ ] **T3 (P1, human: ~half day / CC: ~30min)** — web/router — Specificity ranking (static > param) + structural-duplicate throw + decode-safety; update tests.
+  - Surfaced by: Architecture/Code-quality D6 + D7 + Codex (router too primitive, decode throws)
+  - Files: `packages/rest/src/web/router.ts`, `packages/rest/src/__tests__/unit/web-router.unit.ts`
+  - Verify: `pnpm exec vitest run packages/rest/dist/__tests__/unit/web-router.unit.js`
+- [ ] **T4 (P2, human: ~20min / CC: ~5min)** — web/dispatch — Pin the `Dispatch<T>` contract; type `FetchHostOptions.dispatch` as it; flat-`{code,message}` 404 default.
+  - Surfaced by: Architecture D2 + Code-quality D3
+  - Files: `packages/rest/src/web/dispatch.ts`, `packages/rest/src/host/fetch.ts`, `host-fetch.unit.ts`
+  - Verify: `pnpm exec vitest run packages/rest/dist/__tests__/unit/host-fetch.unit.js`
+- [ ] **T5 (P2, human: ~5min / CC: ~2min)** — rest/index — Do NOT export the new modules; keep internal until Part 3.
+  - Surfaced by: Architecture D5 + Codex (premature public API)
+  - Files: `packages/rest/src/index.ts` (no change)
+  - Verify: `pnpm -F @agentback/rest build && pnpm exec vitest run packages/rest/dist`
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Codex Review | `/codex review` | Independent 2nd opinion | 1 | issues_found | outside-voice: 14 points; 7 folded, rest resolved-by-D1/deferred |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | issues_found | 7 findings, 0 critical gaps — all resolved into the plan |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+**CODEX:** flagged convert.ts as protocol code (Set-Cookie corruption, aborts, header fidelity), router primitiveness (shadowing, decode-throw), and premature public export. High overlap with the structured review.
+
+**CROSS-MODEL:** Claude review and Codex agreed on the three load-bearing issues (adopt a conversion library, router needs hardening, don't export prematurely). Codex pushed harder on "keep internal until parity" → resolved as D5. No unresolved tension.
+
+**VERDICT:** ENG CLEARED — 7 findings all folded into the plan, 0 critical gaps. Ready to implement Part 1 with revisions D1–D7.
+
+NO UNRESOLVED DECISIONS
