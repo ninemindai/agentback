@@ -5,9 +5,12 @@
 import {Context, resolveInjectedArguments} from '@agentback/context';
 import {CoreTags} from '@agentback/core';
 import {
+  AgentError,
   buildErrorEnvelope,
+  ErrorCodes,
   standardParse,
   type RouteSchemas,
+  type SchemaLike,
 } from '@agentback/openapi';
 import {loggers} from '@agentback/common';
 import {RestBindings} from '../keys.js';
@@ -16,6 +19,13 @@ import {parseSection} from '../validate-sections.js';
 import type {Dispatch} from './dispatch.js';
 import type {RouteMatch} from './router.js';
 import type {RouteValue} from './route-value.js';
+import {
+  SSE_FRAMER,
+  JSONL_FRAMER,
+  type StreamFramer,
+} from '../stream-framers.js';
+
+const STREAM_ENCODER = new TextEncoder();
 
 const log = loggers('agentback:rest:web-handler');
 
@@ -33,8 +43,8 @@ function queryObject(url: URL): Record<string, unknown> {
  * `Request` into a Web `Response`, reusing the SAME validation, DI resolution,
  * and error-envelope logic as the Express {@link RestServer}. Wrapped in a
  * {@link Dispatch} contract so a {@link FetchHost} (Workers/Deno/Bun/tests) can
- * drive it directly. Auth, dispatch hooks, idempotency, confirmation,
- * streaming, and uploads are deferred — this is the core happy path + errors.
+ * drive it directly. Auth, dispatch hooks, idempotency, confirmation, and
+ * uploads are deferred — this is the core happy path + errors + streaming.
  */
 export class RestHandler {
   constructor(private readonly context: Context) {}
@@ -79,6 +89,21 @@ export class RestHandler {
       instance,
       args,
     );
+
+    if (schemas.streamOf) {
+      const iterator = this.toAsyncIterator(result);
+      // Pull the first item BEFORE committing to the stream so an immediate
+      // throw surfaces as a proper-status error Response (propagating to the
+      // `dispatch` try/catch → `toErrorResponse`), not a half-open stream.
+      const first = await iterator.next();
+      return this.toStreamResponse(
+        iterator,
+        first,
+        schemas.streamOf,
+        successStatus,
+        schemas.format ?? 'sse',
+      );
+    }
 
     if (schemas.response) {
       const parsed = standardParse(schemas.response, result);
@@ -127,6 +152,117 @@ export class RestHandler {
       bundle.body = parsed.data;
     }
     return bundle;
+  }
+
+  /**
+   * Validate that a `streamOf` handler returned an async iterable and return
+   * its iterator. Mirrors {@link RestServer.sendStream}'s guard — a non-iterable
+   * throws a 500 that propagates to {@link toErrorResponse} (proper status,
+   * since the first item hasn't been pulled yet).
+   */
+  private toAsyncIterator(result: unknown): AsyncIterator<unknown> {
+    const iterable = result as AsyncIterable<unknown> | null;
+    const factory =
+      iterable != null && typeof iterable === 'object'
+        ? (iterable as AsyncIterable<unknown>)[Symbol.asyncIterator]
+        : undefined;
+    if (typeof factory !== 'function') {
+      throw new AgentError(
+        'Handler declared streamOf but did not return an async iterable.',
+        {status: 500, code: ErrorCodes.INTERNAL_ERROR},
+      );
+    }
+    return factory.call(iterable);
+  }
+
+  /**
+   * Stream an `AsyncIterable` to a Web {@link Response} whose body is a
+   * `ReadableStream`. Parity with {@link RestServer.sendStream}: the first item
+   * is pulled by the caller (so immediate throws keep proper status); each item
+   * is validated against `itemSchema` and framed; an item-validation failure or
+   * a mid-stream throw is written as a terminal `framer.error(...)` record and
+   * the stream closes. `cancel()` calls `iterator.return?.()` so a client
+   * disconnect releases upstream resources.
+   *
+   * NOTE: the SSE keep-alive ping ({@link RestServer} reads `config.sse.pingMs`)
+   * is deferred here — {@link RestHandler} has no config seam, and the ping is a
+   * keep-alive, not content parity.
+   */
+  private toStreamResponse(
+    iterator: AsyncIterator<unknown>,
+    first: IteratorResult<unknown>,
+    itemSchema: SchemaLike,
+    status: number,
+    format: 'sse' | 'jsonl',
+  ): Response {
+    const framer: StreamFramer = format === 'jsonl' ? JSONL_FRAMER : SSE_FRAMER;
+    const enqueue = (
+      controller: ReadableStreamDefaultController<Uint8Array>,
+      text: string,
+    ) => controller.enqueue(STREAM_ENCODER.encode(text));
+
+    // Returns true if the item passed validation and was written; on failure it
+    // writes a terminal error frame and returns false (caller stops iterating).
+    const writeItem = (
+      controller: ReadableStreamDefaultController<Uint8Array>,
+      item: unknown,
+    ): boolean => {
+      const parsed = standardParse(itemSchema, item);
+      if (!parsed.success) {
+        log.debug('stream item failed validation: %j', parsed.issues);
+        enqueue(
+          controller,
+          framer.error({
+            statusCode: 500,
+            code: ErrorCodes.INTERNAL_ERROR,
+            message: 'Stream item failed response validation.',
+            details: parsed.issues,
+          }),
+        );
+        return false;
+      }
+      enqueue(controller, framer.item(parsed.data));
+      return true;
+    };
+
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        // Post-flush discipline: nothing here throws out — the response is
+        // already committed, so a mid-stream failure becomes a terminal error
+        // frame, mirroring sendStream's catch.
+        try {
+          if (!first.done) {
+            if (!writeItem(controller, first.value)) return;
+          }
+          while (true) {
+            const {value, done} = await iterator.next();
+            if (done) break;
+            if (!writeItem(controller, value)) break;
+          }
+        } catch (err) {
+          const e = err as Error;
+          log.debug('stream handler threw mid-stream: %s', e.message);
+          const {issues, ...envelope} = buildErrorEnvelope(err);
+          enqueue(
+            controller,
+            framer.error({
+              statusCode: envelope.statusCode ?? 500,
+              ...envelope,
+              ...(issues ? {issues, details: issues} : {}),
+            }),
+          );
+        } finally {
+          controller.close();
+        }
+      },
+      // Client disconnect: stop iterating and let the generator's `finally`
+      // blocks release upstream resources.
+      cancel() {
+        void iterator.return?.();
+      },
+    });
+
+    return new Response(stream, {status, headers: framer.headers});
   }
 
   /**
