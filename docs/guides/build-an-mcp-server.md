@@ -238,5 +238,7 @@ the process's stdin.
 
 - [Build a hybrid app](build-a-hybrid-app.md) — serve REST and MCP from one
   process, sharing the same schemas.
+- [Render a widget with MCP Apps](mcp-apps-widgets.md) — give a tool an
+  interactive `ui://` widget a host renders inline for its result (SEP-1865).
 - [Composition & extensibility](composition-and-extensibility.md) — package
   your tools as a reusable component.
