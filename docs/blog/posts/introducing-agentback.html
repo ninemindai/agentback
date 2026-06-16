@@ -164,6 +164,13 @@ async getOrder(input: z.infer&lt;typeof OrderPath&gt;) {
           <li>
             Compared with FastAPI, the stack is TypeScript-native and MCP-aware.
           </li>
+          <li>
+            Compared with Fastify and Hono, those are transport runtimes
+            AgentBack rides on, not rivals — it adds the shared-contract layer
+            (REST + OpenAPI + MCP from one Zod schema) above the host. Hono is
+            the closest sibling in spirit, and AgentBack is built to stay
+            host-portable so the projection holds wherever the handler runs.
+          </li>
         </ul>
 
         <h2>Beyond hello world</h2>

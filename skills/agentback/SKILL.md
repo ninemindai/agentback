@@ -184,8 +184,10 @@ if (isMain(import.meta)) await main();
   REST+MCP class (`@api` + `@mcpServer`) needs **both** `restController` (the
   routes) and `service` (the MCP extension). See
   [mcp-tools.md](references/mcp-tools.md).
-- **`express` stays on `^4`** here; the schema-typed `client` depends on nothing
-  but `zod` (browser-safe).
+- **`express` is on `^5`**; the REST core is being made host-portable (a
+  runtime-neutral `Request → Response` handler), so it can ride on a Node host
+  (Express today) or a Web-standard runtime (Workers/Deno, Hono's territory).
+  The schema-typed `client` depends on nothing but `zod` (browser-safe).
 - Every source file carries the three-line MIT header
   (`// Copyright ninemind.ai and LoopBack contributors. …`).
 

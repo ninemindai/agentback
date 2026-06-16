@@ -188,6 +188,18 @@
                 <td>Hand-written manifest</td>
               </tr>
               <tr>
+                <td>Fastify</td>
+                <td>JSON Schema / TypeBox</td>
+                <td>OpenAPI via plugin</td>
+                <td>Custom adapter</td>
+              </tr>
+              <tr>
+                <td>Hono</td>
+                <td>Zod (validator)</td>
+                <td>OpenAPI via add-on</td>
+                <td>Custom adapter</td>
+              </tr>
+              <tr>
                 <td>tRPC</td>
                 <td>Zod</td>
                 <td>TypeScript-only</td>
@@ -214,6 +226,15 @@
             </tbody>
           </table>
         </div>
+        <p class="muted">
+          Fastify and Hono are transport runtimes, not competitors. They solve
+          HTTP plumbing; AgentBack solves the layer above — one Zod schema
+          projected to REST, OpenAPI, <em>and</em> MCP through a DI container,
+          riding on a host beneath it. Hono is the closest sibling in spirit
+          (Web-standard core, codegen-free typed client, Zod), and AgentBack is
+          built to stay host-portable so the same projection runs wherever the
+          handler is mounted.
+        </p>
       </section>
 
       <!-- ========================= features ========================= -->
