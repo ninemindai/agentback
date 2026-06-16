@@ -120,7 +120,7 @@ host receives request
 
 ## Host adapters & interop matrix
 
-| Concern | Express host (default) | Fetch host | Fastify host (follow-up) |
+| Concern | Express host (default) | Fetch host — Workers/Deno/Bun | Fastify host (follow-up) |
 |---|---|---|---|
 | Neutral `app.middleware` onion | ✅ | ✅ | ✅ |
 | `app.expressMiddleware` / Express receivers (Slack Bolt) | ✅ | ❌ | ❌ |
@@ -129,8 +129,14 @@ host receives request
 | `install*` dev UIs (explorer/mcp-http/console) | ✅ | ❌ (see limitations) | ❌ (see limitations) |
 | Core `@api` routes, MCP, uploads, downloads | ✅ | ✅ | ✅ |
 
+The **Fetch host** column is one adapter (`FetchHostAdapter`) serving every
+Web-standard runtime — Cloudflare Workers, Deno, and Bun — because they all take
+the same `fetch(Request): Promise<Response>` entry point. Each runtime is a
+~5-line wrapper around the shared `host.fetch`, not a separate port.
+
 Rules:
-- **Node hosts are mutually exclusive — Express XOR Fastify** (one host per process).
+- **Node hosts are mutually exclusive — Express XOR Fastify** (one host per process). The Fetch host is a third, independent option for the runtimes that have a native fetch entry point.
+- **Bun is the zero-adapter case.** `Bun.serve({fetch: host.fetch})` consumes the `FetchHost` directly — no `convert.ts`, no `@hono/node-server`. (Bun can *also* run the Express host today via its `node:http` compat, but that forgoes the native fetch path.) Same shape for Deno (`Deno.serve`) and Workers (`export default {fetch}`).
 - The core converting handler is **non-greedy / fallback** (match-or-`next()`), so externally mounted routes (Bolt's `/slack/events`, the UIs) front-run.
 - **Raw body:** signature-verifying receivers (Bolt HMAC) need the raw body — mount them with their own raw parser / `bodyParser:false` scope (`RestServerConfig.bodyParser` already supports this), or a Fastify `'*'` content-type parser.
 

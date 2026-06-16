@@ -71,9 +71,11 @@ a host beneath it (Express today). Hono is the closest sibling in philosophy —
 a Web-standard core, codegen-free typed RPC (mirrored by `@agentback/client`),
 and Zod validation — and AgentBack shares those while adding the MCP tool
 boundary and DI container Hono leaves to the app. Making the REST core
-host-portable (a runtime-neutral `Request → Response` handler that can run on a
-Web-standard runtime like Hono's, or a Fastify host) is active design work, so
-the projection stays the same wherever it runs.
+host-portable (a runtime-neutral `Request → Response` handler) is active design
+work: one fetch handler serves every Web-standard runtime — Cloudflare Workers,
+Deno, and Bun (`Bun.serve({fetch})`) take it directly, and a Node host (Express
+today, Fastify possible) bridges the rest — so the same one-schema projection
+holds wherever it runs.
 
 ## Documentation
 
