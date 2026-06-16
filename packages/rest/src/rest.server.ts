@@ -84,6 +84,11 @@ import {
   type AxSection,
 } from './ax.js';
 import {lookupSuccessStatus} from './route-meta.js';
+import {collectRoutes} from './web/collect-routes.js';
+import {Router} from './web/router.js';
+import {RestHandler} from './web/rest-handler.js';
+import {createFetchHost, type FetchHost} from './host/fetch.js';
+import type {RouteValue} from './web/route-value.js';
 
 const log = loggers('agentback:rest:server');
 
@@ -1016,6 +1021,31 @@ export class RestServer implements Server {
   /** Get the underlying express app (escape hatch). */
   get expressApp(): Express {
     return this.app;
+  }
+
+  private _fetchHost?: FetchHost;
+
+  /**
+   * Runtime-neutral fetch handler for this app's `@api` routes — the same
+   * routing + Zod validation + DI + error-envelope pipeline as the Express path
+   * (via RestHandler), as `fetch(Request): Promise<Response>` for Web hosts
+   * (Bun/Deno/Workers/tests). Additive: the Express server is unchanged; auth,
+   * hooks, confirmation/idempotency, streaming are NOT in this path yet (Express
+   * only). Built lazily from the registry on first call (after controllers are
+   * registered / after start()).
+   */
+  fetchHandler(): FetchHost {
+    if (!this._fetchHost) {
+      const router = new Router<RouteValue>();
+      for (const r of collectRoutes(this.context, this.config.basePath ?? '')) {
+        router.add(r);
+      }
+      this._fetchHost = createFetchHost({
+        router,
+        dispatch: new RestHandler(this.context).dispatch,
+      });
+    }
+    return this._fetchHost;
   }
 
   /** Get the application context (used by extensions for binding lookups). */
