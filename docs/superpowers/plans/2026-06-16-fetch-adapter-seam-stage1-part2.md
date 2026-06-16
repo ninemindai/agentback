@@ -12,7 +12,7 @@
 
 > **Build rule (CLAUDE.md):** vitest runs against built `dist/`. Always `pnpm -F @agentback/rest build` before `pnpm exec vitest run`.
 
-> **Scope — Part 2b (deferred, NOT this plan):** auth/authz, dispatch hooks, confirmation/idempotency, streaming/SSE, file uploads/downloads, raw `HTTP_REQUEST`/`HTTP_RESPONSE` binds. These are additive layers wrapping `run()`; the core lands first, proven at parity, then each layer folds in. Modules stay **unexported** from `index.ts` until Part 3.
+> **Scope — what Part 2 is, and where the rest goes.** Part 2 is the **core dispatch**: input bundle → Zod validation → DI resolution → invoke → output validation → Web `Response`, proven byte-identical to Express. The surrounding pipeline layers — **auth/authz, dispatch hooks, confirmation/idempotency** — are deliberately NOT reimplemented here. They already exist as `RestServer` methods, and reimplementing them standalone would duplicate cross-package contracts (the auth-strategy request shape, `RestDispatchInfo`'s `req`/`res`). The right composition is at **Part 3 cutover**: `RestServer` keeps owning auth/hooks/idempotency and delegates only the *core* to `RestHandler`, so those layers wrap the neutral core instead of being forked. **Streaming/SSE** and **file uploads/downloads** are Stage 2/3. Modules stay **unexported** from `index.ts` until Part 3.
 
 ---
 
