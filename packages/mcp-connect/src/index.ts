@@ -59,7 +59,7 @@ export function mountMcpConnect(
     res.status(status).json({error: {message}});
 
   const requireSource = (req: Request, res: Response) => {
-    const source = registry.source(req.params.id!);
+    const source = registry.source(req.params.id as string);
     if (!source)
       fail(res, 404, `Unknown or unconnected target: ${req.params.id}`);
     return source;

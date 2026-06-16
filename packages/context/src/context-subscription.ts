@@ -207,7 +207,7 @@ export class ContextSubscriptionManager extends EventEmitter {
     this.setupNotification('bind', 'unbind');
 
     // Create an async iterator for the `notification` event as a queue
-    this.notificationQueue = iterator(this, 'notification', {
+    this.notificationQueue = iterator<string, Notification>(this, 'notification', {
       // Do not end the iterator if an error event is emitted on the
       // subscription manager
       rejectionEvents: [],
