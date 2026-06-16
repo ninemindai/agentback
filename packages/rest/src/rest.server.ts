@@ -42,7 +42,6 @@ import {
   type ErrorEnvelope,
   type OASEnhancer,
   type OpenApiSpec,
-  type ParseIssue,
   type RouteSchemas,
   type SchemaLike,
 } from '@agentback/openapi';
@@ -73,7 +72,7 @@ import {
   type BodyParserConfig,
   type RestServerConfig,
 } from './types.js';
-import {invalidParameter, invalidRequestBody} from './errors.js';
+import {invalidRequestBody} from './errors.js';
 import {parseSection} from './validate-sections.js';
 import {makeMultipartMiddleware} from './multipart.js';
 import {isFileResponse, type FileResponse} from './file-response.js';
