@@ -49,7 +49,6 @@ import {
   InMemoryConfirmationStore,
   InMemoryIdempotencyStore,
   loggers,
-  stableStringify,
   type ConfirmationStore,
   type IdempotencyStore,
 } from '@agentback/common';
@@ -67,6 +66,10 @@ import {
   type RestDispatchInfo,
 } from './keys.js';
 import {applyDispatchHooks, resolveDispatchHooks} from './dispatch-hooks.js';
+import {
+  enforceConfirmation as enforceConfirmationNeutral,
+  executeIdempotent as executeIdempotentNeutral,
+} from './confirm-idempotency.js';
 import {
   DEFAULT_REST_CONFIG,
   type BodyParserConfig,
@@ -511,6 +514,10 @@ export class RestServer implements Server {
    * refused with 409 `confirmation_required` carrying a single-use token
    * bound to the exact request payload; the identical retry with the token
    * executes. A mismatched/expired token is 409 `confirmation_invalid`.
+   *
+   * Delegates to the runtime-neutral {@link enforceConfirmationNeutral} (shared
+   * with the Web {@link RestHandler}) with the Express request facts; behavior
+   * is byte-identical to the inlined version it replaced.
    */
   protected async enforceConfirmation(
     req: Request,
@@ -518,42 +525,19 @@ export class RestServer implements Server {
     methodName: string,
     confirm: NonNullable<RouteSchemas['confirm']>,
   ): Promise<void> {
-    const scope = `${ctor.name}.${methodName}`;
-    const fingerprint = stableStringify({
-      method: req.method,
-      path: req.path,
-      params: req.params,
-      query: req.query,
-      body: req.body,
+    await enforceConfirmationNeutral({
+      scope: `${ctor.name}.${methodName}`,
+      facts: {
+        method: req.method,
+        path: req.path,
+        params: req.params,
+        query: req.query as Record<string, unknown>,
+        body: req.body,
+      },
+      getHeader: name => req.get(name),
+      store: await this.confirmationStore(),
+      confirm,
     });
-    const store = await this.confirmationStore();
-    const token = req.get('x-confirmation-token');
-    if (!token) {
-      const ttlMs = typeof confirm === 'object' ? confirm.ttlMs : undefined;
-      const issued = store.issue(scope, fingerprint, ttlMs);
-      const e = createError(
-        409,
-        'This operation requires confirmation. Retry the identical request ' +
-          "with the issued token in the 'x-confirmation-token' header.",
-      );
-      const agentErr = e as createError.HttpError & {
-        code: string;
-        confirmationToken: string;
-      };
-      agentErr.code = ErrorCodes.CONFIRMATION_REQUIRED;
-      agentErr.confirmationToken = issued;
-      throw e;
-    }
-    if (!store.verify(token, scope, fingerprint)) {
-      const e = createError(
-        409,
-        'The confirmation token is invalid, expired, or was issued for a ' +
-          'different request payload.',
-      );
-      (e as createError.HttpError & {code: string}).code =
-        ErrorCodes.CONFIRMATION_INVALID;
-      throw e;
-    }
   }
 
   /**
@@ -562,6 +546,10 @@ export class RestServer implements Server {
    * `idempotency-replayed: true`); concurrent calls with one key share one
    * execution; errors are not cached. Without the header the route runs
    * normally unless `{required: true}`.
+   *
+   * Delegates to the runtime-neutral {@link executeIdempotentNeutral} (shared
+   * with the Web {@link RestHandler}); the `replayed` flag it returns is
+   * surfaced as the `idempotency-replayed` Express response header.
    */
   protected async executeIdempotent(
     req: Request,
@@ -571,26 +559,13 @@ export class RestServer implements Server {
     idempotency: NonNullable<RouteSchemas['idempotency']>,
     run: () => Promise<unknown>,
   ): Promise<unknown> {
-    const cfg = typeof idempotency === 'object' ? idempotency : {};
-    const key = req.get('idempotency-key');
-    if (!key) {
-      if (cfg.required) {
-        const e = createError(
-          400,
-          "This operation requires an 'idempotency-key' header.",
-        );
-        (e as createError.HttpError & {code: string}).code =
-          ErrorCodes.IDEMPOTENCY_KEY_REQUIRED;
-        throw e;
-      }
-      return run();
-    }
-    const store = await this.idempotencyStore();
-    const {replayed, result} = await store.execute(
-      `${ctor.name}.${methodName}:${key}`,
+    const {replayed, result} = await executeIdempotentNeutral({
+      scope: `${ctor.name}.${methodName}`,
+      getHeader: name => req.get(name),
+      store: await this.idempotencyStore(),
+      idempotency,
       run,
-      cfg.ttlMs,
-    );
+    });
     if (replayed) res.setHeader('idempotency-replayed', 'true');
     return result;
   }
@@ -1047,8 +1022,8 @@ export class RestServer implements Server {
    * routing + Zod validation + DI + error-envelope pipeline as the Express path
    * (via RestHandler), as `fetch(Request): Promise<Response>` for Web hosts
    * (Bun/Deno/Workers/tests). Additive: the Express server is unchanged.
-   * Authentication + authorization + streaming run at parity with the Express
-   * path; dispatch hooks and confirmation/idempotency are NOT in this path yet.
+   * Authentication + authorization, streaming, dispatch hooks, and
+   * confirmation + idempotency all run at parity with the Express path.
    * Built lazily from the registry on first call (after controllers are
    * registered / after start()).
    */
