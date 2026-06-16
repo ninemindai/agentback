@@ -16,5 +16,6 @@ export * from './web/middleware.js';
 export * from './web/cors-middleware.js';
 export * from './host/fetch.js';
 export * from './host/node.js';
+export * from './host/fastify.js';
 export * from './rest.server.js';
 export * from './rest.application.js';

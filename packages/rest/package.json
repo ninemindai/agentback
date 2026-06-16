@@ -47,6 +47,7 @@
     "@types/http-errors": "^2.0.5",
     "@types/multer": "^2.1.0",
     "@types/supertest": "^7.2.0",
+    "fastify": "^5.8.5",
     "supertest": "^7.2.2",
     "vitest": "~4.1.9"
   },

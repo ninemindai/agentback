@@ -93,6 +93,7 @@ import {collectRoutes} from './web/collect-routes.js';
 import {Router} from './web/router.js';
 import {RestHandler} from './web/rest-handler.js';
 import {createFetchHost, type FetchHost} from './host/fetch.js';
+import {writeWebResponseToNode} from './host/node-response.js';
 import {
   collectWebMiddleware,
   runWebOnion,
@@ -1291,61 +1292,15 @@ function webRequestForWebDispatch(req: Request): globalThis.Request {
  * Write a Web {@link globalThis.Response} back onto the Express {@link Response}
  * — the web-dispatch counterpart of `sendResult`/`sendStream`/`sendError`,
  * which `host/node.ts` delegates to `@hono/node-server` for the standalone
- * fetch host. Copies status + headers, then writes the body: a streaming
- * `ReadableStream` (SSE/JSONL) is pumped chunk-by-chunk and the socket is
- * destroyed on a mid-stream error (parity with `sendStream`); a buffered body
- * is written in one shot; a null body ends the response empty.
+ * fetch host. Express's `Response` extends Node's `ServerResponse`, so this just
+ * delegates to the shared {@link writeWebResponseToNode} (also used by the
+ * Fastify host adapter).
  */
 async function writeWebResponseToExpress(
   response: globalThis.Response,
   res: Response,
 ): Promise<void> {
-  res.status(response.status);
-  response.headers.forEach((value, name) => {
-    // `set-cookie` may be comma-joined by `Headers`; Express handles the common
-    // single-cookie case fine. Multi-cookie is out of scope for web-dispatch
-    // (no route sets multiple cookies on this surface).
-    res.setHeader(name, value);
-  });
-
-  const body = response.body;
-  if (body == null) {
-    res.end();
-    return;
-  }
-
-  const reader = body.getReader();
-  res.flushHeaders();
-
-  // Client disconnect: cancel the Web stream so RestHandler's `cancel()` runs
-  // `iterator.return?.()` and the handler generator's `finally` releases its
-  // resources — parity with sendStream's `res.on('close')`.
-  let aborted = false;
-  const onClose = () => {
-    aborted = true;
-    void reader.cancel();
-  };
-  res.on('close', onClose);
-
-  try {
-    for (;;) {
-      const {done, value} = await reader.read();
-      if (done) break;
-      if (value && !aborted) res.write(Buffer.from(value));
-    }
-    if (!aborted) res.end();
-  } catch {
-    // The Response stream already commits a terminal error frame for handler
-    // failures (RestHandler.toStreamResponse). A transport read error here means
-    // the socket is unusable — destroy it rather than crash.
-    if (aborted) {
-      // client already gone; nothing to write
-    } else if (!res.headersSent) res.status(500).end();
-    else res.destroy();
-  } finally {
-    res.removeListener('close', onClose);
-    reader.releaseLock?.();
-  }
+  await writeWebResponseToNode(res, response);
 }
 
 /**
