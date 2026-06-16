@@ -39,7 +39,6 @@ import {
   schemaPropertyInfo,
   standardParse,
   OAS_ENHANCER_EXTENSION_POINT,
-  type ErrorEnvelope,
   type OASEnhancer,
   type OpenApiSpec,
   type RouteSchemas,
@@ -83,6 +82,7 @@ import {
   type AxSection,
 } from './ax.js';
 import {lookupSuccessStatus} from './route-meta.js';
+import {SSE_FRAMER, JSONL_FRAMER} from './stream-framers.js';
 import {collectRoutes} from './web/collect-routes.js';
 import {Router} from './web/router.js';
 import {RestHandler} from './web/rest-handler.js';
@@ -652,7 +652,7 @@ export class RestServer implements Server {
    * Send a streaming response from an async-iterable handler result.
    *
    * Two wire formats share one pull/validate/cleanup loop, differing only in
-   * how an item or an error is serialized to the wire (the {@link StreamFramer}):
+   * how an item or an error is serialized to the wire (the `StreamFramer`):
    * `'sse'` (default) emits `text/event-stream` Server-Sent Events; `'jsonl'`
    * emits newline-delimited JSON (`application/jsonl`).
    *
@@ -1052,68 +1052,6 @@ export class RestServer implements Server {
     return this.context;
   }
 }
-
-/** A serialized stream error payload (the wire shape both formats carry). */
-interface StreamErrorPayload extends Omit<
-  ErrorEnvelope,
-  'publicMessage' | 'statusCode'
-> {
-  statusCode: number;
-  message: string;
-  details?: unknown;
-}
-
-/**
- * The only thing that differs between stream wire formats: the response
- * headers and how an item / an error are serialized to bytes. The pull,
- * validate, disconnect, and cleanup disciplines in `sendStream` are shared.
- */
-interface StreamFramer {
-  headers: Record<string, string>;
-  /** Serialize one validated item to its wire representation. */
-  item(data: unknown): string;
-  /** Serialize a terminal error record to its wire representation. */
-  error(payload: StreamErrorPayload): string;
-}
-
-/** Server-Sent Events: `data:`/`event:` frames separated by blank lines. */
-const SSE_FRAMER: StreamFramer = {
-  headers: {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
-  },
-  item(data) {
-    return `data: ${JSON.stringify(data)}\n\n`;
-  },
-  error(payload) {
-    return `event: error\ndata: ${JSON.stringify({error: payload})}\n\n`;
-  },
-};
-
-/**
- * Newline-delimited JSON: one compact JSON object per line. The media type is
- * `application/jsonl` (the `.jsonl` convention); `application/x-ndjson` is the
- * common alternative — we pick `application/jsonl` to match OpenAPI 3.2's
- * streaming guidance and keep the media type self-describing. A terminal error
- * is itself a JSON line `{"error":{statusCode,message,details?}}`, mirroring
- * the SSE `event: error` payload exactly so clients share one error contract.
- */
-const JSONL_FRAMER: StreamFramer = {
-  headers: {
-    'Content-Type': 'application/jsonl',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
-  },
-  item(data) {
-    return JSON.stringify(data) + '\n';
-  },
-  error(payload) {
-    return JSON.stringify({error: payload}) + '\n';
-  },
-};
 
 /**
  * Convert OpenAPI-style path templates `/foo/{name}` to express `/foo/:name`.
