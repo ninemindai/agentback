@@ -102,10 +102,32 @@ export namespace RestBindings {
  */
 export const REST_DISPATCH_HOOK_TAG = 'rest.dispatchHook';
 
-/** Per-request info passed to a {@link RestDispatchHook}. */
+/**
+ * Per-request info passed to a {@link RestDispatchHook}. Runtime-neutral: it
+ * carries a Web `Request` (not an Express `req`/`res`) so a hook runs at parity
+ * on both the Express {@link RestServer.dispatch} path and the runtime-neutral
+ * Web `RestHandler` path. A hook observes the request and wraps `next()`; it
+ * does not own the `Response`. The one cross-cutting *write* a hook needs — a
+ * response header — is expressed through the neutral {@link responseHeaders}
+ * collector, which each surface flushes onto its own response object.
+ */
 export interface RestDispatchInfo {
-  req: Request;
-  res: Response;
+  /**
+   * A Web {@link globalThis.Request} view of the in-flight request — `method`,
+   * `url`, and `headers` at parity on both surfaces (the Express path builds
+   * this view from its `req`; the Web path already has it). Read-only for the
+   * hook; the body is not consumed here.
+   */
+  request: globalThis.Request;
+  /**
+   * Neutral response-header collector. A hook may `set`/`append` headers it
+   * wants on the outgoing response (e.g. the x402 gate's `x-payment-response`);
+   * the dispatching surface flushes these onto its own response after the hook
+   * chain resolves — Express via `res.setHeader`, Web by merging into the
+   * `Response`. This is the only response *write* a hook gets — there is no
+   * Express `res` on the neutral info.
+   */
+  responseHeaders: Headers;
   /** The controller class. */
   ctor: Function;
   methodName: string;

@@ -5,10 +5,7 @@
 import type {Context} from '@agentback/context';
 import {getPrice, type PriceSpec} from '@agentback/metering';
 import {MCP_DISPATCH_HOOK_TAG, type McpDispatchHook} from '@agentback/mcp';
-import {
-  REST_DISPATCH_HOOK_TAG,
-  type RestDispatchHook,
-} from '@agentback/rest';
+import {REST_DISPATCH_HOOK_TAG, type RestDispatchHook} from '@agentback/rest';
 import {defaultContextFor} from './mcp.js';
 import type {PaymentChallenge, PaymentRail} from './types.js';
 
@@ -71,18 +68,22 @@ export function createPriceGateRestHook(rail: PaymentRail): RestDispatchHook {
   return async (info, next) => {
     const spec = getPrice(info.ctor.prototype, info.methodName);
     if (!spec) return next();
+    const {request} = info;
     const verdict = await rail.authorize({
-      method: info.req.method,
-      resource: info.req.originalUrl ?? info.req.url,
-      paymentHeader: info.req.header('x-payment') ?? undefined,
-      sessionId: info.req.header('x-mpp-session') ?? undefined,
+      method: request.method,
+      // pathname + search mirrors Express `req.originalUrl` (path with query).
+      resource: (u => u.pathname + u.search)(new URL(request.url)),
+      paymentHeader: request.headers.get('x-payment') ?? undefined,
+      sessionId: request.headers.get('x-mpp-session') ?? undefined,
       price: spec,
     });
     if (verdict.status === 'payment_required') {
       throw paymentRequiredError(verdict.challenge, spec);
     }
     const detail = JSON.stringify(verdict.receipt.payload ?? {});
-    info.res.setHeader(
+    // Neutral header write — the dispatching surface (Express via `res.setHeader`,
+    // Web by merging into the `Response`) flushes this after the hook chain.
+    info.responseHeaders.set(
       'x-payment-response',
       Buffer.from(detail).toString('base64'),
     );

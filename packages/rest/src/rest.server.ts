@@ -61,12 +61,12 @@ import express, {
 } from 'express';
 import type {Server as HttpServer} from 'http';
 import {
-  REST_DISPATCH_HOOK_TAG,
   RestBindings,
   RestMiddlewareGroups,
   type RestDispatchHook,
   type RestDispatchInfo,
 } from './keys.js';
+import {applyDispatchHooks, resolveDispatchHooks} from './dispatch-hooks.js';
 import {
   DEFAULT_REST_CONFIG,
   type BodyParserConfig,
@@ -98,6 +98,26 @@ import type {RouteValue} from './web/route-value.js';
 import {resolveControllerInstance} from './controller-resolver.js';
 
 const log = loggers('agentback:rest:server');
+
+/**
+ * Build a runtime-neutral Web {@link globalThis.Request} view of an Express
+ * request for {@link RestDispatchInfo.request}. Carries method, absolute URL
+ * (from `protocol` + `Host` + `originalUrl`), and headers — everything a
+ * dispatch hook reads — so one hook contract serves both the Express and Web
+ * dispatch paths. The body is intentionally not attached: hooks observe, they
+ * don't re-read the (already-parsed) request body.
+ */
+function webRequestFromExpress(req: Request): globalThis.Request {
+  const host = req.get('host') ?? 'localhost';
+  const url = `${req.protocol}://${host}${req.originalUrl ?? req.url}`;
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (value === undefined) continue;
+    if (Array.isArray(value)) for (const v of value) headers.append(name, v);
+    else headers.set(name, value);
+  }
+  return new globalThis.Request(url, {method: req.method, headers});
+}
 
 export class RestServer implements Server {
   private app: Express;
@@ -359,21 +379,28 @@ export class RestServer implements Server {
     const hooks = await this.resolveDispatchHooks();
     if (hooks.length === 0) return run();
 
+    // Neutral info: a Web `Request` view of the Express `req` (method/url/
+    // headers — the body is not consumed by hooks) and a neutral
+    // `responseHeaders` collector. The Web `RestHandler` builds the same shape
+    // so a hook runs at parity on both surfaces. No Express `res` is exposed.
+    const responseHeaders = new Headers();
     const info: RestDispatchInfo = {
-      req,
-      res,
+      request: webRequestFromExpress(req),
+      responseHeaders,
       ctor,
       methodName,
       schemas,
       ctx: reqCtx,
     };
-    let next = run;
-    for (let i = hooks.length - 1; i >= 0; i--) {
-      const hook = hooks[i]!;
-      const inner = next;
-      next = () => hook(info, inner);
+    try {
+      return await applyDispatchHooks(hooks, info, run);
+    } finally {
+      // Flush hook-contributed headers onto the Express response. Runs on both
+      // the success and error paths (mirroring how the Web path merges them
+      // onto whatever Response it returns), so a header set before a thrown
+      // refusal still reaches the client.
+      responseHeaders.forEach((value, name) => res.setHeader(name, value));
     }
-    return next();
   }
 
   /**
@@ -384,11 +411,7 @@ export class RestServer implements Server {
   private dispatchHookCache?: RestDispatchHook[];
   protected async resolveDispatchHooks(): Promise<RestDispatchHook[]> {
     if (!this.dispatchHookCache) {
-      const hooks: RestDispatchHook[] = [];
-      for (const binding of this.context.findByTag(REST_DISPATCH_HOOK_TAG)) {
-        hooks.push(await this.context.get<RestDispatchHook>(binding.key));
-      }
-      this.dispatchHookCache = hooks;
+      this.dispatchHookCache = await resolveDispatchHooks(this.context);
     }
     return this.dispatchHookCache;
   }

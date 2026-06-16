@@ -63,25 +63,24 @@ class Tools {
 }
 
 function restInfo(headers: Record<string, string> = {}) {
-  const sent: Record<string, string> = {};
+  const responseHeaders = new Headers();
   return {
     info: {
-      req: {
+      request: new Request('http://localhost/premium', {
         method: 'GET',
-        url: '/premium',
-        originalUrl: '/premium',
-        header: (name: string) => headers[name.toLowerCase()],
-      },
-      res: {
-        setHeader: (name: string, value: string) => {
-          sent[name] = value;
-        },
-      },
+        headers,
+      }),
+      responseHeaders,
       ctor: Tools,
       methodName: 'paidRoute',
       schemas: {},
     },
-    sent,
+    // Back-compat view for the assertions below: read the neutral collector.
+    sent: {
+      get 'x-payment-response'() {
+        return responseHeaders.get('x-payment-response') ?? undefined;
+      },
+    } as Record<string, string | undefined>,
   };
 }
 
