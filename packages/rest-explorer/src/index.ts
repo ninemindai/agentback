@@ -4,7 +4,7 @@
 
 import express from 'express';
 import swaggerUI from 'swagger-ui-dist';
-import {RestApplication, RestServer} from '@agentback/rest';
+import {RestApplication, RestServer, serveStaticDir} from '@agentback/rest';
 
 export interface ExplorerOptions {
   /** URL path where the explorer is mounted. Default `/explorer`. */
@@ -53,17 +53,36 @@ export function mountExplorer(
   const opts = {...DEFAULTS, ...options};
   const app = server.expressApp;
   const fsPath = swaggerUI.getAbsoluteFSPath();
+  const html = indexHtml(opts);
 
+  // Express path (Node/Express hosts) — unchanged.
   // Order matters: register the index override BEFORE express.static, and
   // disable static's default index so it doesn't serve swagger-ui-dist's
   // bundled index.html (which points at the Petstore demo).
   app.get(opts.path + '/', (_req, res) => {
-    res.type('html').send(indexHtml(opts));
+    res.type('html').send(html);
   });
   app.get(opts.path, (_req, res) => {
     res.redirect(301, opts.path + '/');
   });
   app.use(opts.path, express.static(fsPath, {index: false}));
+
+  // Neutral fetch path (Bun/Deno/Fastify hosts via fetchHandler()).
+  // The HTML shell and redirect are exact handlers (highest priority), then the
+  // prefix handler serves static assets from the swagger-ui-dist directory.
+  const serveAsset = serveStaticDir(fsPath);
+  server.addFetchHandler(
+    'GET',
+    opts.path + '/',
+    async () => new Response(html, {headers: {'content-type': 'text/html; charset=utf-8'}}),
+  );
+  server.addFetchHandler(
+    'GET',
+    opts.path,
+    async req =>
+      Response.redirect(new URL(opts.path + '/', req.url).toString(), 301),
+  );
+  server.addFetchPrefix(opts.path, suffix => serveAsset(suffix));
 }
 
 /**

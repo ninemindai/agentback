@@ -11,6 +11,7 @@ import {apiConsoleFeature} from '@agentback/rest-explorer';
 import {mcpConsoleFeature} from '@agentback/mcp-inspector';
 import {schemaConsoleFeature} from '@agentback/schema-explorer';
 import type {RestApplication, RestServer} from '@agentback/rest';
+import {serveStaticDir} from '@agentback/rest';
 
 /**
  * A server-side panel contribution: registers the panel's JSON API (no
@@ -127,9 +128,18 @@ export function mountConsole(
 
   app.use(basePath + '/assets', express.static(clientDir, {index: false}));
   const hasCss = existsSync(clientDir + 'main.css');
+  const html = indexHtml(basePath, title, features, hasCss);
   app.get([basePath, basePath + '/'], (_req, res) => {
-    res.type('html').send(indexHtml(basePath, title, features, hasCss));
+    res.type('html').send(html);
   });
+
+  // Neutral fetch path (Bun/Deno/Fastify hosts via fetchHandler()).
+  const serveAsset = serveStaticDir(clientDir);
+  const htmlResponse = async () =>
+    new Response(html, {headers: {'content-type': 'text/html; charset=utf-8'}});
+  server.addFetchHandler('GET', basePath, htmlResponse);
+  server.addFetchHandler('GET', basePath + '/', htmlResponse);
+  server.addFetchPrefix(basePath + '/assets', suffix => serveAsset(suffix));
 }
 
 // ---- Static shell -----------------------------------------------------------

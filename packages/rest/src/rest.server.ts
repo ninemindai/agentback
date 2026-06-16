@@ -1135,6 +1135,49 @@ export class RestServer implements Server {
 
   private _fetchHost?: FetchHost;
 
+  // Exact-path and prefix-path handlers for the neutral fetch surface.
+  // install*() helpers populate these BEFORE fetchHandler() is called so the
+  // lazy build includes them. Adding after the cache is built invalidates it.
+  private readonly _fetchExact: Array<{
+    method: string;
+    path: string;
+    fn: (req: globalThis.Request) => Promise<globalThis.Response>;
+  }> = [];
+  private readonly _fetchPrefixes: Array<{
+    prefix: string;
+    fn: (suffix: string) => Promise<globalThis.Response | undefined>;
+  }> = [];
+
+  /**
+   * Register an exact-path handler on the neutral {@link fetchHandler} surface
+   * (for HTML shells, redirects, etc.). Complement to {@link addFetchPrefix}.
+   * Call before the first `fetchHandler()` invocation (i.e. before
+   * `installFastifyHost` / `Bun.serve`). `method` is case-insensitive.
+   */
+  addFetchHandler(
+    method: string,
+    path: string,
+    fn: (req: globalThis.Request) => Promise<globalThis.Response>,
+  ): void {
+    this._fetchExact.push({method: method.toUpperCase(), path, fn});
+    this._fetchHost = undefined;
+  }
+
+  /**
+   * Register a prefix-based file handler on the neutral {@link fetchHandler}
+   * surface. `prefix` is matched against the request pathname; `fn` receives
+   * the portion of the pathname after the prefix (the suffix, always starting
+   * with `/` or empty). Return `undefined` to fall through to the next handler.
+   * Intended for bundled static asset directories (use {@link serveStaticDir}).
+   */
+  addFetchPrefix(
+    prefix: string,
+    fn: (suffix: string) => Promise<globalThis.Response | undefined>,
+  ): void {
+    this._fetchPrefixes.push({prefix, fn});
+    this._fetchHost = undefined;
+  }
+
   /**
    * Runtime-neutral fetch handler for this app's `@api` routes — the same
    * routing + Zod validation + DI + error-envelope pipeline as the Express path
@@ -1143,7 +1186,9 @@ export class RestServer implements Server {
    * Authentication + authorization, streaming, dispatch hooks, and
    * confirmation + idempotency all run at parity with the Express path.
    * Built lazily from the registry on first call (after controllers are
-   * registered / after start()).
+   * registered / after start()). Exact handlers (addFetchHandler) and prefix
+   * handlers (addFetchPrefix) registered before this call are folded into the
+   * 404 fallback, so UI assets are served alongside @api routes.
    */
   fetchHandler(): FetchHost {
     if (!this._fetchHost) {
@@ -1151,9 +1196,55 @@ export class RestServer implements Server {
       for (const r of collectRoutes(this.context, this.config.basePath ?? '')) {
         router.add(r);
       }
+
+      // Snapshot the raw-route arrays so the notFound closure is stable even if
+      // more entries are added after this call (they'd bust the cache anyway).
+      const exactEntries = [...this._fetchExact];
+      const prefixEntries = [...this._fetchPrefixes];
+
+      // When no raw routes are registered, fall through to createFetchHost's
+      // built-in 404 (avoids an unnecessary async closure per miss).
+      const notFound =
+        exactEntries.length > 0 || prefixEntries.length > 0
+          ? async (
+              req: globalThis.Request,
+            ): Promise<globalThis.Response> => {
+              const {pathname} = new URL(req.url);
+
+              // Exact handlers are checked first (priority over prefix matches).
+              for (const e of exactEntries) {
+                if (e.method === req.method.toUpperCase() && pathname === e.path) {
+                  return e.fn(req);
+                }
+              }
+
+              // Prefix handlers: longest matching prefix wins (insertion order
+              // is user-controlled; document that specificity is caller's
+              // responsibility).
+              for (const p of prefixEntries) {
+                if (
+                  pathname === p.prefix ||
+                  pathname.startsWith(p.prefix + '/')
+                ) {
+                  const suffix = pathname.slice(p.prefix.length) || '/';
+                  const res = await p.fn(suffix);
+                  if (res !== undefined) return res;
+                }
+              }
+
+              return new globalThis.Response(
+                JSON.stringify({
+                  error: {code: 'not_found', message: 'Not Found'},
+                }),
+                {status: 404, headers: {'content-type': 'application/json'}},
+              );
+            }
+          : undefined;
+
       const core = createFetchHost({
         router,
         dispatch: new RestHandler(this.context).dispatch,
+        notFound,
       });
 
       // The runtime-neutral Web middleware onion (additive; the Express chain is
