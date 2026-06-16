@@ -2,33 +2,8 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {loggers} from '@agentback/common';
-import toposort from 'toposort';
-const log = loggers('loopback:middleware');
-/**
- * Sort the groups by their relative order
- * @param orderedGroups - A list of arrays - each of which represents a partial
- * order of groups.
- */
-export function sortListOfGroups(...orderedGroups: string[][]) {
-  if (log.debug.enabled) {
-    log.debug(
-      'Dependency graph: %s',
-      orderedGroups.map(edge => edge.join('->')).join(', '),
-    );
-  }
-  const graph: [string, string][] = [];
-  for (const groups of orderedGroups) {
-    if (groups.length >= 2) {
-      groups.reduce((prev: string | undefined, group) => {
-        if (typeof prev === 'string') {
-          graph.push([prev, group]);
-        }
-        return group;
-      }, undefined);
-    }
-  }
-  const sorted = toposort(graph);
-  log.debug('Sorted groups: %s', sorted.join('->'));
-  return sorted;
-}
+// `sortListOfGroups` was relocated to `@agentback/common` so both the Express
+// middleware chain and the runtime-neutral Web middleware onion order by the
+// same topological sort. Re-exported here for backward compatibility — existing
+// `@agentback/express` consumers (and its `index.ts`) import it from this path.
+export {sortListOfGroups} from '@agentback/common';

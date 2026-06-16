@@ -532,6 +532,9 @@ importers:
       p-map:
         specifier: ^7.0.4
         version: 7.0.4
+      toposort:
+        specifier: ^2.0.2
+        version: 2.0.2
       tslib:
         specifier: ^2.8.1
         version: 2.8.1
@@ -539,6 +542,9 @@ importers:
       '@types/debug':
         specifier: ^4.1.13
         version: 4.1.13
+      '@types/toposort':
+        specifier: ^2.0.7
+        version: 2.0.7
 
   packages/config:
     dependencies:
