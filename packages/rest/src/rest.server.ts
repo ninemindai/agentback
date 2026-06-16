@@ -74,6 +74,7 @@ import {
   type RestServerConfig,
 } from './types.js';
 import {invalidParameter, invalidRequestBody} from './errors.js';
+import {parseSection} from './validate-sections.js';
 import {makeMultipartMiddleware} from './multipart.js';
 import {isFileResponse, type FileResponse} from './file-response.js';
 import {
@@ -1137,19 +1138,6 @@ function buildInputBundle(
     bundle.body = parsed.data;
   }
   return bundle;
-}
-
-function parseSection(
-  section: 'path' | 'query' | 'headers',
-  raw: Record<string, unknown>,
-  schema: SchemaLike,
-): Record<string, unknown> {
-  const parsed = standardParse(schema, raw);
-  if (parsed.success) return parsed.data as Record<string, unknown>;
-  const first: ParseIssue | undefined = parsed.issues[0];
-  const name = first?.path?.[0]?.toString() ?? section;
-  // Match the prior error shape: invalidParameter throws 400; bad body throws 422.
-  throw invalidParameter(name, parsed.issues, schema);
 }
 
 function lookupSuccessStatus(ctor: Function, methodName: string): number {
