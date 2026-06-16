@@ -12,6 +12,21 @@ import {
   type RouteSchemas,
   type SchemaLike,
 } from '@agentback/openapi';
+import {
+  fromWebRequest,
+  getAuthenticationMetadata,
+  normalizeAuthResult,
+  resolveStrategy,
+  type AuthenticationResult,
+} from '@agentback/authentication';
+import {
+  AuthorizationDecision,
+  buildAuthorizationContext,
+  getAuthorizationMetadata,
+  runAuthorization,
+} from '@agentback/authorization';
+import {SecurityBindings, type UserProfile} from '@agentback/security';
+import createError from 'http-errors';
 import {loggers} from '@agentback/common';
 import {RestBindings} from '../keys.js';
 import {invalidRequestBody} from '../errors.js';
@@ -43,8 +58,9 @@ function queryObject(url: URL): Record<string, unknown> {
  * `Request` into a Web `Response`, reusing the SAME validation, DI resolution,
  * and error-envelope logic as the Express {@link RestServer}. Wrapped in a
  * {@link Dispatch} contract so a {@link FetchHost} (Workers/Deno/Bun/tests) can
- * drive it directly. Auth, dispatch hooks, idempotency, confirmation, and
- * uploads are deferred — this is the core happy path + errors + streaming.
+ * drive it directly. Authentication + authorization run at parity with the
+ * Express path (same helpers, same 401/403 envelope); dispatch hooks,
+ * idempotency, confirmation, and uploads are deferred.
  */
 export class RestHandler {
   constructor(private readonly context: Context) {}
@@ -66,6 +82,20 @@ export class RestHandler {
     // Bind the Web Request under WEB_REQUEST (not HTTP_REQUEST, which is the
     // Express surface); inject with {optional: true} — absent on the Express path.
     reqCtx.bind(RestBindings.WEB_REQUEST).to(req);
+
+    // Auth/authz BEFORE input validation (mirrors RestServer.invokeRoute): an
+    // unauthorized caller learns nothing from a 401, not even whether its body
+    // was well-formed. A thrown 401/403 propagates to `dispatch`'s try/catch →
+    // `toErrorResponse` → `buildErrorEnvelope`, the SAME envelope the Express
+    // path emits via `sendError`.
+    const auth = await this.authenticate(req, ctor, methodName);
+    if (auth.user) reqCtx.bind(SecurityBindings.USER).to(auth.user);
+    if (auth.clientApplication) {
+      reqCtx
+        .bind(SecurityBindings.CLIENT_APPLICATION)
+        .to(auth.clientApplication);
+    }
+    await this.authorize(auth.user, ctor, methodName, reqCtx);
 
     const hasInput =
       schemas.body != null ||
@@ -296,6 +326,64 @@ export class RestHandler {
       },
       {status: envelope.statusCode ?? 500},
     );
+  }
+
+  /**
+   * Run the `@authenticate` strategy declared on the route, if any — the Web
+   * mirror of {@link RestServer.authenticate}. Reuses the SAME
+   * `getAuthenticationMetadata` / `resolveStrategy` / `normalizeAuthResult`
+   * helpers and the SAME 401/500 status mapping, feeding the strategy the
+   * neutral {@link fromWebRequest} adapter so one strategy contract serves both
+   * surfaces.
+   */
+  private async authenticate(
+    req: Request,
+    ctor: Function,
+    methodName: string,
+  ): Promise<AuthenticationResult> {
+    const meta = getAuthenticationMetadata(ctor, methodName);
+    if (!meta || meta.skip) return {};
+    const strategy = await resolveStrategy(this.context, meta.strategy);
+    if (!strategy) {
+      throw createError(
+        500,
+        `Authentication strategy '${meta.strategy}' not registered.`,
+      );
+    }
+    try {
+      const result = normalizeAuthResult(
+        await strategy.authenticate(fromWebRequest(req), meta.options),
+      );
+      if (!result.user && !result.clientApplication) {
+        throw createError(401, 'Unauthorized');
+      }
+      return result;
+    } catch (err) {
+      const e = err as Error & {statusCode?: number; status?: number};
+      if (e.statusCode || e.status) throw e;
+      throw createError(401, e.message || 'Unauthorized');
+    }
+  }
+
+  /**
+   * Apply `@authorize` metadata for the route — the Web mirror of
+   * {@link RestServer.authorize}. Runs voters against the per-request context so
+   * request-scoped bindings (the principal bound above, tenant, client app) are
+   * visible; throws 403 on a non-ALLOW decision.
+   */
+  private async authorize(
+    user: UserProfile | undefined,
+    ctor: Function,
+    methodName: string,
+    reqCtx: Context,
+  ): Promise<void> {
+    const meta = getAuthorizationMetadata(ctor, methodName);
+    if (!meta || meta.skip) return;
+    const ctx = buildAuthorizationContext(user, `${ctor.name}.${methodName}`);
+    const decision = await runAuthorization(ctx, meta, reqCtx);
+    if (decision !== AuthorizationDecision.ALLOW) {
+      throw createError(403, `Forbidden: not authorized for ${ctx.resource}.`);
+    }
   }
 
   private resolveController<T>(ctor: Function): Promise<T> {

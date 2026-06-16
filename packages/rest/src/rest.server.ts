@@ -9,6 +9,7 @@ import {
   resolveInjectedArguments,
 } from '@agentback/context';
 import {
+  fromExpressRequest,
   getAuthenticationMetadata,
   normalizeAuthResult,
   resolveStrategy,
@@ -826,7 +827,7 @@ export class RestServer implements Server {
     }
     try {
       const result = normalizeAuthResult(
-        await strategy.authenticate(req, meta.options),
+        await strategy.authenticate(fromExpressRequest(req), meta.options),
       );
       if (!result.user && !result.clientApplication) {
         throw createError(401, 'Unauthorized');
@@ -1022,9 +1023,10 @@ export class RestServer implements Server {
    * Runtime-neutral fetch handler for this app's `@api` routes — the same
    * routing + Zod validation + DI + error-envelope pipeline as the Express path
    * (via RestHandler), as `fetch(Request): Promise<Response>` for Web hosts
-   * (Bun/Deno/Workers/tests). Additive: the Express server is unchanged; auth,
-   * hooks, confirmation/idempotency, streaming are NOT in this path yet (Express
-   * only). Built lazily from the registry on first call (after controllers are
+   * (Bun/Deno/Workers/tests). Additive: the Express server is unchanged.
+   * Authentication + authorization + streaming run at parity with the Express
+   * path; dispatch hooks and confirmation/idempotency are NOT in this path yet.
+   * Built lazily from the registry on first call (after controllers are
    * registered / after start()).
    */
   fetchHandler(): FetchHost {
@@ -1063,7 +1065,9 @@ export class RestServer implements Server {
         // `Request`/`Response` are shadowed by the `express` import in this
         // file; the Web onion deals in the global (WHATWG) types, so name them
         // explicitly via `globalThis`.
-        fetch: async (req: globalThis.Request): Promise<globalThis.Response> => {
+        fetch: async (
+          req: globalThis.Request,
+        ): Promise<globalThis.Response> => {
           const list = await collect();
           if (list.length === 0) return core.fetch(req);
           return runWebOnion(list, req, this.context, () => core.fetch(req));
