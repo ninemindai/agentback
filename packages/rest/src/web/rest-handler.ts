@@ -27,9 +27,19 @@ import {
 } from '@agentback/authorization';
 import {SecurityBindings, type UserProfile} from '@agentback/security';
 import createError from 'http-errors';
-import {loggers} from '@agentback/common';
+import {
+  InMemoryConfirmationStore,
+  InMemoryIdempotencyStore,
+  loggers,
+  type ConfirmationStore,
+  type IdempotencyStore,
+} from '@agentback/common';
 import {RestBindings, type RestDispatchInfo} from '../keys.js';
 import {applyDispatchHooks, resolveDispatchHooks} from '../dispatch-hooks.js';
+import {
+  enforceConfirmation,
+  executeIdempotent,
+} from '../confirm-idempotency.js';
 import {invalidRequestBody} from '../errors.js';
 import {parseSection} from '../validate-sections.js';
 import type {Dispatch} from './dispatch.js';
@@ -71,9 +81,9 @@ function queryObject(url: URL): Record<string, unknown> {
  * `Request` into a Web `Response`, reusing the SAME validation, DI resolution,
  * and error-envelope logic as the Express {@link RestServer}. Wrapped in a
  * {@link Dispatch} contract so a {@link FetchHost} (Workers/Deno/Bun/tests) can
- * drive it directly. Authentication + authorization run at parity with the
- * Express path (same helpers, same 401/403 envelope); dispatch hooks,
- * idempotency, confirmation, and uploads are deferred.
+ * drive it directly. Authentication + authorization, dispatch hooks, and
+ * confirmation + idempotency all run at parity with the Express path (same
+ * helpers, same envelopes); uploads are deferred.
  */
 export class RestHandler {
   constructor(private readonly context: Context) {}
@@ -130,27 +140,75 @@ export class RestHandler {
       }
       await this.authorize(auth.user, ctor, methodName, reqCtx);
 
-      const hasInput =
-        schemas.body != null ||
-        schemas.path != null ||
-        schemas.query != null ||
-        schemas.headers != null;
-      const nonInjected: unknown[] = hasInput
-        ? [await this.buildBundle(match, req, schemas)]
-        : [];
+      // Read the Web body ONCE up front when the route declares a body schema
+      // or a confirmation gate: `req.json()` consumes the stream, and BOTH the
+      // confirmation fingerprint and input validation need the body. Shared
+      // here (vs. re-reading in buildBundle) so the stream is never read twice.
+      const needsBody = schemas.body != null || schemas.confirm != null;
+      const body = needsBody
+        ? await req.json().catch(() => undefined)
+        : undefined;
 
-      const instance = (await this.resolveController(ctor)) as Record<
-        string,
-        Function
-      >;
-      const args = await resolveInjectedArguments(
-        ctor.prototype,
-        methodName,
-        reqCtx,
-        undefined,
-        nonInjected,
-      );
-      return (instance[methodName] as Function).apply(instance, args);
+      // Safety gate AFTER auth/authz, BEFORE input validation — same order as
+      // RestServer.invokeRoute. The fingerprint is built from the once-read
+      // body plus the Web-derived method/path/params/query (parity with the
+      // Express path's req.method/req.path/req.params/req.query/req.body).
+      if (schemas.confirm) {
+        await enforceConfirmation({
+          scope: `${ctor.name}.${methodName}`,
+          facts: {
+            method: req.method,
+            path: new URL(req.url).pathname,
+            params: match.params,
+            query: queryObject(new URL(req.url)),
+            body,
+          },
+          getHeader: name => req.headers.get(name),
+          store: await this.confirmationStore(),
+          confirm: schemas.confirm,
+        });
+      }
+
+      const run = async (): Promise<unknown> => {
+        const hasInput =
+          schemas.body != null ||
+          schemas.path != null ||
+          schemas.query != null ||
+          schemas.headers != null;
+        const nonInjected: unknown[] = hasInput
+          ? [this.buildBundle(match, req, schemas, body)]
+          : [];
+
+        const instance = (await this.resolveController(ctor)) as Record<
+          string,
+          Function
+        >;
+        const args = await resolveInjectedArguments(
+          ctor.prototype,
+          methodName,
+          reqCtx,
+          undefined,
+          nonInjected,
+        );
+        return (instance[methodName] as Function).apply(instance, args);
+      };
+
+      // Idempotency wraps the run (parity: RestServer.invokeRoute wraps its
+      // `run` in executeIdempotent). A replayed key surfaces the
+      // `idempotency-replayed` header via the shared responseHeaders collector,
+      // the Web analogue of the Express `res.setHeader`.
+      if (schemas.idempotency) {
+        const {replayed, result} = await executeIdempotent({
+          scope: `${ctor.name}.${methodName}`,
+          getHeader: name => req.headers.get(name),
+          store: await this.idempotencyStore(),
+          idempotency: schemas.idempotency,
+          run,
+        });
+        if (replayed) responseHeaders.set('idempotency-replayed', 'true');
+        return result;
+      }
+      return run();
     };
 
     // A hook may set a `responseHeaders` entry and then throw (e.g. the x402
@@ -202,11 +260,19 @@ export class RestHandler {
     );
   }
 
-  private async buildBundle(
+  /**
+   * Validate the four input slots into the `{body, path, query, headers}`
+   * bundle. The body is read ONCE by the caller (`run` in {@link run}) — since
+   * `req.json()` consumes the stream and the confirmation fingerprint also
+   * needs it — and handed in as `body`, so this method never re-reads the
+   * request. Synchronous: all four sections are already in memory.
+   */
+  private buildBundle(
     match: RouteMatch<RouteValue>,
     req: Request,
     schemas: RouteSchemas,
-  ): Promise<Record<string, unknown>> {
+    body: unknown,
+  ): Record<string, unknown> {
     const bundle: Record<string, unknown> = {};
     if (schemas.path) {
       bundle.path = parseSection('path', match.params, schemas.path);
@@ -227,14 +293,35 @@ export class RestHandler {
       bundle.headers = parseSection('headers', headers, schemas.headers);
     }
     if (schemas.body) {
-      const raw = await req.json().catch(() => undefined);
-      const parsed = standardParse(schemas.body, raw);
+      const parsed = standardParse(schemas.body, body);
       if (!parsed.success) {
         throw invalidRequestBody(parsed.issues, schemas.body);
       }
       bundle.body = parsed.data;
     }
     return bundle;
+  }
+
+  private confirmationStoreCache?: ConfirmationStore;
+  private async confirmationStore(): Promise<ConfirmationStore> {
+    if (!this.confirmationStoreCache) {
+      this.confirmationStoreCache =
+        (await this.context.get(RestBindings.CONFIRMATION_STORE, {
+          optional: true,
+        })) ?? new InMemoryConfirmationStore();
+    }
+    return this.confirmationStoreCache;
+  }
+
+  private idempotencyStoreCache?: IdempotencyStore;
+  private async idempotencyStore(): Promise<IdempotencyStore> {
+    if (!this.idempotencyStoreCache) {
+      this.idempotencyStoreCache =
+        (await this.context.get(RestBindings.IDEMPOTENCY_STORE, {
+          optional: true,
+        })) ?? new InMemoryIdempotencyStore();
+    }
+    return this.idempotencyStoreCache;
   }
 
   /**
