@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>weather widget</title>
+    <style>
+      body { font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 14px; color: #1a1a1a; }
+      h2 { margin: 0 0 .2rem; font-size: 1.05rem; }
+      .muted { color: #888; font-size: .8rem; }
+      .days { display: grid; grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr)); gap: .5rem; margin-top: .7rem; }
+      .day { border: 1px solid #e3e3e3; border-radius: .5rem; padding: .5rem .6rem; }
+      .day .d { font-family: ui-monospace, Menlo, monospace; font-size: .72rem; color: #888; }
+      .t { font-family: ui-monospace, Menlo, monospace; }
+      button { font: inherit; padding: .3rem .6rem; border-radius: .4rem; border: 1px solid #1a4fff; background: transparent; cursor: pointer; margin-top: .6rem; }
+    </style>
+  </head>
+  <body>
+    <h2>Weather</h2>
+    <div class="muted" id="status">connecting…</div>
+    <div id="forecast"></div>
+    <button id="refresh">Refresh</button>
+
+    <!-- The official ext-apps `App` bridge, bundled from widget/view.js at startup. -->
+    <script type="module">/*__VIEW_BUNDLE__*/</script>
+  </body>
+</html>
