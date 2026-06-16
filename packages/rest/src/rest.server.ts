@@ -88,6 +88,7 @@ import {Router} from './web/router.js';
 import {RestHandler} from './web/rest-handler.js';
 import {createFetchHost, type FetchHost} from './host/fetch.js';
 import type {RouteValue} from './web/route-value.js';
+import {resolveControllerInstance} from './controller-resolver.js';
 
 const log = loggers('agentback:rest:server');
 
@@ -852,21 +853,8 @@ export class RestServer implements Server {
     }
   }
 
-  private async resolveController<T>(ctor: Function): Promise<T> {
-    // Find a binding tagged `controller` whose valueConstructor === ctor,
-    // or by class name as a fallback.
-    const found = this.context.findByTag(CoreTags.CONTROLLER);
-    for (const binding of found) {
-      if ((binding.valueConstructor as unknown) === ctor) {
-        return this.context.get<T>(binding.key);
-      }
-    }
-    if (this.context.contains(`controllers.${ctor.name}`)) {
-      return this.context.get<T>(`controllers.${ctor.name}`);
-    }
-    throw new Error(
-      `Controller ${ctor.name} is not bound. Use app.controller(${ctor.name}).`,
-    );
+  private resolveController<T>(ctor: Function): Promise<T> {
+    return resolveControllerInstance<T>(this.context, ctor);
   }
 
   /**

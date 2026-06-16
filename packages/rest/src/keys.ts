@@ -60,6 +60,14 @@ export namespace RestBindings {
   /** The raw Express {@link Response}. See {@link HTTP_REQUEST}. */
   export const HTTP_RESPONSE: BindingKey<Response> =
     BindingKey.create<Response>('rest.http.response');
+  /**
+   * The raw Web {@link globalThis.Request} on the runtime-neutral fetch path
+   * (Workers/Bun/Deno/`fetchHandler()`), the analogue of {@link HTTP_REQUEST}
+   * for the Web surface. Inject with `{optional: true}` — it is absent on the
+   * Express path.
+   */
+  export const WEB_REQUEST: BindingKey<globalThis.Request> =
+    BindingKey.create<globalThis.Request>('rest.web.request');
 }
 
 /**

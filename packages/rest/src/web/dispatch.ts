@@ -5,11 +5,9 @@
 import type {RouteMatch} from './router.js';
 
 /**
- * The contract Part 2's RestHandler implements. Pinned here so Part 1's
- * FetchHost interface is consumer-validated before RestHandler exists.
- * `T` carries whatever the router stores per route (Part 2: the route's Zod
- * schemas + controller ref); the per-request DI Context is derived inside the
- * dispatch impl from the request, not threaded here.
+ * The contract a host's FetchHost calls into: turn a matched route + the
+ * incoming Web Request into a Response. `T` is the per-route payload the Router
+ * stores; the per-request DI Context is derived inside the implementation.
  */
 export type Dispatch<T> = (
   match: RouteMatch<T>,

@@ -3,7 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 import {Context, resolveInjectedArguments} from '@agentback/context';
-import {CoreTags} from '@agentback/core';
+import {resolveControllerInstance} from '../controller-resolver.js';
 import {
   AgentError,
   buildErrorEnvelope,
@@ -63,7 +63,9 @@ export class RestHandler {
   ): Promise<Response> {
     const {ctor, methodName, schemas, successStatus} = match.value;
     const reqCtx = new Context(this.context, 'web-request');
-    reqCtx.bind(RestBindings.HTTP_REQUEST).to(req as never);
+    // Bind the Web Request under WEB_REQUEST (not HTTP_REQUEST, which is the
+    // Express surface); inject with {optional: true} — absent on the Express path.
+    reqCtx.bind(RestBindings.WEB_REQUEST).to(req);
 
     const hasInput =
       schemas.body != null ||
@@ -296,17 +298,7 @@ export class RestHandler {
     );
   }
 
-  private async resolveController<T>(ctor: Function): Promise<T> {
-    for (const binding of this.context.findByTag(CoreTags.CONTROLLER)) {
-      if ((binding.valueConstructor as unknown) === ctor) {
-        return this.context.get<T>(binding.key);
-      }
-    }
-    if (this.context.contains(`controllers.${ctor.name}`)) {
-      return this.context.get<T>(`controllers.${ctor.name}`);
-    }
-    throw new Error(
-      `Controller ${ctor.name} is not bound. Use app.controller(${ctor.name}).`,
-    );
+  private resolveController<T>(ctor: Function): Promise<T> {
+    return resolveControllerInstance<T>(this.context, ctor);
   }
 }
