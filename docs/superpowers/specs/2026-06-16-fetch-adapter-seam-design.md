@@ -1,7 +1,7 @@
 # Fetch-API Adapter Seam — Design
 
 - **Date:** 2026-06-16
-- **Status:** Approved (design); implementation not started
+- **Status:** Stage 1 **shipped** — Part 1 (plumbing), Part 2 (`RestHandler` core dispatch), Part 3 (additive Fetch surface: registry→`Router` via `collectRoutes`, `RestServer.fetchHandler()`, `createTestApp.fetch()`, exported seam). The Fetch surface is registry-wired and parity-proven against Express. **Remaining (not the additive surface):** full Express demotion (route everything through the core); porting auth/authz, dispatch hooks, confirmation/idempotency, and streaming/SSE to the Web pipeline (Express-only today); file uploads (Stage 3); `FastifyHostAdapter`; neutralizing the `install*` dev UIs for non-Express hosts.
 - **Scope:** Prove a runtime-neutral dispatch seam for `@agentback/rest` with a Web `Request`→`Response` core, full feature parity, exercised by tests. **No production deployment** to edge runtimes in this work.
 
 ## Motivation
