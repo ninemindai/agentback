@@ -28,7 +28,8 @@ import {
 import {SecurityBindings, type UserProfile} from '@agentback/security';
 import createError from 'http-errors';
 import {loggers} from '@agentback/common';
-import {RestBindings} from '../keys.js';
+import {RestBindings, type RestDispatchInfo} from '../keys.js';
+import {applyDispatchHooks, resolveDispatchHooks} from '../dispatch-hooks.js';
 import {invalidRequestBody} from '../errors.js';
 import {parseSection} from '../validate-sections.js';
 import type {Dispatch} from './dispatch.js';
@@ -43,6 +44,18 @@ import {
 const STREAM_ENCODER = new TextEncoder();
 
 const log = loggers('agentback:rest:web-handler');
+
+/**
+ * Fold the neutral {@link RestDispatchInfo.responseHeaders} collector onto an
+ * outgoing {@link Response}. `Response.headers` is mutable for responses
+ * constructed in this module (JSON, streaming, error envelopes), so `set` per
+ * entry is sufficient — the Web analogue of the Express path's post-chain
+ * `res.setHeader` flush.
+ */
+function mergeHeaders(response: Response, headers: Headers): Response {
+  headers.forEach((value, name) => response.headers.set(name, value));
+  return response;
+}
 
 function queryObject(url: URL): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -83,44 +96,76 @@ export class RestHandler {
     // Express surface); inject with {optional: true} — absent on the Express path.
     reqCtx.bind(RestBindings.WEB_REQUEST).to(req);
 
-    // Auth/authz BEFORE input validation (mirrors RestServer.invokeRoute): an
-    // unauthorized caller learns nothing from a 401, not even whether its body
-    // was well-formed. A thrown 401/403 propagates to `dispatch`'s try/catch →
-    // `toErrorResponse` → `buildErrorEnvelope`, the SAME envelope the Express
-    // path emits via `sendError`.
-    const auth = await this.authenticate(req, ctor, methodName);
-    if (auth.user) reqCtx.bind(SecurityBindings.USER).to(auth.user);
-    if (auth.clientApplication) {
-      reqCtx
-        .bind(SecurityBindings.CLIENT_APPLICATION)
-        .to(auth.clientApplication);
-    }
-    await this.authorize(auth.user, ctor, methodName, reqCtx);
-
-    const hasInput =
-      schemas.body != null ||
-      schemas.path != null ||
-      schemas.query != null ||
-      schemas.headers != null;
-    const nonInjected: unknown[] = hasInput
-      ? [await this.buildBundle(match, req, schemas)]
-      : [];
-
-    const instance = (await this.resolveController(ctor)) as Record<
-      string,
-      Function
-    >;
-    const args = await resolveInjectedArguments(
-      ctor.prototype,
+    // Dispatch hooks wrap the WHOLE per-request pipeline (auth → authz →
+    // validation → controller method), exactly as the Express
+    // RestServer.invokeRoute scope: the inner `invoke` returns the controller
+    // result, and response materialization (streaming, JSON, header merge)
+    // happens after the hook chain resolves — mirroring Express, where
+    // sendResult/sendStream run outside hooks. The neutral `info` carries the
+    // Web Request and a shared `responseHeaders` collector, so a hook bound
+    // under REST_DISPATCH_HOOK_TAG fires identically on both surfaces.
+    const responseHeaders = new Headers();
+    const hooks = await resolveDispatchHooks(this.context);
+    const info: RestDispatchInfo = {
+      request: req,
+      responseHeaders,
+      ctor,
       methodName,
-      reqCtx,
-      undefined,
-      nonInjected,
-    );
-    const result = await (instance[methodName] as Function).apply(
-      instance,
-      args,
-    );
+      schemas,
+      ctx: reqCtx,
+    };
+
+    const invoke = async (): Promise<unknown> => {
+      // Auth/authz BEFORE input validation (mirrors RestServer.invokeRoute): an
+      // unauthorized caller learns nothing from a 401, not even whether its body
+      // was well-formed. A thrown 401/403 propagates to `dispatch`'s try/catch →
+      // `toErrorResponse` → `buildErrorEnvelope`, the SAME envelope the Express
+      // path emits via `sendError`.
+      const auth = await this.authenticate(req, ctor, methodName);
+      if (auth.user) reqCtx.bind(SecurityBindings.USER).to(auth.user);
+      if (auth.clientApplication) {
+        reqCtx
+          .bind(SecurityBindings.CLIENT_APPLICATION)
+          .to(auth.clientApplication);
+      }
+      await this.authorize(auth.user, ctor, methodName, reqCtx);
+
+      const hasInput =
+        schemas.body != null ||
+        schemas.path != null ||
+        schemas.query != null ||
+        schemas.headers != null;
+      const nonInjected: unknown[] = hasInput
+        ? [await this.buildBundle(match, req, schemas)]
+        : [];
+
+      const instance = (await this.resolveController(ctor)) as Record<
+        string,
+        Function
+      >;
+      const args = await resolveInjectedArguments(
+        ctor.prototype,
+        methodName,
+        reqCtx,
+        undefined,
+        nonInjected,
+      );
+      return (instance[methodName] as Function).apply(instance, args);
+    };
+
+    // A hook may set a `responseHeaders` entry and then throw (e.g. the x402
+    // gate writes `x-payment-response`). Merge the collector into whatever
+    // Response we ultimately emit — success or the error envelope — so the
+    // Express `res.setHeader`-in-`finally` behavior is matched byte-for-byte.
+    let result: unknown;
+    try {
+      result =
+        hooks.length === 0
+          ? await invoke()
+          : await applyDispatchHooks(hooks, info, invoke);
+    } catch (err) {
+      return mergeHeaders(this.toErrorResponse(err), responseHeaders);
+    }
 
     if (schemas.streamOf) {
       const iterator = this.toAsyncIterator(result);
@@ -128,12 +173,15 @@ export class RestHandler {
       // throw surfaces as a proper-status error Response (propagating to the
       // `dispatch` try/catch → `toErrorResponse`), not a half-open stream.
       const first = await iterator.next();
-      return this.toStreamResponse(
-        iterator,
-        first,
-        schemas.streamOf,
-        successStatus,
-        schemas.format ?? 'sse',
+      return mergeHeaders(
+        this.toStreamResponse(
+          iterator,
+          first,
+          schemas.streamOf,
+          successStatus,
+          schemas.format ?? 'sse',
+        ),
+        responseHeaders,
       );
     }
 
@@ -148,7 +196,10 @@ export class RestHandler {
         );
       }
     }
-    return this.toResultResponse(result, successStatus);
+    return mergeHeaders(
+      this.toResultResponse(result, successStatus),
+      responseHeaders,
+    );
   }
 
   private async buildBundle(
