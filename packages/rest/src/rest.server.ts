@@ -5,6 +5,7 @@
 import {
   config,
   Context,
+  describeInjectedArguments,
   inject,
   resolveInjectedArguments,
 } from '@agentback/context';
@@ -127,7 +128,10 @@ export class RestServer implements Server {
   private httpServer?: HttpServer;
   private _listening = false;
   readonly config: Required<
-    Omit<RestServerConfig, 'openApiSpec' | 'cors' | 'sse' | 'ax' | 'bodyParser'>
+    Omit<
+      RestServerConfig,
+      'openApiSpec' | 'cors' | 'sse' | 'ax' | 'bodyParser' | 'dispatch'
+    >
   > & {
     openApiSpec: NonNullable<RestServerConfig['openApiSpec']>;
     cors?: RestServerConfig['cors'];
@@ -135,6 +139,9 @@ export class RestServer implements Server {
     ax?: RestServerConfig['ax'];
     bodyParser?: RestServerConfig['bodyParser'];
   };
+
+  /** Selected per-route dispatch pipeline; see {@link RestServerConfig.dispatch}. */
+  protected readonly dispatchMode: 'express' | 'web';
 
   constructor(
     @inject(CoreBindings.APPLICATION_INSTANCE)
@@ -150,6 +157,11 @@ export class RestServer implements Server {
         ...(cfg?.openApiSpec ?? {}),
       },
     };
+    // Resolve the dispatch mode: explicit config wins; otherwise the
+    // (test-only) AGENTBACK_REST_DISPATCH env var; otherwise 'express'. The env
+    // override lets the ENTIRE existing test suite run through the Web pipeline
+    // without editing a single test — the parity arbiter for web-dispatch mode.
+    this.dispatchMode = resolveDispatchMode(cfg.dispatch);
     this.app = express();
     // CORS and body parsing are themselves entries in the LB middleware chain
     // (tagged with groups), not bare `app.use` calls — so their order relative
@@ -332,6 +344,26 @@ export class RestServer implements Server {
     schemas: RouteSchemas,
   ) {
     const successStatus = lookupSuccessStatus(ctor, methodName);
+    // Web-dispatch mode: route the matched request through the runtime-neutral
+    // RestHandler pipeline instead of the Express invokeRoute path. Upload
+    // routes (fileField body) stay on Express even in web-mode — the Web path
+    // doesn't stream multipart bodies yet (Stage 3).
+    const isUpload = schemas.body
+      ? fileFieldsOf(schemas.body).length > 0
+      : false;
+    // Routes that reach for the raw Express request/response objects via
+    // @inject(HTTP_REQUEST/HTTP_RESPONSE) are inherently Express-coupled — the
+    // Web pipeline binds only WEB_REQUEST — so keep them on Express even in
+    // web-mode (statically detectable from the method's injection metadata).
+    const usesRawExpress = injectsRawExpressObjects(ctor, methodName);
+    if (
+      this.dispatchMode === 'web' &&
+      !isUpload &&
+      !usesRawExpress &&
+      !this.overridesExpressDispatchSeam()
+    ) {
+      return this.makeWebHandler(ctor, methodName, schemas, successStatus);
+    }
     return async (req: Request, res: Response, next: NextFunction) => {
       try {
         const result = await this.dispatch(req, res, ctor, methodName, schemas);
@@ -347,6 +379,81 @@ export class RestServer implements Server {
         } else {
           this.sendResult(res, result, successStatus);
         }
+      } catch (err) {
+        next(err);
+      }
+    };
+  }
+
+  /**
+   * Whether the concrete server class overrides any of the Express per-request
+   * dispatch seam (`dispatch` / `invokeRoute` / `sendResult` / `sendStream` /
+   * `sendError`). These are the documented Express-path subclassing hooks — a
+   * subclass that customizes them has opted into the Express pipeline, so even
+   * in web-mode we keep ITS routes on Express (the Web `RestHandler` doesn't
+   * consult these methods). The base `RestServer` overrides nothing, so the
+   * common case still takes the Web path. Cached: the class shape is fixed.
+   */
+  private _overridesSeam?: boolean;
+  protected overridesExpressDispatchSeam(): boolean {
+    if (this._overridesSeam === undefined) {
+      const base = RestServer.prototype as unknown as Record<string, unknown>;
+      const proto = Object.getPrototypeOf(this) as Record<string, unknown>;
+      this._overridesSeam = [
+        'dispatch',
+        'invokeRoute',
+        'sendResult',
+        'sendStream',
+        'sendError',
+      ].some(name => proto[name] !== base[name]);
+    }
+    return this._overridesSeam;
+  }
+
+  /**
+   * The shared runtime-neutral dispatcher used by web-dispatch mode and
+   * {@link fetchHandler}. Stateless besides confirmation/idempotency-store
+   * caches, so a single instance is safe to reuse across routes.
+   */
+  private _restHandler?: RestHandler;
+  protected get restHandler(): RestHandler {
+    return (this._restHandler ??= new RestHandler(this.context));
+  }
+
+  /**
+   * Build an Express handler for web-dispatch mode. Express still matched the
+   * route, so we don't re-route: we already know this route's
+   * `{ctor, methodName, schemas, successStatus}`. We reconstruct a Web
+   * `Request` from the (already-parsed) Express `req`, build a `RouteMatch` from
+   * `req.params`, run the shared {@link RestHandler.dispatch}, and write the Web
+   * `Response` back onto the Express `res` — including the streaming
+   * `ReadableStream` body case.
+   *
+   * The critical subtlety: Express's body parser has already consumed the
+   * request stream into `req.body`, so a naive Web `Request` would have an
+   * EMPTY body and `RestHandler`'s `await req.json()` would read nothing. We
+   * therefore re-serialize `req.body` back into the Web `Request` body (see
+   * {@link webRequestForWebDispatch}).
+   */
+  protected makeWebHandler(
+    ctor: Function,
+    methodName: string,
+    schemas: RouteSchemas,
+    successStatus: number,
+  ) {
+    const value: RouteValue = {ctor, methodName, schemas, successStatus};
+    return async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const webReq = webRequestForWebDispatch(req);
+        // Express already decoded `req.params`; RestHandler's RouteMatch expects
+        // decoded param values (its own Router decodes too), so pass them as-is
+        // — no double-decode.
+        const match = {
+          value,
+          params: {...(req.params as Record<string, string>)},
+        };
+        const response = await this.restHandler.dispatch(match, webReq);
+        await writeWebResponseToExpress(response, res);
       } catch (err) {
         next(err);
       }
@@ -1078,6 +1185,144 @@ export class RestServer implements Server {
   /** Get the application context (used by extensions for binding lookups). */
   get appContext(): Context {
     return this.context;
+  }
+}
+
+/**
+ * Resolve the per-route dispatch mode. Explicit config wins; otherwise the
+ * test-only `AGENTBACK_REST_DISPATCH` env var (`web` | `express`) supplies the
+ * default; otherwise `'express'` (zero behavior change — the rollback path).
+ */
+function resolveDispatchMode(explicit?: 'express' | 'web'): 'express' | 'web' {
+  if (explicit) return explicit;
+  return process.env.AGENTBACK_REST_DISPATCH === 'web' ? 'web' : 'express';
+}
+
+/**
+ * Whether `ctor.methodName` injects the raw Express request/response objects
+ * (`RestBindings.HTTP_REQUEST` / `HTTP_RESPONSE`) at any parameter slot. Such a
+ * route is Express-coupled and stays on the Express path even in web-mode.
+ */
+function injectsRawExpressObjects(ctor: Function, methodName: string): boolean {
+  const rawKeys = new Set<string>([
+    RestBindings.HTTP_REQUEST.key,
+    RestBindings.HTTP_RESPONSE.key,
+  ]);
+  const injections = describeInjectedArguments(ctor.prototype, methodName);
+  return injections.some(inj => {
+    // The array is sparse for non-injected parameter slots — skip the holes.
+    if (!inj) return false;
+    const sel = inj.bindingSelector;
+    const key =
+      typeof sel === 'string'
+        ? sel
+        : sel && typeof sel === 'object' && 'key' in sel
+          ? (sel as {key: string}).key
+          : undefined;
+    return key != null && rawKeys.has(key);
+  });
+}
+
+/**
+ * Build a Web {@link globalThis.Request} for web-dispatch delegation. Unlike
+ * {@link webRequestFromExpress} (which is for dispatch-hook OBSERVATION and
+ * deliberately omits the body), this RECONSTRUCTS the body: by the time a route
+ * handler runs, Express's body parser has consumed the request stream into
+ * `req.body`, so the original Web body is empty. When `req.body` is present and
+ * looks like a JSON payload (object/array — the body-parser default), we
+ * re-serialize it so `RestHandler`'s `await req.json()` reads the same data the
+ * Express path reads off `req.body`. Headers (auth / confirmation / idempotency)
+ * are preserved.
+ */
+function webRequestForWebDispatch(req: Request): globalThis.Request {
+  const host = req.get('host') ?? 'localhost';
+  const url = `${req.protocol}://${host}${req.originalUrl ?? req.url}`;
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (value === undefined) continue;
+    if (Array.isArray(value)) for (const v of value) headers.append(name, v);
+    else headers.set(name, value);
+  }
+
+  const init: RequestInit = {method: req.method, headers};
+  // GET/HEAD can't carry a body; for everything else, re-serialize the parsed
+  // body so RestHandler's `await req.json()` reads the SAME value the Express
+  // path validates off `req.body`. `express.json` yields an object/array (it
+  // sets `{}` for an empty body), which we serialize verbatim — including `{}`,
+  // so the Web path's missing-field issue path matches Express's (validating
+  // `{}` vs `undefined` against a `z.object` produces different Zod issues).
+  const method = req.method.toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD' && req.body != null) {
+    const body = req.body;
+    const isJsonLike = typeof body === 'object' && !Buffer.isBuffer(body);
+    if (isJsonLike) {
+      init.body = JSON.stringify(body);
+      if (!headers.has('content-type')) {
+        headers.set('content-type', 'application/json');
+      }
+    }
+  }
+  return new globalThis.Request(url, init);
+}
+
+/**
+ * Write a Web {@link globalThis.Response} back onto the Express {@link Response}
+ * — the web-dispatch counterpart of `sendResult`/`sendStream`/`sendError`,
+ * which `host/node.ts` delegates to `@hono/node-server` for the standalone
+ * fetch host. Copies status + headers, then writes the body: a streaming
+ * `ReadableStream` (SSE/JSONL) is pumped chunk-by-chunk and the socket is
+ * destroyed on a mid-stream error (parity with `sendStream`); a buffered body
+ * is written in one shot; a null body ends the response empty.
+ */
+async function writeWebResponseToExpress(
+  response: globalThis.Response,
+  res: Response,
+): Promise<void> {
+  res.status(response.status);
+  response.headers.forEach((value, name) => {
+    // `set-cookie` may be comma-joined by `Headers`; Express handles the common
+    // single-cookie case fine. Multi-cookie is out of scope for web-dispatch
+    // (no route sets multiple cookies on this surface).
+    res.setHeader(name, value);
+  });
+
+  const body = response.body;
+  if (body == null) {
+    res.end();
+    return;
+  }
+
+  const reader = body.getReader();
+  res.flushHeaders();
+
+  // Client disconnect: cancel the Web stream so RestHandler's `cancel()` runs
+  // `iterator.return?.()` and the handler generator's `finally` releases its
+  // resources — parity with sendStream's `res.on('close')`.
+  let aborted = false;
+  const onClose = () => {
+    aborted = true;
+    void reader.cancel();
+  };
+  res.on('close', onClose);
+
+  try {
+    for (;;) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      if (value && !aborted) res.write(Buffer.from(value));
+    }
+    if (!aborted) res.end();
+  } catch {
+    // The Response stream already commits a terminal error frame for handler
+    // failures (RestHandler.toStreamResponse). A transport read error here means
+    // the socket is unusable — destroy it rather than crash.
+    if (aborted) {
+      // client already gone; nothing to write
+    } else if (!res.headersSent) res.status(500).end();
+    else res.destroy();
+  } finally {
+    res.removeListener('close', onClose);
+    reader.releaseLock?.();
   }
 }
 

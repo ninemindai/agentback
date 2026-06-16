@@ -5,7 +5,6 @@
 import {Context, resolveInjectedArguments} from '@agentback/context';
 import {resolveControllerInstance} from '../controller-resolver.js';
 import {
-  AgentError,
   buildErrorEnvelope,
   ErrorCodes,
   standardParse,
@@ -34,13 +33,19 @@ import {
   type ConfirmationStore,
   type IdempotencyStore,
 } from '@agentback/common';
-import {RestBindings, type RestDispatchInfo} from '../keys.js';
+import {
+  RestBindings,
+  type RestDispatchHook,
+  type RestDispatchInfo,
+} from '../keys.js';
 import {applyDispatchHooks, resolveDispatchHooks} from '../dispatch-hooks.js';
 import {
   enforceConfirmation,
   executeIdempotent,
 } from '../confirm-idempotency.js';
 import {invalidRequestBody} from '../errors.js';
+import {isFileResponse, type FileResponse} from '../file-response.js';
+import {Readable} from 'node:stream';
 import {parseSection} from '../validate-sections.js';
 import type {Dispatch} from './dispatch.js';
 import type {RouteMatch} from './router.js';
@@ -88,6 +93,20 @@ function queryObject(url: URL): Record<string, unknown> {
 export class RestHandler {
   constructor(private readonly context: Context) {}
 
+  /**
+   * Resolve and cache the dispatch hooks bound under `REST_DISPATCH_HOOK_TAG`,
+   * matching {@link RestServer.resolveDispatchHooks}'s documented caching: the
+   * list is captured on the first request, so hooks bound after that are not
+   * picked up (bind hooks before `app.start()`). Parity with the Express path.
+   */
+  private dispatchHookCache?: RestDispatchHook[];
+  private async resolveDispatchHooks(): Promise<RestDispatchHook[]> {
+    if (!this.dispatchHookCache) {
+      this.dispatchHookCache = await resolveDispatchHooks(this.context);
+    }
+    return this.dispatchHookCache;
+  }
+
   readonly dispatch: Dispatch<RouteValue> = async (match, req) => {
     try {
       return await this.run(match, req);
@@ -115,7 +134,7 @@ export class RestHandler {
     // Web Request and a shared `responseHeaders` collector, so a hook bound
     // under REST_DISPATCH_HOOK_TAG fires identically on both surfaces.
     const responseHeaders = new Headers();
-    const hooks = await resolveDispatchHooks(this.context);
+    const hooks = await this.resolveDispatchHooks();
     const info: RestDispatchInfo = {
       request: req,
       responseHeaders,
@@ -337,9 +356,12 @@ export class RestHandler {
         ? (iterable as AsyncIterable<unknown>)[Symbol.asyncIterator]
         : undefined;
     if (typeof factory !== 'function') {
-      throw new AgentError(
+      // Parity with RestServer.sendStream: a plain http-error (no
+      // `publicMessage`) so buildErrorEnvelope redacts the 5xx to "Internal
+      // Server Error" — the misconfiguration detail stays server-side.
+      throw createError(
+        500,
         'Handler declared streamOf but did not return an async iterable.',
-        {status: 500, code: ErrorCodes.INTERNAL_ERROR},
       );
     }
     return factory.call(iterable);
@@ -440,10 +462,39 @@ export class RestHandler {
    * result) returns an empty body. Mirrors {@link RestServer.sendResult}.
    */
   private toResultResponse(result: unknown, status: number): Response {
+    if (isFileResponse(result)) {
+      return this.toFileResponse(result, status);
+    }
     if (status === 204 || result === undefined) {
       return new Response(null, {status});
     }
     return Response.json(result as object, {status});
+  }
+
+  /**
+   * Stream a {@link FileResponse} (download) as a Web {@link Response} — the
+   * neutral mirror of {@link RestServer.sendFile}. Sets `Content-Type` /
+   * `Content-Disposition` / `Content-Length`, then carries a `Buffer` directly
+   * or converts a Node `Readable` to a Web `ReadableStream` via `Readable.toWeb`
+   * (so any Node-based host pipes it without buffering).
+   */
+  private toFileResponse(file: FileResponse, status: number): Response {
+    const headers = new Headers();
+    if (file.contentType) headers.set('Content-Type', file.contentType);
+    if (file.filename) {
+      const safe = file.filename.replace(/["\r\n]/g, '');
+      headers.set(
+        'Content-Disposition',
+        `${file.disposition ?? 'attachment'}; filename="${safe}"`,
+      );
+    }
+    if (file.size != null) headers.set('Content-Length', String(file.size));
+
+    const body = file.body;
+    const webBody = Buffer.isBuffer(body)
+      ? body
+      : (Readable.toWeb(body) as unknown as ReadableStream<Uint8Array>);
+    return new Response(webBody, {status, headers});
   }
 
   /**
