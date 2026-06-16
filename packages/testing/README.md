@@ -21,6 +21,9 @@ const order = await t.call(getOrder, {path: {id: '42'}});
 // 2. Raw HTTP:
 await t.http.get('/openapi.json').expect(200);
 
+// 2b. In-process Web fetch (Workers/Bun/Deno surface), no socket:
+const res = await t.fetch('/orders/42');
+
 // 3. MCP — in-memory transport, no process or socket:
 const tools = await t.mcp.listTools();
 
@@ -36,5 +39,8 @@ Notes:
 - `t.mcp` exercises the same scope-filtered session building as an
   authenticated HTTP transport (`mcpScopes`), so `@authorize`-gated tool
   visibility is testable in-process.
+- `t.fetch(path, init?)` runs the request through the app's runtime-neutral
+  Web fetch handler (the Workers/Bun/Deno surface) in-process — a relative
+  `path` resolves against `t.url`; a `Request` passes through. No socket.
 - `@agentback/mcp` and the MCP SDK are optional peers — apps without an
   MCP server never load them; `t.mcp` throws a clear error instead.

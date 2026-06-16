@@ -89,6 +89,29 @@ describe('createTestApp', () => {
     }
   });
 
+  it('serves an in-process Web Request→Response via t.fetch', async () => {
+    const t = await createTestApp(FixtureApp);
+    try {
+      const res = await t.fetch('/t/msg/web');
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({msg: 'original-web'});
+    } finally {
+      await t.stop();
+    }
+  });
+
+  it('t.fetch and t.http agree on body + status for the same route', async () => {
+    const t = await createTestApp(FixtureApp);
+    try {
+      const viaFetch = await t.fetch('/t/msg/agree');
+      const viaHttp = await t.http.get('/t/msg/agree');
+      expect(viaFetch.status).toBe(viaHttp.status);
+      expect(await viaFetch.json()).toEqual(viaHttp.body);
+    } finally {
+      await t.stop();
+    }
+  });
+
   it('connects an in-memory MCP client', async () => {
     const t = await createTestApp(FixtureApp);
     try {

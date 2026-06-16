@@ -11,7 +11,7 @@ import {
   type RouteSchemas,
 } from '@agentback/client';
 import type {Application} from '@agentback/core';
-import type {RestServer} from '@agentback/rest';
+import type {FetchHost, RestServer} from '@agentback/rest';
 import {createRestAppClient} from '@agentback/testlab';
 import type {Client as McpSdkClient} from '@modelcontextprotocol/sdk/client/index.js';
 
@@ -51,6 +51,12 @@ export interface TestApp<
   readonly client: Client;
   /** Raw supertest, for header/status-level assertions. */
   readonly http: SupertestClient;
+  /**
+   * In-process Web `Request`→`Response` via the app's runtime-neutral fetch
+   * handler (the Workers/Bun/Deno surface) — no socket. A string/relative
+   * `input` resolves against the booted app's `url`; a `Request` passes through.
+   */
+  fetch(input: string | URL | Request, init?: RequestInit): Promise<Response>;
   /**
    * In-memory MCP client (SDK `Client`), connected to a session built with
    * `mcpScopes`. Throws if the app has no MCP server bound.
@@ -192,6 +198,22 @@ export async function createTestApp<A extends Application>(
   // Eagerly connect when an MCP server is present so `t.mcp` is sync.
   if (app.isBound(MCP_SERVER_KEY)) await initMcp();
 
+  // In-process Web fetch surface — lazily grab the RestServer's runtime-neutral
+  // fetch host on first call.
+  let fetchHost: FetchHost | undefined;
+  const fetchVia = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    if (!restServer || !url) {
+      throw new Error('createTestApp: no REST server is bound.');
+    }
+    if (!fetchHost) fetchHost = restServer.fetchHandler();
+    const request =
+      input instanceof Request ? input : new Request(new URL(input, url), init);
+    return fetchHost.fetch(request);
+  };
+
   let stopped = false;
   const stop = async () => {
     if (stopped) return;
@@ -214,6 +236,7 @@ export async function createTestApp<A extends Application>(
       if (!http) throw new Error('createTestApp: no REST server is bound.');
       return http;
     },
+    fetch: fetchVia,
     get mcp(): McpSdkClient {
       if (!mcpClient) {
         throw new Error(
