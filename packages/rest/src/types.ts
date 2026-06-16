@@ -97,6 +97,26 @@ export interface RestServerConfig {
         /** URL path for the expanded document. Default '/llms-full.txt'. */
         llmsFullTxtPath?: string;
       };
+  /**
+   * Which dispatch pipeline each `@api` route runs through.
+   *
+   * - `'express'` (default) — the classic Express per-route handler
+   *   (`RestServer.invokeRoute` → `sendResult`/`sendStream`/`sendError`).
+   * - `'web'` — Express still matches routes, but each matched request is
+   *   converted to a Web `Request`, run through the runtime-neutral
+   *   {@link RestHandler} pipeline (the same one `fetchHandler()` uses), and the
+   *   resulting Web `Response` is written back to the Express `res`. Behavior is
+   *   at parity with `'express'`; the flag exists so the Web pipeline can become
+   *   the proven default before the Express path is removed.
+   *
+   * Routes whose body uses `fileField()` (multipart uploads) and `fileResponse`
+   * downloads always stay on the Express path even in `'web'` mode — the Web
+   * pipeline doesn't yet stream multipart uploads (Stage 3).
+   *
+   * When unset, the `AGENTBACK_REST_DISPATCH` env var (test-only escape hatch:
+   * `web` | `express`) selects the default; otherwise `'express'`.
+   */
+  dispatch?: 'express' | 'web';
   /** Server-sent events (stream routes declared with `streamOf:`). */
   sse?: {
     /**
@@ -108,7 +128,10 @@ export interface RestServerConfig {
 }
 
 export const DEFAULT_REST_CONFIG: Required<
-  Omit<RestServerConfig, 'openApiSpec' | 'cors' | 'sse' | 'ax' | 'bodyParser'>
+  Omit<
+    RestServerConfig,
+    'openApiSpec' | 'cors' | 'sse' | 'ax' | 'bodyParser' | 'dispatch'
+  >
 > & {
   openApiSpec: NonNullable<RestServerConfig['openApiSpec']>;
   cors: RestServerConfig['cors'];

@@ -24,10 +24,12 @@
     "dotenv": "^17.4.2",
     "nanoid": "^5.1.11",
     "p-map": "^7.0.4",
+    "toposort": "^2.0.2",
     "tslib": "^2.8.1"
   },
   "devDependencies": {
-    "@types/debug": "^4.1.13"
+    "@types/debug": "^4.1.13",
+    "@types/toposort": "^2.0.7"
   },
   "engines": {
     "node": ">=22.13"

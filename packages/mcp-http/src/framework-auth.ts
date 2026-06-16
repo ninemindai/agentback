@@ -5,6 +5,7 @@
 import type {Request, RequestHandler, Response} from 'express';
 import type {Context} from '@agentback/core';
 import {
+  fromExpressRequest,
   normalizeAuthResult,
   resolveStrategy,
   type AuthenticationResult,
@@ -78,12 +79,15 @@ export function frameworkAuthGuard(
 
   return (req: Request, res: Response, next) => {
     void (async () => {
+      const authReq = fromExpressRequest(req);
       let result: AuthenticationResult | undefined;
       for (const name of names) {
         const strategy = await resolveStrategy(options.context, name);
         if (!strategy) continue;
         try {
-          const norm = normalizeAuthResult(await strategy.authenticate(req));
+          const norm = normalizeAuthResult(
+            await strategy.authenticate(authReq),
+          );
           if (norm.user || norm.clientApplication) {
             result = norm;
             break;

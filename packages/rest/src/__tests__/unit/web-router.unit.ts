@@ -90,4 +90,23 @@ describe('Router', () => {
     expect(r.match('POST', '/echo')?.value).toBe('e');
     expect(r.match('GET', '/echo')).toBeUndefined();
   });
+
+  it('captures a param value containing a dot (param regex is not greedy across /)', () => {
+    const r = new Router<string>();
+    r.add({method: 'GET', template: '/files/{name}', value: 'f'});
+    expect(r.match('GET', '/files/a.txt')).toEqual({
+      value: 'f',
+      params: {name: 'a.txt'},
+    });
+  });
+
+  it('escapes regex-special chars in literal segments (dot is literal, not wildcard)', () => {
+    const r = new Router<string>();
+    r.add({method: 'GET', template: '/v1.0/ping', value: 'p'});
+    // The literal dot must match a literal '.', not any char.
+    expect(r.match('GET', '/v1.0/ping')?.value).toBe('p');
+    // If the dot were treated as a regex wildcard, '/v1X0/ping' would match —
+    // it must not.
+    expect(r.match('GET', '/v1X0/ping')).toBeUndefined();
+  });
 });

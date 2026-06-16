@@ -30,8 +30,8 @@ class Orders {}
 function restInfo(reqCtx?: Context): RestDispatchInfo {
   return {
     // The hook only reads ctor/methodName/ctx.
-    req: {} as RestDispatchInfo['req'],
-    res: {} as RestDispatchInfo['res'],
+    request: new Request('http://localhost/orders'),
+    responseHeaders: new Headers(),
     ctor: Orders,
     methodName: 'list',
     schemas: {},

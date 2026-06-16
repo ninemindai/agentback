@@ -5,10 +5,12 @@
 import {
   config,
   Context,
+  describeInjectedArguments,
   inject,
   resolveInjectedArguments,
 } from '@agentback/context';
 import {
+  fromExpressRequest,
   getAuthenticationMetadata,
   normalizeAuthResult,
   resolveStrategy,
@@ -39,7 +41,6 @@ import {
   schemaPropertyInfo,
   standardParse,
   OAS_ENHANCER_EXTENSION_POINT,
-  type ErrorEnvelope,
   type OASEnhancer,
   type OpenApiSpec,
   type RouteSchemas,
@@ -49,7 +50,6 @@ import {
   InMemoryConfirmationStore,
   InMemoryIdempotencyStore,
   loggers,
-  stableStringify,
   type ConfirmationStore,
   type IdempotencyStore,
 } from '@agentback/common';
@@ -60,13 +60,18 @@ import express, {
   type Response,
 } from 'express';
 import type {Server as HttpServer} from 'http';
+import {Readable} from 'node:stream';
 import {
-  REST_DISPATCH_HOOK_TAG,
   RestBindings,
   RestMiddlewareGroups,
   type RestDispatchHook,
   type RestDispatchInfo,
 } from './keys.js';
+import {applyDispatchHooks, resolveDispatchHooks} from './dispatch-hooks.js';
+import {
+  enforceConfirmation as enforceConfirmationNeutral,
+  executeIdempotent as executeIdempotentNeutral,
+} from './confirm-idempotency.js';
 import {
   DEFAULT_REST_CONFIG,
   type BodyParserConfig,
@@ -83,20 +88,52 @@ import {
   type AxSection,
 } from './ax.js';
 import {lookupSuccessStatus} from './route-meta.js';
+import {SSE_FRAMER, JSONL_FRAMER} from './stream-framers.js';
 import {collectRoutes} from './web/collect-routes.js';
 import {Router} from './web/router.js';
 import {RestHandler} from './web/rest-handler.js';
 import {createFetchHost, type FetchHost} from './host/fetch.js';
+import {writeWebResponseToNode} from './host/node-response.js';
+import {
+  collectWebMiddleware,
+  runWebOnion,
+  type WebMiddlewareEntry,
+} from './web/middleware.js';
+import {createCorsWebMiddleware} from './web/cors-middleware.js';
 import type {RouteValue} from './web/route-value.js';
+import {resolveControllerInstance} from './controller-resolver.js';
 
 const log = loggers('agentback:rest:server');
+
+/**
+ * Build a runtime-neutral Web {@link globalThis.Request} view of an Express
+ * request for {@link RestDispatchInfo.request}. Carries method, absolute URL
+ * (from `protocol` + `Host` + `originalUrl`), and headers — everything a
+ * dispatch hook reads — so one hook contract serves both the Express and Web
+ * dispatch paths. The body is intentionally not attached: hooks observe, they
+ * don't re-read the (already-parsed) request body.
+ */
+function webRequestFromExpress(req: Request): globalThis.Request {
+  const host = req.get('host') ?? 'localhost';
+  const url = `${req.protocol}://${host}${req.originalUrl ?? req.url}`;
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (value === undefined) continue;
+    if (Array.isArray(value)) for (const v of value) headers.append(name, v);
+    else headers.set(name, value);
+  }
+  return new globalThis.Request(url, {method: req.method, headers});
+}
 
 export class RestServer implements Server {
   private app: Express;
   private httpServer?: HttpServer;
   private _listening = false;
   readonly config: Required<
-    Omit<RestServerConfig, 'openApiSpec' | 'cors' | 'sse' | 'ax' | 'bodyParser'>
+    Omit<
+      RestServerConfig,
+      'openApiSpec' | 'cors' | 'sse' | 'ax' | 'bodyParser' | 'dispatch'
+    >
   > & {
     openApiSpec: NonNullable<RestServerConfig['openApiSpec']>;
     cors?: RestServerConfig['cors'];
@@ -104,6 +141,9 @@ export class RestServer implements Server {
     ax?: RestServerConfig['ax'];
     bodyParser?: RestServerConfig['bodyParser'];
   };
+
+  /** Selected per-route dispatch pipeline; see {@link RestServerConfig.dispatch}. */
+  protected readonly dispatchMode: 'express' | 'web';
 
   constructor(
     @inject(CoreBindings.APPLICATION_INSTANCE)
@@ -119,6 +159,11 @@ export class RestServer implements Server {
         ...(cfg?.openApiSpec ?? {}),
       },
     };
+    // Resolve the dispatch mode: explicit config wins; otherwise the
+    // (test-only) AGENTBACK_REST_DISPATCH env var; otherwise 'express'. The env
+    // override lets the ENTIRE existing test suite run through the Web pipeline
+    // without editing a single test — the parity arbiter for web-dispatch mode.
+    this.dispatchMode = resolveDispatchMode(cfg.dispatch);
     this.app = express();
     // CORS and body parsing are themselves entries in the LB middleware chain
     // (tagged with groups), not bare `app.use` calls — so their order relative
@@ -275,8 +320,20 @@ export class RestServer implements Server {
         // A body with a `fileField()` gets a per-route multipart parser mounted
         // ahead of the handler: it streams files to the bound FileStore and
         // merges UploadedFile handles into req.body for Zod validation.
+        //
+        // In web-dispatch mode the Web `RestHandler` parses multipart itself
+        // (via `parseWebMultipart` / `Request.formData()`), so we must NOT mount
+        // multer ahead of it — multer would consume the stream first. The
+        // web-mode handler streams the raw Express request into its Web Request
+        // instead (see `webRequestForWebDispatch`). A route kept on Express in
+        // web-mode (raw req/res injection, or a seam override) still needs
+        // multer, so mount it whenever the handler is the Express one.
         const fileFields = schemas.body ? fileFieldsOf(schemas.body) : [];
-        if (fileFields.length) {
+        const handlerIsWeb =
+          this.dispatchMode === 'web' &&
+          !injectsRawExpressObjects(ctor, methodName) &&
+          !this.overridesExpressDispatchSeam();
+        if (fileFields.length && !handlerIsWeb) {
           this.app[expressVerb](
             route,
             makeMultipartMiddleware(fileFields, this.context),
@@ -301,6 +358,23 @@ export class RestServer implements Server {
     schemas: RouteSchemas,
   ) {
     const successStatus = lookupSuccessStatus(ctor, methodName);
+    // Web-dispatch mode: route the matched request through the runtime-neutral
+    // RestHandler pipeline instead of the Express invokeRoute path. Upload
+    // routes (fileField body) now run on the Web path too — `parseWebMultipart`
+    // streams each file to the bound FileStore via `Request.formData()`, the
+    // runtime-neutral mirror of the Express multer parser.
+    // Routes that reach for the raw Express request/response objects via
+    // @inject(HTTP_REQUEST/HTTP_RESPONSE) are inherently Express-coupled — the
+    // Web pipeline binds only WEB_REQUEST — so keep them on Express even in
+    // web-mode (statically detectable from the method's injection metadata).
+    const usesRawExpress = injectsRawExpressObjects(ctor, methodName);
+    if (
+      this.dispatchMode === 'web' &&
+      !usesRawExpress &&
+      !this.overridesExpressDispatchSeam()
+    ) {
+      return this.makeWebHandler(ctor, methodName, schemas, successStatus);
+    }
     return async (req: Request, res: Response, next: NextFunction) => {
       try {
         const result = await this.dispatch(req, res, ctor, methodName, schemas);
@@ -316,6 +390,81 @@ export class RestServer implements Server {
         } else {
           this.sendResult(res, result, successStatus);
         }
+      } catch (err) {
+        next(err);
+      }
+    };
+  }
+
+  /**
+   * Whether the concrete server class overrides any of the Express per-request
+   * dispatch seam (`dispatch` / `invokeRoute` / `sendResult` / `sendStream` /
+   * `sendError`). These are the documented Express-path subclassing hooks — a
+   * subclass that customizes them has opted into the Express pipeline, so even
+   * in web-mode we keep ITS routes on Express (the Web `RestHandler` doesn't
+   * consult these methods). The base `RestServer` overrides nothing, so the
+   * common case still takes the Web path. Cached: the class shape is fixed.
+   */
+  private _overridesSeam?: boolean;
+  protected overridesExpressDispatchSeam(): boolean {
+    if (this._overridesSeam === undefined) {
+      const base = RestServer.prototype as unknown as Record<string, unknown>;
+      const proto = Object.getPrototypeOf(this) as Record<string, unknown>;
+      this._overridesSeam = [
+        'dispatch',
+        'invokeRoute',
+        'sendResult',
+        'sendStream',
+        'sendError',
+      ].some(name => proto[name] !== base[name]);
+    }
+    return this._overridesSeam;
+  }
+
+  /**
+   * The shared runtime-neutral dispatcher used by web-dispatch mode and
+   * {@link fetchHandler}. Stateless besides confirmation/idempotency-store
+   * caches, so a single instance is safe to reuse across routes.
+   */
+  private _restHandler?: RestHandler;
+  protected get restHandler(): RestHandler {
+    return (this._restHandler ??= new RestHandler(this.context));
+  }
+
+  /**
+   * Build an Express handler for web-dispatch mode. Express still matched the
+   * route, so we don't re-route: we already know this route's
+   * `{ctor, methodName, schemas, successStatus}`. We reconstruct a Web
+   * `Request` from the (already-parsed) Express `req`, build a `RouteMatch` from
+   * `req.params`, run the shared {@link RestHandler.dispatch}, and write the Web
+   * `Response` back onto the Express `res` — including the streaming
+   * `ReadableStream` body case.
+   *
+   * The critical subtlety: Express's body parser has already consumed the
+   * request stream into `req.body`, so a naive Web `Request` would have an
+   * EMPTY body and `RestHandler`'s `await req.json()` would read nothing. We
+   * therefore re-serialize `req.body` back into the Web `Request` body (see
+   * {@link webRequestForWebDispatch}).
+   */
+  protected makeWebHandler(
+    ctor: Function,
+    methodName: string,
+    schemas: RouteSchemas,
+    successStatus: number,
+  ) {
+    const value: RouteValue = {ctor, methodName, schemas, successStatus};
+    return async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const webReq = webRequestForWebDispatch(req);
+        // Express already decoded `req.params`; RestHandler's RouteMatch expects
+        // decoded param values (its own Router decodes too), so pass them as-is
+        // — no double-decode.
+        const match = {
+          value,
+          params: {...(req.params as Record<string, string>)},
+        };
+        const response = await this.restHandler.dispatch(match, webReq);
+        await writeWebResponseToExpress(response, res);
       } catch (err) {
         next(err);
       }
@@ -351,21 +500,28 @@ export class RestServer implements Server {
     const hooks = await this.resolveDispatchHooks();
     if (hooks.length === 0) return run();
 
+    // Neutral info: a Web `Request` view of the Express `req` (method/url/
+    // headers — the body is not consumed by hooks) and a neutral
+    // `responseHeaders` collector. The Web `RestHandler` builds the same shape
+    // so a hook runs at parity on both surfaces. No Express `res` is exposed.
+    const responseHeaders = new Headers();
     const info: RestDispatchInfo = {
-      req,
-      res,
+      request: webRequestFromExpress(req),
+      responseHeaders,
       ctor,
       methodName,
       schemas,
       ctx: reqCtx,
     };
-    let next = run;
-    for (let i = hooks.length - 1; i >= 0; i--) {
-      const hook = hooks[i]!;
-      const inner = next;
-      next = () => hook(info, inner);
+    try {
+      return await applyDispatchHooks(hooks, info, run);
+    } finally {
+      // Flush hook-contributed headers onto the Express response. Runs on both
+      // the success and error paths (mirroring how the Web path merges them
+      // onto whatever Response it returns), so a header set before a thrown
+      // refusal still reaches the client.
+      responseHeaders.forEach((value, name) => res.setHeader(name, value));
     }
-    return next();
   }
 
   /**
@@ -376,11 +532,7 @@ export class RestServer implements Server {
   private dispatchHookCache?: RestDispatchHook[];
   protected async resolveDispatchHooks(): Promise<RestDispatchHook[]> {
     if (!this.dispatchHookCache) {
-      const hooks: RestDispatchHook[] = [];
-      for (const binding of this.context.findByTag(REST_DISPATCH_HOOK_TAG)) {
-        hooks.push(await this.context.get<RestDispatchHook>(binding.key));
-      }
-      this.dispatchHookCache = hooks;
+      this.dispatchHookCache = await resolveDispatchHooks(this.context);
     }
     return this.dispatchHookCache;
   }
@@ -480,6 +632,10 @@ export class RestServer implements Server {
    * refused with 409 `confirmation_required` carrying a single-use token
    * bound to the exact request payload; the identical retry with the token
    * executes. A mismatched/expired token is 409 `confirmation_invalid`.
+   *
+   * Delegates to the runtime-neutral {@link enforceConfirmationNeutral} (shared
+   * with the Web {@link RestHandler}) with the Express request facts; behavior
+   * is byte-identical to the inlined version it replaced.
    */
   protected async enforceConfirmation(
     req: Request,
@@ -487,42 +643,19 @@ export class RestServer implements Server {
     methodName: string,
     confirm: NonNullable<RouteSchemas['confirm']>,
   ): Promise<void> {
-    const scope = `${ctor.name}.${methodName}`;
-    const fingerprint = stableStringify({
-      method: req.method,
-      path: req.path,
-      params: req.params,
-      query: req.query,
-      body: req.body,
+    await enforceConfirmationNeutral({
+      scope: `${ctor.name}.${methodName}`,
+      facts: {
+        method: req.method,
+        path: req.path,
+        params: req.params,
+        query: req.query as Record<string, unknown>,
+        body: req.body,
+      },
+      getHeader: name => req.get(name),
+      store: await this.confirmationStore(),
+      confirm,
     });
-    const store = await this.confirmationStore();
-    const token = req.get('x-confirmation-token');
-    if (!token) {
-      const ttlMs = typeof confirm === 'object' ? confirm.ttlMs : undefined;
-      const issued = store.issue(scope, fingerprint, ttlMs);
-      const e = createError(
-        409,
-        'This operation requires confirmation. Retry the identical request ' +
-          "with the issued token in the 'x-confirmation-token' header.",
-      );
-      const agentErr = e as createError.HttpError & {
-        code: string;
-        confirmationToken: string;
-      };
-      agentErr.code = ErrorCodes.CONFIRMATION_REQUIRED;
-      agentErr.confirmationToken = issued;
-      throw e;
-    }
-    if (!store.verify(token, scope, fingerprint)) {
-      const e = createError(
-        409,
-        'The confirmation token is invalid, expired, or was issued for a ' +
-          'different request payload.',
-      );
-      (e as createError.HttpError & {code: string}).code =
-        ErrorCodes.CONFIRMATION_INVALID;
-      throw e;
-    }
   }
 
   /**
@@ -531,6 +664,10 @@ export class RestServer implements Server {
    * `idempotency-replayed: true`); concurrent calls with one key share one
    * execution; errors are not cached. Without the header the route runs
    * normally unless `{required: true}`.
+   *
+   * Delegates to the runtime-neutral {@link executeIdempotentNeutral} (shared
+   * with the Web {@link RestHandler}); the `replayed` flag it returns is
+   * surfaced as the `idempotency-replayed` Express response header.
    */
   protected async executeIdempotent(
     req: Request,
@@ -540,26 +677,13 @@ export class RestServer implements Server {
     idempotency: NonNullable<RouteSchemas['idempotency']>,
     run: () => Promise<unknown>,
   ): Promise<unknown> {
-    const cfg = typeof idempotency === 'object' ? idempotency : {};
-    const key = req.get('idempotency-key');
-    if (!key) {
-      if (cfg.required) {
-        const e = createError(
-          400,
-          "This operation requires an 'idempotency-key' header.",
-        );
-        (e as createError.HttpError & {code: string}).code =
-          ErrorCodes.IDEMPOTENCY_KEY_REQUIRED;
-        throw e;
-      }
-      return run();
-    }
-    const store = await this.idempotencyStore();
-    const {replayed, result} = await store.execute(
-      `${ctor.name}.${methodName}:${key}`,
+    const {replayed, result} = await executeIdempotentNeutral({
+      scope: `${ctor.name}.${methodName}`,
+      getHeader: name => req.get(name),
+      store: await this.idempotencyStore(),
+      idempotency,
       run,
-      cfg.ttlMs,
-    );
+    });
     if (replayed) res.setHeader('idempotency-replayed', 'true');
     return result;
   }
@@ -652,7 +776,7 @@ export class RestServer implements Server {
    * Send a streaming response from an async-iterable handler result.
    *
    * Two wire formats share one pull/validate/cleanup loop, differing only in
-   * how an item or an error is serialized to the wire (the {@link StreamFramer}):
+   * how an item or an error is serialized to the wire (the `StreamFramer`):
    * `'sse'` (default) emits `text/event-stream` Server-Sent Events; `'jsonl'`
    * emits newline-delimited JSON (`application/jsonl`).
    *
@@ -819,7 +943,7 @@ export class RestServer implements Server {
     }
     try {
       const result = normalizeAuthResult(
-        await strategy.authenticate(req, meta.options),
+        await strategy.authenticate(fromExpressRequest(req), meta.options),
       );
       if (!result.user && !result.clientApplication) {
         throw createError(401, 'Unauthorized');
@@ -852,21 +976,8 @@ export class RestServer implements Server {
     }
   }
 
-  private async resolveController<T>(ctor: Function): Promise<T> {
-    // Find a binding tagged `controller` whose valueConstructor === ctor,
-    // or by class name as a fallback.
-    const found = this.context.findByTag(CoreTags.CONTROLLER);
-    for (const binding of found) {
-      if ((binding.valueConstructor as unknown) === ctor) {
-        return this.context.get<T>(binding.key);
-      }
-    }
-    if (this.context.contains(`controllers.${ctor.name}`)) {
-      return this.context.get<T>(`controllers.${ctor.name}`);
-    }
-    throw new Error(
-      `Controller ${ctor.name} is not bound. Use app.controller(${ctor.name}).`,
-    );
+  private resolveController<T>(ctor: Function): Promise<T> {
+    return resolveControllerInstance<T>(this.context, ctor);
   }
 
   /**
@@ -1024,14 +1135,60 @@ export class RestServer implements Server {
 
   private _fetchHost?: FetchHost;
 
+  // Exact-path and prefix-path handlers for the neutral fetch surface.
+  // install*() helpers populate these BEFORE fetchHandler() is called so the
+  // lazy build includes them. Adding after the cache is built invalidates it.
+  private readonly _fetchExact: Array<{
+    method: string;
+    path: string;
+    fn: (req: globalThis.Request) => Promise<globalThis.Response>;
+  }> = [];
+  private readonly _fetchPrefixes: Array<{
+    prefix: string;
+    fn: (suffix: string) => Promise<globalThis.Response | undefined>;
+  }> = [];
+
+  /**
+   * Register an exact-path handler on the neutral {@link fetchHandler} surface
+   * (for HTML shells, redirects, etc.). Complement to {@link addFetchPrefix}.
+   * Call before the first `fetchHandler()` invocation (i.e. before
+   * `installFastifyHost` / `Bun.serve`). `method` is case-insensitive.
+   */
+  addFetchHandler(
+    method: string,
+    path: string,
+    fn: (req: globalThis.Request) => Promise<globalThis.Response>,
+  ): void {
+    this._fetchExact.push({method: method.toUpperCase(), path, fn});
+    this._fetchHost = undefined;
+  }
+
+  /**
+   * Register a prefix-based file handler on the neutral {@link fetchHandler}
+   * surface. `prefix` is matched against the request pathname; `fn` receives
+   * the portion of the pathname after the prefix (the suffix, always starting
+   * with `/` or empty). Return `undefined` to fall through to the next handler.
+   * Intended for bundled static asset directories (use {@link serveStaticDir}).
+   */
+  addFetchPrefix(
+    prefix: string,
+    fn: (suffix: string) => Promise<globalThis.Response | undefined>,
+  ): void {
+    this._fetchPrefixes.push({prefix, fn});
+    this._fetchHost = undefined;
+  }
+
   /**
    * Runtime-neutral fetch handler for this app's `@api` routes — the same
    * routing + Zod validation + DI + error-envelope pipeline as the Express path
    * (via RestHandler), as `fetch(Request): Promise<Response>` for Web hosts
-   * (Bun/Deno/Workers/tests). Additive: the Express server is unchanged; auth,
-   * hooks, confirmation/idempotency, streaming are NOT in this path yet (Express
-   * only). Built lazily from the registry on first call (after controllers are
-   * registered / after start()).
+   * (Bun/Deno/Workers/tests). Additive: the Express server is unchanged.
+   * Authentication + authorization, streaming, dispatch hooks, and
+   * confirmation + idempotency all run at parity with the Express path.
+   * Built lazily from the registry on first call (after controllers are
+   * registered / after start()). Exact handlers (addFetchHandler) and prefix
+   * handlers (addFetchPrefix) registered before this call are folded into the
+   * 404 fallback, so UI assets are served alongside @api routes.
    */
   fetchHandler(): FetchHost {
     if (!this._fetchHost) {
@@ -1039,10 +1196,90 @@ export class RestServer implements Server {
       for (const r of collectRoutes(this.context, this.config.basePath ?? '')) {
         router.add(r);
       }
-      this._fetchHost = createFetchHost({
+
+      // Snapshot the raw-route arrays so the notFound closure is stable even if
+      // more entries are added after this call (they'd bust the cache anyway).
+      const exactEntries = [...this._fetchExact];
+      const prefixEntries = [...this._fetchPrefixes];
+
+      // When no raw routes are registered, fall through to createFetchHost's
+      // built-in 404 (avoids an unnecessary async closure per miss).
+      const notFound =
+        exactEntries.length > 0 || prefixEntries.length > 0
+          ? async (
+              req: globalThis.Request,
+            ): Promise<globalThis.Response> => {
+              const {pathname} = new URL(req.url);
+
+              // Exact handlers are checked first (priority over prefix matches).
+              for (const e of exactEntries) {
+                if (e.method === req.method.toUpperCase() && pathname === e.path) {
+                  return e.fn(req);
+                }
+              }
+
+              // Prefix handlers: longest matching prefix wins (insertion order
+              // is user-controlled; document that specificity is caller's
+              // responsibility).
+              for (const p of prefixEntries) {
+                if (
+                  pathname === p.prefix ||
+                  pathname.startsWith(p.prefix + '/')
+                ) {
+                  const suffix = pathname.slice(p.prefix.length) || '/';
+                  const res = await p.fn(suffix);
+                  if (res !== undefined) return res;
+                }
+              }
+
+              return new globalThis.Response(
+                JSON.stringify({
+                  error: {code: 'not_found', message: 'Not Found'},
+                }),
+                {status: 404, headers: {'content-type': 'application/json'}},
+              );
+            }
+          : undefined;
+
+      const core = createFetchHost({
         router,
         dispatch: new RestHandler(this.context).dispatch,
+        notFound,
       });
+
+      // The runtime-neutral Web middleware onion (additive; the Express chain is
+      // untouched). Built once, lazily, like the route table: the built-in CORS
+      // entry (when `cors` is configured) plus any user `app.webMiddleware`
+      // entries collected from the context. `runWebOnion` group-sorts them
+      // (parity with the Express chain) and short-circuits when an entry returns
+      // a Response without calling `next`. With zero entries, `fetchHandler()`
+      // still works — the onion folds straight to `core.fetch`.
+      let entries: Promise<WebMiddlewareEntry[]> | undefined;
+      const collect = (): Promise<WebMiddlewareEntry[]> => {
+        if (!entries) {
+          entries = collectWebMiddleware(this.context).then(userEntries => {
+            const builtins: WebMiddlewareEntry[] = [];
+            if (this.config.cors) {
+              builtins.push(createCorsWebMiddleware(this.config.cors));
+            }
+            return [...builtins, ...userEntries];
+          });
+        }
+        return entries;
+      };
+
+      this._fetchHost = {
+        // `Request`/`Response` are shadowed by the `express` import in this
+        // file; the Web onion deals in the global (WHATWG) types, so name them
+        // explicitly via `globalThis`.
+        fetch: async (
+          req: globalThis.Request,
+        ): Promise<globalThis.Response> => {
+          const list = await collect();
+          if (list.length === 0) return core.fetch(req);
+          return runWebOnion(list, req, this.context, () => core.fetch(req));
+        },
+      };
     }
     return this._fetchHost;
   }
@@ -1053,67 +1290,109 @@ export class RestServer implements Server {
   }
 }
 
-/** A serialized stream error payload (the wire shape both formats carry). */
-interface StreamErrorPayload extends Omit<
-  ErrorEnvelope,
-  'publicMessage' | 'statusCode'
-> {
-  statusCode: number;
-  message: string;
-  details?: unknown;
+/**
+ * Resolve the per-route dispatch mode. Explicit config wins; otherwise the
+ * test-only `AGENTBACK_REST_DISPATCH` env var (`web` | `express`) supplies the
+ * default; otherwise `'express'` (zero behavior change — the rollback path).
+ */
+function resolveDispatchMode(explicit?: 'express' | 'web'): 'express' | 'web' {
+  if (explicit) return explicit;
+  return process.env.AGENTBACK_REST_DISPATCH === 'web' ? 'web' : 'express';
 }
 
 /**
- * The only thing that differs between stream wire formats: the response
- * headers and how an item / an error are serialized to bytes. The pull,
- * validate, disconnect, and cleanup disciplines in `sendStream` are shared.
+ * Whether `ctor.methodName` injects the raw Express request/response objects
+ * (`RestBindings.HTTP_REQUEST` / `HTTP_RESPONSE`) at any parameter slot. Such a
+ * route is Express-coupled and stays on the Express path even in web-mode.
  */
-interface StreamFramer {
-  headers: Record<string, string>;
-  /** Serialize one validated item to its wire representation. */
-  item(data: unknown): string;
-  /** Serialize a terminal error record to its wire representation. */
-  error(payload: StreamErrorPayload): string;
+function injectsRawExpressObjects(ctor: Function, methodName: string): boolean {
+  const rawKeys = new Set<string>([
+    RestBindings.HTTP_REQUEST.key,
+    RestBindings.HTTP_RESPONSE.key,
+  ]);
+  const injections = describeInjectedArguments(ctor.prototype, methodName);
+  return injections.some(inj => {
+    // The array is sparse for non-injected parameter slots — skip the holes.
+    if (!inj) return false;
+    const sel = inj.bindingSelector;
+    const key =
+      typeof sel === 'string'
+        ? sel
+        : sel && typeof sel === 'object' && 'key' in sel
+          ? (sel as {key: string}).key
+          : undefined;
+    return key != null && rawKeys.has(key);
+  });
 }
 
-/** Server-Sent Events: `data:`/`event:` frames separated by blank lines. */
-const SSE_FRAMER: StreamFramer = {
-  headers: {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
-  },
-  item(data) {
-    return `data: ${JSON.stringify(data)}\n\n`;
-  },
-  error(payload) {
-    return `event: error\ndata: ${JSON.stringify({error: payload})}\n\n`;
-  },
-};
+/**
+ * Build a Web {@link globalThis.Request} for web-dispatch delegation. Unlike
+ * {@link webRequestFromExpress} (which is for dispatch-hook OBSERVATION and
+ * deliberately omits the body), this RECONSTRUCTS the body: by the time a route
+ * handler runs, Express's body parser has consumed the request stream into
+ * `req.body`, so the original Web body is empty. When `req.body` is present and
+ * looks like a JSON payload (object/array — the body-parser default), we
+ * re-serialize it so `RestHandler`'s `await req.json()` reads the same data the
+ * Express path reads off `req.body`. Headers (auth / confirmation / idempotency)
+ * are preserved.
+ */
+function webRequestForWebDispatch(req: Request): globalThis.Request {
+  const host = req.get('host') ?? 'localhost';
+  const url = `${req.protocol}://${host}${req.originalUrl ?? req.url}`;
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (value === undefined) continue;
+    if (Array.isArray(value)) for (const v of value) headers.append(name, v);
+    else headers.set(name, value);
+  }
+
+  const init: RequestInit = {method: req.method, headers};
+  const method = req.method.toUpperCase();
+  const contentType = (req.get('content-type') ?? '').toLowerCase();
+  if (method !== 'GET' && method !== 'HEAD') {
+    if (contentType.includes('multipart/form-data')) {
+      // Multipart: no body parser ran in web-mode (multer is intentionally not
+      // mounted ahead of the Web handler — see makeRoutes), so the raw Express
+      // request stream is still readable. Pipe it into the Web Request so
+      // RestHandler's `parseWebMultipart` (`Request.formData()`) reads the
+      // original multipart body and streams each file to the FileStore itself.
+      init.body = Readable.toWeb(req) as unknown as ReadableStream<Uint8Array>;
+      // undici requires duplex for a streaming request body.
+      (init as {duplex?: string}).duplex = 'half';
+    } else if (req.body != null) {
+      // Re-serialize the parsed JSON body so RestHandler's `await req.json()`
+      // reads the SAME value the Express path validates off `req.body`.
+      // `express.json` yields an object/array (it sets `{}` for an empty body),
+      // serialized verbatim — including `{}`, so the Web path's missing-field
+      // issue path matches Express's (validating `{}` vs `undefined` against a
+      // `z.object` produces different Zod issues).
+      const body = req.body;
+      const isJsonLike = typeof body === 'object' && !Buffer.isBuffer(body);
+      if (isJsonLike) {
+        init.body = JSON.stringify(body);
+        if (!headers.has('content-type')) {
+          headers.set('content-type', 'application/json');
+        }
+      }
+    }
+  }
+  return new globalThis.Request(url, init);
+}
 
 /**
- * Newline-delimited JSON: one compact JSON object per line. The media type is
- * `application/jsonl` (the `.jsonl` convention); `application/x-ndjson` is the
- * common alternative — we pick `application/jsonl` to match OpenAPI 3.2's
- * streaming guidance and keep the media type self-describing. A terminal error
- * is itself a JSON line `{"error":{statusCode,message,details?}}`, mirroring
- * the SSE `event: error` payload exactly so clients share one error contract.
+ * Write a Web {@link globalThis.Response} back onto the Express {@link Response}
+ * — the web-dispatch counterpart of `sendResult`/`sendStream`/`sendError`,
+ * which `host/node.ts` delegates to `@hono/node-server` for the standalone
+ * fetch host. Express's `Response` extends Node's `ServerResponse`, so this just
+ * delegates to the shared {@link writeWebResponseToNode} (also used by the
+ * Fastify host adapter).
  */
-const JSONL_FRAMER: StreamFramer = {
-  headers: {
-    'Content-Type': 'application/jsonl',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
-  },
-  item(data) {
-    return JSON.stringify(data) + '\n';
-  },
-  error(payload) {
-    return JSON.stringify({error: payload}) + '\n';
-  },
-};
+async function writeWebResponseToExpress(
+  response: globalThis.Response,
+  res: Response,
+): Promise<void> {
+  await writeWebResponseToNode(res, response);
+}
 
 /**
  * Convert OpenAPI-style path templates `/foo/{name}` to express `/foo/:name`.

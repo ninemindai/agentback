@@ -4,3 +4,6 @@
 
 // Export utilities
 export * from './utils/index.js';
+
+// Group ordering (shared by the Express middleware chain + the Web onion)
+export * from './group-sorter.js';

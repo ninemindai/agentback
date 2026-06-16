@@ -3,8 +3,8 @@
 // License text available at https://opensource.org/license/mit/
 
 import {inject} from '@agentback/context';
-import type {Request} from 'express';
 import {CLIENT_CREDENTIALS_VERIFIER} from '../keys.js';
+import type {AuthRequest} from '../auth-request.js';
 import type {
   AuthenticationResult,
   AuthenticationStrategy,
@@ -12,19 +12,15 @@ import type {
 } from '../types.js';
 
 /** Read `client_id`/`client_secret` from headers or an `Authorization: Basic`. */
-function parseClientCredentials(request: Request): {
+function parseClientCredentials(request: AuthRequest): {
   clientId?: string;
   clientSecret?: string;
 } {
-  const headers = request.headers;
-  const headerId = headers['client_id'];
-  const headerSecret = headers['client_secret'];
-  let clientId = typeof headerId === 'string' ? headerId : undefined;
-  let clientSecret =
-    typeof headerSecret === 'string' ? headerSecret : undefined;
+  let clientId = request.headerValue('client_id');
+  let clientSecret = request.headerValue('client_secret');
 
   if (!clientId || !clientSecret) {
-    const auth = headers['authorization'];
+    const auth = request.headerValue('authorization');
     if (typeof auth === 'string' && auth.startsWith('Basic ')) {
       const decoded = Buffer.from(auth.slice(6), 'base64').toString('utf8');
       const sep = decoded.indexOf(':');
@@ -56,7 +52,7 @@ export class ClientCredentialsAuthenticationStrategy implements AuthenticationSt
     private verify?: ClientCredentialsVerifier,
   ) {}
 
-  async authenticate(request: Request): Promise<AuthenticationResult> {
+  async authenticate(request: AuthRequest): Promise<AuthenticationResult> {
     const {clientId, clientSecret} = parseClientCredentials(request);
     if (!clientId || !clientSecret) {
       throw new Error('Missing client credentials');

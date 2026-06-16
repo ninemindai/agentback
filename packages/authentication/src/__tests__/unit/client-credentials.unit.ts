@@ -8,11 +8,15 @@ import {
   type ClientApplication,
   type UserProfile,
 } from '@agentback/security';
-import type {Request} from 'express';
+import type {AuthRequest} from '../../auth-request.js';
 import {ClientCredentialsAuthenticationStrategy} from '../../strategies/client-credentials.strategy.js';
 import {normalizeAuthResult} from '../../resolver.js';
 
-const req = (init: Partial<Request>): Request => init as Request;
+const req = (init: {headers?: Record<string, string>}): AuthRequest => ({
+  method: 'GET',
+  headerValue: name => init.headers?.[name.toLowerCase()],
+  query: {},
+});
 const app: ClientApplication = {
   [securityId]: 'app-1',
   name: 'Partner',

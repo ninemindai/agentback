@@ -15,6 +15,7 @@ import {
 } from '@agentback/mcp-connect';
 import {THEME_CSS, THEME_FONTS_HREF} from '@agentback/console-theme';
 import type {RestApplication, RestServer} from '@agentback/rest';
+import {serveStaticDir} from '@agentback/rest';
 
 const API_BASE = '/mcp-inspector/api';
 const DEFAULT_CONNECT_PATH = '/mcp-connect';
@@ -260,11 +261,21 @@ export function mountInspector(
 
   app.use(opts.path + '/assets', express.static(clientDir, {index: false}));
 
+  const html = indexHtml(opts, connect);
+
   // Server-rendered shell at both <path> and <path>/. No user data is
   // interpolated except the (escaped) title; the React tree renders client-side.
   app.get([opts.path, opts.path + '/'], (_req, res) => {
-    res.type('html').send(indexHtml(opts, connect));
+    res.type('html').send(html);
   });
+
+  // Neutral fetch path (Bun/Deno/Fastify hosts via fetchHandler()).
+  const serveAsset = serveStaticDir(clientDir);
+  const htmlResponse = async () =>
+    new Response(html, {headers: {'content-type': 'text/html; charset=utf-8'}});
+  server.addFetchHandler('GET', opts.path, htmlResponse);
+  server.addFetchHandler('GET', opts.path + '/', htmlResponse);
+  server.addFetchPrefix(opts.path + '/assets', suffix => serveAsset(suffix));
 }
 
 // ---- Static shell -----------------------------------------------------------

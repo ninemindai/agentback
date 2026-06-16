@@ -30,6 +30,8 @@ const EchoOut = z.object({echoed: z.string()});
 const MakePath = z.object({name: z.string().min(1).max(64)});
 const Made = z.object({made: z.string()});
 
+const Tick = z.object({n: z.number()});
+
 // A controller with a non-empty basePath so the prefix is exercised end-to-end
 // through `collectRoutes`.
 @api({basePath: '/v1'})
@@ -56,6 +58,15 @@ class FetchController {
     body: z.infer<typeof EchoIn>;
   }): Promise<z.infer<typeof EchoOut>> {
     return {echoed: input.body.text};
+  }
+
+  // SSE streaming route — Express streams via sendStream, the Web handler via
+  // a ReadableStream body; both must frame identically.
+  @get('/stream', {streamOf: Tick})
+  async *stream(): AsyncGenerator<z.infer<typeof Tick>> {
+    yield {n: 1};
+    yield {n: 2};
+    yield {n: 3};
   }
 
   // Handler throws a client-correctable AgentError.
@@ -151,6 +162,16 @@ describe('Express<->Fetch parity via the route registry', () => {
     expect(r2.status).toBe(r1.status);
     expect(b2).toEqual(r1.body);
     expect(r1.status).toBe(400);
+  });
+
+  it('SSE stream body + content-type are byte-identical to Express', async () => {
+    const r1 = await http.get('/v1/stream');
+    const r2 = await host.fetch(new Request('http://x/v1/stream'));
+    const b2 = await r2.text();
+    expect(r2.status).toBe(r1.status);
+    expect(r2.headers.get('content-type')).toBe(r1.headers['content-type']);
+    expect(b2).toBe(r1.text);
+    expect(b2).toBe('data: {"n":1}\n\ndata: {"n":2}\n\ndata: {"n":3}\n\n');
   });
 
   it('unmatched route yields the flat 404 envelope', async () => {

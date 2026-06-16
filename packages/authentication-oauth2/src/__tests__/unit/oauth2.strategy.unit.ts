@@ -3,9 +3,11 @@
 // License text available at https://opensource.org/license/mit/
 
 import {describe, it, expect} from 'vitest';
-import type {Request} from 'express';
 import {securityId, type UserProfile} from '@agentback/security';
-import type {AuthenticationResult} from '@agentback/authentication';
+import type {
+  AuthRequest,
+  AuthenticationResult,
+} from '@agentback/authentication';
 import {OAuth2AuthenticationStrategy} from '../../oauth2.strategy.js';
 import type {OAuth2IntrospectionService} from '../../introspection.service.js';
 import type {IntrospectionResponse} from '../../types.js';
@@ -34,8 +36,13 @@ function recordingService(): {
   return {service, token: () => seen};
 }
 
-function req(authorization?: string): Request {
-  return {headers: authorization ? {authorization} : {}} as Request;
+function req(authorization?: string): AuthRequest {
+  return {
+    method: 'GET',
+    headerValue: name =>
+      name.toLowerCase() === 'authorization' ? authorization : undefined,
+    query: {},
+  };
 }
 
 describe('OAuth2AuthenticationStrategy', () => {

@@ -5,10 +5,10 @@
 import {ContextTags, inject, injectable} from '@agentback/context';
 import {
   AuthenticationBindings,
+  type AuthRequest,
   type AuthenticationResult,
   type AuthenticationStrategy,
 } from '@agentback/authentication';
-import type {Request} from 'express';
 import {OAuth2JwtBindings} from './keys.js';
 import type {JwtAccessTokenService} from './jwt-access-token.service.js';
 import {claimsToAuthResult, type PrincipalClaims} from './principal-mapping.js';
@@ -40,7 +40,7 @@ export class OAuth2JwtAuthenticationStrategy implements AuthenticationStrategy {
     @inject(OAuth2JwtBindings.SERVICE) private service: JwtAccessTokenService,
   ) {}
 
-  async authenticate(request: Request): Promise<AuthenticationResult> {
+  async authenticate(request: AuthRequest): Promise<AuthenticationResult> {
     const token = extractBearerToken(request);
     const claims = await this.service.verify(token);
     return claimsToAuthResult(claims as PrincipalClaims);
