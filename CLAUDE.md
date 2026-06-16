@@ -165,7 +165,7 @@ Default policy: **bump everything to the latest** with `ncu -ws --root -u` (mono
 Exceptions to "latest", and why:
 
 - **`@types/node`** — pinned to the latest **even** major (Node LTS line). `ncu` will pick odd majors like 25; reset to `^24.x` (or the next even after 24) by hand after running it.
-- **`express` stays on `^4`** — express 5 changes `req.params` to `string | string[]` and reshapes async error semantics; `mcp-inspector` and `rest` both depend on the v4 typing. Migrate as a focused PR, not as a dep bump.
+- **`express` is on `^5`** (migrated from `^4`). The migration was low-risk because `RestServer.toExpressPath` only emits simple `:name` params (never `*`/`:name?`/regex paths — the path-to-regexp v8 breakages), `req.query` is only read, and error flow already uses explicit `catch → next(err)`. `multer@^2` + `body-parser@^2` are already v5-ready. Keep new framework routes free of bare-wildcard paths (`app.get('*')` must be `app.get('/*splat')` under path-to-regexp v8).
 - **`p-event` stays on `^6`** — v7 reshaped the `iterator()` return type; `context-subscription.ts` was ported assuming the v6 named exports. Same — focused migration, not a drive-by.
 
 When `ncu` produces a result that won't build, prefer pinning back the offender (with a one-line reason in the commit message) over patching code, unless the upgrade was the goal.
