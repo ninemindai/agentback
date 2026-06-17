@@ -43,6 +43,8 @@ export {
   toolRateLimitMiddleware,
   type McpToolRateLimitOptions,
 } from './tool-rate-limit.js';
+// Fetch-native MCP HTTP mount (runtime-neutral host path: native/Bun/Fastify).
+export {mountMcpHttpFetch} from './fetch.js';
 // Re-export so callers can implement a verifier/store without deep SDK imports.
 export type {AuthInfo, OAuthTokenVerifier, EventStore};
 

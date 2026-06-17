@@ -56,29 +56,32 @@ registrations on the fetch Router.
 
 ## What blocks making it the default
 
-### 1. `@agentback/mcp-http` (hard blocker)
+### 1. `@agentback/mcp-http` — **RESOLVED** (option a landed upstream)
 
-`mountMcpHttp` calls
+The Express `mountMcpHttp` calls
 `transport.handleRequest(req, res, req.body)` where `transport` is the MCP SDK's
-`StreamableHTTPServerTransport` (`@modelcontextprotocol/sdk`). `handleRequest`
-takes a Node `IncomingMessage` + `ServerResponse` directly — it writes to the
-socket itself (SSE streaming, session headers). There is no
-`fetch(Request): Response` form in the SDK today.
+`StreamableHTTPServerTransport`. `handleRequest` takes a Node `IncomingMessage` +
+`ServerResponse` directly — it writes to the socket itself (SSE streaming,
+session headers). There was no `fetch(Request): Response` form in the SDK when
+this was first analyzed.
 
-**Options, in preference order:**
+**Resolution:** `@modelcontextprotocol/sdk` ≥ 1.29 ships
+`WebStandardStreamableHTTPServerTransport` with
+`handleRequest(req: Request): Promise<Response>` — option (a), upstream. We built
+`mountMcpHttpFetch(mcp, server, options)` (`packages/mcp-http/src/fetch.ts`) on
+top of it: it registers POST/GET/DELETE via `server.addFetchHandler(...)` and
+reuses the session map, per-principal pinning, and `perSession` DI of the
+Express mount. Auth uses the neutral `fromWebRequest` seam (`strategyAuth`). It
+is parity-tested through the native listener with the real MCP SDK client
+(`packages/mcp-http/src/__tests__/integration/fetch.integration.ts`).
 
-- **(a) Upstream:** file an issue / PR on `@modelcontextprotocol/sdk` for a
-  Web-transport variant of `StreamableHTTPServerTransport` (a
-  `handle(Request): Response` returning a streamed `Response`). Cleanest; lets
-  `mcp-http` register a single fetch handler like everything else.
-- **(b) Bridge:** wrap the Node transport behind a Web→Node shim — synthesize an
-  `IncomingMessage` from the Web `Request` and a `ServerResponse` that writes
-  into a `ReadableStream` we hand back as the `Response` body. Doable but fiddly
-  (the SSE keep-alive + session lifecycle must survive the bridge); it is the
-  same class of adapter `@hono/node-server` already implements in reverse.
-- **(c) Keep `mcp-http` Node-only:** native mode supports everything *except*
-  MCP-over-HTTP; apps needing it stay on the Express host. This is the current
-  prototype's stance.
+**Remaining gap (not a cutover blocker):** OAuth resource-server bearer auth
+(`options.auth` → the SDK's `requireBearerAuth` Express middleware + the
+`/.well-known/oauth-protected-resource` metadata route) is not yet wired on the
+fetch path; `mountMcpHttpFetch` warns and serves unauthenticated unless
+`strategyAuth` is set. Re-expressing `requireBearerAuth` as a `WebMiddleware`
+(it only reads the `Authorization` header + calls the verifier) is a
+self-contained follow-up.
 
 ### 2. Express-coupled escape hatches
 
@@ -114,8 +117,9 @@ asserts identical responses for `@api` routes, `/openapi.json`, and a 404.
 
 ## Exit criteria for flipping the default
 
-1. MCP SDK Web-transport (option a) lands, or the bridge (option b) ships with
-   its own conformance test.
+1. ~~MCP SDK Web-transport (option a) lands~~ — **done**: SDK ≥ 1.29 +
+   `mountMcpHttpFetch` (parity-tested). OAuth bearer on the fetch path is the
+   one remaining sub-gap (strategyAuth already works).
 2. Native mode throws at `start()` on Express-coupled routes (done in prototype).
 3. The full existing `@agentback/rest` + examples suite passes with
    `listener: 'native'` as default (the same full-suite gate item D used).
