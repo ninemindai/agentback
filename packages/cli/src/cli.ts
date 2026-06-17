@@ -18,7 +18,6 @@ Usage:
 Options:
   --entry <path>            built module exporting the app builder
   --export <name>           builder export name (default: buildApp)
-  --name <n>                Vercel project name (default: package.json name)
   --prod                    production deploy (default: preview)
   --console                 also deploy the dev console (needs auth or --unsafe-public-console)
   --unsafe-public-console   acknowledge publishing console internals unauthenticated
@@ -81,5 +80,10 @@ const __filename = fileURLToPath(import.meta.url);
 const invokedDirectly =
   process.argv[1] != null && __filename === realpathSync(process.argv[1]);
 if (invokedDirectly) {
-  main(process.argv.slice(2)).then(code => process.exit(code));
+  main(process.argv.slice(2))
+    .then(code => process.exit(code))
+    .catch(err => {
+      console.error(err?.message ?? err);
+      process.exit(1);
+    });
 }

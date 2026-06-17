@@ -46,4 +46,18 @@ describe('verifyDeploy', () => {
     );
     expect(seen).toBe('https://x.vercel.app/v1/openapi.json');
   });
+
+  it('returns ok:false when fetch throws (e.g. timeout)', async () => {
+    const throwingFetch = (async () => {
+      throw new Error('The operation was aborted.');
+    }) as unknown as typeof fetch;
+    const r = await verifyDeploy(
+      'https://x.vercel.app',
+      {verifyPath: '/openapi.json'},
+      throwingFetch,
+    );
+    expect(r.ok).toBe(false);
+    expect(r.status).toBe(0);
+    expect(r.body).toContain('aborted');
+  });
 });
