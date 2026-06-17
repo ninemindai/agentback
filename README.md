@@ -49,7 +49,10 @@ on a DI core you can extend, on any host (Node, Fastify, Hono, Bun, Deno,
 Workers) from one `fetch` handler.
 
 <p align="center">
-  <img src="docs/architecture/diagrams/positioning.svg" alt="AgentBack positioning: one Zod schema fans out to a REST/HTTP API for developers and an MCP surface for agents, served on any HTTP host" width="900" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/architecture/diagrams/positioning.svg" />
+    <img src="docs/architecture/diagrams/positioning-light.svg" alt="AgentBack positioning: one Zod schema fans out to a REST/HTTP API for developers and an MCP surface for agents, served on any HTTP host" width="900" />
+  </picture>
 </p>
 
 <p align="center"><sub>One Zod schema → a REST/HTTP API for developers and an MCP surface for agents (tools, <code>/llms.txt</code>, a derived <code>SKILL.md</code>), served on any host from one <code>fetch</code> handler. · <a href="docs/architecture/diagrams/positioning.html">Interactive version →</a></sub></p>
