@@ -273,6 +273,11 @@ export class RestServer implements Server {
     return this._listening;
   }
 
+  /** Selected HTTP listener (`'express' | 'native'`); see {@link RestServerConfig.listener}. */
+  get listener(): 'express' | 'native' {
+    return this.listenerMode;
+  }
+
   /**
    * Register a controller class. The class must already be bound in the
    * application context (or any ancestor); we look it up by class and

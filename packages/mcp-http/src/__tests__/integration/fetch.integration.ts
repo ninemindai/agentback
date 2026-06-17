@@ -14,7 +14,11 @@ import {
   resource,
   tool,
 } from '@agentback/mcp';
-import {mountMcpHttpFetch, type McpHttpHandle} from '../../index.js';
+import {
+  installMcpHttp,
+  mountMcpHttpFetch,
+  type McpHttpHandle,
+} from '../../index.js';
 
 // Proves mountMcpHttpFetch serves MCP-over-HTTP through the runtime-neutral
 // fetch path — driven here by rest.listener: 'native', i.e. the Node listener
@@ -139,6 +143,44 @@ describe('mountMcpHttpFetch (native listener)', () => {
     const {client} = await connect();
     const {tools} = await client.listTools();
     expect(tools.length).toBeGreaterThan(0);
+    await client.close();
+  });
+});
+
+// installMcpHttp auto-selects the fetch mount when the server is in native mode,
+// so callers don't have to know which mount to use — same one-liner, both hosts.
+describe('installMcpHttp auto-routes to the fetch mount in native mode', () => {
+  let app: RestApplication;
+  let mcpUrl: URL;
+
+  beforeEach(async () => {
+    app = new RestApplication({rest: {listener: 'native'}});
+    app.configure('servers.RestServer').to({
+      port: 0,
+      host: '127.0.0.1',
+      listener: 'native',
+    });
+    app.component(MCPComponent);
+    app.configure('servers.MCPServer').to({
+      name: 'fetch-auto',
+      version: '0.0.0',
+      transports: {stdio: false},
+    });
+    app.service(DemoTools);
+    await app.get<MCPServer>('servers.MCPServer');
+    await installMcpHttp(app); // no explicit mount choice
+    await app.start();
+    const server = await app.get<RestServer>('servers.RestServer');
+    mcpUrl = new URL(server.url + '/mcp');
+  });
+
+  afterEach(async () => app.stop());
+
+  it('serves tools/list over the native fetch path', async () => {
+    const client = new Client({name: 'test-client', version: '0.0.0'});
+    await client.connect(new StreamableHTTPClientTransport(mcpUrl));
+    const {tools} = await client.listTools();
+    expect(tools.map(t => t.name).sort()).toEqual(['add', 'echo']);
     await client.close();
   });
 });

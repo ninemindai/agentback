@@ -33,6 +33,7 @@ import {
   toolRateLimitMiddleware,
   type McpToolRateLimitOptions,
 } from './tool-rate-limit.js';
+import {mountMcpHttpFetch} from './fetch.js';
 
 export {InMemoryEventStore} from './event-store.js';
 export {
@@ -224,7 +225,13 @@ export async function installMcpHttp(
   if (opts.perSession && !opts.appContext) {
     opts = {...opts, appContext: app};
   }
-  const handle = mountMcpHttp(mcp, server.expressApp, opts);
+  // Pick the mount that matches the host: the native listener serves
+  // fetchHandler() (no Express req/res), so use the fetch-native transport;
+  // otherwise the classic Express mount. Both expose the same McpHttpHandle.
+  const handle =
+    server.listener === 'native'
+      ? mountMcpHttpFetch(mcp, server, opts)
+      : mountMcpHttp(mcp, server.expressApp, opts);
   // Close every outstanding session context + transport on shutdown, so a
   // long-running app doesn't leak per-session DI contexts.
   app.onStop(() => handle.closeAll());
