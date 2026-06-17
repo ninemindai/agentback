@@ -43,9 +43,9 @@ One Zod schema becomes the validator, the `z.infer` type, the OpenAPI 3.1
 contract, the MCP schema, the typed client, and the docs. Change the schema;
 every boundary follows.
 
-Not "Express, but newer." The layer that keeps one operation coherent across the
-app boundary and the agent boundary — on a DI core you can extend, on any host
-(Node, Fastify, Hono, Bun, Deno, Workers) from one `fetch` handler.
+Not "LoopBack/Express, but newer." The layer that keeps one operation coherent
+across the app boundary and the agent boundary — on a DI core you can extend, on
+any host (Node, Fastify, Hono, Bun, Deno, Workers) from one `fetch` handler.
 
 ## What's inside
 
