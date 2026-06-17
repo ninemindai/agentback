@@ -146,6 +146,20 @@ catalog — DI foundation, REST/MCP/clients, and platform components — is in
 
 ## Quick start
 
+Scaffold a new service (REST, MCP, or both) — no global install needed:
+
+```bash
+npm create agentback my-service                       # hybrid (REST + MCP)
+pnpm create agentback my-service --template rest      # REST only
+pnpm create agentback my-api --template hybrid --drizzle --auth   # with add-ons
+```
+
+Run `npm create agentback` with no name for an interactive wizard. See
+[`create-agentback`](packages/create-agentback/README.md) for templates,
+capability flags (`--drizzle`/`--auth`/`--console`), and host options.
+
+Or work in this repo against the bundled examples:
+
 ```bash
 pnpm install
 pnpm build
