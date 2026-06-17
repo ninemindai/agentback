@@ -43,6 +43,7 @@ const DOC_PAGES = [
   'docs/guides/deploy-to-production.md',
   'docs/architecture/overview.md',
   'docs/architecture/metering-and-payments.md',
+  'docs/packages.md',
   'docs/agent-ergonomics.md',
   'docs/db-story.md',
 ];
@@ -84,6 +85,7 @@ const NAV_SECTIONS = [
     items: [
       ['docs/architecture/overview.md', 'Overview'],
       ['docs/architecture/metering-and-payments.md', 'Metering & payments'],
+      ['docs/packages.md', 'Package catalog'],
     ],
   },
   {
@@ -464,7 +466,10 @@ if (CF_WEB_ANALYTICS_TOKEN) {
       } else if (entry.name.endsWith('.html')) {
         const html = fs.readFileSync(file, 'utf8');
         if (html.includes('cloudflareinsights.com')) continue; // idempotent
-        fs.writeFileSync(file, html.replace('</head>', `  ${beacon}\n  </head>`));
+        fs.writeFileSync(
+          file,
+          html.replace('</head>', `  ${beacon}\n  </head>`),
+        );
       }
     }
   };

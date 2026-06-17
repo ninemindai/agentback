@@ -54,7 +54,7 @@ Read top-to-bottom the first time; jump around afterwards.
 | [Composition & extensibility](guides/composition-and-extensibility.md) | The modular toolkit: components, middleware, interceptors, extension points, and subclassing the dispatcher. |
 | [Testing](guides/testing.md)                                           | `createTestApp` and the four client surfaces: typed calls, supertest, in-memory MCP, DI assertions.          |
 | [Secure MCP over HTTP](guides/secure-mcp-over-http.md)                 | Auth modes (strategies vs OAuth 2.1 resource server), scope-gated tools, DNS-rebinding, rate limits.         |
-| [HTTP hosts](guides/deploy-to-edge.md)                                 | Run REST + MCP on Node, Fastify, Hono, Bun, Deno, or Workers from one `fetchHandler()`. The native listener.  |
+| [HTTP hosts](guides/deploy-to-edge.md)                                 | Run REST + MCP on Node, Fastify, Hono, Bun, Deno, or Workers from one `fetchHandler()`. The native listener. |
 | [Deploy to production](guides/deploy-to-production.md)                 | Containers, validated config, K8s probes, metrics/tracing, graceful shutdown, multi-instance checklist.      |
 
 ### Reference & design
@@ -62,6 +62,7 @@ Read top-to-bottom the first time; jump around afterwards.
 | Doc                                                          | Purpose                                                                                                                     |
 | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
 | [Architecture overview](architecture/overview.md)            | The big picture: how a request flows, how servers discover bindings, full package layering. Diagrams included.              |
+| [Package catalog](packages.md)                               | Every `@agentback/*` package and `create-agentback`, grouped by layer (DI foundation, REST/MCP/clients, platform).          |
 | [Metering & payments](architecture/metering-and-payments.md) | Counting every REST/MCP call (`metering`) and gating or billing the paid ones — x402 / MPP / Stripe (`payments`). Diagrams. |
 | [Boundary coherence (design thesis)](agent-ergonomics.md)    | _Why_ the framework is shaped this way — the "one artifact, viewed differently" bet and what it buys AI-led teams.          |
 | [Database story](db-story.md)                                | The framework's stance on persistence (Drizzle recipe), and why there's no built-in ORM.                                    |
@@ -122,13 +123,13 @@ pnpm -F hello-hybrid start       # REST + MCP from one process, both UIs
 pnpm -F hello-client start       # the typed client calling hello-rest's schemas
 ```
 
-| Example                 | Demonstrates                               | Guide                                                                     |
-| ----------------------- | ------------------------------------------ | ------------------------------------------------------------------------- |
-| `examples/hello-rest`   | REST + auth + health + metrics + explorers | [REST](guides/build-a-rest-api.md)                                        |
-| `examples/hello-mcp`    | MCP tools over stdio                       | [MCP](guides/build-an-mcp-server.md)                                      |
-| `examples/hello-hybrid` | REST + MCP in one process                  | [Hybrid](guides/build-a-hybrid-app.md)                                    |
-| `examples/hello-client` | Schema-shared typed client                 | [Hybrid](guides/build-a-hybrid-app.md#a-type-safe-client-with-no-codegen) |
-| `examples/hello-mcp-apps` | MCP Apps `ui://` widget rendered by a host | [MCP Apps](guides/mcp-apps-widgets.md)                                  |
+| Example                   | Demonstrates                               | Guide                                                                     |
+| ------------------------- | ------------------------------------------ | ------------------------------------------------------------------------- |
+| `examples/hello-rest`     | REST + auth + health + metrics + explorers | [REST](guides/build-a-rest-api.md)                                        |
+| `examples/hello-mcp`      | MCP tools over stdio                       | [MCP](guides/build-an-mcp-server.md)                                      |
+| `examples/hello-hybrid`   | REST + MCP in one process                  | [Hybrid](guides/build-a-hybrid-app.md)                                    |
+| `examples/hello-client`   | Schema-shared typed client                 | [Hybrid](guides/build-a-hybrid-app.md#a-type-safe-client-with-no-codegen) |
+| `examples/hello-mcp-apps` | MCP Apps `ui://` widget rendered by a host | [MCP Apps](guides/mcp-apps-widgets.md)                                    |
 
 ## Conventions in these docs
 

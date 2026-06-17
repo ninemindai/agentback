@@ -104,19 +104,11 @@ Use it when you need HTTP APIs, MCP tools, docs, typed clients, policy checks,
 and usage rails to stay coherent as the system grows.
 
 **Fastify and Hono are transport runtimes, not competitors.** They solve HTTP
-plumbing — Fastify is fast Node with a plugin ecosystem; Hono is an ultrafast,
-Web-standard, multi-runtime core. AgentBack solves the layer above: one Zod
-schema projected to REST, OpenAPI, _and_ MCP through a DI container, sitting on
-whatever host owns the port. Hono is the closest sibling in philosophy — a
-Web-standard core, codegen-free typed RPC (mirrored by `@agentback/client`), and
-Zod validation — and AgentBack shares those while adding the MCP tool boundary
-and DI container Hono leaves to the app. The REST core **is** host-portable: a
-runtime-neutral `RestServer.fetchHandler()` (`Request → Response`) runs the full
-pipeline — routing, validation, DI, auth, streaming, uploads, **and**
-MCP-over-HTTP — on Express (default), a native Node listener
-(`rest.listener: 'native'`), Fastify (`installFastifyHost`), Hono
-(`hono.all('*', …)`), Bun (`Bun.serve({fetch})`), Deno, and Cloudflare Workers.
-Same one-schema projection wherever it runs — see
+plumbing; AgentBack solves the layer above — one Zod schema projected to REST,
+OpenAPI, _and_ MCP through a DI container. And it's host-portable: a
+runtime-neutral `RestServer.fetchHandler()` runs the full pipeline (routing,
+validation, DI, auth, streaming, uploads, MCP-over-HTTP) on Express, a native
+Node listener, Fastify, Hono, Bun, Deno, and Workers — see
 [`examples/hello-hosts`](examples/hello-hosts/README.md) and the
 [HTTP hosts guide](docs/guides/deploy-to-edge.md).
 
@@ -144,63 +136,10 @@ The rest of this README is the one-page tour and code feel.
 
 ## Packages
 
-The DI framework is the foundation; everything else is built on it.
-
-### DI foundation
-
-| Package               | Role                                                                                                 |
-| --------------------- | ---------------------------------------------------------------------------------------------------- |
-| `@agentback/common`   | Shared logging, env, ID, redaction, and async helper utilities                                       |
-| `@agentback/metadata` | Decorator metadata utilities (port of `@loopback/metadata`)                                          |
-| `@agentback/context`  | DI container: `Context`, `Binding`, `@inject`, providers, interceptors (port of `@loopback/context`) |
-| `@agentback/core`     | `Application` (a `Context`), `Component`, `Server`, life-cycle (port of `@loopback/core`)            |
-
-### REST, MCP, and clients
-
-| Package                       | Role                                                                    |
-| ----------------------------- | ----------------------------------------------------------------------- |
-| `@agentback/http-server`      | HTTP server with graceful stop (port of `@loopback/http-server`)        |
-| `@agentback/express`          | Express integration + middleware (port of `@loopback/express`)          |
-| `@agentback/openapi`          | Zod-first decorators + OpenAPI 3.1.1 emission                           |
-| `@agentback/rest`             | Minimal REST server with Zod request/body validation                    |
-| `@agentback/rest-explorer`    | Mounts Swagger UI 5.x at `/explorer`                                    |
-| `@agentback/context-explorer` | Mounts a context/binding explorer UI                                    |
-| `@agentback/schema-explorer`  | Mounts a schema/entity provenance explorer UI (REST + MCP + Drizzle)    |
-| `@agentback/mcp`              | Decorator-driven MCP server (`@mcpServer`, `@tool` w/ Zod input/output) |
-| `@agentback/mcp-inspector`    | Mounts an MCP inspector UI at `/mcp-inspector`                          |
-| `@agentback/mcp-http`         | Exposes the MCP server over Streamable HTTP at `/mcp` (+ OAuth, scopes) |
-| `@agentback/mcp-client`       | Connect to remote MCP servers over HTTP (OAuth-aware)                   |
-| `@agentback/mcp-host`         | Aggregate upstream MCP servers into one gateway                         |
-| `@agentback/mcp-connect`      | Persistent outbound MCP connections for browser/admin UIs               |
-| `@agentback/client`           | Schema-shared typed HTTP client with no codegen                         |
-
-### Platform components
-
-| Package                            | Role                                                                     |
-| ---------------------------------- | ------------------------------------------------------------------------ |
-| `@agentback/config`                | Zod-validated config loader with env overlays and DI bindings            |
-| `@agentback/security`              | User, subject, and principal primitives                                  |
-| `@agentback/authentication`        | Authentication decorator and strategy pipeline                           |
-| `@agentback/authentication-jwt`    | JWT bearer strategy                                                      |
-| `@agentback/authentication-oauth2` | OAuth2 introspection and JWKS bearer-token strategies                    |
-| `@agentback/authorization`         | `@authorize` decorator and voter pipeline                                |
-| `@agentback/extension-health`      | Health/readiness probes                                                  |
-| `@agentback/extension-metrics`     | Prometheus `/metrics` endpoint and HTTP timing                           |
-| `@agentback/extension-otel`        | OpenTelemetry spans across REST, MCP, and jobs                           |
-| `@agentback/extension-rate-limit`  | In-memory or Redis-backed rate limiting                                  |
-| `@agentback/metering`              | Per-principal REST/MCP usage events, audit sinks, and quota              |
-| `@agentback/payments`              | x402/MPP/Stripe payment authorization and billing seams                  |
-| `@agentback/messaging`             | Zod-typed JobQueue/EventBus/Scheduler ports with in-memory adapter       |
-| `@agentback/messaging-bullmq`      | BullMQ + Redis Streams durable adapter for messaging ports               |
-| `@agentback/drizzle`               | Drizzle ORM binding and drizzle-zod recipe                               |
-| `@agentback/files`                 | `FileStore` port for uploads/downloads + in-memory & filesystem adapters |
-| `@agentback/files-s3`              | S3 `FileStore` adapter (streaming via AWS SDK v3)                        |
-| `@agentback/plugin`                | Plugin discovery, gating, and component mounting                         |
-| `@agentback/testing`               | Test harness with typed REST client, supertest, and in-memory MCP        |
-| `@agentback/testlab`               | Lower-level test helpers used by the package test suites                 |
-| `create-agentback`                 | `npm create` scaffold for REST, MCP, and hybrid services                 |
-| `@agentback/console`               | Combined context, schema, REST/OpenAPI, and MCP admin console            |
-| `@agentback/console-theme`         | Shared styling for console and explorer UIs                              |
+The DI framework is the foundation; everything else is built on it. The full
+catalog — DI foundation, REST/MCP/clients, and platform components — is in
+**[docs/packages.md](docs/packages.md)**; each package also ships its own
+`README.md` under [`packages/`](packages/).
 
 ## Quick start
 
@@ -260,6 +199,13 @@ deep material by task — `rest-and-openapi.md`, `mcp-tools.md`,
 pull only the context the current task needs.
 
 ## A 30-second feel
+
+A full code walkthrough — the DI container, a REST service, and an MCP server, in
+compiling TypeScript drawn from the packages. Expand it, or jump straight to the
+runnable [`examples/`](examples/) and the [guides](docs/README.md).
+
+<details>
+<summary><b>Show the walkthrough</b></summary>
 
 ### DI container (works standalone, no HTTP needed)
 
@@ -417,6 +363,8 @@ async charge(input: {body: z.infer<typeof ChargeIn>}) { … }
 - **Tool definitions are a context budget.** `mcpServer.toolCostReport()`
   token-prices every `tools/list` entry and totals what each connection costs
   a caller's context window; `formatToolCostReport()` flags over-budget tools.
+
+</details>
 
 ## Design pivots from the upstream LoopBack 4
 
