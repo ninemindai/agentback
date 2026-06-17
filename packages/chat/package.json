@@ -1,0 +1,47 @@
+{
+  "name": "@agentback/chat",
+  "version": "0.4.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@agentback/common": "workspace:~",
+    "@agentback/context": "workspace:~",
+    "@agentback/core": "workspace:~",
+    "@agentback/metadata": "workspace:~",
+    "@agentback/rest": "workspace:~",
+    "@agentback/security": "workspace:~",
+    "@types/express": "^5.0.6",
+    "express": "^5.2.1",
+    "tslib": "^2.8.1"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "devDependencies": {
+    "@agentback/testlab": "workspace:~",
+    "vitest": "~4.1.9"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ninemindai/agentback.git",
+    "directory": "packages/chat"
+  },
+  "homepage": "https://agentback.dev",
+  "bugs": "https://github.com/ninemindai/agentback/issues"
+}

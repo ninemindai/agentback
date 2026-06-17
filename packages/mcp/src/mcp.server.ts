@@ -18,7 +18,7 @@ import {
 } from '@agentback/authorization';
 import {SecurityBindings, type UserProfile} from '@agentback/security';
 import {extensionFilter, Server} from '@agentback/core';
-import {MetadataInspector} from '@agentback/metadata';
+import {MetadataAccessor, MetadataInspector} from '@agentback/metadata';
 import {
   buildErrorEnvelope,
   ErrorCodes,
@@ -512,17 +512,25 @@ export class MCPServer implements Server {
     return this.confirmationStoreCache;
   }
 
-  private collectAllTools(): ToolBinding[] {
-    const out: ToolBinding[] = [];
+  /**
+   * Collect every `@tool`/`@resource`/`@prompt` method across all `@mcpServer`
+   * contributors for one metadata key. `this.context.find(...)` is a chain walk,
+   * so a per-session/per-request child context sees both its own tools and the
+   * shared app-level ones. Stays on `@inject.context()` (not `@extensions.view`)
+   * because `this.context` also builds per-request children, discovers dispatch
+   * hooks, and resolves the confirmation store — the view would only cover this
+   * one slice while adding a per-session subscription.
+   */
+  private collectMembers<M extends object>(
+    key: MetadataAccessor<M, MethodDecorator>,
+  ): {ctor: Function; meta: M & {methodName: string}}[] {
+    const out: {ctor: Function; meta: M & {methodName: string}}[] = [];
     for (const b of this.context.find(extensionFilter(MCP_SERVERS))) {
       const ctor = b.valueConstructor;
       if (typeof ctor !== 'function') continue;
-      const tools =
-        MetadataInspector.getAllMethodMetadata<ToolMetadata>(
-          MCPKeys.TOOL,
-          ctor.prototype,
-        ) ?? {};
-      for (const [methodName, meta] of Object.entries(tools)) {
+      const members =
+        MetadataInspector.getAllMethodMetadata<M>(key, ctor.prototype) ?? {};
+      for (const [methodName, meta] of Object.entries(members)) {
         if (!meta) continue;
         out.push({ctor, meta: {...meta, methodName}});
       }
@@ -530,43 +538,16 @@ export class MCPServer implements Server {
     return out;
   }
 
-  private collectAllResources(): {
-    ctor: Function;
-    meta: ResourceMetadata;
-  }[] {
-    const out: {ctor: Function; meta: ResourceMetadata}[] = [];
-    for (const b of this.context.find(extensionFilter(MCP_SERVERS))) {
-      const ctor = b.valueConstructor;
-      if (typeof ctor !== 'function') continue;
-      const resources =
-        MetadataInspector.getAllMethodMetadata<ResourceMetadata>(
-          MCPKeys.RESOURCE,
-          ctor.prototype,
-        ) ?? {};
-      for (const [methodName, meta] of Object.entries(resources)) {
-        if (!meta) continue;
-        out.push({ctor, meta: {...meta, methodName}});
-      }
-    }
-    return out;
+  private collectAllTools(): ToolBinding[] {
+    return this.collectMembers<ToolMetadata>(MCPKeys.TOOL);
+  }
+
+  private collectAllResources(): {ctor: Function; meta: ResourceMetadata}[] {
+    return this.collectMembers<ResourceMetadata>(MCPKeys.RESOURCE);
   }
 
   private collectAllPrompts(): {ctor: Function; meta: PromptMetadata}[] {
-    const out: {ctor: Function; meta: PromptMetadata}[] = [];
-    for (const b of this.context.find(extensionFilter(MCP_SERVERS))) {
-      const ctor = b.valueConstructor;
-      if (typeof ctor !== 'function') continue;
-      const prompts =
-        MetadataInspector.getAllMethodMetadata<PromptMetadata>(
-          MCPKeys.PROMPT,
-          ctor.prototype,
-        ) ?? {};
-      for (const [methodName, meta] of Object.entries(prompts)) {
-        if (!meta) continue;
-        out.push({ctor, meta: {...meta, methodName}});
-      }
-    }
-    return out;
+    return this.collectMembers<PromptMetadata>(MCPKeys.PROMPT);
   }
 
   /**
@@ -945,7 +926,7 @@ export class MCPServer implements Server {
         continue;
       }
       log.debug('registering resource %s -> %s', r.meta.name, r.meta.uri);
-      target.resource(
+      target.registerResource(
         r.meta.name,
         r.meta.uri,
         {
@@ -975,9 +956,20 @@ export class MCPServer implements Server {
         continue;
       }
       log.debug('registering prompt %s', p.meta.name);
-      target.prompt(p.meta.name, p.meta.description ?? '', extra =>
-        this.dispatchPrompt(p, this.requestContextFor(extra)),
-      );
+      // `registerPrompt` has no zero-argument form: its generic always types
+      // the callback as `(args, extra)`. We register WITHOUT `argsSchema`, so at
+      // runtime the SDK invokes `cb(extra)` and does no `arguments` validation —
+      // identical to the old `prompt()` overload (passing `argsSchema: {}` to
+      // satisfy the type instead breaks no-arg calls: getPrompt sends no
+      // arguments → "expected object, received undefined"). The one-arg callback
+      // is cast to the param type; this only sheds the deprecation hint.
+      target.registerPrompt(p.meta.name, {description: p.meta.description}, ((
+        extra: ToolRequestExtra,
+      ) =>
+        this.dispatchPrompt(
+          p,
+          this.requestContextFor(extra),
+        )) as unknown as Parameters<typeof target.registerPrompt>[2]);
     }
   }
 
