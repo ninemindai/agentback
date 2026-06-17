@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 700" width="1040" height="700" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" role="img" aria-label="AgentBack positioning: one Zod schema fans out to a REST/HTTP API for developers and an MCP surface for agents, served on any HTTP host">
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#020617" />
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- ===== audience group boundaries (transparent) ===== -->
+        <rect x="410" y="44" width="582" height="212" rx="12" fill="rgba(34, 211, 238, 0.04)" stroke="#22d3ee" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="424" y="64" fill="#22d3ee" font-size="11" font-weight="600" letter-spacing="1">FOR HUMAN DEVELOPERS · REST / HTTP API</text>
+
+        <rect x="410" y="300" width="582" height="212" rx="12" fill="rgba(167, 139, 250, 0.04)" stroke="#a78bfa" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="424" y="320" fill="#a78bfa" font-size="11" font-weight="600" letter-spacing="1">FOR AI AGENTS · MCP</text>
+
+        <!-- ===== arrows: one schema -> each audience (behind boxes) ===== -->
+        <line x1="260" y1="286" x2="404" y2="150" stroke="#22d3ee" stroke-width="1.6" marker-end="url(#arrowhead)"/>
+        <line x1="260" y1="314" x2="404" y2="406" stroke="#a78bfa" stroke-width="1.6" marker-end="url(#arrowhead)"/>
+        <rect x="300" y="206" width="62" height="16" rx="3" fill="#0f172a"/>
+        <text x="331" y="218" fill="#94a3b8" font-size="9" text-anchor="middle">derived</text>
+        <rect x="300" y="352" width="62" height="16" rx="3" fill="#0f172a"/>
+        <text x="331" y="364" fill="#94a3b8" font-size="9" text-anchor="middle">derived</text>
+
+        <!-- ===== the source: one Zod schema ===== -->
+        <rect x="60" y="252" width="200" height="96" rx="8" fill="#0f172a"/>
+        <rect x="60" y="252" width="200" height="96" rx="8" fill="rgba(6, 78, 59, 0.55)" stroke="#34d399" stroke-width="2"/>
+        <text x="160" y="282" fill="white" font-size="14" font-weight="700" text-anchor="middle">one Zod schema</text>
+        <text x="160" y="301" fill="#94a3b8" font-size="9" text-anchor="middle">declared once on</text>
+        <text x="160" y="315" fill="#34d399" font-size="9.5" text-anchor="middle">@get(…) / @tool(…)</text>
+        <text x="160" y="334" fill="#94a3b8" font-size="8" text-anchor="middle">the single source of truth</text>
+
+        <!-- ===== developer surfaces (cyan) ===== -->
+        <rect x="432" y="80" width="262" height="76" rx="6" fill="#0f172a"/>
+        <rect x="432" y="80" width="262" height="76" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="563" y="110" fill="white" font-size="12" font-weight="600" text-anchor="middle">REST routes</text>
+        <text x="563" y="129" fill="#94a3b8" font-size="9" text-anchor="middle">@get / @post + Zod validation</text>
+
+        <rect x="708" y="80" width="262" height="76" rx="6" fill="#0f172a"/>
+        <rect x="708" y="80" width="262" height="76" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="839" y="110" fill="white" font-size="12" font-weight="600" text-anchor="middle">OpenAPI 3.1</text>
+        <text x="839" y="129" fill="#94a3b8" font-size="9" text-anchor="middle">auto-emitted via z.toJSONSchema</text>
+
+        <rect x="432" y="170" width="262" height="76" rx="6" fill="#0f172a"/>
+        <rect x="432" y="170" width="262" height="76" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="563" y="200" fill="white" font-size="12" font-weight="600" text-anchor="middle">Typed client</text>
+        <text x="563" y="219" fill="#94a3b8" font-size="9" text-anchor="middle">z.infer — no codegen</text>
+
+        <rect x="708" y="170" width="262" height="76" rx="6" fill="#0f172a"/>
+        <rect x="708" y="170" width="262" height="76" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="839" y="200" fill="white" font-size="12" font-weight="600" text-anchor="middle">Swagger UI</text>
+        <text x="839" y="219" fill="#94a3b8" font-size="9" text-anchor="middle">/explorer</text>
+
+        <!-- ===== agent surfaces (violet) ===== -->
+        <rect x="432" y="336" width="262" height="76" rx="6" fill="#0f172a"/>
+        <rect x="432" y="336" width="262" height="76" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="563" y="366" fill="white" font-size="12" font-weight="600" text-anchor="middle">MCP tools</text>
+        <text x="563" y="385" fill="#94a3b8" font-size="9" text-anchor="middle">@tool — the same schema</text>
+
+        <rect x="708" y="336" width="262" height="76" rx="6" fill="#0f172a"/>
+        <rect x="708" y="336" width="262" height="76" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="839" y="366" fill="white" font-size="12" font-weight="600" text-anchor="middle">Machine-readable docs</text>
+        <text x="839" y="385" fill="#94a3b8" font-size="9" text-anchor="middle">/llms.txt · /llms-full.txt</text>
+
+        <!-- agent skill (emerging — dashed) -->
+        <rect x="432" y="426" width="262" height="76" rx="6" fill="#0f172a"/>
+        <rect x="432" y="426" width="262" height="76" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="5,3"/>
+        <text x="563" y="456" fill="white" font-size="12" font-weight="600" text-anchor="middle">Agent skill</text>
+        <text x="563" y="475" fill="#94a3b8" font-size="9" text-anchor="middle">SKILL.md, derived · emerging</text>
+
+        <rect x="708" y="426" width="262" height="76" rx="6" fill="#0f172a"/>
+        <rect x="708" y="426" width="262" height="76" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="839" y="456" fill="white" font-size="12" font-weight="600" text-anchor="middle">Recoverable errors</text>
+        <text x="839" y="475" fill="#94a3b8" font-size="9" text-anchor="middle">codes · issues · hints</text>
+
+        <!-- ===== multi-host substrate band (amber) ===== -->
+        <rect x="60" y="558" width="910" height="92" rx="10" fill="#0f172a"/>
+        <rect x="60" y="558" width="910" height="92" rx="10" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="78" y="582" fill="#fbbf24" font-size="11" font-weight="600" letter-spacing="1">RUNS ON ANY HTTP HOST · ONE fetchHandler()</text>
+        <g font-size="9" text-anchor="middle">
+          <rect x="78" y="600" width="118" height="34" rx="5" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+          <text x="137" y="615" fill="white">Node</text><text x="137" y="627" fill="#d6b06a">listener:'native'</text>
+          <rect x="206" y="600" width="110" height="34" rx="5" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+          <text x="261" y="621" fill="white">Express</text>
+          <rect x="326" y="600" width="110" height="34" rx="5" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+          <text x="381" y="621" fill="white">Fastify</text>
+          <rect x="446" y="600" width="110" height="34" rx="5" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+          <text x="501" y="621" fill="white">Hono</text>
+          <rect x="566" y="600" width="110" height="34" rx="5" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+          <text x="621" y="621" fill="white">Bun</text>
+          <rect x="686" y="600" width="110" height="34" rx="5" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+          <text x="741" y="621" fill="white">Deno</text>
+          <rect x="806" y="600" width="156" height="34" rx="5" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+          <text x="884" y="621" fill="white">Cloudflare Workers</text>
+        </g>
+
+        <!-- ===== legend (below the band) ===== -->
+        <text x="60" y="680" fill="white" font-size="10" font-weight="600">Legend</text>
+        <rect x="124" y="672" width="16" height="10" rx="2" fill="rgba(6, 78, 59, 0.55)" stroke="#34d399" stroke-width="1"/>
+        <text x="146" y="680" fill="#94a3b8" font-size="8">Source schema</text>
+        <rect x="252" y="672" width="16" height="10" rx="2" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="274" y="680" fill="#94a3b8" font-size="8">API surface</text>
+        <rect x="372" y="672" width="16" height="10" rx="2" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="394" y="680" fill="#94a3b8" font-size="8">MCP surface</text>
+        <rect x="496" y="672" width="16" height="10" rx="2" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="518" y="680" fill="#94a3b8" font-size="8">Any host</text>
+        <rect x="588" y="672" width="16" height="10" rx="2" fill="transparent" stroke="#a78bfa" stroke-width="1" stroke-dasharray="3,2"/>
+        <text x="610" y="680" fill="#94a3b8" font-size="8">Emerging</text>
+      </svg>
