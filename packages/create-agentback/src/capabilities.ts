@@ -132,6 +132,33 @@ export const CAPABILITIES: readonly Capability[] = [
       },
     },
   },
+  {
+    name: 'auth',
+    label: 'JWT authentication (protected example route)',
+    templates: ['hybrid', 'rest'],
+    deps: {
+      '@agentback/authentication': '{{version}}',
+      '@agentback/authentication-jwt': '{{version}}',
+      '@agentback/security': '{{version}}',
+      jsonwebtoken: '^9.0.2',
+    },
+    wire: {
+      rest: {
+        imports:
+          "import {AuthController} from './controllers/auth.controller.js';\nimport {JWTAuthenticationComponent, JWTBindings} from '@agentback/authentication-jwt';",
+        components:
+          "this.bind(JWTBindings.SECRET).to(process.env.JWT_SECRET ?? 'dev-secret-change-me');\n    this.bind(JWTBindings.EXPIRES_IN).to('1h');\n    this.component(JWTAuthenticationComponent);",
+        registrations: 'this.restController(AuthController);',
+      },
+      hybrid: {
+        imports:
+          "import {AuthController} from './controllers/auth.controller.js';\nimport {JWTAuthenticationComponent, JWTBindings} from '@agentback/authentication-jwt';",
+        components:
+          "this.bind(JWTBindings.SECRET).to(process.env.JWT_SECRET ?? 'dev-secret-change-me');\n    this.bind(JWTBindings.EXPIRES_IN).to('1h');\n    this.component(JWTAuthenticationComponent);",
+        registrations: 'this.restController(AuthController);',
+      },
+    },
+  },
 ];
 
 export function capabilityNames(template: TemplateName): string[] {

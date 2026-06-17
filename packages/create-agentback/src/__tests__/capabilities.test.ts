@@ -113,3 +113,28 @@ describe('drizzle capability', () => {
     expect(appTs).not.toContain('restController');
   });
 });
+
+describe('auth capability', () => {
+  it('adds jwt deps + auth controller + component wiring for rest', () => {
+    const {dir} = scaffold({
+      name: 'au',
+      template: 'rest',
+      cwd,
+      capabilities: ['auth'],
+    });
+    const pkg = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    expect(pkg.dependencies['@agentback/authentication-jwt']).toBeDefined();
+    expect(pkg.dependencies['jsonwebtoken']).toBe('^9.0.2');
+    expect(appFile(dir, 'src/controllers/auth.controller.ts')).toContain('@authenticate');
+    const appTs = appFile(dir, 'src/application.ts');
+    expect(appTs).toContain('JWTAuthenticationComponent');
+    expect(appTs).toContain('this.restController(AuthController)');
+    expect(appTs).not.toContain('{{agentback:');
+  });
+
+  it('rejects auth for the mcp template', () => {
+    expect(() =>
+      scaffold({name: 'x', template: 'mcp', cwd, capabilities: ['auth']}),
+    ).toThrow(/auth.*not supported/i);
+  });
+});
