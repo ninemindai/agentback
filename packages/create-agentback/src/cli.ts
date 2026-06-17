@@ -32,6 +32,7 @@ Options:
   --port <n>              REST server port (rest|hybrid)
   --host <h>              REST server host (rest|hybrid)
   --base-path <p>         REST base path (rest|hybrid)
+  -i, --interactive       Prompt for any options not given on the command line
   -h, --help              Show this help
 `;
 
@@ -46,6 +47,7 @@ let name: string | undefined;
 let template: TemplateName | undefined;
 const caps = new Set<string>();
 const host: {port?: number; host?: string; basePath?: string} = {};
+let forceInteractive = false;
 
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
@@ -67,6 +69,8 @@ for (let i = 0; i < args.length; i++) {
     caps.add('auth');
   } else if (a === '-c' || a === '--console') {
     caps.add('console');
+  } else if (a === '-i' || a === '--interactive') {
+    forceInteractive = true;
   } else if (a === '--port') {
     host.port = Number(args[++i]);
   } else if (a.startsWith('--port=')) {
@@ -97,27 +101,34 @@ function cancel(): never {
   process.exit(0);
 }
 
+// Prompt only for fields not already supplied via flags (skip-supplied). With
+// no flags this is the full wizard; with some flags it fills the gaps.
 async function interactive(): Promise<void> {
   p.intro('create-agentback');
 
-  const iName = await p.text({
-    message: 'App name',
-    placeholder: 'my-service',
-    validate: v => (v && v.trim() ? undefined : 'Name is required'),
-  });
-  if (p.isCancel(iName)) return cancel();
-  name = iName.trim();
+  if (!name) {
+    const iName = await p.text({
+      message: 'App name',
+      placeholder: 'my-service',
+      validate: v => (v && v.trim() ? undefined : 'Name is required'),
+    });
+    if (p.isCancel(iName)) return cancel();
+    name = iName.trim();
+  }
 
-  const iTemplate = await p.select({
-    message: 'Template',
-    options: TEMPLATES.map(t => ({value: t, label: t})),
-    initialValue: 'hybrid' as TemplateName,
-  });
-  if (p.isCancel(iTemplate)) return cancel();
-  template = iTemplate as TemplateName;
+  if (!template) {
+    const iTemplate = await p.select({
+      message: 'Template',
+      options: TEMPLATES.map(t => ({value: t, label: t})),
+      initialValue: 'hybrid' as TemplateName,
+    });
+    if (p.isCancel(iTemplate)) return cancel();
+    template = iTemplate as TemplateName;
+  }
 
+  // Skip the add-ons prompt if any were supplied via flags (--drizzle/--with…).
   const available = capabilityNames(template);
-  if (available.length) {
+  if (caps.size === 0 && available.length) {
     const iCaps = await p.multiselect({
       message: 'Add-ons (space to toggle, enter to confirm)',
       required: false,
@@ -130,7 +141,10 @@ async function interactive(): Promise<void> {
     for (const c of iCaps as string[]) caps.add(c);
   }
 
-  if (template === 'rest' || template === 'hybrid') {
+  if (
+    host.port === undefined &&
+    (template === 'rest' || template === 'hybrid')
+  ) {
     const iPort = await p.text({
       message: 'Port (blank for default 3000)',
       placeholder: '3000',
@@ -146,8 +160,13 @@ async function interactive(): Promise<void> {
 }
 
 async function run(): Promise<void> {
-  // Interactive only when no name AND a TTY. Flags already collected win.
-  if (!name && process.stdin.isTTY) {
+  // --interactive forces the prompt flow; otherwise it auto-triggers only when
+  // no name was given. Either way it runs only on a TTY (it can't prompt a pipe)
+  // and only fills fields the flags left unset.
+  if (forceInteractive && !process.stdin.isTTY) {
+    fail('--interactive requires a terminal');
+  }
+  if ((forceInteractive || !name) && process.stdin.isTTY) {
     await interactive();
   }
   if (!name) fail('missing app name');
