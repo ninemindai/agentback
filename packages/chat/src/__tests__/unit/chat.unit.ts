@@ -17,6 +17,7 @@ import {
   ChatServer,
 } from '../../index.js';
 import type {
+  ChatActionEvent,
   ChatLike,
   ChatRuntimeHandler,
   ChatThread,
@@ -47,9 +48,24 @@ class TestBot {
   }
 
   @onAction()
-  async onActionHandler(): Promise<void> {
+  async onActionHandler(_event: ChatActionEvent): Promise<void> {
     this.seen.push('action');
   }
+}
+
+// Compile-time enforcement, verified by `tsc -b` (an unused @ts-expect-error
+// fails the build). Kept off TestBot so it doesn't register extra handlers.
+class SignatureChecks {
+  @onMention()
+  okMessage(_thread: ChatThread, _message: ChatMessage): void {}
+
+  // @ts-expect-error message must be a ChatMessage, not a number
+  @onMention()
+  wrongMessageType(_thread: ChatThread, _message: number): void {}
+
+  // @ts-expect-error a handler cannot declare params the runtime won't pass
+  @onMention()
+  tooManyParams(_t: ChatThread, _m: ChatMessage, _extra: string): void {}
 }
 
 /**
@@ -111,6 +127,12 @@ async function bootApp(
 }
 
 describe('@agentback/chat', () => {
+  it('enforces handler signatures at compile time', () => {
+    // The @ts-expect-error lines in SignatureChecks fail `tsc -b` if the typed
+    // decorators stop rejecting bad signatures; this keeps the class referenced.
+    expect(typeof SignatureChecks).toBe('function');
+  });
+
   it('chatJsonVerify captures raw bytes on req.rawBody', () => {
     const req: {rawBody?: Buffer} = {};
     const buf = Buffer.from('{"a":1}');

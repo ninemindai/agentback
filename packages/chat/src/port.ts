@@ -58,3 +58,26 @@ export interface ChatMessage {
   readonly text?: string;
   readonly isMention?: boolean;
 }
+
+// Event handles for the non-message events. Kept as loose, all-optional
+// structural subsets so a handler typed with the real Chat SDK event (a
+// superset) still satisfies the decorator's signature constraint — the package
+// takes no `chat` dependency, so it can't reference the SDK types directly.
+
+/** Interactive action — button click, etc. (subset of Chat SDK's `ActionEvent`). */
+export interface ChatActionEvent {
+  readonly actionId?: string;
+  readonly thread?: ChatThread;
+}
+
+/** Reaction add/remove (subset of Chat SDK's `ReactionEvent`). */
+export interface ChatReactionEvent {
+  readonly thread?: ChatThread;
+  readonly emoji?: string;
+}
+
+/** Slash command invocation (subset of Chat SDK's `SlashCommandEvent`). */
+export interface ChatSlashCommandEvent {
+  readonly command?: string;
+  readonly thread?: ChatThread;
+}
