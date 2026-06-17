@@ -48,6 +48,12 @@ coherent for the developers who build on your API and the agents that call it �
 on a DI core you can extend, on any host (Node, Fastify, Hono, Bun, Deno,
 Workers) from one `fetch` handler.
 
+<p align="center">
+  <img src="docs/architecture/diagrams/positioning.svg" alt="AgentBack positioning: one Zod schema fans out to a REST/HTTP API for developers and an MCP surface for agents, served on any HTTP host" width="900" />
+</p>
+
+<p align="center"><sub>One Zod schema → a REST/HTTP API for developers and an MCP surface for agents (tools, <code>/llms.txt</code>, a derived <code>SKILL.md</code>), served on any host from one <code>fetch</code> handler. · <a href="docs/architecture/diagrams/positioning.html">Interactive version →</a></sub></p>
+
 ## What's inside
 
 The foundation is a modern ESM port of LoopBack 4's proven dependency-injection
@@ -83,12 +89,6 @@ stabilizing but may still change between alpha releases.
 The core product claim is **one schema, every boundary**. Compared with common
 Node/TypeScript service stacks, AgentBack optimizes for teams whose APIs
 are consumed by both applications and AI agents.
-
-<p align="center">
-  <img src="docs/architecture/diagrams/positioning.svg" alt="AgentBack positioning: one Zod schema fans out to a REST/HTTP API for developers and an MCP surface for agents, served on any HTTP host" width="900" />
-</p>
-
-<p align="center"><sub>One Zod schema → a REST/HTTP API for developers and an MCP surface for agents (tools, <code>/llms.txt</code>, a derived <code>SKILL.md</code>), served on any host from one <code>fetch</code> handler. · <a href="docs/architecture/diagrams/positioning.html">Interactive version →</a></sub></p>
 
 | Stack             | Runtime contract    | Service contract                | Agent/tool contract        |
 | ----------------- | ------------------- | ------------------------------- | -------------------------- |
