@@ -15,13 +15,56 @@ AgentBack is an **AI-native API/MCP framework for the agent era**, built with
 agents, for agents. It lets REST endpoints, MCP tools, generated docs, typed
 clients, tests, and runtime validation all share one Zod contract.
 
+## Why another API framework?
+
+Your API has a second audience now. Alongside the apps that call it, AI agents
+read it, invoke it, and chain it into workflows — and they consume a different
+surface: MCP tools, machine-readable docs, and structured errors they can
+recover from on their own.
+
+That surface describes the _same operations_ your REST API already exposes. Yet
+most stacks make you spell each operation out several times over: a Zod schema
+to validate it, a hand-written OpenAPI block to document it, a separate MCP tool
+definition for agents, a client type for your TypeScript callers. One contract,
+copied into four or five places. Add a field and you edit all of them; miss one
+and they drift — silently, until an agent sends the body your OpenAPI promised
+and your validator rejects it.
+
+Express, Fastify, Nest, and tRPC each handle one or two of these boundaries
+well. The agent surface is the afterthought — a separate adapter and a second
+source of truth for the same call.
+
+AgentBack makes the schema the source. Declare an operation once with a Zod
+schema on the decorator, and that one schema becomes the runtime validator, the
+`z.infer` type, the OpenAPI 3.1 contract, the MCP input/output schema, the typed
+client, and the rendered docs — derived, never duplicated. Change the schema and
+every boundary moves with it.
+
+```ts
+const OrderId = z.object({id: z.string()});
+const Order = z.object({id: z.string(), status: z.enum(['open', 'shipped'])});
+
+// One pair of schemas, both boundaries — no second source of truth:
+@get('/orders/{id}', {path: OrderId, response: Order}) // → REST route + OpenAPI + typed client
+async getOrder(input) { /* … */ }
+
+@tool('get_order', {input: OrderId, output: Order}) // → MCP tool, the same schemas
+async getOrderTool(input) { /* … */ }
+```
+
+It isn't "Express, but newer." It's the layer that keeps one operation coherent
+across the app boundary and the agent boundary — on a dependency-injection core
+you can extend, runnable on any HTTP host (Node, Fastify, Hono, Bun, Deno,
+Workers) from a single `fetch` handler.
+
+## What's inside
+
 The foundation is a modern ESM port of LoopBack 4's proven dependency-injection
 core: a hierarchical `Context` of `Binding`s with `@inject`, providers,
 interceptors, extension points, lifecycle observers, and tag-based discovery.
 REST controllers and MCP tool classes are just bindings the respective servers
-find by tag. The same schemas attached to those bindings become the runtime
-validator, `z.infer` type, OpenAPI 3.1 contract, MCP input/output schema, and
-Swagger/Inspector-rendered docs.
+find by tag — so adding a route or a tool is adding a class, not editing a
+router file, an OpenAPI document, and a tool manifest.
 
 - **ESM-only**, Node 22.13+, TypeScript 6.0
 - **`Context` + `Binding` DI** with `@inject`, providers, interceptors, extensions, lifecycle observers
@@ -50,15 +93,15 @@ The core product claim is **one schema, every boundary**. Compared with common
 Node/TypeScript service stacks, AgentBack optimizes for teams whose APIs
 are consumed by both applications and AI agents.
 
-| Stack             | Runtime contract     | Service contract               | Agent/tool contract        |
-| ----------------- | -------------------- | ------------------------------ | -------------------------- |
-| Express + raw Zod | Hand-wired Zod       | Hand-written OpenAPI           | Hand-written tool manifest |
-| Fastify           | JSON Schema/TypeBox  | OpenAPI via `@fastify/swagger` | Custom adapter             |
-| Hono              | Zod (validator)      | OpenAPI via `@hono/zod-openapi`| Custom adapter             |
-| tRPC              | Zod                  | TypeScript-only                | Custom adapter             |
-| NestJS            | class-validator      | Swagger decorators             | Custom adapter             |
-| FastAPI           | Pydantic             | OpenAPI from the same models   | Custom adapter             |
-| **AgentBack**     | **Zod**              | **OpenAPI from same Zod**      | **MCP from same Zod**      |
+| Stack             | Runtime contract    | Service contract                | Agent/tool contract        |
+| ----------------- | ------------------- | ------------------------------- | -------------------------- |
+| Express + raw Zod | Hand-wired Zod      | Hand-written OpenAPI            | Hand-written tool manifest |
+| Fastify           | JSON Schema/TypeBox | OpenAPI via `@fastify/swagger`  | Custom adapter             |
+| Hono              | Zod (validator)     | OpenAPI via `@hono/zod-openapi` | Custom adapter             |
+| tRPC              | Zod                 | TypeScript-only                 | Custom adapter             |
+| NestJS            | class-validator     | Swagger decorators              | Custom adapter             |
+| FastAPI           | Pydantic            | OpenAPI from the same models    | Custom adapter             |
+| **AgentBack**     | **Zod**             | **OpenAPI from same Zod**       | **MCP from same Zod**      |
 
 Use it when you need HTTP APIs, MCP tools, docs, typed clients, policy checks,
 and usage rails to stay coherent as the system grows.
@@ -66,7 +109,7 @@ and usage rails to stay coherent as the system grows.
 **Fastify and Hono are transport runtimes, not competitors.** They solve HTTP
 plumbing — Fastify is fast Node with a plugin ecosystem; Hono is an ultrafast,
 Web-standard, multi-runtime core. AgentBack solves the layer above: one Zod
-schema projected to REST, OpenAPI, *and* MCP through a DI container, sitting on
+schema projected to REST, OpenAPI, _and_ MCP through a DI container, sitting on
 whatever host owns the port. Hono is the closest sibling in philosophy — a
 Web-standard core, codegen-free typed RPC (mirrored by `@agentback/client`), and
 Zod validation — and AgentBack shares those while adding the MCP tool boundary
@@ -136,31 +179,31 @@ The DI framework is the foundation; everything else is built on it.
 
 ### Platform components
 
-| Package                            | Role                                                               |
-| ---------------------------------- | ------------------------------------------------------------------ |
-| `@agentback/config`                | Zod-validated config loader with env overlays and DI bindings      |
-| `@agentback/security`              | User, subject, and principal primitives                            |
-| `@agentback/authentication`        | Authentication decorator and strategy pipeline                     |
-| `@agentback/authentication-jwt`    | JWT bearer strategy                                                |
-| `@agentback/authentication-oauth2` | OAuth2 introspection and JWKS bearer-token strategies              |
-| `@agentback/authorization`         | `@authorize` decorator and voter pipeline                          |
-| `@agentback/extension-health`      | Health/readiness probes                                            |
-| `@agentback/extension-metrics`     | Prometheus `/metrics` endpoint and HTTP timing                     |
-| `@agentback/extension-otel`        | OpenTelemetry spans across REST, MCP, and jobs                     |
-| `@agentback/extension-rate-limit`  | In-memory or Redis-backed rate limiting                            |
-| `@agentback/metering`              | Per-principal REST/MCP usage events, audit sinks, and quota        |
-| `@agentback/payments`              | x402/MPP/Stripe payment authorization and billing seams            |
-| `@agentback/messaging`             | Zod-typed JobQueue/EventBus/Scheduler ports with in-memory adapter |
-| `@agentback/messaging-bullmq`      | BullMQ + Redis Streams durable adapter for messaging ports         |
-| `@agentback/drizzle`               | Drizzle ORM binding and drizzle-zod recipe                         |
+| Package                            | Role                                                                     |
+| ---------------------------------- | ------------------------------------------------------------------------ |
+| `@agentback/config`                | Zod-validated config loader with env overlays and DI bindings            |
+| `@agentback/security`              | User, subject, and principal primitives                                  |
+| `@agentback/authentication`        | Authentication decorator and strategy pipeline                           |
+| `@agentback/authentication-jwt`    | JWT bearer strategy                                                      |
+| `@agentback/authentication-oauth2` | OAuth2 introspection and JWKS bearer-token strategies                    |
+| `@agentback/authorization`         | `@authorize` decorator and voter pipeline                                |
+| `@agentback/extension-health`      | Health/readiness probes                                                  |
+| `@agentback/extension-metrics`     | Prometheus `/metrics` endpoint and HTTP timing                           |
+| `@agentback/extension-otel`        | OpenTelemetry spans across REST, MCP, and jobs                           |
+| `@agentback/extension-rate-limit`  | In-memory or Redis-backed rate limiting                                  |
+| `@agentback/metering`              | Per-principal REST/MCP usage events, audit sinks, and quota              |
+| `@agentback/payments`              | x402/MPP/Stripe payment authorization and billing seams                  |
+| `@agentback/messaging`             | Zod-typed JobQueue/EventBus/Scheduler ports with in-memory adapter       |
+| `@agentback/messaging-bullmq`      | BullMQ + Redis Streams durable adapter for messaging ports               |
+| `@agentback/drizzle`               | Drizzle ORM binding and drizzle-zod recipe                               |
 | `@agentback/files`                 | `FileStore` port for uploads/downloads + in-memory & filesystem adapters |
-| `@agentback/files-s3`              | S3 `FileStore` adapter (streaming via AWS SDK v3)                  |
-| `@agentback/plugin`                | Plugin discovery, gating, and component mounting                   |
-| `@agentback/testing`               | Test harness with typed REST client, supertest, and in-memory MCP  |
-| `@agentback/testlab`               | Lower-level test helpers used by the package test suites           |
-| `create-agentback`                 | `npm create` scaffold for REST, MCP, and hybrid services           |
-| `@agentback/console`               | Combined context, schema, REST/OpenAPI, and MCP admin console      |
-| `@agentback/console-theme`         | Shared styling for console and explorer UIs                        |
+| `@agentback/files-s3`              | S3 `FileStore` adapter (streaming via AWS SDK v3)                        |
+| `@agentback/plugin`                | Plugin discovery, gating, and component mounting                         |
+| `@agentback/testing`               | Test harness with typed REST client, supertest, and in-memory MCP        |
+| `@agentback/testlab`               | Lower-level test helpers used by the package test suites                 |
+| `create-agentback`                 | `npm create` scaffold for REST, MCP, and hybrid services                 |
+| `@agentback/console`               | Combined context, schema, REST/OpenAPI, and MCP admin console            |
+| `@agentback/console-theme`         | Shared styling for console and explorer UIs                              |
 
 ## Quick start
 
