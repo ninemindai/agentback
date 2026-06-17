@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 500" width="940" height="500" role="img" aria-label="One RestApplication context feeds fetchHandler(), which is hosted by Node, Fastify, Hono, Bun, Deno, and Cloudflare Workers">
+  <!-- Source: docs/guides/deploy-to-edge.md mermaid block 1 ("one fetchHandler, six hosts") -->
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="7" refX="8" refY="3.5" orient="auto">
+      <path d="M0,0 L8,3.5 L0,7 z" fill="#8a948d"/>
+    </marker>
+  </defs>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+
+    <!-- ============ DI context group ============ -->
+    <rect x="18" y="16" width="904" height="128" rx="12" fill="rgba(15,107,79,0.03)" stroke="#c5ccc4" stroke-width="1" stroke-dasharray="6,4"/>
+    <text x="36" y="38" font-size="11" letter-spacing="1" fill="#5a645e">RESTAPPLICATION — ONE DI CONTEXT</text>
+
+    <!-- ============ edges (behind nodes) ============ -->
+    <g fill="none" stroke="#8a948d" stroke-width="1.4">
+      <!-- sources -> fetchHandler -->
+      <path d="M137,120 L137,172 L358,172 L358,200" marker-end="url(#arrow)"/>
+      <path d="M357,120 L357,160 L432,160 L432,200" marker-end="url(#arrow)"/>
+      <path d="M577,120 L577,160 L508,160 L508,200" marker-end="url(#arrow)"/>
+      <path d="M797,120 L797,172 L582,172 L582,200" marker-end="url(#arrow)"/>
+      <!-- fetchHandler -> hosts -->
+      <path d="M392,278 L392,330 L93,330 L93,372" marker-end="url(#arrow)"/>
+      <path d="M424,278 L424,330 L243,330 L243,372" marker-end="url(#arrow)"/>
+      <path d="M452,278 L452,348 L393,348 L393,372" marker-end="url(#arrow)"/>
+      <path d="M488,278 L488,348 L543,348 L543,372" marker-end="url(#arrow)"/>
+      <path d="M516,278 L516,330 L693,330 L693,372" marker-end="url(#arrow)"/>
+      <path d="M548,278 L548,330 L843,330 L843,372" marker-end="url(#arrow)"/>
+    </g>
+
+    <!-- edge labels -->
+    <g font-size="10">
+      <rect x="368" y="153" width="118" height="15" rx="3" fill="#f7f8f5"/>
+      <text x="427" y="164" text-anchor="middle" fill="#6d4ca8">mountMcpHttpFetch</text>
+      <rect x="498" y="171" width="94" height="15" rx="3" fill="#f7f8f5"/>
+      <text x="545" y="182" text-anchor="middle" fill="#087b8c">addFetchPrefix</text>
+    </g>
+
+    <!-- ============ source nodes ============ -->
+    <rect x="36" y="52" width="202" height="68" rx="8" fill="rgba(15,107,79,0.08)" stroke="#0f6b4f" stroke-width="1.5"/>
+    <text x="137" y="82" font-size="12.5" font-weight="600" fill="#17201b" text-anchor="middle">@api controllers</text>
+    <text x="137" y="100" font-size="9.5" fill="#5a645e" text-anchor="middle">[controller] tag</text>
+
+    <rect x="256" y="52" width="202" height="68" rx="8" fill="rgba(109,76,168,0.08)" stroke="#6d4ca8" stroke-width="1.5"/>
+    <text x="357" y="82" font-size="12.5" font-weight="600" fill="#17201b" text-anchor="middle">@tool classes</text>
+    <text x="357" y="100" font-size="9.5" fill="#5a645e" text-anchor="middle">MCP over HTTP</text>
+
+    <rect x="476" y="52" width="202" height="68" rx="8" fill="rgba(8,123,140,0.08)" stroke="#087b8c" stroke-width="1.5"/>
+    <text x="577" y="82" font-size="12.5" font-weight="600" fill="#17201b" text-anchor="middle">install* UIs</text>
+    <text x="577" y="100" font-size="9.5" fill="#5a645e" text-anchor="middle">explorer · console</text>
+
+    <rect x="696" y="52" width="202" height="68" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+    <text x="797" y="82" font-size="12" font-weight="600" fill="#17201b" text-anchor="middle">framework routes</text>
+    <text x="797" y="100" font-size="9.5" fill="#5a645e" text-anchor="middle">/openapi.json · /llms.txt</text>
+
+    <!-- ============ fetchHandler() ============ -->
+    <rect x="360" y="200" width="220" height="78" rx="8" fill="rgba(8,123,140,0.08)" stroke="#087b8c" stroke-width="2"/>
+    <text x="470" y="228" font-size="13" font-weight="700" fill="#17201b" text-anchor="middle">RestServer.fetchHandler()</text>
+    <text x="470" y="246" font-size="10" fill="#5a645e" text-anchor="middle">fetch(Request) → Response</text>
+    <text x="470" y="263" font-size="9.5" font-weight="600" fill="#087b8c" text-anchor="middle">REST · MCP · OpenAPI · UIs</text>
+
+    <!-- ============ host nodes ============ -->
+    <g>
+      <!-- Node native -->
+      <rect x="22" y="372" width="142" height="104" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+      <rect x="22" y="372" width="4" height="104" rx="2" fill="#087b8c"/>
+      <text x="95" y="416" font-size="12" font-weight="600" fill="#17201b" text-anchor="middle">Node http</text>
+      <text x="95" y="434" font-size="9" fill="#5a645e" text-anchor="middle">listener: 'native'</text>
+      <!-- Fastify -->
+      <rect x="172" y="372" width="142" height="104" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+      <rect x="172" y="372" width="4" height="104" rx="2" fill="#087b8c"/>
+      <text x="245" y="416" font-size="12" font-weight="600" fill="#17201b" text-anchor="middle">Fastify</text>
+      <text x="245" y="434" font-size="9" fill="#5a645e" text-anchor="middle">installFastifyHost</text>
+      <!-- Hono -->
+      <rect x="322" y="372" width="142" height="104" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+      <rect x="322" y="372" width="4" height="104" rx="2" fill="#087b8c"/>
+      <text x="395" y="416" font-size="12" font-weight="600" fill="#17201b" text-anchor="middle">Hono</text>
+      <text x="395" y="434" font-size="9" fill="#5a645e" text-anchor="middle">all('*', …)</text>
+      <!-- Bun -->
+      <rect x="472" y="372" width="142" height="104" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+      <rect x="472" y="372" width="4" height="104" rx="2" fill="#087b8c"/>
+      <text x="545" y="416" font-size="12" font-weight="600" fill="#17201b" text-anchor="middle">Bun</text>
+      <text x="545" y="434" font-size="9" fill="#5a645e" text-anchor="middle">Bun.serve({fetch})</text>
+      <!-- Deno -->
+      <rect x="622" y="372" width="142" height="104" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+      <rect x="622" y="372" width="4" height="104" rx="2" fill="#087b8c"/>
+      <text x="695" y="416" font-size="12" font-weight="600" fill="#17201b" text-anchor="middle">Deno</text>
+      <text x="695" y="434" font-size="9" fill="#5a645e" text-anchor="middle">Deno.serve(fetch)</text>
+      <!-- Workers -->
+      <rect x="772" y="372" width="142" height="104" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+      <rect x="772" y="372" width="4" height="104" rx="2" fill="#087b8c"/>
+      <text x="845" y="410" font-size="12" font-weight="600" fill="#17201b" text-anchor="middle">Workers</text>
+      <text x="845" y="428" font-size="9" fill="#5a645e" text-anchor="middle">export default</text>
+      <text x="845" y="441" font-size="9" fill="#5a645e" text-anchor="middle">{ fetch }</text>
+    </g>
+  </g>
+</svg>

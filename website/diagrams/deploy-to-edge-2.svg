@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 320" width="940" height="320" role="img" aria-label="A request flows through the WebMiddleware onion, the router, then either the RestHandler pipeline or the exact/prefix handlers, producing a Response">
+  <!-- Source: docs/guides/deploy-to-edge.md mermaid block 2 ("request flow on the fetch path") -->
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="7" refX="8" refY="3.5" orient="auto">
+      <path d="M0,0 L8,3.5 L0,7 z" fill="#8a948d"/>
+    </marker>
+  </defs>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+
+    <!-- ============ edges (behind nodes) ============ -->
+    <g fill="none" stroke="#8a948d" stroke-width="1.4">
+      <path d="M132,160 L168,160" marker-end="url(#arrow)"/>
+      <path d="M322,160 L356,160" marker-end="url(#arrow)"/>
+      <!-- router -> RestHandler (up) -->
+      <path d="M490,148 L514,148 L514,96 L538,96" marker-end="url(#arrow)"/>
+      <!-- router -> exact/prefix (down) -->
+      <path d="M490,172 L514,172 L514,238 L538,238" marker-end="url(#arrow)"/>
+      <!-- RestHandler -> Response -->
+      <path d="M722,96 L748,96 L748,150 L768,150" marker-end="url(#arrow)"/>
+      <!-- exact/prefix -> Response -->
+      <path d="M722,238 L748,238 L748,172 L768,172" marker-end="url(#arrow)"/>
+    </g>
+
+    <!-- edge labels (left of the box edges, clear of node text) -->
+    <g font-size="10" fill="#5a645e">
+      <rect x="474" y="104" width="60" height="15" rx="3" fill="#f7f8f5"/>
+      <text x="504" y="115" text-anchor="middle">api route</text>
+      <rect x="474" y="202" width="60" height="15" rx="3" fill="#f7f8f5"/>
+      <text x="504" y="213" text-anchor="middle">no match</text>
+    </g>
+
+    <!-- ============ nodes ============ -->
+    <!-- Request -->
+    <rect x="22" y="132" width="110" height="56" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+    <text x="77" y="165" font-size="12.5" font-weight="600" fill="#17201b" text-anchor="middle">Request</text>
+
+    <!-- Onion -->
+    <rect x="170" y="120" width="152" height="80" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+    <text x="246" y="150" font-size="12" font-weight="600" fill="#17201b" text-anchor="middle">WebMiddleware onion</text>
+    <text x="246" y="168" font-size="9.5" fill="#5a645e" text-anchor="middle">CORS +</text>
+    <text x="246" y="182" font-size="9.5" fill="#5a645e" text-anchor="middle">app.webMiddleware</text>
+
+    <!-- Router -->
+    <rect x="358" y="125" width="132" height="70" rx="8" fill="rgba(8,123,140,0.08)" stroke="#087b8c" stroke-width="1.5"/>
+    <text x="424" y="153" font-size="12.5" font-weight="600" fill="#17201b" text-anchor="middle">Router.match</text>
+    <text x="424" y="171" font-size="9.5" fill="#5a645e" text-anchor="middle">(compiled regex)</text>
+
+    <!-- RestHandler -->
+    <rect x="538" y="40" width="184" height="112" rx="8" fill="rgba(15,107,79,0.08)" stroke="#0f6b4f" stroke-width="1.5"/>
+    <text x="630" y="64" font-size="12.5" font-weight="600" fill="#17201b" text-anchor="middle">RestHandler</text>
+    <text x="630" y="84" font-size="9.5" fill="#5a645e" text-anchor="middle">auth → authz → confirm</text>
+    <text x="630" y="100" font-size="9.5" fill="#5a645e" text-anchor="middle">validate → DI invoke</text>
+    <text x="630" y="116" font-size="9.5" fill="#5a645e" text-anchor="middle">output validate → idem</text>
+    <text x="630" y="136" font-size="9" font-weight="600" fill="#0f6b4f" text-anchor="middle">stream · upload · errors</text>
+
+    <!-- exact / prefix handlers -->
+    <rect x="538" y="206" width="184" height="76" rx="8" fill="rgba(8,123,140,0.08)" stroke="#087b8c" stroke-width="1.5"/>
+    <text x="630" y="232" font-size="12" font-weight="600" fill="#17201b" text-anchor="middle">exact / prefix handlers</text>
+    <text x="630" y="250" font-size="9.5" fill="#5a645e" text-anchor="middle">UIs · /openapi.json</text>
+    <text x="630" y="264" font-size="9.5" fill="#5a645e" text-anchor="middle">/llms.txt · MCP</text>
+
+    <!-- Response -->
+    <rect x="768" y="132" width="120" height="56" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+    <text x="828" y="165" font-size="12.5" font-weight="600" fill="#17201b" text-anchor="middle">Response</text>
+  </g>
+</svg>

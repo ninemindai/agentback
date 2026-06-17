@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>One handler, every runtime | AgentBack Blog</title>
+    <meta
+      name="description"
+      content="AgentBack's REST and MCP surfaces run on any runtime with a fetch(Request) entry point — Node, Fastify, Hono, Bun, Deno, or Workers — from one handler."
+    />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="../index.html">AgentBack blog</a>
+        <div class="nav-links">
+          <a href="../../README.md">Docs</a>
+          <a href="../../../README.md">Repo README</a>
+          <a href="../../architecture/diagrams/http-hosts.html">Diagram</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="post-layout">
+      <article class="post-body">
+        <p class="post-meta">June 17, 2026</p>
+        <h1>One handler, every runtime</h1>
+        <p class="lede">
+          A framework usually marries you to a host. AgentBack's REST and MCP
+          surfaces run on any runtime with a <code>fetch(Request)</code> entry
+          point — Node, Fastify, Hono, Bun, Deno, or Cloudflare Workers — from a
+          single handler.
+        </p>
+
+        <p>
+          Most service frameworks pick a host for you. The router, the request
+          object, the middleware contract, and the listener are one package. The
+          day you want to run the same service on the edge, or behind a colleague's
+          Fastify app, or on Bun for the cold-start win, you discover how much of
+          the framework was actually about HTTP plumbing rather than your domain.
+        </p>
+
+        <p>
+          AgentBack keeps the domain and the plumbing apart. The dispatch
+          pipeline — routing, Zod validation, dependency injection, auth, hooks,
+          streaming, uploads, error envelopes — is exposed as one runtime-neutral
+          function:
+        </p>
+
+        <pre><code class="language-ts">const app = new RestApplication({rest: {listen: false}}); // no TCP listener
+app.restController(GreetController);
+await app.start();                                         // mounts routes
+
+const server = await app.getServer('RestServer');
+export const handler = server.fetchHandler();              // { fetch }</code></pre>
+
+        <p>
+          <code>fetchHandler()</code> is a <code>fetch(Request): Response</code>.
+          Whatever owns the TCP port bridges its native request into it. The Zod
+          schemas, the OpenAPI document, and the MCP projection are identical
+          wherever it runs.
+        </p>
+
+        <h2>The same app, six ways</h2>
+        <p>
+          Each host is a thin wrapper around the one handler — a few lines of glue,
+          no codegen, no second router.
+        </p>
+
+        <pre><code class="language-ts">// Bun — its server *is* a fetch host
+Bun.serve({port: 3000, fetch: handler.fetch});
+
+// Deno
+Deno.serve({port: 3000}, handler.fetch);
+
+// Cloudflare Workers
+export default {fetch: (req) =&gt; handler.fetch(req)};
+
+// Hono — AgentBack as the catch-all behind Hono's own routes
+hono.all('*', (c) =&gt; handler.fetch(c.req.raw));
+
+// Fastify — AgentBack as a non-greedy fallback
+installFastifyHost(fastify, handler);
+
+// Node, no framework at all
+new RestApplication({rest: {listener: 'native'}});</code></pre>
+
+        <p>
+          That last line is worth a pause. <code>listener: 'native'</code> makes
+          AgentBack serve <code>fetchHandler()</code> through a plain Node
+          <code>http</code> server directly — the runtime-neutral router becomes
+          the single source of truth, the same surface Bun and Fastify drive.
+          Express becomes one option among several, not the foundation.
+        </p>
+
+        <h2>MCP travels with it</h2>
+        <p>
+          The interesting part isn't that REST is portable — plenty of routers
+          emit a fetch handler. It's that the <em>agent</em> surface comes along.
+          The Model Context Protocol's Streamable HTTP transport has a
+          Web-standard form, so AgentBack mounts MCP onto the same handler:
+        </p>
+
+        <pre><code class="language-ts">await installMcpHttp(app); // POST/GET/DELETE /mcp on the fetch path</code></pre>
+
+        <p>
+          On a native or edge host this uses the fetch-native transport; on Express
+          it uses the Node one. The mount is auto-selected, with OAuth bearer and
+          strategy auth, per-principal session pinning, and tool-scope filtering
+          intact either way. One listener serves REST, MCP, the OpenAPI document,
+          and the dev console together — on Bun, on Workers, wherever you put it.
+        </p>
+
+        <h2>Why this matters for one-schema services</h2>
+        <p>
+          AgentBack's claim is one Zod schema projected to REST, OpenAPI, and MCP
+          through a DI container. Host portability is what keeps that claim true
+          off the happy path. The boundary coherence doesn't live in a particular
+          runtime; it lives in the schemas and the container, and those move with
+          the handler. You choose the runtime for operational reasons — cold start,
+          an existing Fastify app, an edge deployment — without renegotiating the
+          contract your applications and agents depend on.
+        </p>
+
+        <p>
+          The runnable comparison is the <code>hello-hosts</code> example: one
+          <code>@api</code> controller, served by Fastify, Hono, Bun, and the
+          native listener, with the controller and app code byte-identical across
+          all four.
+        </p>
+
+        <div class="post-actions">
+          <a class="button" href="../../architecture/diagrams/http-hosts.html"
+            >Open the hosts diagram</a
+          >
+          <a class="button secondary" href="../../guides/deploy-to-edge.md"
+            >Read the HTTP hosts guide</a
+          >
+        </div>
+      </article>
+
+      <aside class="aside" aria-label="Post links">
+        <h2>Related</h2>
+        <a href="../../guides/deploy-to-edge.md">HTTP hosts guide</a>
+        <a href="../../guides/build-a-hybrid-app.md">Build a hybrid app</a>
+        <a href="../../architecture/overview.md">Architecture overview</a>
+      </aside>
+    </main>
+  </body>
+</html>
