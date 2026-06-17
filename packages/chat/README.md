@@ -129,6 +129,8 @@ class SupportBot {
 - `SINGLETON` (default) — read per-call values via **method** `@inject` (shown above).
 - `@chatBot({scope: BindingScope.TRANSIENT})` — the instance is resolved per call, so **constructor** `@inject` gets them too.
 
+> ⚠️ **A `SINGLETON` handler must not store per-call state in fields.** The one instance is shared across concurrent events (multiple senders, or `dispatch: 'parallel'`), so `this.user = user` races. Keep per-call data in the method's arguments / `@inject` params, or use `{scope: BindingScope.TRANSIENT}` for a fresh instance per event. (Same rule as `@mcpServer`.)
+
 **Dispatch** controls how multiple handlers for one event run — `sequential` (default, ordered) or `parallel` (`Promise.allSettled`). **Errors are isolated either way**: a throwing handler is logged and never aborts its siblings.
 
 ## Configuration: secrets vs structure
