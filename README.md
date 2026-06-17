@@ -414,8 +414,7 @@ These are deliberately not in the framework — they reintroduce the upstream co
 
 ### Not yet implemented
 
-- **MCP SSE (legacy) transport** — Streamable HTTP is supported; the older SSE transport is not.
-- **MCP resource/prompt aggregation in the gateway** — `@agentback/mcp-host` aggregates upstream **tools** today; resource/prompt routing is a straightforward follow-on.
+- **MCP SSE (legacy) transport** — Streamable HTTP is supported (including its server→client SSE stream with resumability); the deprecated standalone HTTP+SSE transport is not.
 
 ### About the test story
 
