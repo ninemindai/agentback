@@ -6,6 +6,13 @@ import {WebStandardStreamableHTTPServerTransport} from '@modelcontextprotocol/sd
 import {isInitializeRequest} from '@modelcontextprotocol/sdk/types.js';
 import type {AuthInfo} from '@modelcontextprotocol/sdk/server/auth/types.js';
 import {
+  InsufficientScopeError,
+  InvalidTokenError,
+  OAuthError,
+  ServerError,
+} from '@modelcontextprotocol/sdk/server/auth/errors.js';
+import type {OAuthProtectedResourceMetadata} from '@modelcontextprotocol/sdk/shared/auth.js';
+import {
   fromWebRequest,
   normalizeAuthResult,
   resolveStrategy,
@@ -14,13 +21,79 @@ import {
 import {securityId} from '@agentback/security';
 import {BindingScope, Context} from '@agentback/core';
 import {MCPBindings, MCPServer} from '@agentback/mcp';
-import {loggers} from '@agentback/common';
 import type {RestServer} from '@agentback/rest';
 import type {McpHttpOptions, McpHttpHandle} from './index.js';
 
-const log = loggers('agentback:mcp-http:fetch');
-
 const DEFAULT_PATH = '/mcp';
+const PROTECTED_RESOURCE_PATH = '/.well-known/oauth-protected-resource';
+
+/**
+ * Verify the `Authorization: Bearer` token on a Web `Request` using the
+ * configured OAuth verifier — the runtime-neutral mirror of the SDK's
+ * `requireBearerAuth` Express middleware (RFC 6750/9728). Returns the verified
+ * {@link AuthInfo} on success, or a 401/403/4xx Web `Response` carrying the
+ * `WWW-Authenticate` challenge on failure.
+ */
+async function verifyBearerFetch(
+  req: Request,
+  verifier: {verifyAccessToken(token: string): Promise<AuthInfo>},
+  requiredScopes: string[],
+  resourceMetadataUrl: string,
+): Promise<AuthInfo | Response> {
+  const buildHeader = (errorCode: string, message: string): string => {
+    let header = `Bearer error="${errorCode}", error_description="${message}"`;
+    if (requiredScopes.length > 0)
+      header += `, scope="${requiredScopes.join(' ')}"`;
+    header += `, resource_metadata="${resourceMetadataUrl}"`;
+    return header;
+  };
+  try {
+    const authHeader = req.headers.get('authorization');
+    if (!authHeader) throw new InvalidTokenError('Missing Authorization header');
+    const [type, token] = authHeader.split(' ');
+    if (type?.toLowerCase() !== 'bearer' || !token) {
+      throw new InvalidTokenError(
+        "Invalid Authorization header format, expected 'Bearer TOKEN'",
+      );
+    }
+    const authInfo = await verifier.verifyAccessToken(token);
+    if (
+      requiredScopes.length > 0 &&
+      !requiredScopes.every(s => authInfo.scopes.includes(s))
+    ) {
+      throw new InsufficientScopeError('Insufficient scope');
+    }
+    if (typeof authInfo.expiresAt !== 'number' || isNaN(authInfo.expiresAt)) {
+      throw new InvalidTokenError('Token has no expiration time');
+    }
+    if (authInfo.expiresAt < Date.now() / 1000) {
+      throw new InvalidTokenError('Token has expired');
+    }
+    return authInfo;
+  } catch (error) {
+    if (error instanceof InvalidTokenError) {
+      return Response.json(error.toResponseObject(), {
+        status: 401,
+        headers: {'WWW-Authenticate': buildHeader(error.errorCode, error.message)},
+      });
+    }
+    if (error instanceof InsufficientScopeError) {
+      return Response.json(error.toResponseObject(), {
+        status: 403,
+        headers: {'WWW-Authenticate': buildHeader(error.errorCode, error.message)},
+      });
+    }
+    if (error instanceof ServerError) {
+      return Response.json(error.toResponseObject(), {status: 500});
+    }
+    if (error instanceof OAuthError) {
+      return Response.json(error.toResponseObject(), {status: 400});
+    }
+    return Response.json(new ServerError('Internal Server Error').toResponseObject(), {
+      status: 500,
+    });
+  }
+}
 
 /** JSON-RPC error as a Web Response. */
 function rpcError(status: number, message: string): Response {
@@ -94,11 +167,10 @@ function defaultScopes(auth: AuthenticationResult): string[] {
  *
  * Each session gets its own SDK server + transport, keyed by `Mcp-Session-Id`,
  * with the same per-principal session pinning and `perSession` DI-context
- * support as the Express mount. `strategyAuth` is honored via the neutral
- * {@link fromWebRequest} seam; OAuth resource-server bearer auth
- * (`options.auth`) is **not** wired on the fetch path yet (the SDK's
- * `requireBearerAuth` is Express middleware) — use the Express host for that, or
- * gate with `strategyAuth`.
+ * support as the Express mount. Full auth parity: OAuth resource-server bearer
+ * (`options.auth`, via {@link verifyBearerFetch} + the
+ * `/.well-known/oauth-protected-resource` metadata route) and `strategyAuth`
+ * (via the neutral {@link fromWebRequest} seam) are both honored.
  */
 export function mountMcpHttpFetch(
   mcp: MCPServer,
@@ -112,15 +184,15 @@ export function mountMcpHttpFetch(
   const sessionContexts: Record<string, Context | undefined> = {};
   const perSession = options.perSession;
   const strategyAuth = options.strategyAuth;
-  const authEnabled = Boolean(strategyAuth);
+  const oauth = options.auth;
+  const authEnabled = Boolean(strategyAuth || oauth);
 
-  if (options.auth) {
-    log.warn(
-      'options.auth (OAuth resource-server bearer) is not supported on the ' +
-        'fetch path; requests are NOT bearer-gated here. Use the Express host ' +
-        'for OAuth bearer auth, or use strategyAuth.',
-    );
-  }
+  // OAuth resource-server bearer: precompute the protected-resource metadata
+  // URL + document (advertised at /.well-known/oauth-protected-resource).
+  const resourceMetadataUrl = oauth
+    ? new URL(PROTECTED_RESOURCE_PATH, oauth.resource).toString()
+    : '';
+
   if (perSession && !options.appContext) {
     throw new Error(
       '@agentback/mcp-http: options.appContext is required when `perSession` ' +
@@ -142,9 +214,19 @@ export function mountMcpHttpFetch(
     sessionOwners[id] === principal;
 
   const handle = async (req: Request): Promise<Response> => {
-    // Authenticate once per request (when strategyAuth is configured).
+    // Authenticate once per request. OAuth bearer (resource-server) runs first
+    // when configured; otherwise strategy-based auth. Either can gate the call.
     let authInfo: AuthInfo | undefined;
-    if (strategyAuth) {
+    if (oauth) {
+      const verified = await verifyBearerFetch(
+        req,
+        oauth.verifier,
+        oauth.requiredScopes ?? [],
+        resourceMetadataUrl,
+      );
+      if (verified instanceof Response) return verified; // 401/403/4xx challenge
+      authInfo = verified;
+    } else if (strategyAuth) {
       authInfo = await resolveStrategyAuthInfo(
         req,
         strategyAuth.strategy,
@@ -241,6 +323,22 @@ export function mountMcpHttpFetch(
   server.addFetchHandler('POST', path, handle);
   server.addFetchHandler('GET', path, handle);
   server.addFetchHandler('DELETE', path, handle);
+
+  // OAuth resource-server metadata (RFC 9728): advertise the authorization
+  // servers + scopes so clients can discover where to obtain a token.
+  if (oauth) {
+    const metadata: OAuthProtectedResourceMetadata = {
+      resource: oauth.resource,
+      authorization_servers: oauth.authorizationServers,
+      bearer_methods_supported: ['header'],
+      ...(oauth.scopesSupported
+        ? {scopes_supported: oauth.scopesSupported}
+        : {}),
+    };
+    server.addFetchHandler('GET', PROTECTED_RESOURCE_PATH, async () =>
+      Response.json(metadata),
+    );
+  }
 
   return {
     async closeAll() {

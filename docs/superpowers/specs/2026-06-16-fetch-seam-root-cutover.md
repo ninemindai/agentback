@@ -75,13 +75,13 @@ Express mount. Auth uses the neutral `fromWebRequest` seam (`strategyAuth`). It
 is parity-tested through the native listener with the real MCP SDK client
 (`packages/mcp-http/src/__tests__/integration/fetch.integration.ts`).
 
-**Remaining gap (not a cutover blocker):** OAuth resource-server bearer auth
-(`options.auth` → the SDK's `requireBearerAuth` Express middleware + the
-`/.well-known/oauth-protected-resource` metadata route) is not yet wired on the
-fetch path; `mountMcpHttpFetch` warns and serves unauthenticated unless
-`strategyAuth` is set. Re-expressing `requireBearerAuth` as a `WebMiddleware`
-(it only reads the `Authorization` header + calls the verifier) is a
-self-contained follow-up.
+OAuth resource-server bearer auth (`options.auth`) is now wired on the fetch
+path too: `verifyBearerFetch` mirrors the SDK's `requireBearerAuth` (token
+extraction, scope check, expiry, the `WWW-Authenticate` challenge with
+`resource_metadata`), and the `/.well-known/oauth-protected-resource` metadata
+route is registered via `addFetchHandler`. So `mountMcpHttpFetch` is at full
+parity with the Express mount — OAuth bearer, strategyAuth, per-principal
+pinning, and `perSession` DI all work.
 
 ### 2. Express-coupled escape hatches
 
@@ -118,8 +118,8 @@ asserts identical responses for `@api` routes, `/openapi.json`, and a 404.
 ## Exit criteria for flipping the default
 
 1. ~~MCP SDK Web-transport (option a) lands~~ — **done**: SDK ≥ 1.29 +
-   `mountMcpHttpFetch` (parity-tested). OAuth bearer on the fetch path is the
-   one remaining sub-gap (strategyAuth already works).
+   `mountMcpHttpFetch` at full parity (OAuth bearer, strategyAuth, pinning,
+   perSession), auto-selected by `installMcpHttp` in native mode. Parity-tested.
 2. Native mode throws at `start()` on Express-coupled routes (done in prototype).
 3. The full existing `@agentback/rest` + examples suite passes with
    `listener: 'native'` as default (the same full-suite gate item D used).

@@ -6,6 +6,7 @@ import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {z} from 'zod';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import {InvalidTokenError} from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import {RestApplication, type RestServer} from '@agentback/rest';
 import {
   MCPComponent,
@@ -181,6 +182,87 @@ describe('installMcpHttp auto-routes to the fetch mount in native mode', () => {
     await client.connect(new StreamableHTTPClientTransport(mcpUrl));
     const {tools} = await client.listTools();
     expect(tools.map(t => t.name).sort()).toEqual(['add', 'echo']);
+    await client.close();
+  });
+});
+
+// OAuth resource-server bearer auth on the fetch path (RFC 6750/9728): the
+// neutral mirror of requireBearerAuth + protected-resource metadata.
+const verifier = {
+  async verifyAccessToken(token: string) {
+    const expiresAt = Math.floor(Date.now() / 1000) + 3600;
+    if (token === 'good') return {token, clientId: 'cli', scopes: [], expiresAt};
+    throw new InvalidTokenError('invalid token');
+  },
+};
+
+describe('mountMcpHttpFetch OAuth bearer (native listener)', () => {
+  let app: RestApplication;
+  let baseUrl: string;
+
+  beforeEach(async () => {
+    app = new RestApplication({rest: {listener: 'native'}});
+    app.configure('servers.RestServer').to({
+      port: 0,
+      host: '127.0.0.1',
+      listener: 'native',
+    });
+    app.component(MCPComponent);
+    app.configure('servers.MCPServer').to({
+      name: 'fetch-oauth',
+      version: '0.0.0',
+      transports: {stdio: false},
+    });
+    app.service(DemoTools);
+    const mcp = await app.get<MCPServer>('servers.MCPServer');
+    const server = await app.get<RestServer>('servers.RestServer');
+    mountMcpHttpFetch(mcp, server, {
+      auth: {
+        verifier,
+        resource: 'https://api.example.com/mcp',
+        authorizationServers: ['https://auth.example.com'],
+      },
+    });
+    await app.start();
+    baseUrl = server.url;
+  });
+
+  afterEach(async () => app.stop());
+
+  it('rejects a request with no bearer token (401 + WWW-Authenticate)', async () => {
+    const res = await fetch(`${baseUrl}/mcp`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({jsonrpc: '2.0', method: 'tools/list', id: 1}),
+    });
+    expect(res.status).toBe(401);
+    expect(res.headers.get('www-authenticate')).toMatch(/resource_metadata=/);
+    await res.body?.cancel();
+  });
+
+  it('serves the protected-resource metadata document', async () => {
+    const res = await fetch(
+      `${baseUrl}/.well-known/oauth-protected-resource`,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      resource: 'https://api.example.com/mcp',
+      authorization_servers: ['https://auth.example.com'],
+    });
+  });
+
+  it('accepts a valid bearer token end to end', async () => {
+    const client = new Client({name: 'test-client', version: '0.0.0'});
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`), {
+        requestInit: {headers: {authorization: 'Bearer good'}},
+      }),
+    );
+    const {tools} = await client.listTools();
+    expect(tools.length).toBeGreaterThan(0);
     await client.close();
   });
 });
