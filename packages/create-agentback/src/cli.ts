@@ -59,7 +59,8 @@ for (let i = 0; i < args.length; i++) {
   } else if (a === '--with') {
     for (const c of (args[++i] ?? '').split(',').filter(Boolean)) caps.add(c);
   } else if (a.startsWith('--with=')) {
-    for (const c of a.slice('--with='.length).split(',').filter(Boolean)) caps.add(c);
+    for (const c of a.slice('--with='.length).split(',').filter(Boolean))
+      caps.add(c);
   } else if (a === '--drizzle') {
     caps.add('drizzle');
   } else if (a === '--auth') {
@@ -180,7 +181,9 @@ async function run(): Promise<void> {
       );
     }
     if (caps.has('auth')) {
-      console.log('Auth: set JWT_SECRET before deploying (a dev secret is used otherwise).\n');
+      console.log(
+        'Auth: set JWT_SECRET before deploying (a dev secret is used otherwise).\n',
+      );
     }
   } catch (err) {
     fail((err as Error).message);

@@ -57,7 +57,12 @@ function mergeDeps(dir: string, deps: Record<string, string>): void {
 }
 
 /** Copy `_capabilities/<name>/<sub>` into the app dir if it exists. */
-function copyOverlay(capRoot: string, name: string, sub: string, dir: string): void {
+function copyOverlay(
+  capRoot: string,
+  name: string,
+  sub: string,
+  dir: string,
+): void {
   const src = path.join(capRoot, name, sub);
   if (existsSync(src)) cpSync(src, dir, {recursive: true});
 }
@@ -162,7 +167,9 @@ export const CAPABILITIES: readonly Capability[] = [
 ];
 
 export function capabilityNames(template: TemplateName): string[] {
-  return CAPABILITIES.filter(c => c.templates.includes(template)).map(c => c.name);
+  return CAPABILITIES.filter(c => c.templates.includes(template)).map(
+    c => c.name,
+  );
 }
 
 export function findCapability(name: string): Capability | undefined {

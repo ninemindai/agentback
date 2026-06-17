@@ -93,7 +93,8 @@ function fillAnchor(
   const re = new RegExp(`([ \\t]*)// \\{\\{agentback:${tag}\\}\\}`);
   return text.replace(
     re,
-    (_m, indent: string) => `${indent}${insert}\n${indent}// {{agentback:${tag}}}`,
+    (_m, indent: string) =>
+      `${indent}${insert}\n${indent}// {{agentback:${tag}}}`,
   );
 }
 
@@ -223,7 +224,8 @@ export function scaffold(options: ScaffoldOptions): ScaffoldResult {
   if (existsSync(appTsPath)) {
     let appTs = readFileSync(appTsPath, 'utf8');
     const restConfig = renderRestConfig(options.host);
-    if (restConfig) appTs = fillAnchor(appTs, 'rest-config', restConfig, 'inline');
+    if (restConfig)
+      appTs = fillAnchor(appTs, 'rest-config', restConfig, 'inline');
     for (const w of wirings) {
       if (!w) continue;
       if (w.imports) appTs = fillAnchor(appTs, 'imports', w.imports);

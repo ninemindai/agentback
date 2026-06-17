@@ -3,7 +3,11 @@ import {inject} from '@agentback/core';
 import {api, get, post} from '@agentback/openapi';
 import {authenticate} from '@agentback/authentication';
 import {JWTBindings, JWTService} from '@agentback/authentication-jwt';
-import {securityId, SecurityBindings, type UserProfile} from '@agentback/security';
+import {
+  securityId,
+  SecurityBindings,
+  type UserProfile,
+} from '@agentback/security';
 
 const LoginIn = z.object({
   username: z.string().min(1),

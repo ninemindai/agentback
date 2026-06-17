@@ -36,7 +36,9 @@ describe('host options + anchor stripping', () => {
       host: {port: 8080, host: '0.0.0.0', basePath: '/api'},
     });
     const appTs = appFile(dir, 'src/application.ts');
-    expect(appTs).toContain("rest: {port: 8080, host: '0.0.0.0', basePath: '/api'}");
+    expect(appTs).toContain(
+      "rest: {port: 8080, host: '0.0.0.0', basePath: '/api'}",
+    );
     expect(appTs).not.toContain('{{agentback:');
   });
 
@@ -68,7 +70,9 @@ describe('capability registry', () => {
       cwd,
       capabilities: ['console'],
     });
-    const pkg = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    const pkg = JSON.parse(
+      readFileSync(path.join(dir, 'package.json'), 'utf8'),
+    );
     expect(pkg.dependencies['@agentback/console']).toBeDefined();
     expect(pkg.dependencies['@agentback/rest-explorer']).toBeUndefined();
   });
@@ -88,11 +92,15 @@ describe('drizzle capability', () => {
       cwd,
       capabilities: ['drizzle'],
     });
-    const pkg = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    const pkg = JSON.parse(
+      readFileSync(path.join(dir, 'package.json'), 'utf8'),
+    );
     expect(pkg.dependencies['@agentback/drizzle']).toBeDefined();
     expect(pkg.dependencies['drizzle-orm']).toBe('^0.45.2');
     expect(appFile(dir, 'src/db/schema.ts')).toContain('pgTable');
-    expect(appFile(dir, 'src/controllers/users.controller.ts')).toContain('@mcpServer');
+    expect(appFile(dir, 'src/controllers/users.controller.ts')).toContain(
+      '@mcpServer',
+    );
     const appTs = appFile(dir, 'src/application.ts');
     expect(appTs).toContain('this.restController(UsersController)');
     expect(appTs).toContain('this.service(UsersController)');
@@ -122,10 +130,14 @@ describe('auth capability', () => {
       cwd,
       capabilities: ['auth'],
     });
-    const pkg = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    const pkg = JSON.parse(
+      readFileSync(path.join(dir, 'package.json'), 'utf8'),
+    );
     expect(pkg.dependencies['@agentback/authentication-jwt']).toBeDefined();
     expect(pkg.dependencies['jsonwebtoken']).toBe('^9.0.2');
-    expect(appFile(dir, 'src/controllers/auth.controller.ts')).toContain('@authenticate');
+    expect(appFile(dir, 'src/controllers/auth.controller.ts')).toContain(
+      '@authenticate',
+    );
     const appTs = appFile(dir, 'src/application.ts');
     expect(appTs).toContain('JWTAuthenticationComponent');
     expect(appTs).toContain('this.restController(AuthController)');
