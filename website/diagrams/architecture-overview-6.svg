@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 520" width="840" height="520" role="img" aria-label="Agent-facing runtime pieces: tool and API contracts, agent-facing substrates, and platform concerns building up from core/context. Arrows mean depends on.">
+  <!-- Source: docs/architecture/overview.md mermaid block 6 ("Agent-facing runtime pieces", graph BT) -->
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="7" refX="8" refY="3.5" orient="auto">
+      <path d="M0,0 L8,3.5 L0,7 z" fill="#8a948d"/>
+    </marker>
+  </defs>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+
+    <!-- ============ group containers ============ -->
+    <g fill="rgba(15,107,79,0.03)" stroke="#c5ccc4" stroke-width="1" stroke-dasharray="6,4">
+      <rect x="140" y="46"  width="648" height="112" rx="12"/>
+      <rect x="24"  y="240" width="230" height="176" rx="12"/>
+      <rect x="480" y="240" width="352" height="176" rx="12"/>
+    </g>
+    <g font-size="11" letter-spacing="1" fill="#5a645e">
+      <text x="156" y="66">PLATFORM CONCERNS</text>
+      <text x="40"  y="260">TOOL AND API CONTRACTS</text>
+      <text x="496" y="260">AGENT-FACING SUBSTRATES</text>
+    </g>
+
+    <!-- ============ edges (arrow points at the dependency) ============ -->
+    <g fill="none" stroke="#8a948d" stroke-width="1.4">
+      <!-- contracts -->
+      <path d="M89,304 L89,360" marker-end="url(#arrow)"/>
+      <path d="M89,394 L89,430 L338,430 L338,442" marker-end="url(#arrow)"/>
+      <path d="M195,394 L195,422 L356,422 L356,442" marker-end="url(#arrow)"/>
+      <!-- substrates -->
+      <path d="M530,304 L530,360" marker-end="url(#arrow)"/>
+      <path d="M680,304 L680,360" marker-end="url(#arrow)"/>
+      <path d="M545,394 L545,422 L444,422 L444,442" marker-end="url(#arrow)"/>
+      <path d="M771,394 L771,430 L462,430 L462,442" marker-end="url(#arrow)"/>
+      <!-- platform -->
+      <path d="M170,124 L170,144 L34,144 L34,456 L330,456" marker-end="url(#arrow)"/>
+      <path d="M470,124 L470,180 L105,180 L105,270" marker-end="url(#arrow)"/>
+      <path d="M530,124 L530,200 L210,200 L210,360" marker-end="url(#arrow)"/>
+      <path d="M660,124 L660,164 L73,164 L73,270" marker-end="url(#arrow)"/>
+      <path d="M700,124 L700,210 L226,210 L226,360" marker-end="url(#arrow)"/>
+      <path d="M752,124 L752,330 L572,330 L572,360" marker-end="url(#arrow)"/>
+    </g>
+
+    <!-- ============ nodes ============ -->
+    <g font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">
+
+      <!-- platform concerns -->
+      <g>
+        <rect x="160" y="90" width="256" height="34" rx="8" fill="#ffffff" stroke="#b43b55" stroke-width="1.5"/>
+        <rect x="165" y="96" width="4" height="22" rx="2" fill="#b43b55"/>
+        <text x="290" y="111">authentication / authorization</text>
+      </g>
+      <g>
+        <rect x="446" y="90" width="160" height="34" rx="8" fill="#ffffff" stroke="#b43b55" stroke-width="1.5"/>
+        <rect x="451" y="96" width="4" height="22" rx="2" fill="#b43b55"/>
+        <text x="528" y="111">metering / payments</text>
+      </g>
+      <g>
+        <rect x="636" y="90" width="128" height="34" rx="8" fill="#ffffff" stroke="#9b6b16" stroke-width="1.5"/>
+        <rect x="641" y="96" width="4" height="22" rx="2" fill="#9b6b16"/>
+        <text x="702" y="111">extension-otel</text>
+      </g>
+
+      <!-- tool and API contracts -->
+      <g>
+        <rect x="44" y="270" width="90" height="34" rx="8" fill="#ffffff" stroke="#087b8c" stroke-width="1.5"/>
+        <rect x="49" y="276" width="4" height="22" rx="2" fill="#087b8c"/>
+        <text x="91" y="291">rest</text>
+      </g>
+      <g>
+        <rect x="44" y="360" width="90" height="34" rx="8" fill="#ffffff" stroke="#087b8c" stroke-width="1.5"/>
+        <rect x="49" y="366" width="4" height="22" rx="2" fill="#087b8c"/>
+        <text x="91" y="381">openapi</text>
+      </g>
+      <g>
+        <rect x="150" y="360" width="90" height="34" rx="8" fill="#ffffff" stroke="#6d4ca8" stroke-width="1.5"/>
+        <rect x="155" y="366" width="4" height="22" rx="2" fill="#6d4ca8"/>
+        <text x="197" y="381">mcp</text>
+      </g>
+
+      <!-- agent-facing substrates -->
+      <g>
+        <rect x="500" y="270" width="144" height="34" rx="8" fill="#ffffff" stroke="#0f6b4f" stroke-width="1.5"/>
+        <rect x="505" y="276" width="4" height="22" rx="2" fill="#0f6b4f"/>
+        <text x="574" y="291">messaging-bullmq</text>
+      </g>
+      <g>
+        <rect x="658" y="270" width="90" height="34" rx="8" fill="#ffffff" stroke="#6d4ca8" stroke-width="1.5"/>
+        <rect x="663" y="276" width="4" height="22" rx="2" fill="#6d4ca8"/>
+        <text x="705" y="291">mcp-host</text>
+      </g>
+      <g>
+        <rect x="500" y="360" width="90" height="34" rx="8" fill="#ffffff" stroke="#0f6b4f" stroke-width="1.5"/>
+        <rect x="505" y="366" width="4" height="22" rx="2" fill="#0f6b4f"/>
+        <text x="547" y="381">messaging</text>
+      </g>
+      <g>
+        <rect x="606" y="360" width="104" height="34" rx="8" fill="#ffffff" stroke="#6d4ca8" stroke-width="1.5"/>
+        <rect x="611" y="366" width="4" height="22" rx="2" fill="#6d4ca8"/>
+        <text x="658" y="381">mcp-client</text>
+      </g>
+      <g>
+        <rect x="726" y="360" width="90" height="34" rx="8" fill="#ffffff" stroke="#0f6b4f" stroke-width="1.5"/>
+        <rect x="731" y="366" width="4" height="22" rx="2" fill="#0f6b4f"/>
+        <text x="771" y="381">plugin</text>
+      </g>
+
+      <!-- core / context (pill) -->
+      <g>
+        <rect x="330" y="442" width="140" height="34" rx="17" fill="#ffffff" stroke="#0f6b4f" stroke-width="1.5"/>
+        <text x="400" y="463">core / context</text>
+      </g>
+    </g>
+  </g>
+</svg>

@@ -1,96 +1,117 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 400" width="900" height="400" role="img" aria-label="Discovery: decorated classes become tagged bindings; app.start() lets each server findByTag and read metadata">
-  <!-- Source: docs/architecture/overview.md mermaid block 3 ("How discovery works") -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 470" width="940" height="470" role="img" aria-label="One fetchHandler() runs the full pipeline; Node, Express, Fastify, Hono, Bun, Deno, and Workers each host it; MCP, UIs, and framework routes register onto the same handler">
+  <!-- Source: docs/architecture/overview.md mermaid block 3 ("How HTTP hosts work") -->
   <defs>
     <marker id="arrow" markerWidth="8" markerHeight="7" refX="8" refY="3.5" orient="auto">
       <path d="M0,0 L8,3.5 L0,7 z" fill="#8a948d"/>
     </marker>
+    <marker id="arrow-mcp" markerWidth="8" markerHeight="7" refX="8" refY="3.5" orient="auto">
+      <path d="M0,0 L8,3.5 L0,7 z" fill="#6d4ca8"/>
+    </marker>
   </defs>
   <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
 
-    <!-- ============ edges ============ -->
+    <!-- ============ group containers ============ -->
+    <rect x="16" y="16" width="252" height="438" rx="12" fill="rgba(15,107,79,0.03)" stroke="#c5ccc4" stroke-width="1" stroke-dasharray="6,4"/>
+    <text x="32" y="38" font-size="11" letter-spacing="1" fill="#5a645e">HTTP HOSTS — OWN THE PORT</text>
+
+    <rect x="726" y="26" width="198" height="418" rx="12" fill="rgba(15,107,79,0.03)" stroke="#c5ccc4" stroke-width="1" stroke-dasharray="6,4"/>
+    <text x="742" y="48" font-size="11" letter-spacing="1" fill="#5a645e">ONE DI CONTEXT</text>
+
+    <!-- ============ edges (drawn first, behind nodes) ============ -->
     <g fill="none" stroke="#8a948d" stroke-width="1.4">
-      <!-- decorated class -> binding -->
-      <path d="M196,66 L396,66" marker-end="url(#arrow)"/>
-      <!-- app.start() -> RestServer -->
-      <path d="M196,286 L330,286 L330,206 L396,206" marker-end="url(#arrow)"/>
-      <!-- app.start() -> MCPServer -->
-      <path d="M196,306 L330,306 L330,356 L396,356" marker-end="url(#arrow)"/>
-      <!-- RestServer -> binding (findByTag) -->
-      <path d="M460,180 L460,100" marker-end="url(#arrow)"/>
-      <!-- MCPServer -> binding (findByTag) -->
-      <path d="M560,346 L600,346 L600,100" marker-end="url(#arrow)"/>
-      <!-- RestServer -> routes -->
-      <path d="M560,206 L696,206" marker-end="url(#arrow)"/>
-      <!-- MCPServer -> SDK registrations -->
-      <path d="M560,356 L696,356" marker-end="url(#arrow)"/>
+      <!-- 6 hosts -> fetchHandler -->
+      <path d="M250,76  L300,76  L300,190 L338,190" marker-end="url(#arrow)"/>
+      <path d="M250,143 L312,143 L312,212 L338,212" marker-end="url(#arrow)"/>
+      <path d="M250,210 L324,210 L324,228 L338,228" marker-end="url(#arrow)"/>
+      <path d="M250,277 L324,277 L324,250 L338,250" marker-end="url(#arrow)"/>
+      <path d="M250,344 L312,344 L312,266 L338,266" marker-end="url(#arrow)"/>
+      <path d="M250,411 L300,411 L300,286 L338,286" marker-end="url(#arrow)"/>
+      <!-- fetchHandler -> RestHandler -->
+      <path d="M500,238 L538,238" marker-end="url(#arrow)"/>
+      <!-- RestHandler -> @api controllers -->
+      <path d="M690,224 L708,224 L708,104 L744,104" marker-end="url(#arrow)"/>
+    </g>
+    <!-- MCP/registration (dashed) -->
+    <path d="M744,206 L716,206 L716,150 L419,150 L419,168" fill="none" stroke="#6d4ca8" stroke-width="1.3" stroke-dasharray="4,4" marker-end="url(#arrow-mcp)"/>
+
+    <!-- edge label: the MCP/registration seam (the one worth naming) -->
+    <g font-size="10">
+      <rect x="356" y="135" width="126" height="15" rx="3" fill="#f7f8f5"/>
+      <text x="419" y="146" text-anchor="middle" fill="#6d4ca8">mountMcpHttpFetch</text>
     </g>
 
-    <!-- edge label chips -->
-    <g font-size="10" fill="#5a645e" text-anchor="middle">
-      <rect x="198" y="58" width="196" height="16" fill="#f7f8f5"/>
-      <text x="296" y="70">app.restController / app.service</text>
+    <!-- ============ host nodes (white, neutral border + cyan accent) ============ -->
+    <g>
+      <!-- Node native -->
+      <rect x="32" y="50" width="218" height="52" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+      <rect x="32" y="50" width="4" height="52" rx="2" fill="#087b8c"/>
+      <text x="48" y="74" font-size="12.5" font-weight="600" fill="#17201b">Node http</text>
+      <text x="48" y="91" font-size="9.5" fill="#5a645e">listener: 'native'</text>
+      <!-- Express -->
+      <rect x="32" y="117" width="218" height="52" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+      <rect x="32" y="117" width="4" height="52" rx="2" fill="#087b8c"/>
+      <text x="48" y="141" font-size="12.5" font-weight="600" fill="#17201b">Express</text>
+      <text x="48" y="158" font-size="9.5" fill="#5a645e">default listener · raw req/res</text>
+      <!-- Fastify -->
+      <rect x="32" y="184" width="218" height="52" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+      <rect x="32" y="184" width="4" height="52" rx="2" fill="#087b8c"/>
+      <text x="48" y="208" font-size="12.5" font-weight="600" fill="#17201b">Fastify</text>
+      <text x="48" y="225" font-size="9.5" fill="#5a645e">installFastifyHost</text>
+      <!-- Hono -->
+      <rect x="32" y="251" width="218" height="52" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+      <rect x="32" y="251" width="4" height="52" rx="2" fill="#087b8c"/>
+      <text x="48" y="275" font-size="12.5" font-weight="600" fill="#17201b">Hono</text>
+      <text x="48" y="292" font-size="9.5" fill="#5a645e">hono.all('*', host.fetch)</text>
+      <!-- Bun -->
+      <rect x="32" y="318" width="218" height="52" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+      <rect x="32" y="318" width="4" height="52" rx="2" fill="#087b8c"/>
+      <text x="48" y="342" font-size="12.5" font-weight="600" fill="#17201b">Bun</text>
+      <text x="48" y="359" font-size="9.5" fill="#5a645e">Bun.serve({ fetch })</text>
+      <!-- Deno / Workers -->
+      <rect x="32" y="385" width="218" height="52" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+      <rect x="32" y="385" width="4" height="52" rx="2" fill="#087b8c"/>
+      <text x="48" y="409" font-size="12.5" font-weight="600" fill="#17201b">Deno · Workers</text>
+      <text x="48" y="426" font-size="9.5" fill="#5a645e">export default { fetch }</text>
+    </g>
 
-      <rect x="377" y="130" width="166" height="16" fill="#f7f8f5"/>
-      <text x="460" y="142">findByTag('restController')</text>
+    <!-- ============ fetchHandler() seam (cyan, emphasized) ============ -->
+    <rect x="340" y="168" width="160" height="140" rx="8" fill="rgba(8,123,140,0.08)" stroke="#087b8c" stroke-width="2"/>
+    <text x="420" y="196" font-size="13" font-weight="700" fill="#17201b" text-anchor="middle">fetchHandler()</text>
+    <text x="420" y="214" font-size="9.5" fill="#5a645e" text-anchor="middle">fetch(Request) → Response</text>
+    <line x1="358" y1="226" x2="482" y2="226" stroke="#cfe0e2" stroke-width="1"/>
+    <text x="420" y="246" font-size="10.5" font-weight="600" fill="#17201b" text-anchor="middle">REST · MCP</text>
+    <text x="420" y="262" font-size="9.5" fill="#5a645e" text-anchor="middle">OpenAPI · UIs</text>
+    <text x="420" y="277" font-size="9" fill="#5a645e" text-anchor="middle">/openapi.json · /llms.txt</text>
+    <text x="420" y="296" font-size="9" font-weight="600" fill="#087b8c" text-anchor="middle">one Router, every host</text>
 
-      <rect x="529" y="252" width="142" height="16" fill="#f7f8f5"/>
-      <text x="600" y="264">findByTag('mcpServer')</text>
+    <!-- ============ RestHandler (green) ============ -->
+    <rect x="538" y="186" width="152" height="104" rx="8" fill="rgba(15,107,79,0.08)" stroke="#0f6b4f" stroke-width="1.5"/>
+    <text x="614" y="210" font-size="12.5" font-weight="600" fill="#17201b" text-anchor="middle">RestHandler</text>
+    <text x="614" y="228" font-size="9.5" fill="#5a645e" text-anchor="middle">auth → authz → confirm</text>
+    <text x="614" y="243" font-size="9.5" fill="#5a645e" text-anchor="middle">validate → DI → output</text>
+    <text x="614" y="258" font-size="9.5" fill="#5a645e" text-anchor="middle">stream · upload · errors</text>
+    <text x="614" y="277" font-size="9" font-weight="600" fill="#0f6b4f" text-anchor="middle">identical on every host</text>
 
-      <rect x="583" y="192" width="94" height="28" fill="#f7f8f5"/>
-      <text x="630" y="203">read decorator</text>
-      <text x="630" y="216">metadata</text>
-
-      <rect x="572" y="342" width="112" height="28" fill="#f7f8f5"/>
-      <text x="628" y="353">reflect @tool /</text>
-      <text x="628" y="366">@resource/@prompt</text>
-    </g>
-
-    <!-- ============ nodes ============ -->
-    <!-- decorated class (neutral) -->
-    <g>
-      <rect x="16" y="40" width="180" height="52" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
-      <rect x="21" y="46" width="4" height="40" rx="2" fill="#8a948d"/>
-      <text x="106" y="62" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">@api / @mcpServer</text>
-      <text x="106" y="79" font-size="10.5" fill="#5a645e" text-anchor="middle">decorated class</text>
-    </g>
-    <!-- binding + tag (green) -->
-    <g>
-      <rect x="400" y="36" width="220" height="60" rx="8" fill="#ffffff" stroke="#0f6b4f" stroke-width="1.5"/>
-      <rect x="405" y="42" width="4" height="48" rx="2" fill="#0f6b4f"/>
-      <text x="510" y="62" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">binding + tag</text>
-      <text x="510" y="80" font-size="10.5" fill="#5a645e" text-anchor="middle">restController · mcpServer</text>
-    </g>
-    <!-- app.start() (green) -->
-    <g>
-      <rect x="16" y="270" width="180" height="52" rx="8" fill="#ffffff" stroke="#0f6b4f" stroke-width="1.5"/>
-      <rect x="21" y="276" width="4" height="40" rx="2" fill="#0f6b4f"/>
-      <text x="106" y="300" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">app.start()</text>
-    </g>
-    <!-- RestServer (cyan) -->
-    <g>
-      <rect x="400" y="180" width="160" height="52" rx="8" fill="#ffffff" stroke="#087b8c" stroke-width="1.5"/>
-      <rect x="405" y="186" width="4" height="40" rx="2" fill="#087b8c"/>
-      <text x="480" y="210" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">RestServer</text>
-    </g>
-    <!-- MCPServer (violet) -->
-    <g>
-      <rect x="400" y="330" width="160" height="52" rx="8" fill="#ffffff" stroke="#6d4ca8" stroke-width="1.5"/>
-      <rect x="405" y="336" width="4" height="40" rx="2" fill="#6d4ca8"/>
-      <text x="480" y="360" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">MCPServer</text>
-    </g>
-    <!-- routes + Zod bundles (amber) -->
-    <g>
-      <rect x="700" y="180" width="190" height="52" rx="8" fill="#ffffff" stroke="#9b6b16" stroke-width="1.5"/>
-      <rect x="705" y="186" width="4" height="40" rx="2" fill="#9b6b16"/>
-      <text x="795" y="202" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">routes</text>
-      <text x="795" y="219" font-size="10.5" fill="#5a645e" text-anchor="middle">+ Zod bundles</text>
-    </g>
-    <!-- SDK registrations (violet) -->
-    <g>
-      <rect x="700" y="330" width="190" height="52" rx="8" fill="#ffffff" stroke="#6d4ca8" stroke-width="1.5"/>
-      <rect x="705" y="336" width="4" height="40" rx="2" fill="#6d4ca8"/>
-      <text x="795" y="352" font-size="13" font-weight="600" fill="#17201b" text-anchor="middle">SDK registrations</text>
-      <text x="795" y="369" font-size="10.5" fill="#5a645e" text-anchor="middle">tools · resources · prompts</text>
-    </g>
+    <!-- ============ DI Context nodes ============ -->
+    <!-- @api controllers (green) -->
+    <rect x="744" y="62" width="164" height="82" rx="8" fill="rgba(15,107,79,0.08)" stroke="#0f6b4f" stroke-width="1.5"/>
+    <text x="826" y="88" font-size="12.5" font-weight="600" fill="#17201b" text-anchor="middle">@api controllers</text>
+    <text x="826" y="106" font-size="9.5" fill="#5a645e" text-anchor="middle">@get / @post + Zod</text>
+    <text x="826" y="122" font-size="9.5" fill="#5a645e" text-anchor="middle">[controller] tag</text>
+    <!-- @tool classes (violet) -->
+    <rect x="744" y="160" width="164" height="82" rx="8" fill="rgba(109,76,168,0.08)" stroke="#6d4ca8" stroke-width="1.5"/>
+    <text x="826" y="186" font-size="12.5" font-weight="600" fill="#17201b" text-anchor="middle">@tool classes</text>
+    <text x="826" y="204" font-size="9.5" fill="#5a645e" text-anchor="middle">MCP over HTTP</text>
+    <text x="826" y="220" font-size="9" fill="#6d4ca8" text-anchor="middle">OAuth bearer · strategyAuth</text>
+    <!-- install* UIs (cyan) -->
+    <rect x="744" y="258" width="164" height="82" rx="8" fill="rgba(8,123,140,0.08)" stroke="#087b8c" stroke-width="1.5"/>
+    <text x="826" y="284" font-size="12.5" font-weight="600" fill="#17201b" text-anchor="middle">install* UIs</text>
+    <text x="826" y="302" font-size="9.5" fill="#5a645e" text-anchor="middle">explorer · console</text>
+    <text x="826" y="318" font-size="9" fill="#087b8c" text-anchor="middle">addFetchPrefix (static)</text>
+    <!-- framework routes (neutral) -->
+    <rect x="744" y="356" width="164" height="76" rx="8" fill="#ffffff" stroke="#d9ded6" stroke-width="1.5"/>
+    <text x="826" y="382" font-size="12" font-weight="600" fill="#17201b" text-anchor="middle">framework routes</text>
+    <text x="826" y="400" font-size="9.5" fill="#5a645e" text-anchor="middle">/openapi.json</text>
+    <text x="826" y="415" font-size="9.5" fill="#5a645e" text-anchor="middle">/llms.txt</text>
   </g>
 </svg>
