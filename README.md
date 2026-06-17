@@ -67,15 +67,18 @@ and usage rails to stay coherent as the system grows.
 plumbing — Fastify is fast Node with a plugin ecosystem; Hono is an ultrafast,
 Web-standard, multi-runtime core. AgentBack solves the layer above: one Zod
 schema projected to REST, OpenAPI, *and* MCP through a DI container, sitting on
-a host beneath it (Express today). Hono is the closest sibling in philosophy —
-a Web-standard core, codegen-free typed RPC (mirrored by `@agentback/client`),
-and Zod validation — and AgentBack shares those while adding the MCP tool
-boundary and DI container Hono leaves to the app. Making the REST core
-host-portable (a runtime-neutral `Request → Response` handler) is active design
-work: one fetch handler serves every Web-standard runtime — Cloudflare Workers,
-Deno, and Bun (`Bun.serve({fetch})`) take it directly, and a Node host (Express
-today, Fastify possible) bridges the rest — so the same one-schema projection
-holds wherever it runs.
+whatever host owns the port. Hono is the closest sibling in philosophy — a
+Web-standard core, codegen-free typed RPC (mirrored by `@agentback/client`), and
+Zod validation — and AgentBack shares those while adding the MCP tool boundary
+and DI container Hono leaves to the app. The REST core **is** host-portable: a
+runtime-neutral `RestServer.fetchHandler()` (`Request → Response`) runs the full
+pipeline — routing, validation, DI, auth, streaming, uploads, **and**
+MCP-over-HTTP — on Express (default), a native Node listener
+(`rest.listener: 'native'`), Fastify (`installFastifyHost`), Hono
+(`hono.all('*', …)`), Bun (`Bun.serve({fetch})`), Deno, and Cloudflare Workers.
+Same one-schema projection wherever it runs — see
+[`examples/hello-hosts`](examples/hello-hosts/README.md) and the
+[HTTP hosts guide](docs/guides/deploy-to-edge.md).
 
 ## Documentation
 

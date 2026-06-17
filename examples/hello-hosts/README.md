@@ -80,5 +80,5 @@ Streamable HTTP transport — the MCP SDK's transport reads Node
 
 ## See also
 
-- [`docs/guides/deploy-to-edge.md`](../../docs/guides/deploy-to-edge.md) — Bun/Deno/Workers deploy snippets
+- [`docs/guides/deploy-to-edge.md`](../../docs/guides/deploy-to-edge.md) — HTTP hosts guide: Node/Fastify/Hono/Bun/Deno/Workers + MCP-over-HTTP
 - `RestServer.fetchHandler()`, `installFastifyHost()`, `createNodeListener()` in `@agentback/rest`

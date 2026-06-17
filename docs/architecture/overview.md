@@ -92,6 +92,49 @@ sequenceDiagram
 An MCP tool call follows the analogous path inside `MCPServer.dispatchTool`:
 parse input → weave injects → apply method → validate output.
 
+## How HTTP hosts work
+
+The dispatch pipeline above is **host-agnostic**. `RestServer.fetchHandler()`
+exposes it as one runtime-neutral `fetch(Request): Response` — the same routing,
+validation, DI, auth, hooks, streaming, uploads, and error envelopes the Express
+server runs. Whatever owns the TCP port (Node, Fastify, Hono, Bun, Deno,
+Workers) bridges its native request to that one handler.
+
+```mermaid
+graph TD
+  subgraph Core["RestServer"]
+    RH["RestHandler pipeline<br/>auth → validate → DI → output"]
+    FH["fetchHandler()<br/><b>fetch(Request): Response</b>"]
+    RH --> FH
+  end
+
+  FH --> Express["Express listener<br/>(default)"]
+  FH --> Native["Node http<br/>listener: 'native'"]
+  FH --> Fastify["installFastifyHost"]
+  FH --> Hono["hono.all('*', …)"]
+  FH --> Bun["Bun.serve({fetch})"]
+  FH --> Edge["Deno / Workers"]
+
+  MCP["mountMcpHttpFetch<br/>(MCP-over-HTTP)"] --> FH
+  UIs["install* UIs +<br/>/openapi.json · /llms.txt"] --> FH
+```
+
+Two registration seams extend the fetch surface beyond `@api` routes:
+`addFetchHandler(method, path, fn)` (exact paths — the framework docs, UI
+shells) and `addFetchPrefix(prefix, fn)` (static asset dirs). `mountMcpHttpFetch`
+uses them to put **MCP-over-HTTP** on the same handler, so a single host serves
+REST, MCP, the OpenAPI document, and the dev console together.
+
+- **Default (`listener: 'express'`)** — Express owns routing; everything works,
+  including raw `@inject(HTTP_REQUEST/HTTP_RESPONSE)` routes.
+- **`listener: 'native'`** — the Node listener serves `fetchHandler()` directly;
+  the Router is the single source of truth (parity with how Bun/Fastify/Hono host
+  it). `start()` rejects Express-coupled routes up front.
+
+The runnable four-host comparison is
+[`examples/hello-hosts`](../../examples/hello-hosts/README.md); the deploy
+snippets are in [HTTP hosts](../guides/deploy-to-edge.md).
+
 ## How discovery works
 
 No router file, no central switch. Servers find your code by querying the
