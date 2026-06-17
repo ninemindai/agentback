@@ -15,7 +15,11 @@ export function resolveBuilder(opts: {
     return {entry: opts.entry, exportName: opts.exportName ?? 'buildApp'};
   }
   const probes: Array<{file: string; entry: string; exportName: string}> = [
-    {file: 'dist/console.js', entry: './dist/console.js', exportName: 'buildConsoleApp'},
+    {
+      file: 'dist/console.js',
+      entry: './dist/console.js',
+      exportName: 'buildConsoleApp',
+    },
     {file: 'dist/main.js', entry: './dist/main.js', exportName: 'buildApp'},
   ];
   for (const probe of probes) {

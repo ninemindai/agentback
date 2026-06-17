@@ -20,12 +20,17 @@ export interface DeployArgs {
   help: boolean;
 }
 
-const VALUE_FLAGS = new Set([
-  '--entry', '--export', '--name', '--verify-path',
-]);
+const VALUE_FLAGS = new Set(['--entry', '--export', '--name', '--verify-path']);
 const BOOL_FLAGS = new Set([
-  '--prod', '--console', '--unsafe-public-console', '--eject', '--force',
-  '--dry-run', '--yes', '-h', '--help',
+  '--prod',
+  '--console',
+  '--unsafe-public-console',
+  '--eject',
+  '--force',
+  '--dry-run',
+  '--yes',
+  '-h',
+  '--help',
 ]);
 
 function bad(message: string): never {
@@ -35,12 +40,20 @@ function bad(message: string): never {
 export function parseDeployArgs(argv: string[]): DeployArgs {
   const [target, ...rest] = argv;
   if (!target) bad('deploy: missing target. Usage: agentback deploy vercel');
-  if (target !== 'vercel') bad(`deploy: unknown target '${target}' (only 'vercel' in Phase 1)`);
+  if (target !== 'vercel')
+    bad(`deploy: unknown target '${target}' (only 'vercel' in Phase 1)`);
 
   const out: DeployArgs = {
-    target: 'vercel', prod: false, console: false, unsafePublicConsole: false,
-    eject: false, force: false, dryRun: false, yes: false,
-    verifyPath: '/openapi.json', help: false,
+    target: 'vercel',
+    prod: false,
+    console: false,
+    unsafePublicConsole: false,
+    eject: false,
+    force: false,
+    dryRun: false,
+    yes: false,
+    verifyPath: '/openapi.json',
+    help: false,
   };
 
   for (let i = 0; i < rest.length; i++) {

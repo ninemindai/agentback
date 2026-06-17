@@ -3,6 +3,8 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import {realpathSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
 import {AgentError} from '@agentback/openapi';
 import {parseDeployArgs} from './args.js';
 import {nodeExec} from './exec.js';
@@ -46,11 +48,15 @@ export async function main(argv: string[]): Promise<number> {
       cwd: process.cwd(),
     });
     if (out.status === 'ejected') {
-      console.log('Wrote api/index.ts + vercel.json. Run `vercel deploy` to ship.');
+      console.log(
+        'Wrote api/index.ts + vercel.json. Run `vercel deploy` to ship.',
+      );
       return 0;
     }
     if (out.status === 'dry-run') {
-      console.log('Dry run OK: files generated, preflight passed, nothing deployed.');
+      console.log(
+        'Dry run OK: files generated, preflight passed, nothing deployed.',
+      );
       return 0;
     }
     if (out.verify && !out.verify.ok) {
@@ -71,7 +77,9 @@ export async function main(argv: string[]): Promise<number> {
   }
 }
 
-const invokedDirectly = process.argv[1]?.endsWith('cli.js');
+const __filename = fileURLToPath(import.meta.url);
+const invokedDirectly =
+  process.argv[1] != null && __filename === realpathSync(process.argv[1]);
 if (invokedDirectly) {
   main(process.argv.slice(2)).then(code => process.exit(code));
 }

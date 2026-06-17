@@ -22,17 +22,25 @@ describe('resolveBuilder', () => {
   });
 
   it('defaults export to buildApp when only --entry given', () => {
-    expect(resolveBuilder({entry: './dist/x.js', cwd}).exportName).toBe('buildApp');
+    expect(resolveBuilder({entry: './dist/x.js', cwd}).exportName).toBe(
+      'buildApp',
+    );
   });
 
   it('detects dist/console.js → buildConsoleApp', () => {
     writeFileSync(path.join(cwd, 'dist', 'console.js'), '');
-    expect(resolveBuilder({cwd})).toEqual({entry: './dist/console.js', exportName: 'buildConsoleApp'});
+    expect(resolveBuilder({cwd})).toEqual({
+      entry: './dist/console.js',
+      exportName: 'buildConsoleApp',
+    });
   });
 
   it('detects dist/main.js → buildApp', () => {
     writeFileSync(path.join(cwd, 'dist', 'main.js'), '');
-    expect(resolveBuilder({cwd})).toEqual({entry: './dist/main.js', exportName: 'buildApp'});
+    expect(resolveBuilder({cwd})).toEqual({
+      entry: './dist/main.js',
+      exportName: 'buildApp',
+    });
   });
 
   it('throws an actionable error when nothing resolves', () => {
@@ -42,12 +50,18 @@ describe('resolveBuilder', () => {
 
 describe('enforceConsoleGate', () => {
   it('no-op when console is off', () => {
-    expect(() => enforceConsoleGate({console: false, unsafePublicConsole: false})).not.toThrow();
+    expect(() =>
+      enforceConsoleGate({console: false, unsafePublicConsole: false}),
+    ).not.toThrow();
   });
   it('throws when --console without acknowledgement', () => {
-    expect(() => enforceConsoleGate({console: true, unsafePublicConsole: false})).toThrow(/unsafe-public-console/);
+    expect(() =>
+      enforceConsoleGate({console: true, unsafePublicConsole: false}),
+    ).toThrow(/unsafe-public-console/);
   });
   it('allows --console with --unsafe-public-console', () => {
-    expect(() => enforceConsoleGate({console: true, unsafePublicConsole: true})).not.toThrow();
+    expect(() =>
+      enforceConsoleGate({console: true, unsafePublicConsole: true}),
+    ).not.toThrow();
   });
 });

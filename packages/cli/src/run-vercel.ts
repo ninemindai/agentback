@@ -32,7 +32,11 @@ function detectPackageManager(): 'pnpm' | 'yarn' | 'bun' | 'npm' {
 }
 
 function writeRootFiles(args: DeployArgs, cwd: string): void {
-  const builder = resolveBuilder({entry: args.entry, exportName: args.exportName, cwd});
+  const builder = resolveBuilder({
+    entry: args.entry,
+    exportName: args.exportName,
+    cwd,
+  });
   // The builder entry is repo-root-relative; api/index.ts sits one level deeper
   // in api/, so a root-relative path (bare or ./-prefixed) gets a ../ prefix.
   // An absolute path passes through unchanged.
@@ -51,7 +55,10 @@ function writeRootFiles(args: DeployArgs, cwd: string): void {
     }
   }
   mkdirSync(apiDir, {recursive: true});
-  writeFileSync(apiFile, generateEntry({entry: entryFromApi, exportName: builder.exportName}));
+  writeFileSync(
+    apiFile,
+    generateEntry({entry: entryFromApi, exportName: builder.exportName}),
+  );
 
   const vercelPath = path.join(cwd, 'vercel.json');
   const existing = existsSync(vercelPath)
@@ -99,7 +106,11 @@ export async function runVercelDeploy(
   await preflight(deps.exec);
   if (args.dryRun) return {status: 'dry-run'};
 
-  const deployArgs = ['deploy', ...(args.prod ? ['--prod'] : []), ...(args.yes ? ['--yes'] : [])];
+  const deployArgs = [
+    'deploy',
+    ...(args.prod ? ['--prod'] : []),
+    ...(args.yes ? ['--yes'] : []),
+  ];
   const res = await deps.exec('vercel', deployArgs);
   if (res.code !== 0) {
     throw new AgentError(`vercel deploy failed (exit ${res.code}).`, {
@@ -107,6 +118,10 @@ export async function runVercelDeploy(
     });
   }
   const url = parseUrl(res.stdout);
-  const verify = await verifyDeploy(url, {verifyPath: args.verifyPath}, deps.fetchFn);
+  const verify = await verifyDeploy(
+    url,
+    {verifyPath: args.verifyPath},
+    deps.fetchFn,
+  );
   return {status: 'deployed', url, verify};
 }
