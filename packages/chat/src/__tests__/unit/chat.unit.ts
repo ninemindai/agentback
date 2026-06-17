@@ -68,6 +68,22 @@ class SignatureChecks {
   tooManyParams(_t: ChatThread, _m: ChatMessage, _extra: string): void {}
 }
 
+// Two mention handlers on one class; the first throws. Used to prove the
+// composite runs all handlers for an event and isolates failures.
+@chatBot()
+class FanOutBot {
+  readonly ran: string[] = [];
+  @onMention()
+  async first(_thread: ChatThread, _message: ChatMessage): Promise<void> {
+    this.ran.push('first');
+    throw new Error('boom');
+  }
+  @onMention()
+  async second(_thread: ChatThread, _message: ChatMessage): Promise<void> {
+    this.ran.push('second');
+  }
+}
+
 /**
  * Stub chat runtime: records subscribed handlers and exposes a fetch-native
  * webhook that dispatches a synthetic "mention" payload to the mention handler.
@@ -205,6 +221,34 @@ describe('@agentback/chat', () => {
     } finally {
       await app.stop();
     }
+  });
+
+  it('runs every handler for an event and isolates errors (sequential)', async () => {
+    const chat = new StubChat();
+    const app = new RestApplication();
+    app.component(ChatComponent);
+    app.service(FanOutBot);
+    const server = await app.get<ChatServer>(ChatBindings.SERVER);
+    await server.register(chat); // default: sequential
+    const bot = await app.get<FanOutBot>('services.FanOutBot');
+    const thread = {post: async () => undefined} as ChatThread;
+    // The composite is the single registered mention handler.
+    await chat.mention!(thread, {text: 'hi'});
+    // 'second' ran despite 'first' throwing — error isolated, order preserved.
+    expect(bot.ran).toEqual(['first', 'second']);
+  });
+
+  it('supports parallel dispatch', async () => {
+    const chat = new StubChat();
+    const app = new RestApplication();
+    app.component(ChatComponent);
+    app.service(FanOutBot);
+    const server = await app.get<ChatServer>(ChatBindings.SERVER);
+    await server.register(chat, 'parallel');
+    const bot = await app.get<FanOutBot>('services.FanOutBot');
+    const thread = {post: async () => undefined} as ChatThread;
+    await chat.mention!(thread, {text: 'hi'});
+    expect([...bot.ran].sort()).toEqual(['first', 'second']); // both ran; order not guaranteed
   });
 
   it('preserves exact request bytes end-to-end (raw-body path)', async () => {

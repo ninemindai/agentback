@@ -20,6 +20,17 @@ export namespace ChatBindings {
 }
 
 /**
+ * How a composite runs the multiple handlers registered for one event:
+ * - `sequential` (default) — await each in registration order; deterministic.
+ * - `parallel` — start all at once (`Promise.allSettled`); faster when handlers
+ *   are independent, but post/side-effect order is not guaranteed.
+ *
+ * Errors are isolated in both modes: one failing handler is logged and never
+ * aborts its siblings.
+ */
+export type ChatDispatch = 'sequential' | 'parallel';
+
+/**
  * Non-secret, file-friendly chat config (the half that belongs in
  * `@agentback/config` overlays). Mount paths and prefixes only — credentials
  * stay in environment variables.
@@ -29,6 +40,8 @@ export interface ChatRuntimeConfig {
   basePath?: string;
   /** Per-adapter absolute path overrides, keyed by adapter name. */
   paths?: Record<string, string>;
+  /** How multiple handlers for one event run. Default `sequential`. */
+  dispatch?: ChatDispatch;
 }
 
 /**

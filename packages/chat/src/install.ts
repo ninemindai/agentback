@@ -9,7 +9,7 @@ import type {
 } from 'express';
 import {loggers} from '@agentback/common';
 import type {RestApplication} from '@agentback/rest';
-import {ChatBindings} from './keys.js';
+import {ChatBindings, type ChatDispatch} from './keys.js';
 import type {ChatLike} from './port.js';
 
 const log = loggers('agentback:chat');
@@ -51,6 +51,11 @@ export interface InstallChatOptions {
    * rejections logged.
    */
   waitUntil?: (p: Promise<unknown>) => void;
+  /**
+   * How multiple handlers for one event run — `sequential` (default) or
+   * `parallel`. Errors are isolated either way. See {@link ChatDispatch}.
+   */
+  dispatch?: ChatDispatch;
 }
 
 /**
@@ -81,9 +86,6 @@ export async function installChat(
         `'${ChatBindings.SERVER.key}'. Add ChatComponent before installChat.`,
     );
   }
-  const server = await app.get(ChatBindings.SERVER);
-  await server.register(options.chat);
-
   // Merge optional bound config (e.g. from @agentback/config) — explicit
   // installChat options win. Secrets are never read here; adapters take them
   // from env.
@@ -94,7 +96,11 @@ export async function installChat(
     basePath: options.basePath ?? bound?.basePath,
     paths: {...bound?.paths, ...options.paths},
     waitUntil: options.waitUntil,
+    dispatch: options.dispatch ?? bound?.dispatch,
   };
+
+  const server = await app.get(ChatBindings.SERVER);
+  await server.register(options.chat, merged.dispatch);
 
   const rest = await app.restServer;
   const handle = mountChatWebhooks(options.chat, rest.expressApp, merged);
