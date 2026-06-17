@@ -10,7 +10,7 @@ export default defineConfig({
     // downstream apps see is what's exercised. Each package's tsconfig
     // emits tests under dist/__tests__.
     include: [
-      'packages/*/dist/__tests__/**/*.{test,spec,unit,integration,acceptance}.js',
+      'packages/*/dist/__tests__/**/*.{test,spec,unit,integration,acceptance,e2e}.js',
     ],
     exclude: ['**/node_modules/**', 'dist/**/__tests__/fixtures/**'],
     // Generous timeout for integration tests that spin up HTTP servers.
