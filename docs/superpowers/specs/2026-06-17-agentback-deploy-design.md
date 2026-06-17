@@ -1,71 +1,88 @@
-# `agentback deploy` — Design
+# `agentback deploy vercel` — Design (Phase 1)
 
 **Date:** 2026-06-17
-**Status:** Approved design, pre-implementation
-**Topic:** A first-party CLI command to deploy an AgentBack app to edge runtimes (v1: Cloudflare Workers, Vercel, Deno Deploy), architected so AWS can graduate to first-party provisioning later.
+**Status:** Approved design (eng-reviewed), pre-implementation
+**Scope:** A first-party CLI that deploys an AgentBack app's **REST + OpenAPI** surface to **Vercel**, by codifying the setup `agentback-demo` already runs in production. Edge runtimes (Cloudflare/Deno), live MCP-over-HTTP, and the `DeployTarget` abstraction are **Phase 2** — a separate spec (§12).
 
 ---
 
 ## 1. Goal & framing
 
-Give AgentBack users a one-command path from a local app to a running edge deployment:
+Give AgentBack users a one-command path from a local app to a running Vercel deployment:
 
 ```bash
-agentback deploy cloudflare
+agentback deploy vercel
 abc deploy vercel --prod
 ```
 
-AgentBack already has the *runtime* precondition for this: `RestServer.fetchHandler()`
-is a runtime-neutral `fetch(Request): Promise<Response>` (see
-`packages/rest/src/host/fetch.ts`), and `examples/hello-hosts` proves one app runs
-unchanged on Fastify, Hono, Bun, and the native listener. What is missing is the
-*tooling* to bundle that handler, generate a per-target entrypoint, push it via the
-platform's deploy mechanism, and verify the result. This spec defines that tooling.
+The precondition is already proven: `agentback-demo` (`weather-mcp`) deploys to Vercel
+today via a hand-written `api/index.ts` (memoized async boot handing Vercel the Express
+app) plus a `vercel.json`. Phase 1 **turns that proven, hand-built setup into a
+generator** — nothing more exotic. It touches **no existing package**; it is a new,
+additive `@agentback/cli`.
 
-**Non-goal:** building our own infrastructure layer in v1. We orchestrate the
-platforms' own CLIs and leave a seam for first-party provisioning later.
+**Non-goals (Phase 1):** edge runtimes, live MCP-over-HTTP, multi-target abstraction,
+secret/env forwarding. See §12.
 
-## 2. Locked decisions
+## 2. Locked decisions (this spec)
 
-| Decision | Choice | Rationale |
-|---|---|---|
-| Deploy model | **Hybrid — orchestrate now, own later** | Thin orchestrator over platform CLIs ships fast; `DeployTarget` interface lets AWS graduate to first-party provisioning without touching the pipeline. |
-| v1 targets | **Vercel (reference, first), then Cloudflare Workers, Deno Deploy** | **Vercel is the reference adapter** because `agentback-demo` is already deployed there in production (§2.5) — the Vercel-Node path is proven, so it ships first; Workers/Deno follow with the harder edge-isolate work. AWS deferred (needs infra provisioning, not just a CLI handoff). |
-| Config surface | **Zero-config + flags now**; patch native platform files; reserve `agentback.config.ts` `deploy` block for later | Smallest first release; power users keep the platform knobs they already know. |
-| Edge entrypoint | **Generated ephemerally, `--eject` to commit** | Repo stays clean and entry always matches the CLI version; ejection is the escape hatch for customization. |
-| MCP on edge | **Bridge already exists**; deploy carries a per-target MCP smoke test as the acceptance gate | `mountMcpHttpFetch` (`WebStandardStreamableHTTPServerTransport`) already serves MCP on the fetch surface with auth parity + passing tests. Residual risk is runtime, not code — the smoke test catches it. |
-| CLI scope | **Deploy-only `@agentback/cli`** | One verb, smallest surface. `dev`/`build`/`generate` are later specs. |
-| Static assets on edge | **Formalize `AssetSource` (D) + CDN dev UIs (C) + opt-in `--bundle-assets` (B)**; defer platform-native (A) | `serveStaticDir`'s disk read is the only true edge incompatibility, and it is opt-in. Fix it at the seam so dev UIs work on edge out-of-the-box. |
+| # | Decision | Choice | Rationale |
+|---|---|---|---|
+| 1 | CLI scope | New **`@agentback/cli`**, bins `agentback` + `abc`, **`deploy vercel` only** | One verb, smallest surface; `ab` not claimed (shadows ApacheBench). |
+| 2 | Deployed surface | **REST + `/openapi.json` by default**; console opt-in + gated | Console exposes DI internals/schema/inspector; `installConsole` refuses unauthenticated without an explicit unsafe flag. Don't publish internals by default. |
+| 3 | File location | **Repo root** (`api/index.ts`, `vercel.json`); no hidden ephemeral dir | Vercel discovers functions/config relative to the deploy root. A `.agentback/deploy/` subdir is never seen. |
+| 4 | App-build contract | **Explicit `--entry`/`--export`**, default to a detected exported builder | The demo imports `buildConsoleApp` from a built module, not `src/application.ts`; deploy must not guess how to boot the app. |
+| 5 | Generated handler types | **Node `IncomingMessage`/`ServerResponse`** (`RequestListener`), not `@vercel/node` | Avoid forcing an undeclared `@vercel/node` dep on the user's app (the demo already types it this way). |
+| 6 | File generation | **Inline template literals** in the Vercel code path | Two ~30-line files don't justify template-file machinery; explicit + smallest diff. |
+| 7 | `vercel.json` writing | **Idempotent, order-aware merge**; fail on conflict unless `--force`/`--eject` | `rewrites` is an ordered array; a naive deep-merge can steal or miss routes, or clobber user keys. |
+| 8 | Target abstraction | **None in Phase 1** — concrete Vercel path | Designing `DeployTarget` against one implementation is premature; extract in Phase 2 from two real targets. |
+| 9 | MCP-over-HTTP | **Deferred to Phase 2** | Stateful in-memory MCP sessions don't fit Vercel's stateless serverless (§3.1). |
 
 ## 2.5. Prior art: `agentback-demo` on Vercel (the reference)
 
-`agentback-demo` (`weather-mcp`) is already deployed to Vercel and is the concrete
-pattern the Vercel adapter codifies. Three things it establishes:
+`agentback-demo` is the concrete pattern Phase 1 codifies. From `api/index.ts`:
 
-- **Memoized async boot is production-proven.** `api/index.ts` does
-  `appPromise ??= buildExpressApp()` and exports a Node `handler(req, res)` that calls
-  `server.expressApp` — the §5 bridge, with the **Express app** as the leaf (Vercel Node
-  runtime). Cold start builds; warm invocations reuse the promise.
-- **`vercel.json` is the config template.** `buildCommand`, `outputDirectory: public`,
-  `rewrites` all paths to `/api`, and `functions["api/index.ts"].includeFiles` to ship
-  `@agentback/console/dist/client` + `swagger-ui-dist` into the function bundle.
-- **It deliberately omits live MCP.** The entry comment: *"This console entry does not
-  mount the Streamable HTTP MCP transport, so there is no `/mcp` route here."* So
-  `deploy` wiring MCP into the generated entry — and proving it with the smoke test
-  (§6) — delivers a live `/mcp` on Vercel for the first time, not a redundant check.
+- **Memoized async boot, Express leaf.** `appPromise ??= buildExpressApp()`; `handler(req,
+  res)` calls `server.expressApp`, typed as a Node `RequestListener` (no `@vercel/node`
+  runtime dep). Cold start builds; warm invocations reuse the promise.
+- **It imports a builder from a built module** — `buildConsoleApp` from `../dist/console.js`,
+  `{listen: false}`. NOT `src/application.ts`. (Drives decision #4.)
+- **It deliberately omits `/mcp`** — the entry comment states the Streamable HTTP transport
+  is not mounted here. (Consistent with §3.1.)
 
-**Consequences for v1 scope:**
+From `vercel.json`: `buildCommand`, `outputDirectory: public`, `rewrites` all paths to
+`/api`, `functions["api/index.ts"].includeFiles` to ship console + `swagger-ui-dist`
+assets. **These are demo-specific** (`npm run build`, `public`) — Phase 1 infers the
+package manager and does not hardcode them (decision #7).
 
-- On **Vercel Node**, `serveStaticDir` works unmodified (real filesystem +
-  `includeFiles`). The `AssetSource`/CDN/embed work (§8) is a **Workers/Deno** concern
-  and lands with those adapters, not in the Vercel-first slice.
-- On **Vercel Node**, MCP can mount via the **Express transport** (`mountMcpHttp`, the
-  original req/res path) — no fetch transport required. The fetch transport
-  (`mountMcpHttpFetch`) is needed only for Edge/Workers/Deno.
-- The **bundle doctor** (§7) is likewise an edge-runtime guard; Vercel Node has Node
-  built-ins and a filesystem, so it lands with the edge adapters.
+## 3. Why REST-only, and why MCP waits
 
-## 3. CLI shape
+### 3.1. Stateful MCP sessions don't fit stateless serverless
+
+`packages/mcp-http/src/index.ts` mounts MCP statefully:
+
+- `:280` — `const transports: Record<string, StreamableHTTPServerTransport> = {}` (in-memory, per-instance).
+- `:399` — `sessionIdGenerator: () => randomUUID()` (always stateful; the SDK's stateless mode is `sessionIdGenerator: undefined`).
+- `:382-383` — a request whose session id isn't in *this instance's* map → `404 Unknown MCP session`.
+
+Vercel function invocations land on different, short-lived instances that don't share
+memory. A client that initializes on instance X and calls a tool on instance Y gets a
+404; the GET leg is an SSE stream serverless functions don't hold well. A naive smoke
+test (one warm instance, sequential calls) would **pass and hide this**. So Phase 1
+deploys REST only. Phase 2 designs MCP-on-serverless properly (stateless transport mode
++ target choice).
+
+### 3.2. Console is opt-in and gated
+
+`packages/console/src/index.ts:80` — `installConsole` refuses to run unauthenticated
+without `unsafeAllowUnauthenticated`. The console surfaces the DI container, every
+schema, and an MCP inspector. Phase 1 therefore:
+
+- deploys **REST + `/openapi.json` only by default**;
+- adds `--console` to opt in, which requires **either** configured auth **or** an explicit
+  `--unsafe-public-console` acknowledgement (mirroring the framework's own gate).
+
+## 4. CLI shape
 
 New workspace package **`@agentback/cli`** at `packages/cli/`.
 
@@ -74,245 +91,162 @@ New workspace package **`@agentback/cli`** at `packages/cli/`.
 "bin": { "agentback": "dist/cli.js", "abc": "dist/cli.js" }
 ```
 
-- `agentback` is the canonical, self-documenting name; `abc` is the terse alias.
-  **`ab` is intentionally NOT claimed** — it shadows ApacheBench, a widely
-  installed benchmarking tool.
 - Dependency: `@clack/prompts` (consistent with `create-agentback`).
-- A small hand-rolled argument parser — one verb does not justify a command framework.
+- Hand-rolled argument parser — one verb does not justify a command framework.
 
 ```
-agentback deploy <target> [options]
+agentback deploy vercel [options]
 
-  target              cloudflare | vercel | deno
-
-  --name <n>          service name (default: package.json "name")
-  --env KEY=VAL       env/secret, repeatable; forwarded to the platform's own store
-  --env-file <path>   bulk env from a dotenv file
-  --prod              production deploy (default: preview/staging)
-  --edge              Vercel only: Edge runtime instead of the default Node runtime
-  --eject             write entry + config into the repo, then STOP (print next steps)
-  --bundle-assets     embed disk-served static assets into the bundle (see §8)
-  --dry-run           generate + preflight only, never shell out (CI-safe)
-  --skip-mcp-check    bypass the MCP acceptance gate
-  --yes               non-interactive (assume defaults, no prompts)
+  --entry <path>             built module exporting the app builder
+                             (default: detect dist/console.js | dist/main.js | …)
+  --export <name>            builder export name
+                             (default: detect buildApp | buildConsoleApp)
+  --name <n>                 Vercel project/service name (default: package.json "name")
+  --prod                     production deploy (default: preview)
+  --console                  also deploy the dev console (requires auth or
+                             --unsafe-public-console)
+  --unsafe-public-console    acknowledge publishing console internals unauthenticated
+  --eject                    write api/index.ts + vercel.json to repo root, STOP
+                             (do not deploy)
+  --force                    overwrite conflicting vercel.json keys
+  --dry-run                  generate + preflight only, never shell out (CI-safe)
+  --yes                      non-interactive (assume defaults, no prompts)
 ```
 
-## 4. The deploy pipeline (6 stages)
+(No `--env` in Phase 1 — deferred, §12. No `--edge`/`--bundle-assets`/`--skip-mcp-check`
+— Phase 2.)
+
+## 5. The deploy pipeline
 
 ```
-detect → resolve adapter → generate → preflight → deploy → verify
+detect → generate → preflight → deploy → verify
 ```
 
-1. **Detect.** Locate the app entry (convention: `src/application.ts` exporting the
-   `Application` class; overridable later via config). Introspect which `install*`
-   calls are present to classify the app as **REST-only**, **hybrid**, or
-   **MCP-bearing**, and to spot edge-hostile installs (disk-served UIs). This drives
-   the entry template and whether the MCP gate runs.
-2. **Resolve adapter.** Select the `DeployTarget` implementation for `<target>`.
-3. **Generate.** Write the ephemeral edge entry and patch the native platform config
-   into `.agentback/deploy/<target>/` (gitignored). `--eject` writes into the repo
-   instead and stops with printed next steps.
-4. **Preflight.** Verify the platform CLI is installed and authenticated
-   (`wrangler whoami`, `vercel whoami`, `deployctl --version`). Never auto-install;
-   print the exact install/login command on a miss. Run the **bundle doctor** (§7).
-5. **Deploy.** Shell out to the platform CLI, streaming its output. (`--dry-run` stops
-   before this stage.)
-6. **Verify (acceptance gate).** Resolve the live URL; GET `/openapi.json` for REST
-   liveness; if the app bears MCP, run the **MCP smoke** (§6). Report
-   `PASS` / `degraded` / `FAIL` with the underlying error.
+1. **Detect.** Resolve the build entry: `--entry`/`--export`, else detect an exported
+   builder (`buildApp`/`buildConsoleApp`) from a conventional built module. If none is
+   found, **fail with an actionable error** naming the `--entry`/`--export` contract — never
+   guess app wiring. Determine whether `--console` is requested and enforce the §3.2 gate.
+2. **Generate.** Write two files at **repo root**:
+   - `api/index.ts` — inline-templated, memoized async boot, Node-`RequestListener`-typed
+     (decision #5/#6), importing the resolved builder.
+   - `vercel.json` — idempotent order-aware merge (§6). Infer the package manager; leave
+     `buildCommand` alone when unsure; set `includeFiles` only for the assets the chosen
+     surface actually needs (console assets only when `--console`).
+   `--eject` stops here and prints next steps.
+3. **Preflight.** Verify the `vercel` CLI is installed, authenticated, and the project is
+   linked. Never auto-install; print the exact `npm i -g vercel` / `vercel login` /
+   `vercel link` command on a miss. (`--dry-run` stops after this stage.)
+4. **Deploy.** Shell out to `vercel deploy` (`--prod` when requested), streaming output.
+5. **Verify (acceptance gate).** GET the app's **actual** OpenAPI path (detect a custom
+   `openApiSpec.path`/`basePath`; allow optional auth headers) on the returned URL.
+   `200` → `PASS`; non-200 → `FAIL` with the response body.
 
-## 5. The async-boot → edge-fetch bridge (the crux)
+## 6. `vercel.json` merge semantics
 
-AgentBack apps boot **asynchronously** (`await buildApp()` runs DI, route collection,
-OpenAPI emission); `host.fetch` exists only after that await. Edge runtimes want a
-module that **synchronously** exports `default { fetch }`. The generated entry bridges
-the gap by memoizing the boot so the app builds **once per isolate cold start**:
+```
+no vercel.json            → write canonical (PM-inferred, no hardcoded build/public)
+existing, no conflict     → merge required keys, preserve all others, re-runnable no-op
+existing, rewrites present → rewrites is ORDERED: a catch-all can steal/miss routes.
+                             FAIL with a clear conflict message unless --force or --eject.
+existing, key conflict    → warn + skip that key unless --force
+```
+
+The file is the user's; a routine redeploy must never silently drop their keys or reorder
+their `rewrites`.
+
+## 7. Generated `api/index.ts` (shape)
 
 ```ts
-// .agentback/deploy/cloudflare/entry.ts  (generated; shape adapts per target)
-import {buildApp} from '<detected-app>';
+// generated by `agentback deploy vercel`; safe to --eject and edit
+import type {IncomingMessage, ServerResponse} from 'node:http';
+import {<export>} from '<entry>';   // resolved builder, e.g. buildApp
 
-let booted;
-const host = () => (booted ??= buildApp());
+let booted: Promise<(req: IncomingMessage, res: ServerResponse) => void> | undefined;
+const app = () => (booted ??= (async () => {
+  const a = await <export>({listen: false});
+  const server = await a.restServer;
+  return server.expressApp as unknown as (req: IncomingMessage, res: ServerResponse) => void;
+})());
 
-export default {
-  fetch: async (req, env, ctx) => (await host()).fetch(req),
-};
-```
-
-The memoized-boot pattern is identical across targets; only the **leaf** differs by
-runtime:
-
-- **Vercel Node (v1 default, proven by `agentback-demo`):** the leaf is the **Express
-  app** — `handler(req, res)` calls `server.expressApp` (a Node `RequestListener`). No
-  fetch bridge needed; the Node listener is *wanted* here.
-- **Cloudflare / Deno / Vercel Edge:** the leaf is the **fetch handler** —
-  `export default { fetch }` (Workers / Vercel Edge) or
-  `Deno.serve((req) => host().then(h => h.fetch(req)))`.
-
-**Critical for edge leaves only:** the entry imports the **fetch path**, never
-`app.start()` — that is what lets esbuild tree-shake the Node `http` listener
-(`createNodeListener`) out of the bundle (see §7). The Vercel-Node leaf does not need
-this (it deliberately uses Express).
-
-## 6. MCP on edge — already bridged, gated by smoke test
-
-`packages/mcp-http/src/fetch.ts` exports `mountMcpHttpFetch()`, built on the MCP SDK's
-`WebStandardStreamableHTTPServerTransport` (`handleRequest(Request): Promise<Response>`).
-It has full auth parity (OAuth resource-server bearer + strategy auth), per-session DI
-contexts, and a passing integration suite (initialize handshake, `tools/list`, tool
-call, resource read, session pinning). `installMcpHttp` auto-routes to it in `native`
-mode.
-
-So MCP-over-HTTP is **code-complete on the fetch surface**. Two paths to a live `/mcp`:
-
-- **Vercel Node (v1):** mount via the **Express transport** (`mountMcpHttp`, the original
-  req/res path) — already battle-tested, and Vercel Node has req/res. The Vercel adapter
-  wires this into the generated entry, which `agentback-demo` deliberately omits today —
-  so `deploy` produces the **first live `/mcp` on Vercel**.
-- **Cloudflare / Deno / Vercel Edge:** mount via the **fetch transport**
-  (`mountMcpHttpFetch`). Here the residual risk is **runtime** — the tests run under
-  Node's `native` listener, not a real isolate.
-
-Either way, the deploy command closes the gap with an **acceptance gate**: against the
-live deployed URL, run `initialize` → `tools/list` → one tool call. If any step fails,
-the target is reported **degraded** (REST live, MCP failing) with the runtime error,
-surfacing problems at deploy time rather than first agent call. The smoke client reuses
-the JSON-RPC shape from the existing `fetch.integration.ts` tests (or
-`@agentback/mcp-client` if it can target a remote URL).
-
-## 7. `DeployTarget` interface & the bundle doctor
-
-### Interface — the "own later" seam
-
-```ts
-interface DeployTarget {
-  id: 'cloudflare' | 'vercel' | 'deno';
-  generateEntry(app: DetectedApp): string;        // §5 bridge, per target
-  generateConfig(app: DetectedApp, opts): FileEdit[]; // wrangler.toml / vercel.json / deno cfg
-  preflight(): Promise<Diagnostic[]>;             // CLI installed + authed, bundle doctor
-  deploy(opts): Promise<{url: string}>;           // v1: shells the platform CLI
-  smokeUrls(url: string): {rest: string; mcp?: string};
+export default async function handler(req: IncomingMessage, res: ServerResponse) {
+  (await app())(req, res);
 }
 ```
 
-v1 ships three implementations that **shell out**. AWS later implements the *same*
-interface, but its `deploy()` does first-party provisioning (CDK/SST/Pulumi) instead of
-shelling a CLI — graduating "orchestrate → own" without changing the pipeline.
+Memoized so the app builds once per cold start; warm invocations reuse the promise. No
+`@vercel/node` import — an Express app is a Node `RequestListener`.
 
-### Bundle doctor — a concrete allow/deny list, not a vague grep
+## 8. Testing strategy
 
-Investigation of the request-path bundle (`@agentback/core`, `context`, `metadata`,
-`rest`, `mcp`, `mcp-http`) established:
+- **Unit / snapshot (default CI, no creds):**
+  - `generateEntry` — snapshot per resolved (entry, export); REST-only vs `--console`.
+  - `generateConfig` — fresh write; existing file keys preserved; **rewrites conflict →
+    fail unless `--force`/`--eject`**; PM inference; no hardcoded `buildCommand`.
+  - arg parse — each flag; unknown/missing target; `--console` without auth/unsafe → error.
+  - detect — builder found; **builder missing → actionable error**; console-gate enforcement.
+  - preflight — CLI absent / not authed / not linked → each prints its actionable hint.
+  - `--dry-run` — asserts **no shell-out** occurs.
+  - verify — 200 → PASS; non-200 → FAIL with body; custom OpenAPI path honored.
+- **One opt-in, credential-gated e2e:** a real `vercel deploy` of a fixture app, asserting
+  the OpenAPI path returns 200. NOT in default CI; runnable on demand and as a pre-release
+  gate.
 
-- **`reflect-metadata` / decorator DI works on Workers.** It is a pure-JS polyfill that
-  patches global `Reflect`; no Node APIs. The DI engine runs in an isolate. *This is not
-  a blocker.*
-- `node:http`/`node:net`/`ServerResponse`/`IncomingMessage` are **type-only** (erased)
-  or live in the **Node-listener path** (`createNodeListener`), tree-shaken out when the
-  entry exports `fetch`.
-- `node:crypto` (`randomUUID`), `node:stream` (`Readable`), `node:url` are covered by
-  Cloudflare's `nodejs_compat` flag (and `randomUUID` is also a Web global).
-- The **only true incompatibility** is `node:fs/promises` + `node:path` in
-  `host/static.ts` (`serveStaticDir`) — disk reads, no filesystem on Workers. It is
-  **opt-in**: only pulled in by disk-served assets (e.g. swagger-ui in the explorer).
+## 9. Failure modes
 
-The bundle doctor therefore enforces a finite list and the generated `wrangler.toml`
-ships `compatibility_flags = ["nodejs_compat"]` + a recent `compatibility_date`:
+| Codepath | Realistic failure | Test? | Error handling | User sees |
+|---|---|---|---|---|
+| detect | no resolvable builder | unit | actionable error naming `--entry`/`--export` | clear message |
+| generate | `vercel.json` rewrites conflict | unit | fail unless `--force`/`--eject` | clear conflict + how to override |
+| generate | `--eject` over an existing `api/index.ts` | unit | refuse without `--force` (don't clobber user file) | clear message |
+| preflight | vercel CLI missing / not authed / project not linked | unit | exact install/login/link hint | clear message |
+| deploy | first deploy not linked → interactive prompt | — | honor `--yes`/`--name`; surface link step | guided, not a hang |
+| verify | OpenAPI behind auth / custom path / non-200 | unit | detect path + optional headers; FAIL with body | PASS/FAIL + reason |
 
-| Module | Verdict |
-|---|---|
-| `node:crypto`, `node:stream`, `node:url`, `node:buffer` | **Allow** (nodejs_compat-backed) |
-| `node:fs`, `node:fs/promises`, `node:path` (disk), `node:net` | **Hard-fail** — name the offending module *and* the likely culprit (`serveStaticDir` / explorer) |
+No flagged **critical gap** (no path is simultaneously untested, unhandled, and silent).
 
-The **detect** step additionally warns when it sees `installExplorer`/`installInspector`
-targeting an edge deploy without the asset fix from §8.
+## 10. What already exists (reuse, not rebuild)
 
-## 8. Static assets on edge — `AssetSource`
+- **`agentback-demo`** `api/index.ts` + `vercel.json` — the proven pattern Phase 1 codifies.
+- **`create-agentback`** `scaffold.ts` — `detectPackageManager()` is the one helper worth
+  reusing (lift to a shared spot if needed); the dir-copy engine is NOT reused (Phase 1
+  emits 2 files via inline literals).
+- **`@agentback/mcp-http`** `mountMcpHttp` / `mountMcpHttpFetch` — exist, but MCP is Phase 2.
+- **`@agentback/mcp-client`** — the remote MCP smoke client for Phase 2 (not hand-rolled JSON-RPC).
 
-`serveStaticDir(dir)` already returns `(suffix: string) => Promise<Response | undefined>`
-— an interface whose disk dependency is an implementation detail of one factory, not part
-of the contract. We formalize it and add edge-friendly factories. **Disk stays the
-default on Node; nothing breaks.**
+## 11. Build sequence (for the implementation plan)
 
-```ts
-type AssetSource = (suffix: string) => Promise<Response | undefined>;
-
-fromDisk(dir): AssetSource          // (D) current behavior, default on Node
-fromCdn(baseUrl): AssetSource       // (C) proxy/redirect to a public CDN
-fromEmbeddedMap(map): AssetSource   // (B) in-memory bytes, populated at build time
-// fromPlatformAssets(binding)      // (A) deferred — CF assets binding, Vercel static, etc.
-```
-
-In scope for this spec:
-
-- **(D) Formalize `AssetSource`** in `@agentback/rest`. `install*` UI helpers gain an
-  optional `assets?: AssetSource`; default remains `fromDisk`.
-- **(C) CDN-reference the dev UIs.** The explorer/inspector HTML is already an inline
-  string (`new Response(html)`); point its `<script>`/`<link>` at
-  `cdn.jsdelivr.net/npm/swagger-ui-dist@5/…`. Result: explorer + inspector need **no
-  static dir** and work on every target out-of-the-box. (Served swagger subset is
-  ~1.5 MB raw / ~400–500 KB gzipped — worth *not* bundling.)
-- **(B) `--bundle-assets`.** An esbuild plugin reads a user's `serveStaticDir` directory
-  and inlines it as an `fromEmbeddedMap` source for users with custom static dirs.
-  Off by default; mind Workers' script-size limits (1 MB free / up to 10 MB paid, gzipped).
-
-Deferred: **(A) platform-native asset bindings** — the "own later" tier, alongside AWS.
-
-## 9. Secrets & env
-
-Env/secrets are **forwarded, never stored.** `--env KEY=VAL` / `--env-file` map to the
-platform's own mechanism (`wrangler secret put`, `vercel env`, `deployctl --env`). The
-CLI holds no secret state.
-
-## 10. Testing strategy
-
-- **Unit / snapshot:** per adapter, snapshot the generated entry and the patched config
-  files. Pure functions, no network.
-- **`--dry-run` in CI:** runs detect → generate → preflight → bundle doctor and stops
-  before any shell-out. Default CI path; no credentials required.
-- **MCP smoke client:** unit-tested against a local `native` server (reuse
-  `fetch.integration.ts` JSON-RPC shape).
-- **Real edge e2e:** opt-in, credential-gated, NOT in default CI — one deploy per target
-  asserting REST liveness + MCP smoke against the live URL.
-
-## 11. Risks
-
-| Risk | Severity | Mitigation |
-|---|---|---|
-| Decorator/DI metadata on edge | **Resolved — not a blocker** | `reflect-metadata` is portable JS; verified in §7. |
-| Node built-ins in the edge bundle | Medium | Bundle doctor allow/deny list + `nodejs_compat`; entry imports fetch path so the Node listener tree-shakes out. |
-| Disk-served static assets (`serveStaticDir`) | Medium | `AssetSource` seam (§8): CDN dev UIs, opt-in embed; doctor hard-fails the rest with a named culprit. |
-| MCP transport breaks in a real isolate | Medium | Acceptance-gate smoke test reports `degraded` at deploy time, not at first agent call. |
-| Vercel dual runtime (Edge vs Node) | Low | Default to Node functions (full API); `--edge` opts in. |
-
-## 12. Out of scope (this spec)
-
-- **AWS** (Lambda + Function URL / API Gateway) — needs infra provisioning; first
-  consumer of the `DeployTarget` "own later" path.
-- **`agentback.config.ts` `deploy` block** — multi-target / multi-env config, added when
-  the need is real.
-- **Other CLI verbs** (`dev`, `build`, `generate`).
-- **Platform-native asset bindings** (`AssetSource` option A).
-- **Domain / DNS configuration.**
-
-## 13. Build sequence (for the implementation plan)
-
-**Phase 1 — Vercel (reference, rides proven `agentback-demo` patterns):**
-
-1. `@agentback/cli` package skeleton: bins (`agentback`/`abc`), arg parser, `deploy`
+1. `@agentback/cli` skeleton: bins (`agentback`/`abc`), arg parser, `deploy vercel`
    command shell, `--dry-run`.
-2. `DetectedApp` detection + app classification (REST / hybrid / MCP).
-3. `DeployTarget` interface + **Vercel-Node adapter**: generate `api/index.ts`
-   (memoized Express-app leaf), generate `vercel.json` (rewrites + `includeFiles`), wire
-   `mountMcpHttp` for a live `/mcp`, preflight (`vercel whoami`), shell `vercel deploy`.
-4. MCP smoke client + acceptance gate (first live-`/mcp`-on-Vercel proof).
-5. `--eject`, `--env`/secrets forwarding (`vercel env`), docs.
+2. Detect: resolve `--entry`/`--export` or detected builder; console-gate enforcement;
+   actionable errors.
+3. Generate: inline `api/index.ts` (Node-typed, memoized) + order-aware idempotent
+   `vercel.json` merge (PM-inferred). `--eject`.
+4. Preflight (`vercel` installed/authed/linked) + deploy (shell `vercel deploy`) + verify
+   (actual OpenAPI path → 200).
+5. Unit/snapshot suite + one opt-in credential-gated e2e. Docs.
 
-**Phase 2 — edge runtimes (the harder, isolate-specific work):**
+## 12. NOT in scope (deferred to Phase 2 — separate spec)
 
-6. Fetch-handler entry leaf (§5) + bundle doctor (§7) + `compatibility_flags`.
-7. `AssetSource` (D) + CDN dev UIs (C) in `@agentback/rest` + explorer/inspector.
-8. **Cloudflare Workers** adapter, then **Deno Deploy** adapter (+ optional Vercel `--edge`).
-9. `--bundle-assets` esbuild embed (B).
-10. Refresh `docs/guides/deploy-to-edge.md`; correct the stale `hello-hosts` MCP caveat.
+| Deferred | Why |
+|---|---|
+| **Cloudflare Workers / Deno Deploy** | Edge isolates: fetch-handler leaf, bundle doctor (`nodejs_compat`, tree-shaking), `compatibility_flags`. Unproven, isolate-specific. |
+| **Live MCP-over-HTTP on serverless** | Needs a stateless MCP transport mode (`sessionIdGenerator: undefined`) + target choice (§3.1). |
+| **`AssetSource` (CDN/embed) for disk-served UIs** | Only matters where there's no filesystem (edge); Vercel Node has one + `includeFiles`. |
+| **`DeployTarget` interface** | Extract from two real targets in Phase 2, not designed against one. |
+| **`--env`/secret forwarding** | Build-vs-runtime-vs-local semantics ambiguous; not needed for Phase 1 acceptance. |
+| **`agentback.config.ts` deploy block; other CLI verbs; domain/DNS** | Add when the need is real. |
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | clean (SCOPE_REDUCED) | 8 issues, 0 critical gaps |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
+| Outside Voice | `/codex review` | Independent 2nd opinion | 1 | issues_found | 12 raised, 9 folded, 0 open |
+
+- **CODEX:** found 12 missed issues; the load-bearing 6 (root-discovery, fake app-detect contract, public-console security, `@vercel/node` dep, ordered-`rewrites` merge, custom OpenAPI path) verified against code and folded. Drove the cut to REST-only + explicit entry contract + dropping the `DeployTarget` abstraction.
+- **CROSS-MODEL:** Review kept the `DeployTarget` interface; Codex called it premature. User accepted Codex — deferred to Phase 2. Otherwise no disagreement.
+- **VERDICT:** ENG CLEARED (SCOPE_REDUCED to Phase 1) — ready to implement once the spec is committed.
+
+NO UNRESOLVED DECISIONS
