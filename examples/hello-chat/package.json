@@ -14,6 +14,7 @@
     "@agentback/chat": "workspace:*",
     "@agentback/core": "workspace:*",
     "@agentback/rest": "workspace:*",
+    "@agentback/security": "workspace:*",
     "@chat-adapter/slack": "^4.31.0",
     "@chat-adapter/state-memory": "^4.31.0",
     "@chat-adapter/telegram": "^4.31.0",

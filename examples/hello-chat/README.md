@@ -9,6 +9,12 @@ A `@chatBot` handler (`src/support-bot.ts`) is a DI service: it `@inject`s a
 many platforms; the reply logic lives in your handler (this example just echoes a
 greeting — swap in an AI SDK stream or a tool call).
 
+It also shows **identity**: a `principal` resolver (configured at `installChat` /
+`register`) maps the parsed sender to a `UserProfile`, which the handler reads via
+`@inject(SecurityBindings.USER)` — chat authorizes like REST and MCP. It's a
+*method* inject because `@chatBot` is a singleton (see the package README for the
+scope rule).
+
 ## Build
 
 ```bash

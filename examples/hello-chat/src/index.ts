@@ -9,6 +9,7 @@
 
 import {isMain} from '@agentback/core';
 import {RestApplication} from '@agentback/rest';
+import {securityId} from '@agentback/security';
 import {ChatComponent, chatJsonVerify, installChat} from '@agentback/chat';
 import {Chat} from 'chat';
 import {createTelegramAdapter} from '@chat-adapter/telegram';
@@ -54,7 +55,15 @@ export async function main(): Promise<void> {
     state: createMemoryState(),
   });
 
-  const handle = await installChat(app, {chat});
+  const handle = await installChat(app, {
+    chat,
+    // Establish the principal from the parsed sender — the chat analog of an
+    // auth guard. A real app would look the user up / map roles here.
+    principal: sender =>
+      sender
+        ? {[securityId]: sender.userId, name: sender.userName ?? sender.userId}
+        : undefined,
+  });
   await app.start();
 
   const {url} = await app.restServer;

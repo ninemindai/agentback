@@ -11,6 +11,7 @@
 //   3. DM your bot — it replies through the AgentBack DI handler.
 
 import {RestApplication} from '@agentback/rest';
+import {securityId} from '@agentback/security';
 import {ChatBindings, ChatComponent, type ChatServer} from '@agentback/chat';
 import {Chat} from 'chat';
 import {createTelegramAdapter} from '@chat-adapter/telegram';
@@ -41,7 +42,12 @@ const chat = new Chat({
 // Wire @chatBot handlers onto the runtime (the discovery half of installChat,
 // without the webhook mount that polling doesn't need), then start polling.
 const server = await app.get<ChatServer>(ChatBindings.SERVER);
-await server.register(chat);
+await server.register(chat, {
+  principal: sender =>
+    sender
+      ? {[securityId]: sender.userId, name: sender.userName ?? sender.userId}
+      : undefined,
+});
 await chat.initialize();
 
 console.log('Polling Telegram — DM your bot now. Ctrl-C to stop.');
