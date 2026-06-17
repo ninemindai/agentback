@@ -7,6 +7,10 @@ auth + dispatch hooks + confirmation/idempotency + streaming + uploads +
 error-envelope pipeline as the Express server, as a runtime-neutral handler.
 One app, hosted by whatever owns the port.
 
+> A polished, standalone version of this diagram lives at
+> [`../architecture/diagrams/http-hosts.html`](../architecture/diagrams/http-hosts.html)
+> — open it in a browser (with Copy / PNG / PDF export).
+
 ```mermaid
 graph TD
   subgraph App["RestApplication — one DI Context"]

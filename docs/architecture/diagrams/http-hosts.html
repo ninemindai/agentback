@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgentBack HTTP Hosts</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'JetBrains Mono', monospace; background: #020617; min-height: 100vh; padding: 2rem; color: white; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot { width: 12px; height: 12px; background: #34d399; border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container { background: rgba(15, 23, 42, 0.5); border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto; }
+    svg { width: 100%; min-width: 940px; display: block; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 2rem; }
+    .card { background: rgba(15, 23, 42, 0.5); border-radius: 0.75rem; border: 1px solid #1e293b; padding: 1.25rem; }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .card-dot.cyan { background: #22d3ee; }
+    .card-dot.emerald { background: #34d399; }
+    .card-dot.violet { background: #a78bfa; }
+    .card-dot.amber { background: #fbbf24; }
+    .card-dot.rose { background: #fb7185; }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
+    .card li { margin-bottom: 0.375rem; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+    .toolbar { display: flex; gap: 0.5rem; margin-left: auto; flex-shrink: 0; align-items: center; }
+    .toolbar-toggle { background: transparent; border: none; color: #475569; cursor: pointer; font-size: 1.25rem; line-height: 1; padding: 0.25rem 0.5rem; border-radius: 0.375rem; transition: color 0.2s, background 0.2s; }
+    .toolbar-toggle:hover { color: #94a3b8; background: rgba(30, 41, 59, 0.5); }
+    .toolbar-actions { display: none; gap: 0.5rem; }
+    .toolbar.expanded .toolbar-actions { display: flex; }
+    .toolbar-actions button { background: rgba(30, 41, 59, 0.8); border: 1px solid #334155; color: #94a3b8; padding: 0.375rem 0.75rem; border-radius: 0.375rem; font-family: inherit; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+    .toolbar-actions button:hover { background: rgba(51, 65, 85, 0.8); color: white; border-color: #475569; }
+    @media print { body { background: #020617; padding: 1rem; } .toolbar { display: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="container" id="report-container">
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>AgentBack — HTTP Hosts</h1>
+        <div class="toolbar">
+          <div class="toolbar-actions">
+            <button onclick="copyAsImage(this)">📋 Copy</button>
+            <button onclick="downloadPNG(this)">🖼️ PNG</button>
+            <button onclick="downloadPDF(this)">📄 PDF</button>
+          </div>
+          <button class="toolbar-toggle" onclick="this.parentElement.classList.toggle('expanded')" title="Export options" aria-label="Export options">⋯</button>
+        </div>
+      </div>
+      <p class="subtitle">One <code>fetchHandler()</code> — REST + MCP + OpenAPI — hosted by Node, Fastify, Hono, Bun, Deno, or Workers</p>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1100 770">
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <marker id="arrowhead-mcp" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- ===== Boundaries (transparent — drawn early) ===== -->
+        <!-- HTTP hosts region -->
+        <rect x="132" y="72" width="252" height="600" rx="12" fill="rgba(251, 191, 36, 0.05)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="146" y="92" fill="#fbbf24" font-size="10" font-weight="600">HTTP hosts — own the TCP port</text>
+
+        <!-- DI Context region -->
+        <rect x="878" y="116" width="202" height="506" rx="12" fill="rgba(52, 211, 153, 0.04)" stroke="#34d399" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="892" y="136" fill="#34d399" font-size="10" font-weight="600">RestApplication — one DI Context</text>
+
+        <!-- ===== Request-flow arrows (drawn before boxes → behind them) ===== -->
+        <!-- Client → hosts -->
+        <line x1="118" y1="384" x2="130" y2="384" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <!-- 6 hosts → fetchHandler (convergence fan) -->
+        <line x1="364" y1="143" x2="446" y2="306" stroke="#fbbf24" stroke-width="1.3" marker-end="url(#arrowhead)"/>
+        <line x1="364" y1="231" x2="446" y2="328" stroke="#fbbf24" stroke-width="1.3" marker-end="url(#arrowhead)"/>
+        <line x1="364" y1="319" x2="446" y2="350" stroke="#fbbf24" stroke-width="1.3" marker-end="url(#arrowhead)"/>
+        <line x1="364" y1="407" x2="446" y2="382" stroke="#fbbf24" stroke-width="1.3" marker-end="url(#arrowhead)"/>
+        <line x1="364" y1="495" x2="446" y2="404" stroke="#fbbf24" stroke-width="1.3" marker-end="url(#arrowhead)"/>
+        <line x1="364" y1="583" x2="446" y2="426" stroke="#fbbf24" stroke-width="1.3" marker-end="url(#arrowhead)"/>
+        <!-- fetchHandler → RestHandler -->
+        <line x1="602" y1="366" x2="658" y2="366" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <text x="630" y="358" fill="#94a3b8" font-size="8" text-anchor="middle">dispatch</text>
+        <!-- RestHandler → DI bindings -->
+        <line x1="842" y1="366" x2="876" y2="366" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <text x="859" y="358" fill="#94a3b8" font-size="7" text-anchor="middle">findByTag</text>
+
+        <!-- MCP registration accent (build-time, dashed, routed over the top) -->
+        <path d="M 960 248 L 960 102 L 524 102 L 524 286" fill="none" stroke="#a78bfa" stroke-width="1.3" stroke-dasharray="5,4" marker-end="url(#arrowhead-mcp)"/>
+        <text x="742" y="96" fill="#a78bfa" font-size="8" text-anchor="middle">mountMcpHttpFetch · addFetchHandler / addFetchPrefix</text>
+
+        <!-- ===== Client ===== -->
+        <rect x="24" y="352" width="94" height="64" rx="6" fill="#0f172a"/>
+        <rect x="24" y="352" width="94" height="64" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="71" y="380" fill="white" font-size="11" font-weight="600" text-anchor="middle">Client</text>
+        <text x="71" y="396" fill="#94a3b8" font-size="8" text-anchor="middle">app · agent</text>
+        <text x="71" y="409" fill="#94a3b8" font-size="8" text-anchor="middle">MCP client</text>
+
+        <!-- ===== Host boxes (amber) ===== -->
+        <!-- Node native -->
+        <rect x="148" y="108" width="216" height="70" rx="6" fill="#0f172a"/>
+        <rect x="148" y="108" width="216" height="70" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="256" y="132" fill="white" font-size="11" font-weight="600" text-anchor="middle">Node http</text>
+        <text x="256" y="149" fill="#94a3b8" font-size="9" text-anchor="middle">listener: 'native'</text>
+        <text x="256" y="165" fill="#fbbf24" font-size="7" text-anchor="middle">createNodeListener(fetchHandler())</text>
+
+        <!-- Express -->
+        <rect x="148" y="196" width="216" height="70" rx="6" fill="#0f172a"/>
+        <rect x="148" y="196" width="216" height="70" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="256" y="220" fill="white" font-size="11" font-weight="600" text-anchor="middle">Express</text>
+        <text x="256" y="237" fill="#94a3b8" font-size="9" text-anchor="middle">default listener</text>
+        <text x="256" y="253" fill="#fbbf24" font-size="7" text-anchor="middle">raw req/res routes supported here</text>
+
+        <!-- Fastify -->
+        <rect x="148" y="284" width="216" height="70" rx="6" fill="#0f172a"/>
+        <rect x="148" y="284" width="216" height="70" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="256" y="308" fill="white" font-size="11" font-weight="600" text-anchor="middle">Fastify</text>
+        <text x="256" y="325" fill="#94a3b8" font-size="9" text-anchor="middle">installFastifyHost(fastify, host)</text>
+        <text x="256" y="341" fill="#fbbf24" font-size="7" text-anchor="middle">non-greedy wildcard fallback</text>
+
+        <!-- Hono -->
+        <rect x="148" y="372" width="216" height="70" rx="6" fill="#0f172a"/>
+        <rect x="148" y="372" width="216" height="70" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="256" y="396" fill="white" font-size="11" font-weight="600" text-anchor="middle">Hono</text>
+        <text x="256" y="413" fill="#94a3b8" font-size="9" text-anchor="middle">hono.all('*', c =&gt; host.fetch(c.req.raw))</text>
+        <text x="256" y="429" fill="#fbbf24" font-size="7" text-anchor="middle">Node / Bun / Deno / Workers</text>
+
+        <!-- Bun -->
+        <rect x="148" y="460" width="216" height="70" rx="6" fill="#0f172a"/>
+        <rect x="148" y="460" width="216" height="70" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="256" y="484" fill="white" font-size="11" font-weight="600" text-anchor="middle">Bun</text>
+        <text x="256" y="501" fill="#94a3b8" font-size="9" text-anchor="middle">Bun.serve({ fetch: host.fetch })</text>
+        <text x="256" y="517" fill="#fbbf24" font-size="7" text-anchor="middle">native fetch host — no adapter</text>
+
+        <!-- Deno / Workers -->
+        <rect x="148" y="548" width="216" height="70" rx="6" fill="#0f172a"/>
+        <rect x="148" y="548" width="216" height="70" rx="6" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="256" y="572" fill="white" font-size="11" font-weight="600" text-anchor="middle">Deno · Workers</text>
+        <text x="256" y="589" fill="#94a3b8" font-size="9" text-anchor="middle">export default { fetch }</text>
+        <text x="256" y="605" fill="#fbbf24" font-size="7" text-anchor="middle">edge runtimes</text>
+
+        <!-- ===== fetchHandler() seam (emerald, emphasized) ===== -->
+        <rect x="446" y="286" width="156" height="160" rx="8" fill="#0f172a"/>
+        <rect x="446" y="286" width="156" height="160" rx="8" fill="rgba(6, 78, 59, 0.55)" stroke="#34d399" stroke-width="2"/>
+        <text x="524" y="312" fill="white" font-size="13" font-weight="700" text-anchor="middle">fetchHandler()</text>
+        <text x="524" y="330" fill="#22d3ee" font-size="9" text-anchor="middle">fetch(Request)</text>
+        <text x="524" y="343" fill="#22d3ee" font-size="9" text-anchor="middle">→ Response</text>
+        <line x1="466" y1="356" x2="582" y2="356" stroke="#1e5e4a" stroke-width="1"/>
+        <text x="524" y="376" fill="white" font-size="10" font-weight="600" text-anchor="middle">REST · MCP</text>
+        <text x="524" y="391" fill="#94a3b8" font-size="8" text-anchor="middle">OpenAPI · UIs</text>
+        <text x="524" y="406" fill="#94a3b8" font-size="8" text-anchor="middle">/openapi.json · /llms.txt</text>
+        <text x="524" y="429" fill="#34d399" font-size="7" text-anchor="middle">one Router, every host</text>
+
+        <!-- ===== RestHandler pipeline (backend) ===== -->
+        <rect x="660" y="300" width="182" height="132" rx="6" fill="#0f172a"/>
+        <rect x="660" y="300" width="182" height="132" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="751" y="324" fill="white" font-size="11" font-weight="600" text-anchor="middle">RestHandler</text>
+        <text x="751" y="345" fill="#94a3b8" font-size="8" text-anchor="middle">auth → authz → confirm</text>
+        <text x="751" y="361" fill="#94a3b8" font-size="8" text-anchor="middle">validate → DI invoke</text>
+        <text x="751" y="377" fill="#94a3b8" font-size="8" text-anchor="middle">output validate → idem</text>
+        <text x="751" y="395" fill="#94a3b8" font-size="8" text-anchor="middle">stream · upload · errors</text>
+        <text x="751" y="417" fill="#34d399" font-size="7" text-anchor="middle">identical on every host</text>
+
+        <!-- ===== DI Context bindings ===== -->
+        <!-- @api controllers -->
+        <rect x="896" y="152" width="166" height="84" rx="6" fill="#0f172a"/>
+        <rect x="896" y="152" width="166" height="84" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="979" y="180" fill="white" font-size="11" font-weight="600" text-anchor="middle">@api controllers</text>
+        <text x="979" y="198" fill="#94a3b8" font-size="8" text-anchor="middle">@get / @post + Zod</text>
+        <text x="979" y="214" fill="#94a3b8" font-size="8" text-anchor="middle">[controller] tag</text>
+
+        <!-- @tool classes (MCP) -->
+        <rect x="896" y="248" width="166" height="84" rx="6" fill="#0f172a"/>
+        <rect x="896" y="248" width="166" height="84" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="979" y="276" fill="white" font-size="11" font-weight="600" text-anchor="middle">@tool classes</text>
+        <text x="979" y="294" fill="#94a3b8" font-size="8" text-anchor="middle">MCP over HTTP</text>
+        <text x="979" y="310" fill="#a78bfa" font-size="7" text-anchor="middle">OAuth bearer · strategyAuth</text>
+
+        <!-- install* UIs -->
+        <rect x="896" y="344" width="166" height="84" rx="6" fill="#0f172a"/>
+        <rect x="896" y="344" width="166" height="84" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="979" y="372" fill="white" font-size="11" font-weight="600" text-anchor="middle">install* UIs</text>
+        <text x="979" y="390" fill="#94a3b8" font-size="8" text-anchor="middle">explorer · console</text>
+        <text x="979" y="406" fill="#22d3ee" font-size="7" text-anchor="middle">addFetchPrefix (static)</text>
+
+        <!-- framework routes -->
+        <rect x="896" y="440" width="166" height="70" rx="6" fill="#0f172a"/>
+        <rect x="896" y="440" width="166" height="70" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="979" y="466" fill="white" font-size="10" font-weight="600" text-anchor="middle">framework routes</text>
+        <text x="979" y="484" fill="#94a3b8" font-size="8" text-anchor="middle">/openapi.json</text>
+        <text x="979" y="498" fill="#94a3b8" font-size="8" text-anchor="middle">/llms.txt</text>
+
+        <!-- ===== Legend (below all boundaries) ===== -->
+        <text x="146" y="706" fill="white" font-size="10" font-weight="600">Legend</text>
+        <rect x="210" y="698" width="16" height="10" rx="2" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="232" y="706" fill="#94a3b8" font-size="8">Host / runtime</text>
+        <rect x="340" y="698" width="16" height="10" rx="2" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1"/>
+        <text x="362" y="706" fill="#94a3b8" font-size="8">Core / REST</text>
+        <rect x="462" y="698" width="16" height="10" rx="2" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="484" y="706" fill="#94a3b8" font-size="8">MCP</text>
+        <rect x="540" y="698" width="16" height="10" rx="2" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="562" y="706" fill="#94a3b8" font-size="8">UI</text>
+        <rect x="600" y="698" width="16" height="10" rx="2" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1"/>
+        <text x="622" y="706" fill="#94a3b8" font-size="8">Client / framework routes</text>
+        <line x1="800" y1="703" x2="824" y2="703" stroke="#a78bfa" stroke-width="1.3" stroke-dasharray="5,4"/>
+        <text x="830" y="706" fill="#94a3b8" font-size="8">Build-time registration</text>
+      </svg>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot emerald"></div>
+          <h3>The single seam</h3>
+        </div>
+        <ul>
+          <li>• <code>RestServer.fetchHandler()</code> → <code>fetch(Request): Response</code></li>
+          <li>• Same RestHandler pipeline as Express — full parity</li>
+          <li>• <code>addFetchHandler</code> (exact paths) · <code>addFetchPrefix</code> (static)</li>
+          <li>• <code>listen: false</code> hands the port to the host</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot amber"></div>
+          <h3>The hosts</h3>
+        </div>
+        <ul>
+          <li>• Node native — <code>rest.listener: 'native'</code></li>
+          <li>• Express — default; raw req/res routes live here</li>
+          <li>• Fastify — <code>installFastifyHost</code> (non-greedy)</li>
+          <li>• Hono · Bun · Deno · Cloudflare Workers</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot violet"></div>
+          <h3>MCP on any host</h3>
+        </div>
+        <ul>
+          <li>• <code>mountMcpHttpFetch</code> — Web Streamable HTTP transport</li>
+          <li>• <code>installMcpHttp</code> auto-selects fetch vs Express</li>
+          <li>• OAuth bearer + strategy auth, session pinning</li>
+          <li>• REST + MCP + OpenAPI from one listener</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="footer">AgentBack · one fetchHandler() → Node · Express · Fastify · Hono · Bun · Deno · Workers · see docs/guides/deploy-to-edge.md</p>
+  </div>
+
+  <script>
+    async function copyAsImage(btn) {
+      const orig = btn.textContent;
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        btn.textContent = '✓ Copied!';
+      } catch (e) {
+        btn.textContent = '✗ Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function downloadPNG(btn) {
+      const orig = btn.textContent;
+      btn.textContent = '⏳ ...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const link = document.createElement('a');
+        link.download = 'agentback-http-hosts.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        btn.textContent = '✓ Done!';
+      } catch (e) {
+        btn.textContent = '✗ Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function downloadPDF(btn) {
+      const orig = btn.textContent;
+      btn.textContent = '⏳ ...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const imgData = canvas.toDataURL('image/png');
+        const { jsPDF } = window.jspdf;
+        const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
+        const pdf = new jsPDF({ orientation, unit: 'px', format: [canvas.width, canvas.height], hotfixes: ['px_scaling'] });
+        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+        pdf.save('agentback-http-hosts.pdf');
+        btn.textContent = '✓ Done!';
+      } catch (e) {
+        btn.textContent = '✗ Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+  </script>
+</body>
+</html>

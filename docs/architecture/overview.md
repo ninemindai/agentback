@@ -94,6 +94,9 @@ parse input → weave injects → apply method → validate output.
 
 ## How HTTP hosts work
 
+> A polished, standalone version of the hosts diagram below lives at
+> [`diagrams/http-hosts.html`](diagrams/http-hosts.html) — open it in a browser.
+
 The dispatch pipeline above is **host-agnostic**. `RestServer.fetchHandler()`
 exposes it as one runtime-neutral `fetch(Request): Response` — the same routing,
 validation, DI, auth, hooks, streaming, uploads, and error envelopes the Express
