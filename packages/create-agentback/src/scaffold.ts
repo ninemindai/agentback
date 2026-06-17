@@ -38,6 +38,12 @@ export interface ScaffoldOptions {
    * and `rest` templates (the stdio `mcp` template has no HTTP server).
    */
   console?: boolean;
+  /**
+   * HTTP host options baked into the scaffolded RestApplication config.
+   * Rejected for the stdio `mcp` template (no REST server). Omitted keys fall
+   * back to framework defaults (3000/127.0.0.1) and runtime PORT/HOST env.
+   */
+  host?: {port?: number; host?: string; basePath?: string};
 }
 
 export interface ScaffoldResult {
@@ -50,6 +56,48 @@ const NAME_RE = /^(?:@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
 
 /** Files that get `{{name}}` / `{{version}}` substitution after copy. */
 const SUBSTITUTED = /\.(json|md|ts)$/;
+
+/** Templates that have an HTTP server (and thus accept host options). */
+const REST_TEMPLATES: readonly TemplateName[] = ['hybrid', 'rest'];
+
+/** Render the `rest: {...}` config body from host options (no surrounding braces). */
+function renderRestConfig(host?: ScaffoldOptions['host']): string {
+  if (!host) return '';
+  const parts: string[] = [];
+  if (host.port !== undefined) parts.push(`port: ${host.port}`);
+  if (host.host !== undefined) parts.push(`host: '${host.host}'`);
+  if (host.basePath !== undefined) parts.push(`basePath: '${host.basePath}'`);
+  return parts.length ? `rest: {${parts.join(', ')}}` : '';
+}
+
+/**
+ * Fill a named anchor in a file, re-emitting the anchor so multiple capabilities
+ * can stack at the same point. `kind: 'line'` targets `// {{agentback:tag}}`;
+ * `kind: 'inline'` targets the inline block-comment form (used inside super()).
+ */
+function fillAnchor(
+  text: string,
+  tag: string,
+  insert: string,
+  kind: 'line' | 'inline' = 'line',
+): string {
+  if (kind === 'inline') {
+    const re = new RegExp(`/\\* \\{\\{agentback:${tag}\\}\\} \\*/`);
+    return text.replace(re, insert);
+  }
+  const re = new RegExp(`([ \\t]*)// \\{\\{agentback:${tag}\\}\\}`);
+  return text.replace(
+    re,
+    (_m, indent: string) => `${indent}${insert}\n${indent}// {{agentback:${tag}}}`,
+  );
+}
+
+/** Remove every remaining `{{agentback:*}}` anchor (line + inline forms). */
+function stripAnchors(text: string): string {
+  return text
+    .replace(/^[ \t]*\/\/ \{\{agentback:[^}]+\}\}\n/gm, '')
+    .replace(/\/\* \{\{agentback:[^}]+\}\} \*\//g, '');
+}
 
 function templatesRoot(): string {
   // dist/scaffold.js → ../templates (the templates dir ships uncompiled).
@@ -180,6 +228,22 @@ export function scaffold(options: ScaffoldOptions): ScaffoldResult {
     } else {
       rmSync(consoleEntry);
     }
+  }
+
+  // Host options → RestApplication config. Rejected for the stdio mcp template.
+  if (options.host && !REST_TEMPLATES.includes(template)) {
+    throw new Error(
+      `host options are not supported for the '${template}' template; it has ` +
+        `no HTTP server. Use --template ${REST_TEMPLATES.join(' or ')}.`,
+    );
+  }
+  const appTsPath = path.join(dir, 'src', 'application.ts');
+  if (existsSync(appTsPath)) {
+    let appTs = readFileSync(appTsPath, 'utf8');
+    const restConfig = renderRestConfig(options.host);
+    if (restConfig) appTs = fillAnchor(appTs, 'rest-config', restConfig, 'inline');
+    appTs = stripAnchors(appTs);
+    writeFileSync(appTsPath, appTs);
   }
 
   const version = options.version ?? ownVersion();
