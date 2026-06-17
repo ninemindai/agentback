@@ -72,4 +72,14 @@ describe('runVercelDeploy', () => {
       runVercelDeploy(parseDeployArgs(['vercel', '--eject']), {exec: fakeExec({}), fetchFn: okFetch, cwd}),
     ).rejects.toThrow(/force/i);
   });
+
+  it('bare --entry path produces ../-prefixed import in api/index.ts', async () => {
+    await runVercelDeploy(
+      parseDeployArgs(['vercel', '--eject', '--entry', 'dist/main.js', '--export', 'buildApp']),
+      {exec: fakeExec({}), fetchFn: okFetch, cwd},
+    );
+    const apiContent = readFileSync(path.join(cwd, 'api', 'index.ts'), 'utf8');
+    expect(apiContent).toContain("from '../dist/main.js'");
+    expect(apiContent).not.toContain("from 'dist/main.js'");
+  });
 });
