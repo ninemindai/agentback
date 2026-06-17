@@ -30,12 +30,40 @@ platforms' own CLIs and leave a seam for first-party provisioning later.
 | Decision | Choice | Rationale |
 |---|---|---|
 | Deploy model | **Hybrid — orchestrate now, own later** | Thin orchestrator over platform CLIs ships fast; `DeployTarget` interface lets AWS graduate to first-party provisioning without touching the pipeline. |
-| v1 targets | **Cloudflare Workers, Vercel, Deno Deploy** | All converge on the Web `fetch` contract and ship one-command CLIs. AWS deferred (needs infra provisioning, not just a CLI handoff). |
+| v1 targets | **Vercel (reference, first), then Cloudflare Workers, Deno Deploy** | **Vercel is the reference adapter** because `agentback-demo` is already deployed there in production (§2.5) — the Vercel-Node path is proven, so it ships first; Workers/Deno follow with the harder edge-isolate work. AWS deferred (needs infra provisioning, not just a CLI handoff). |
 | Config surface | **Zero-config + flags now**; patch native platform files; reserve `agentback.config.ts` `deploy` block for later | Smallest first release; power users keep the platform knobs they already know. |
 | Edge entrypoint | **Generated ephemerally, `--eject` to commit** | Repo stays clean and entry always matches the CLI version; ejection is the escape hatch for customization. |
 | MCP on edge | **Bridge already exists**; deploy carries a per-target MCP smoke test as the acceptance gate | `mountMcpHttpFetch` (`WebStandardStreamableHTTPServerTransport`) already serves MCP on the fetch surface with auth parity + passing tests. Residual risk is runtime, not code — the smoke test catches it. |
 | CLI scope | **Deploy-only `@agentback/cli`** | One verb, smallest surface. `dev`/`build`/`generate` are later specs. |
 | Static assets on edge | **Formalize `AssetSource` (D) + CDN dev UIs (C) + opt-in `--bundle-assets` (B)**; defer platform-native (A) | `serveStaticDir`'s disk read is the only true edge incompatibility, and it is opt-in. Fix it at the seam so dev UIs work on edge out-of-the-box. |
+
+## 2.5. Prior art: `agentback-demo` on Vercel (the reference)
+
+`agentback-demo` (`weather-mcp`) is already deployed to Vercel and is the concrete
+pattern the Vercel adapter codifies. Three things it establishes:
+
+- **Memoized async boot is production-proven.** `api/index.ts` does
+  `appPromise ??= buildExpressApp()` and exports a Node `handler(req, res)` that calls
+  `server.expressApp` — the §5 bridge, with the **Express app** as the leaf (Vercel Node
+  runtime). Cold start builds; warm invocations reuse the promise.
+- **`vercel.json` is the config template.** `buildCommand`, `outputDirectory: public`,
+  `rewrites` all paths to `/api`, and `functions["api/index.ts"].includeFiles` to ship
+  `@agentback/console/dist/client` + `swagger-ui-dist` into the function bundle.
+- **It deliberately omits live MCP.** The entry comment: *"This console entry does not
+  mount the Streamable HTTP MCP transport, so there is no `/mcp` route here."* So
+  `deploy` wiring MCP into the generated entry — and proving it with the smoke test
+  (§6) — delivers a live `/mcp` on Vercel for the first time, not a redundant check.
+
+**Consequences for v1 scope:**
+
+- On **Vercel Node**, `serveStaticDir` works unmodified (real filesystem +
+  `includeFiles`). The `AssetSource`/CDN/embed work (§8) is a **Workers/Deno** concern
+  and lands with those adapters, not in the Vercel-first slice.
+- On **Vercel Node**, MCP can mount via the **Express transport** (`mountMcpHttp`, the
+  original req/res path) — no fetch transport required. The fetch transport
+  (`mountMcpHttpFetch`) is needed only for Edge/Workers/Deno.
+- The **bundle doctor** (§7) is likewise an edge-runtime guard; Vercel Node has Node
+  built-ins and a filesystem, so it lands with the edge adapters.
 
 ## 3. CLI shape
 
@@ -112,13 +140,20 @@ export default {
 };
 ```
 
-- **Cloudflare:** `export default { fetch }` as above.
-- **Deno Deploy:** `Deno.serve((req) => host().then(h => h.fetch(req)))` or default export.
-- **Vercel:** Node function handler (default) or Edge function `export default` (`--edge`).
+The memoized-boot pattern is identical across targets; only the **leaf** differs by
+runtime:
 
-**Critical:** the entry imports the **fetch path**, never `app.start()`. That is what
-lets esbuild tree-shake the Node `http` listener (`createNodeListener`) out of the edge
-bundle (see §7).
+- **Vercel Node (v1 default, proven by `agentback-demo`):** the leaf is the **Express
+  app** — `handler(req, res)` calls `server.expressApp` (a Node `RequestListener`). No
+  fetch bridge needed; the Node listener is *wanted* here.
+- **Cloudflare / Deno / Vercel Edge:** the leaf is the **fetch handler** —
+  `export default { fetch }` (Workers / Vercel Edge) or
+  `Deno.serve((req) => host().then(h => h.fetch(req)))`.
+
+**Critical for edge leaves only:** the entry imports the **fetch path**, never
+`app.start()` — that is what lets esbuild tree-shake the Node `http` listener
+(`createNodeListener`) out of the bundle (see §7). The Vercel-Node leaf does not need
+this (it deliberately uses Express).
 
 ## 6. MCP on edge — already bridged, gated by smoke test
 
@@ -129,14 +164,22 @@ contexts, and a passing integration suite (initialize handshake, `tools/list`, t
 call, resource read, session pinning). `installMcpHttp` auto-routes to it in `native`
 mode.
 
-So MCP-over-HTTP is **code-complete on the fetch surface**. The residual risk is
-**runtime** — those tests run under Node's `native` listener, not a real Workers isolate
-or Deno Deploy. The deploy command closes that gap with an **acceptance gate**: against
-the live deployed URL, run `initialize` → `tools/list` → one tool call. If any step
-fails, the target is reported **degraded** (REST live, MCP failing) with the runtime
-error, surfacing isolate incompatibilities at deploy time rather than first agent call.
-The smoke client reuses the JSON-RPC shape from the existing `fetch.integration.ts`
-tests (or `@agentback/mcp-client` if it can target a remote URL).
+So MCP-over-HTTP is **code-complete on the fetch surface**. Two paths to a live `/mcp`:
+
+- **Vercel Node (v1):** mount via the **Express transport** (`mountMcpHttp`, the original
+  req/res path) — already battle-tested, and Vercel Node has req/res. The Vercel adapter
+  wires this into the generated entry, which `agentback-demo` deliberately omits today —
+  so `deploy` produces the **first live `/mcp` on Vercel**.
+- **Cloudflare / Deno / Vercel Edge:** mount via the **fetch transport**
+  (`mountMcpHttpFetch`). Here the residual risk is **runtime** — the tests run under
+  Node's `native` listener, not a real isolate.
+
+Either way, the deploy command closes the gap with an **acceptance gate**: against the
+live deployed URL, run `initialize` → `tools/list` → one tool call. If any step fails,
+the target is reported **degraded** (REST live, MCP failing) with the runtime error,
+surfacing problems at deploy time rather than first agent call. The smoke client reuses
+the JSON-RPC shape from the existing `fetch.integration.ts` tests (or
+`@agentback/mcp-client` if it can target a remote URL).
 
 ## 7. `DeployTarget` interface & the bundle doctor
 
@@ -255,11 +298,21 @@ CLI holds no secret state.
 
 ## 13. Build sequence (for the implementation plan)
 
-1. `@agentback/cli` package skeleton: bins, arg parser, `deploy` command shell, `--dry-run`.
+**Phase 1 — Vercel (reference, rides proven `agentback-demo` patterns):**
+
+1. `@agentback/cli` package skeleton: bins (`agentback`/`abc`), arg parser, `deploy`
+   command shell, `--dry-run`.
 2. `DetectedApp` detection + app classification (REST / hybrid / MCP).
-3. `DeployTarget` interface + Cloudflare adapter (reference implementation): entry, config, preflight, bundle doctor.
-4. `AssetSource` (D) + CDN dev UIs (C) in `@agentback/rest` + explorer/inspector.
-5. MCP smoke client + acceptance gate.
-6. Vercel and Deno adapters.
-7. `--bundle-assets` esbuild embed (B).
-8. `--eject`, `--env`/secrets forwarding, docs (refresh `docs/guides/deploy-to-edge.md`, correct the stale `hello-hosts` MCP caveat).
+3. `DeployTarget` interface + **Vercel-Node adapter**: generate `api/index.ts`
+   (memoized Express-app leaf), generate `vercel.json` (rewrites + `includeFiles`), wire
+   `mountMcpHttp` for a live `/mcp`, preflight (`vercel whoami`), shell `vercel deploy`.
+4. MCP smoke client + acceptance gate (first live-`/mcp`-on-Vercel proof).
+5. `--eject`, `--env`/secrets forwarding (`vercel env`), docs.
+
+**Phase 2 — edge runtimes (the harder, isolate-specific work):**
+
+6. Fetch-handler entry leaf (§5) + bundle doctor (§7) + `compatibility_flags`.
+7. `AssetSource` (D) + CDN dev UIs (C) in `@agentback/rest` + explorer/inspector.
+8. **Cloudflare Workers** adapter, then **Deno Deploy** adapter (+ optional Vercel `--edge`).
+9. `--bundle-assets` esbuild embed (B).
+10. Refresh `docs/guides/deploy-to-edge.md`; correct the stale `hello-hosts` MCP caveat.
