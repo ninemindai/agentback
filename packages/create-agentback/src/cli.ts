@@ -3,21 +3,35 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import * as p from '@clack/prompts';
 import {
   detectPackageManager,
   scaffold,
   TEMPLATES,
+  type ScaffoldOptions,
   type TemplateName,
 } from './scaffold.js';
+import {CAPABILITIES, capabilityNames} from './capabilities.js';
+
+const CAP_NAMES = CAPABILITIES.map(c => c.name);
 
 const USAGE = `create-agentback — scaffold an AgentBack app
 
 Usage:
-  npm create agentback <name> [-- --template ${TEMPLATES.join('|')}] [--console]
+  npm create agentback <name> [-- --template ${TEMPLATES.join('|')}] [options]
+  pnpm create agentback <name> [--template ${TEMPLATES.join('|')}] [options]
+
+  Run with no name on a terminal for interactive mode.
 
 Options:
   -t, --template <name>   Template: ${TEMPLATES.join(', ')} (default: hybrid)
-  -c, --console           Mount the dev console at /console (hybrid|rest only)
+  --with <caps>           Comma-separated capabilities: ${CAP_NAMES.join(', ')}
+  --drizzle               Shorthand for --with drizzle
+  --auth                  Shorthand for --with auth
+  -c, --console           Shorthand for --with console
+  --port <n>              REST server port (rest|hybrid)
+  --host <h>              REST server host (rest|hybrid)
+  --base-path <p>         REST base path (rest|hybrid)
   -h, --help              Show this help
 `;
 
@@ -30,7 +44,8 @@ function fail(msg: string): never {
 const args = process.argv.slice(2);
 let name: string | undefined;
 let template: TemplateName | undefined;
-let withConsole = false;
+const caps = new Set<string>();
+const host: {port?: number; host?: string; basePath?: string} = {};
 
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
@@ -41,8 +56,28 @@ for (let i = 0; i < args.length; i++) {
     template = args[++i] as TemplateName;
   } else if (a.startsWith('--template=')) {
     template = a.slice('--template='.length) as TemplateName;
+  } else if (a === '--with') {
+    for (const c of (args[++i] ?? '').split(',').filter(Boolean)) caps.add(c);
+  } else if (a.startsWith('--with=')) {
+    for (const c of a.slice('--with='.length).split(',').filter(Boolean)) caps.add(c);
+  } else if (a === '--drizzle') {
+    caps.add('drizzle');
+  } else if (a === '--auth') {
+    caps.add('auth');
   } else if (a === '-c' || a === '--console') {
-    withConsole = true;
+    caps.add('console');
+  } else if (a === '--port') {
+    host.port = Number(args[++i]);
+  } else if (a.startsWith('--port=')) {
+    host.port = Number(a.slice('--port='.length));
+  } else if (a === '--host') {
+    host.host = args[++i];
+  } else if (a.startsWith('--host=')) {
+    host.host = a.slice('--host='.length);
+  } else if (a === '--base-path') {
+    host.basePath = args[++i];
+  } else if (a.startsWith('--base-path=')) {
+    host.basePath = a.slice('--base-path='.length);
   } else if (a.startsWith('-')) {
     fail(`unknown option '${a}'`);
   } else if (!name) {
@@ -52,25 +87,104 @@ for (let i = 0; i < args.length; i++) {
   }
 }
 
-if (!name) fail('missing app name');
-
-try {
-  const result = scaffold({name, template, console: withConsole});
-  const pm = detectPackageManager();
-  const run = pm === 'npm' ? 'npm run' : pm;
-  console.log(
-    `\nScaffolded '${name}' (${result.template} template) in ${result.dir}\n`,
-  );
-  console.log(`Next steps:`);
-  console.log(`  cd ${name.includes('/') ? name.split('/')[1] : name}`);
-  console.log(`  ${pm} install`);
-  console.log(
-    `  ${run} build && ${pm === 'npm' ? 'npm start' : `${pm} start`}`,
-  );
-  console.log(`  ${pm} test\n`);
-  if (withConsole) {
-    console.log(`Dev console mounts at the /console path printed on start.\n`);
-  }
-} catch (err) {
-  fail((err as Error).message);
+if (host.port !== undefined && Number.isNaN(host.port)) {
+  fail('--port must be a number');
 }
+
+function cancel(): never {
+  p.cancel('Cancelled.');
+  process.exit(0);
+}
+
+async function interactive(): Promise<void> {
+  p.intro('create-agentback');
+
+  const iName = await p.text({
+    message: 'App name',
+    placeholder: 'my-service',
+    validate: v => (v && v.trim() ? undefined : 'Name is required'),
+  });
+  if (p.isCancel(iName)) return cancel();
+  name = iName.trim();
+
+  const iTemplate = await p.select({
+    message: 'Template',
+    options: TEMPLATES.map(t => ({value: t, label: t})),
+    initialValue: 'hybrid' as TemplateName,
+  });
+  if (p.isCancel(iTemplate)) return cancel();
+  template = iTemplate as TemplateName;
+
+  const available = capabilityNames(template);
+  if (available.length) {
+    const iCaps = await p.multiselect({
+      message: 'Add-ons (space to toggle, enter to confirm)',
+      required: false,
+      options: CAPABILITIES.filter(c => available.includes(c.name)).map(c => ({
+        value: c.name,
+        label: c.label,
+      })),
+    });
+    if (p.isCancel(iCaps)) return cancel();
+    for (const c of iCaps as string[]) caps.add(c);
+  }
+
+  if (template === 'rest' || template === 'hybrid') {
+    const iPort = await p.text({
+      message: 'Port (blank for default 3000)',
+      placeholder: '3000',
+      validate: v =>
+        !v || /^\d+$/.test(v) ? undefined : 'Port must be a number',
+    });
+    if (p.isCancel(iPort)) return cancel();
+    if (iPort) host.port = Number(iPort);
+  }
+
+  const ok = await p.confirm({message: `Scaffold '${name}' (${template})?`});
+  if (p.isCancel(ok) || !ok) return cancel();
+}
+
+async function run(): Promise<void> {
+  // Interactive only when no name AND a TTY. Flags already collected win.
+  if (!name && process.stdin.isTTY) {
+    await interactive();
+  }
+  if (!name) fail('missing app name');
+
+  const opts: ScaffoldOptions = {
+    name,
+    template,
+    capabilities: [...caps],
+    host: Object.keys(host).length ? host : undefined,
+  };
+
+  try {
+    const result = scaffold(opts);
+    const pm = detectPackageManager();
+    const runCmd = pm === 'npm' ? 'npm run' : pm;
+    const dirName = name.includes('/') ? name.split('/')[1] : name;
+    console.log(
+      `\nScaffolded '${name}' (${result.template} template) in ${result.dir}\n`,
+    );
+    if (caps.size) console.log(`Add-ons: ${[...caps].join(', ')}\n`);
+    console.log('Next steps:');
+    console.log(`  cd ${dirName}`);
+    console.log(`  ${pm} install`);
+    console.log(
+      `  ${runCmd} build && ${pm === 'npm' ? 'npm start' : `${pm} start`}`,
+    );
+    console.log(`  ${pm} test\n`);
+    if (caps.has('drizzle')) {
+      console.log(
+        'Drizzle: runs in-memory by default; set DATABASE_URL to use Postgres.\n',
+      );
+    }
+    if (caps.has('auth')) {
+      console.log('Auth: set JWT_SECRET before deploying (a dev secret is used otherwise).\n');
+    }
+  } catch (err) {
+    fail((err as Error).message);
+  }
+}
+
+await run();
