@@ -46,3 +46,36 @@ describe('host options + anchor stripping', () => {
     ).toThrow(/host options.*mcp/i);
   });
 });
+
+import {CAPABILITIES, capabilityNames} from '../capabilities.js';
+
+describe('capability registry', () => {
+  it('lists console as a registered capability for rest+hybrid only', () => {
+    const cap = CAPABILITIES.find(c => c.name === 'console');
+    expect(cap).toBeDefined();
+    expect(cap!.templates).toEqual(['hybrid', 'rest']);
+  });
+
+  it('exposes capability names valid for a given template', () => {
+    expect(capabilityNames('mcp')).not.toContain('console');
+    expect(capabilityNames('rest')).toContain('console');
+  });
+
+  it('--console via capabilities retargets deps to @agentback/console', () => {
+    const {dir} = scaffold({
+      name: 'consoled',
+      template: 'hybrid',
+      cwd,
+      capabilities: ['console'],
+    });
+    const pkg = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    expect(pkg.dependencies['@agentback/console']).toBeDefined();
+    expect(pkg.dependencies['@agentback/rest-explorer']).toBeUndefined();
+  });
+
+  it('rejects a capability incompatible with the template', () => {
+    expect(() =>
+      scaffold({name: 'x', template: 'mcp', cwd, capabilities: ['console']}),
+    ).toThrow(/console.*not supported/i);
+  });
+});

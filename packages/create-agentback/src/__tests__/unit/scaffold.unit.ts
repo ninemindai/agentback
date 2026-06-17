@@ -155,7 +155,7 @@ describe('scaffold', () => {
   it('rejects --console for the stdio mcp template', () => {
     expect(() =>
       scaffold({name: 'x', template: 'mcp', console: true, cwd}),
-    ).toThrow(/--console is not supported/);
+    ).toThrow(/console.*not supported/i);
     // And does not leave a partial directory behind.
     expect(existsSync(path.join(cwd, 'x'))).toBe(false);
   });
