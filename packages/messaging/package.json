@@ -1,6 +1,6 @@
 {
   "name": "@agentback/messaging",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Transport-agnostic messaging ports (JobQueue/EventBus/QueueAdmin/Scheduler) with typed Zod descriptors and an in-memory adapter",
   "type": "module",
   "main": "dist/index.js",

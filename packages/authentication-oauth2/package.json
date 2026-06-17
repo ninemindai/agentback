@@ -1,6 +1,6 @@
 {
   "name": "@agentback/authentication-oauth2",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "OAuth2 bearer-token authentication for AgentBack: opaque tokens via RFC 7662 introspection (with caching) and JWT access tokens via JWKS — bring-your-own authorization server",
   "type": "module",
   "main": "dist/index.js",
