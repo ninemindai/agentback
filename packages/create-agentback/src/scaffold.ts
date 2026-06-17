@@ -70,8 +70,11 @@ function renderRestConfig(host?: ScaffoldOptions['host']): string {
   if (!host) return '';
   const parts: string[] = [];
   if (host.port !== undefined) parts.push(`port: ${host.port}`);
-  if (host.host !== undefined) parts.push(`host: '${host.host}'`);
-  if (host.basePath !== undefined) parts.push(`basePath: '${host.basePath}'`);
+  // JSON.stringify quotes + escapes string values so a host/basePath that
+  // contains a quote can't emit broken TS.
+  if (host.host !== undefined) parts.push(`host: ${JSON.stringify(host.host)}`);
+  if (host.basePath !== undefined)
+    parts.push(`basePath: ${JSON.stringify(host.basePath)}`);
   return parts.length ? `rest: {${parts.join(', ')}}` : '';
 }
 

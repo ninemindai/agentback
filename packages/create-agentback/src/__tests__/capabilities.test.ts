@@ -37,7 +37,7 @@ describe('host options + anchor stripping', () => {
     });
     const appTs = appFile(dir, 'src/application.ts');
     expect(appTs).toContain(
-      "rest: {port: 8080, host: '0.0.0.0', basePath: '/api'}",
+      'rest: {port: 8080, host: "0.0.0.0", basePath: "/api"}',
     );
     expect(appTs).not.toContain('{{agentback:');
   });
@@ -148,5 +148,33 @@ describe('auth capability', () => {
     expect(() =>
       scaffold({name: 'x', template: 'mcp', cwd, capabilities: ['auth']}),
     ).toThrow(/auth.*not supported/i);
+  });
+});
+
+describe('stacking capabilities + host options', () => {
+  it('wires drizzle and auth together with host options, no leftover anchors', () => {
+    const {dir} = scaffold({
+      name: 'stacked',
+      template: 'hybrid',
+      cwd,
+      capabilities: ['drizzle', 'auth'],
+      host: {port: 4000},
+    });
+    const appTs = appFile(dir, 'src/application.ts');
+    // Both capabilities' wiring coexists.
+    expect(appTs).toContain('this.restController(UsersController)');
+    expect(appTs).toContain('this.restController(AuthController)');
+    expect(appTs).toContain('USER_STORE');
+    expect(appTs).toContain('JWTAuthenticationComponent');
+    // Host options rendered alongside the stacked wiring.
+    expect(appTs).toContain('rest: {port: 4000}');
+    // Every anchor was filled or stripped.
+    expect(appTs).not.toContain('{{agentback:');
+    // Both dep sets merged.
+    const pkg = JSON.parse(
+      readFileSync(path.join(dir, 'package.json'), 'utf8'),
+    );
+    expect(pkg.dependencies['@agentback/drizzle']).toBeDefined();
+    expect(pkg.dependencies['@agentback/authentication-jwt']).toBeDefined();
   });
 });
