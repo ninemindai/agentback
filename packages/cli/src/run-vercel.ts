@@ -33,11 +33,11 @@ function detectPackageManager(): 'pnpm' | 'yarn' | 'bun' | 'npm' {
 
 function writeRootFiles(args: DeployArgs, cwd: string): void {
   const builder = resolveBuilder({entry: args.entry, exportName: args.exportName, cwd});
-  // api/index.ts is one level deeper than the builder's dist/ path; the entry
-  // string is repo-root-relative, so prefix `../` to reach it from api/.
-  const entryFromApi = builder.entry.startsWith('./')
-    ? '../' + builder.entry.slice(2)
-    : builder.entry;
+  // The builder entry is repo-root-relative; api/index.ts sits one level deeper
+  // in api/, so a root-relative path (bare or ./-prefixed) gets a ../ prefix.
+  // An absolute path passes through unchanged.
+  const stripped = builder.entry.replace(/^\.\//, '');
+  const entryFromApi = stripped.startsWith('/') ? stripped : '../' + stripped;
   const apiDir = path.join(cwd, 'api');
   const apiFile = path.join(apiDir, 'index.ts');
   if (existsSync(apiFile) && !args.force) {
