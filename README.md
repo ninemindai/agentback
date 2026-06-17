@@ -43,9 +43,10 @@ One Zod schema becomes the validator, the `z.infer` type, the OpenAPI 3.1
 contract, the MCP schema, the typed client, and the docs. Change the schema;
 every boundary follows.
 
-Not "LoopBack/Express, but newer." The layer that keeps one operation coherent
-across the app boundary and the agent boundary — on a DI core you can extend, on
-any host (Node, Fastify, Hono, Bun, Deno, Workers) from one `fetch` handler.
+Not "LoopBack/Express, but newer." It's the layer that keeps one operation
+coherent for the developers who build on your API and the agents that call it —
+on a DI core you can extend, on any host (Node, Fastify, Hono, Bun, Deno,
+Workers) from one `fetch` handler.
 
 ## What's inside
 
@@ -82,6 +83,11 @@ stabilizing but may still change between alpha releases.
 The core product claim is **one schema, every boundary**. Compared with common
 Node/TypeScript service stacks, AgentBack optimizes for teams whose APIs
 are consumed by both applications and AI agents.
+
+> 🖼 **[Positioning diagram](docs/architecture/diagrams/positioning.html)** — one
+> Zod schema fanning out to a REST/HTTP API for developers and an MCP surface for
+> agents (tools, `/llms.txt`, a derived `SKILL.md`), all served on any host from
+> one `fetch` handler.
 
 | Stack             | Runtime contract    | Service contract                | Agent/tool contract        |
 | ----------------- | ------------------- | ------------------------------- | -------------------------- |

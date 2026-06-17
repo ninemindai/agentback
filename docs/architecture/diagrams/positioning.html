@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgentBack Positioning</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'JetBrains Mono', monospace; background: #020617; min-height: 100vh; padding: 2rem; color: white; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot { width: 12px; height: 12px; background: #34d399; border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container { background: rgba(15, 23, 42, 0.5); border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto; }
+    svg { width: 100%; min-width: 940px; display: block; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-top: 2rem; }
+    .card { background: rgba(15, 23, 42, 0.5); border-radius: 0.75rem; border: 1px solid #1e293b; padding: 1.25rem; }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .card-dot.cyan { background: #22d3ee; }
+    .card-dot.emerald { background: #34d399; }
+    .card-dot.violet { background: #a78bfa; }
+    .card-dot.amber { background: #fbbf24; }
+    .card-dot.rose { background: #fb7185; }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
+    .card li { margin-bottom: 0.375rem; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+    .toolbar { display: flex; gap: 0.5rem; margin-left: auto; flex-shrink: 0; align-items: center; }
+    .toolbar-toggle { background: transparent; border: none; color: #475569; cursor: pointer; font-size: 1.25rem; line-height: 1; padding: 0.25rem 0.5rem; border-radius: 0.375rem; transition: color 0.2s, background 0.2s; }
+    .toolbar-toggle:hover { color: #94a3b8; background: rgba(30, 41, 59, 0.5); }
+    .toolbar-actions { display: none; gap: 0.5rem; }
+    .toolbar.expanded .toolbar-actions { display: flex; }
+    .toolbar-actions button { background: rgba(30, 41, 59, 0.8); border: 1px solid #334155; color: #94a3b8; padding: 0.375rem 0.75rem; border-radius: 0.375rem; font-family: inherit; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+    .toolbar-actions button:hover { background: rgba(51, 65, 85, 0.8); color: white; border-color: #475569; }
+    @media print { body { background: #020617; padding: 1rem; } .toolbar { display: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="container" id="report-container">
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>AgentBack — Positioning</h1>
+        <div class="toolbar">
+          <div class="toolbar-actions">
+            <button onclick="copyAsImage(this)">📋 Copy</button>
+            <button onclick="downloadPNG(this)">🖼️ PNG</button>
+            <button onclick="downloadPDF(this)">📄 PDF</button>
+          </div>
+          <button class="toolbar-toggle" onclick="this.parentElement.classList.toggle('expanded')" title="Export options" aria-label="Export options">⋯</button>
+        </div>
+      </div>
+      <p class="subtitle">One Zod schema becomes every boundary — a REST/HTTP API for developers and an MCP surface for agents — served on any host.</p>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1040 700">
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- ===== audience group boundaries (transparent) ===== -->
+        <rect x="410" y="44" width="582" height="212" rx="12" fill="rgba(34, 211, 238, 0.04)" stroke="#22d3ee" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="424" y="64" fill="#22d3ee" font-size="11" font-weight="600" letter-spacing="1">FOR HUMAN DEVELOPERS · REST / HTTP API</text>
+
+        <rect x="410" y="300" width="582" height="212" rx="12" fill="rgba(167, 139, 250, 0.04)" stroke="#a78bfa" stroke-width="1" stroke-dasharray="8,4"/>
+        <text x="424" y="320" fill="#a78bfa" font-size="11" font-weight="600" letter-spacing="1">FOR AI AGENTS · MCP</text>
+
+        <!-- ===== arrows: one schema -> each audience (behind boxes) ===== -->
+        <line x1="260" y1="286" x2="404" y2="150" stroke="#22d3ee" stroke-width="1.6" marker-end="url(#arrowhead)"/>
+        <line x1="260" y1="314" x2="404" y2="406" stroke="#a78bfa" stroke-width="1.6" marker-end="url(#arrowhead)"/>
+        <rect x="300" y="206" width="62" height="16" rx="3" fill="#0f172a"/>
+        <text x="331" y="218" fill="#94a3b8" font-size="9" text-anchor="middle">derived</text>
+        <rect x="300" y="352" width="62" height="16" rx="3" fill="#0f172a"/>
+        <text x="331" y="364" fill="#94a3b8" font-size="9" text-anchor="middle">derived</text>
+
+        <!-- ===== the source: one Zod schema ===== -->
+        <rect x="60" y="252" width="200" height="96" rx="8" fill="#0f172a"/>
+        <rect x="60" y="252" width="200" height="96" rx="8" fill="rgba(6, 78, 59, 0.55)" stroke="#34d399" stroke-width="2"/>
+        <text x="160" y="282" fill="white" font-size="14" font-weight="700" text-anchor="middle">one Zod schema</text>
+        <text x="160" y="301" fill="#94a3b8" font-size="9" text-anchor="middle">declared once on</text>
+        <text x="160" y="315" fill="#34d399" font-size="9.5" text-anchor="middle">@get(…) / @tool(…)</text>
+        <text x="160" y="334" fill="#94a3b8" font-size="8" text-anchor="middle">the single source of truth</text>
+
+        <!-- ===== developer surfaces (cyan) ===== -->
+        <rect x="432" y="80" width="262" height="76" rx="6" fill="#0f172a"/>
+        <rect x="432" y="80" width="262" height="76" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="563" y="110" fill="white" font-size="12" font-weight="600" text-anchor="middle">REST routes</text>
+        <text x="563" y="129" fill="#94a3b8" font-size="9" text-anchor="middle">@get / @post + Zod validation</text>
+
+        <rect x="708" y="80" width="262" height="76" rx="6" fill="#0f172a"/>
+        <rect x="708" y="80" width="262" height="76" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="839" y="110" fill="white" font-size="12" font-weight="600" text-anchor="middle">OpenAPI 3.1</text>
+        <text x="839" y="129" fill="#94a3b8" font-size="9" text-anchor="middle">auto-emitted via z.toJSONSchema</text>
+
+        <rect x="432" y="170" width="262" height="76" rx="6" fill="#0f172a"/>
+        <rect x="432" y="170" width="262" height="76" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="563" y="200" fill="white" font-size="12" font-weight="600" text-anchor="middle">Typed client</text>
+        <text x="563" y="219" fill="#94a3b8" font-size="9" text-anchor="middle">z.infer — no codegen</text>
+
+        <rect x="708" y="170" width="262" height="76" rx="6" fill="#0f172a"/>
+        <rect x="708" y="170" width="262" height="76" rx="6" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+        <text x="839" y="200" fill="white" font-size="12" font-weight="600" text-anchor="middle">Swagger UI</text>
+        <text x="839" y="219" fill="#94a3b8" font-size="9" text-anchor="middle">/explorer</text>
+
+        <!-- ===== agent surfaces (violet) ===== -->
+        <rect x="432" y="336" width="262" height="76" rx="6" fill="#0f172a"/>
+        <rect x="432" y="336" width="262" height="76" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="563" y="366" fill="white" font-size="12" font-weight="600" text-anchor="middle">MCP tools</text>
+        <text x="563" y="385" fill="#94a3b8" font-size="9" text-anchor="middle">@tool — the same schema</text>
+
+        <rect x="708" y="336" width="262" height="76" rx="6" fill="#0f172a"/>
+        <rect x="708" y="336" width="262" height="76" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="839" y="366" fill="white" font-size="12" font-weight="600" text-anchor="middle">Machine-readable docs</text>
+        <text x="839" y="385" fill="#94a3b8" font-size="9" text-anchor="middle">/llms.txt · /llms-full.txt</text>
+
+        <!-- agent skill (emerging — dashed) -->
+        <rect x="432" y="426" width="262" height="76" rx="6" fill="#0f172a"/>
+        <rect x="432" y="426" width="262" height="76" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="5,3"/>
+        <text x="563" y="456" fill="white" font-size="12" font-weight="600" text-anchor="middle">Agent skill</text>
+        <text x="563" y="475" fill="#94a3b8" font-size="9" text-anchor="middle">SKILL.md, derived · emerging</text>
+
+        <rect x="708" y="426" width="262" height="76" rx="6" fill="#0f172a"/>
+        <rect x="708" y="426" width="262" height="76" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="839" y="456" fill="white" font-size="12" font-weight="600" text-anchor="middle">Recoverable errors</text>
+        <text x="839" y="475" fill="#94a3b8" font-size="9" text-anchor="middle">codes · issues · hints</text>
+
+        <!-- ===== multi-host substrate band (amber) ===== -->
+        <rect x="60" y="558" width="910" height="92" rx="10" fill="#0f172a"/>
+        <rect x="60" y="558" width="910" height="92" rx="10" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="78" y="582" fill="#fbbf24" font-size="11" font-weight="600" letter-spacing="1">RUNS ON ANY HTTP HOST · ONE fetchHandler()</text>
+        <g font-size="9" text-anchor="middle">
+          <rect x="78" y="600" width="118" height="34" rx="5" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+          <text x="137" y="615" fill="white">Node</text><text x="137" y="627" fill="#d6b06a">listener:'native'</text>
+          <rect x="206" y="600" width="110" height="34" rx="5" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+          <text x="261" y="621" fill="white">Express</text>
+          <rect x="326" y="600" width="110" height="34" rx="5" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+          <text x="381" y="621" fill="white">Fastify</text>
+          <rect x="446" y="600" width="110" height="34" rx="5" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+          <text x="501" y="621" fill="white">Hono</text>
+          <rect x="566" y="600" width="110" height="34" rx="5" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+          <text x="621" y="621" fill="white">Bun</text>
+          <rect x="686" y="600" width="110" height="34" rx="5" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+          <text x="741" y="621" fill="white">Deno</text>
+          <rect x="806" y="600" width="156" height="34" rx="5" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+          <text x="884" y="621" fill="white">Cloudflare Workers</text>
+        </g>
+
+        <!-- ===== legend (below the band) ===== -->
+        <text x="60" y="680" fill="white" font-size="10" font-weight="600">Legend</text>
+        <rect x="124" y="672" width="16" height="10" rx="2" fill="rgba(6, 78, 59, 0.55)" stroke="#34d399" stroke-width="1"/>
+        <text x="146" y="680" fill="#94a3b8" font-size="8">Source schema</text>
+        <rect x="252" y="672" width="16" height="10" rx="2" fill="rgba(8, 51, 68, 0.4)" stroke="#22d3ee" stroke-width="1"/>
+        <text x="274" y="680" fill="#94a3b8" font-size="8">API surface</text>
+        <rect x="372" y="672" width="16" height="10" rx="2" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1"/>
+        <text x="394" y="680" fill="#94a3b8" font-size="8">MCP surface</text>
+        <rect x="496" y="672" width="16" height="10" rx="2" fill="rgba(120, 53, 15, 0.3)" stroke="#fbbf24" stroke-width="1"/>
+        <text x="518" y="680" fill="#94a3b8" font-size="8">Any host</text>
+        <rect x="588" y="672" width="16" height="10" rx="2" fill="transparent" stroke="#a78bfa" stroke-width="1" stroke-dasharray="3,2"/>
+        <text x="610" y="680" fill="#94a3b8" font-size="8">Emerging</text>
+      </svg>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot rose"></div>
+          <h3>The drift it removes</h3>
+        </div>
+        <ul>
+          <li>• One contract, today copied into 4–5 places</li>
+          <li>• Zod, OpenAPI, an MCP manifest, a client, a skill file</li>
+          <li>• Edit one, miss another → they diverge</li>
+          <li>• AgentBack derives them all from the schema</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot cyan"></div>
+          <h3>Developers — the REST API</h3>
+        </div>
+        <ul>
+          <li>• REST routes with Zod request/response validation</li>
+          <li>• OpenAPI 3.1, auto-emitted from the same schema</li>
+          <li>• A typed client — <code>z.infer</code>, no codegen</li>
+          <li>• Swagger UI at <code>/explorer</code></li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot violet"></div>
+          <h3>Agents — the MCP surface</h3>
+        </div>
+        <ul>
+          <li>• MCP tools from the same <code>@tool</code> schema</li>
+          <li>• Machine-readable docs: <code>/llms.txt</code></li>
+          <li>• A derived agent skill (<code>SKILL.md</code>) — emerging</li>
+          <li>• Recoverable errors: codes, issues, hints</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot amber"></div>
+          <h3>Runs anywhere</h3>
+        </div>
+        <ul>
+          <li>• One <code>fetchHandler()</code> — <code>fetch(Request)</code></li>
+          <li>• Node (native), Express, Fastify, Hono</li>
+          <li>• Bun, Deno, Cloudflare Workers</li>
+          <li>• REST <em>and</em> MCP on every host</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="footer">AgentBack · one schema, every boundary · see README.md and docs/architecture/overview.md</p>
+  </div>
+
+  <script>
+    async function copyAsImage(btn) {
+      const orig = btn.textContent;
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        btn.textContent = '✓ Copied!';
+      } catch (e) {
+        btn.textContent = '✗ Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function downloadPNG(btn) {
+      const orig = btn.textContent;
+      btn.textContent = '⏳ ...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const link = document.createElement('a');
+        link.download = 'agentback-positioning.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        btn.textContent = '✓ Done!';
+      } catch (e) {
+        btn.textContent = '✗ Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+
+    async function downloadPDF(btn) {
+      const orig = btn.textContent;
+      btn.textContent = '⏳ ...';
+      try {
+        const el = document.getElementById('report-container');
+        const r = el.getBoundingClientRect();
+        const pad = 32;
+        const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+        const imgData = canvas.toDataURL('image/png');
+        const { jsPDF } = window.jspdf;
+        const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
+        const pdf = new jsPDF({ orientation, unit: 'px', format: [canvas.width, canvas.height], hotfixes: ['px_scaling'] });
+        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+        pdf.save('agentback-positioning.pdf');
+        btn.textContent = '✓ Done!';
+      } catch (e) {
+        btn.textContent = '✗ Failed';
+      }
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+  </script>
+</body>
+</html>
