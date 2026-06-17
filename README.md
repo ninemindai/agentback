@@ -17,8 +17,9 @@ clients, tests, and runtime validation all share one Zod contract.
 
 ## Why another API framework?
 
-Your API has two audiences now: apps and agents. Same operations, different
-surfaces — REST for apps, MCP tools and machine-readable docs for agents.
+Your API has two audiences now: human developers and AI agents. Same operations,
+different surfaces — REST and a typed client for devs, MCP tools and
+machine-readable docs for agents.
 
 Most stacks make you describe each operation four or five times: a Zod schema, an
 OpenAPI block, an MCP tool definition, a client type. One contract, copied
