@@ -1,0 +1,862 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AgentBack Agent-Native Framework Diagram</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script
+      src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"
+      integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"
+      integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/"
+      crossorigin="anonymous"
+    ></script>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        background: #020617;
+        color: white;
+        font-family: 'JetBrains Mono', monospace;
+        min-height: 100vh;
+        padding: 2rem;
+      }
+
+      .container {
+        margin: 0 auto;
+        max-width: 1200px;
+      }
+
+      .header {
+        margin-bottom: 2rem;
+      }
+
+      .header-row {
+        align-items: center;
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 0.5rem;
+      }
+
+      .pulse-dot {
+        animation: pulse 2s infinite;
+        background: #22d3ee;
+        border-radius: 50%;
+        height: 12px;
+        width: 12px;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+
+        50% {
+          opacity: 0.5;
+        }
+      }
+
+      h1 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+
+      .subtitle {
+        color: #94a3b8;
+        font-size: 0.875rem;
+        margin-left: 1.75rem;
+      }
+
+      .diagram-container {
+        background: rgba(15, 23, 42, 0.5);
+        border: 1px solid #1e293b;
+        border-radius: 1rem;
+        overflow-x: auto;
+        padding: 1.5rem;
+      }
+
+      svg {
+        display: block;
+        min-width: 900px;
+        width: 100%;
+      }
+
+      .cards {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        margin-top: 2rem;
+      }
+
+      .card {
+        background: rgba(15, 23, 42, 0.5);
+        border: 1px solid #1e293b;
+        border-radius: 0.75rem;
+        padding: 1.25rem;
+      }
+
+      .card-header {
+        align-items: center;
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+      }
+
+      .card-dot {
+        border-radius: 50%;
+        height: 8px;
+        width: 8px;
+      }
+
+      .card-dot.cyan {
+        background: #22d3ee;
+      }
+
+      .card-dot.emerald {
+        background: #34d399;
+      }
+
+      .card-dot.violet {
+        background: #a78bfa;
+      }
+
+      .card h3 {
+        font-size: 0.875rem;
+        font-weight: 600;
+      }
+
+      .card ul {
+        color: #94a3b8;
+        font-size: 0.75rem;
+        list-style: none;
+      }
+
+      .card li {
+        margin-bottom: 0.375rem;
+      }
+
+      .footer {
+        color: #475569;
+        font-size: 0.75rem;
+        margin-top: 1.5rem;
+        text-align: center;
+      }
+
+      .toolbar {
+        align-items: center;
+        display: flex;
+        flex-shrink: 0;
+        gap: 0.5rem;
+        margin-left: auto;
+      }
+
+      .toolbar-toggle {
+        background: transparent;
+        border: none;
+        border-radius: 0.375rem;
+        color: #475569;
+        cursor: pointer;
+        font-size: 1.25rem;
+        line-height: 1;
+        padding: 0.25rem 0.5rem;
+        transition:
+          color 0.2s,
+          background 0.2s;
+      }
+
+      .toolbar-toggle:hover {
+        background: rgba(30, 41, 59, 0.5);
+        color: #94a3b8;
+      }
+
+      .toolbar-actions {
+        display: none;
+        gap: 0.5rem;
+      }
+
+      .toolbar.expanded .toolbar-actions {
+        display: flex;
+      }
+
+      .toolbar-actions button {
+        background: rgba(30, 41, 59, 0.8);
+        border: 1px solid #334155;
+        border-radius: 0.375rem;
+        color: #94a3b8;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 0.75rem;
+        padding: 0.375rem 0.75rem;
+        transition: all 0.2s;
+        white-space: nowrap;
+      }
+
+      .toolbar-actions button:hover {
+        background: rgba(51, 65, 85, 0.8);
+        border-color: #475569;
+        color: white;
+      }
+
+      @media print {
+        body {
+          background: #020617;
+          padding: 1rem;
+        }
+
+        .toolbar {
+          display: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container" id="report-container">
+      <div class="header">
+        <div class="header-row">
+          <div class="pulse-dot"></div>
+          <h1>AgentBack: Agent-Native Framework Loop</h1>
+          <div class="toolbar">
+            <div class="toolbar-actions">
+              <button onclick="copyAsImage(this)">📋 Copy</button>
+              <button onclick="downloadPNG(this)">🖼️ PNG</button>
+              <button onclick="downloadPDF(this)">📄 PDF</button>
+            </div>
+            <button
+              class="toolbar-toggle"
+              onclick="this.parentElement.classList.toggle('expanded')"
+              title="Export options"
+              aria-label="Export options"
+            >
+              ⋯
+            </button>
+          </div>
+        </div>
+        <p class="subtitle">
+          Coding agents build the API through framework constraints; the API
+          becomes an interface other agents can discover and call.
+        </p>
+      </div>
+
+      <div class="diagram-container">
+        <svg viewBox="0 0 1000 620" role="img" aria-labelledby="diagram-title">
+          <title id="diagram-title">
+            AgentBack connects human intent, coding agents, framework contracts,
+            and agent-facing API surfaces.
+          </title>
+          <defs>
+            <marker
+              id="arrowhead"
+              markerWidth="10"
+              markerHeight="7"
+              refX="9"
+              refY="3.5"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+            </marker>
+            <marker
+              id="cyanarrow"
+              markerWidth="10"
+              markerHeight="7"
+              refX="9"
+              refY="3.5"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee" />
+            </marker>
+            <marker
+              id="greenarrow"
+              markerWidth="10"
+              markerHeight="7"
+              refX="9"
+              refY="3.5"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#34d399" />
+            </marker>
+            <pattern
+              id="grid"
+              width="40"
+              height="40"
+              patternUnits="userSpaceOnUse"
+            >
+              <path
+                d="M 40 0 L 0 0 0 40"
+                fill="none"
+                stroke="#1e293b"
+                stroke-width="0.5"
+              />
+            </pattern>
+          </defs>
+
+          <rect width="100%" height="100%" fill="url(#grid)" />
+
+          <!-- Arrows are drawn first so boxes mask them. -->
+          <line
+            x1="150"
+            y1="310"
+            x2="248"
+            y2="310"
+            stroke="#22d3ee"
+            stroke-width="2"
+            marker-end="url(#cyanarrow)"
+          />
+          <text
+            x="199"
+            y="294"
+            fill="#94a3b8"
+            font-size="9"
+            text-anchor="middle"
+          >
+            prompt + product intent
+          </text>
+
+          <line
+            x1="470"
+            y1="310"
+            x2="548"
+            y2="310"
+            stroke="#34d399"
+            stroke-width="2"
+            marker-end="url(#greenarrow)"
+          />
+          <text
+            x="509"
+            y="294"
+            fill="#94a3b8"
+            font-size="9"
+            text-anchor="middle"
+          >
+            generate + verify
+          </text>
+
+          <line
+            x1="760"
+            y1="190"
+            x2="760"
+            y2="248"
+            stroke="#64748b"
+            stroke-width="1.5"
+            marker-end="url(#arrowhead)"
+          />
+          <line
+            x1="760"
+            y1="370"
+            x2="760"
+            y2="428"
+            stroke="#64748b"
+            stroke-width="1.5"
+            marker-end="url(#arrowhead)"
+          />
+
+          <path
+            d="M 820 455 C 930 455 930 120 340 120 C 260 120 260 210 260 255"
+            fill="none"
+            stroke="#22d3ee"
+            stroke-dasharray="6,5"
+            stroke-width="1.5"
+            marker-end="url(#cyanarrow)"
+          />
+          <text
+            x="648"
+            y="105"
+            fill="#22d3ee"
+            font-size="9"
+            text-anchor="middle"
+          >
+            runtime feedback loops back into the next agent edit
+          </text>
+
+          <!-- Left actors -->
+          <rect x="40" y="270" width="110" height="80" rx="6" fill="#0f172a" />
+          <rect
+            x="40"
+            y="270"
+            width="110"
+            height="80"
+            rx="6"
+            fill="rgba(30, 41, 59, 0.5)"
+            stroke="#94a3b8"
+            stroke-width="1.5"
+          />
+          <text
+            x="95"
+            y="298"
+            fill="white"
+            font-size="12"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            Human
+          </text>
+          <text
+            x="95"
+            y="316"
+            fill="#94a3b8"
+            font-size="9"
+            text-anchor="middle"
+          >
+            intent, review
+          </text>
+          <text
+            x="95"
+            y="333"
+            fill="#94a3b8"
+            font-size="9"
+            text-anchor="middle"
+          >
+            product judgment
+          </text>
+
+          <rect
+            x="250"
+            y="255"
+            width="220"
+            height="110"
+            rx="8"
+            fill="#0f172a"
+          />
+          <rect
+            x="250"
+            y="255"
+            width="220"
+            height="110"
+            rx="8"
+            fill="rgba(8, 51, 68, 0.4)"
+            stroke="#22d3ee"
+            stroke-width="1.5"
+          />
+          <text
+            x="360"
+            y="285"
+            fill="white"
+            font-size="12"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            Coding Agent
+          </text>
+          <text
+            x="360"
+            y="306"
+            fill="#94a3b8"
+            font-size="9"
+            text-anchor="middle"
+          >
+            reads repo + docs + tests
+          </text>
+          <text
+            x="360"
+            y="322"
+            fill="#94a3b8"
+            font-size="9"
+            text-anchor="middle"
+          >
+            edits services and contracts
+          </text>
+          <text
+            x="360"
+            y="345"
+            fill="#22d3ee"
+            font-size="8"
+            text-anchor="middle"
+          >
+            framework conventions become the agent's rails
+          </text>
+
+          <!-- AgentBack boundary -->
+          <rect
+            x="550"
+            y="70"
+            width="400"
+            height="520"
+            rx="12"
+            fill="rgba(251, 191, 36, 0.05)"
+            stroke="#fbbf24"
+            stroke-dasharray="8,4"
+            stroke-width="1"
+          />
+          <text x="570" y="92" fill="#fbbf24" font-size="10" font-weight="600">
+            AgentBack framework boundary
+          </text>
+
+          <rect x="585" y="125" width="350" height="80" rx="8" fill="#0f172a" />
+          <rect
+            x="585"
+            y="125"
+            width="350"
+            height="80"
+            rx="8"
+            fill="rgba(76, 29, 149, 0.4)"
+            stroke="#a78bfa"
+            stroke-width="1.5"
+          />
+          <text
+            x="760"
+            y="153"
+            fill="white"
+            font-size="12"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            One Boundary Contract
+          </text>
+          <text
+            x="760"
+            y="173"
+            fill="#94a3b8"
+            font-size="9"
+            text-anchor="middle"
+          >
+            Zod schema on route/tool decorators
+          </text>
+          <text
+            x="760"
+            y="190"
+            fill="#a78bfa"
+            font-size="8"
+            text-anchor="middle"
+          >
+            validation + types + OpenAPI + MCP schemas
+          </text>
+
+          <rect
+            x="585"
+            y="250"
+            width="350"
+            height="120"
+            rx="8"
+            fill="#0f172a"
+          />
+          <rect
+            x="585"
+            y="250"
+            width="350"
+            height="120"
+            rx="8"
+            fill="rgba(6, 78, 59, 0.4)"
+            stroke="#34d399"
+            stroke-width="1.5"
+          />
+          <text
+            x="760"
+            y="277"
+            fill="white"
+            font-size="12"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            Agent-Native Development Rails
+          </text>
+          <text
+            x="760"
+            y="300"
+            fill="#94a3b8"
+            font-size="9"
+            text-anchor="middle"
+          >
+            DI container, components, bindings
+          </text>
+          <text
+            x="760"
+            y="317"
+            fill="#94a3b8"
+            font-size="9"
+            text-anchor="middle"
+          >
+            auth policy, errors, idempotency, tests
+          </text>
+          <text
+            x="760"
+            y="334"
+            fill="#94a3b8"
+            font-size="9"
+            text-anchor="middle"
+          >
+            /llms.txt, generated docs, inspectable runtime
+          </text>
+          <text
+            x="760"
+            y="354"
+            fill="#34d399"
+            font-size="8"
+            text-anchor="middle"
+          >
+            agent writes code with less ambiguity
+          </text>
+
+          <rect
+            x="585"
+            y="430"
+            width="350"
+            height="120"
+            rx="8"
+            fill="#0f172a"
+          />
+          <rect
+            x="585"
+            y="430"
+            width="350"
+            height="120"
+            rx="8"
+            fill="rgba(8, 51, 68, 0.4)"
+            stroke="#22d3ee"
+            stroke-width="1.5"
+          />
+          <text
+            x="760"
+            y="457"
+            fill="white"
+            font-size="12"
+            font-weight="600"
+            text-anchor="middle"
+          >
+            Agentic Interface Surface
+          </text>
+          <text
+            x="760"
+            y="480"
+            fill="#94a3b8"
+            font-size="9"
+            text-anchor="middle"
+          >
+            REST API, OpenAPI, MCP tools, typed clients
+          </text>
+          <text
+            x="760"
+            y="497"
+            fill="#94a3b8"
+            font-size="9"
+            text-anchor="middle"
+          >
+            machine-readable capabilities and errors
+          </text>
+          <text
+            x="760"
+            y="514"
+            fill="#94a3b8"
+            font-size="9"
+            text-anchor="middle"
+          >
+            usable by humans, coding agents, and runtime agents
+          </text>
+          <text
+            x="760"
+            y="534"
+            fill="#22d3ee"
+            font-size="8"
+            text-anchor="middle"
+          >
+            the API becomes a tool surface agents can trust
+          </text>
+
+          <!-- Legend outside the framework boundary -->
+          <text x="50" y="506" fill="white" font-size="10" font-weight="600">
+            Legend
+          </text>
+          <rect
+            x="50"
+            y="520"
+            width="16"
+            height="10"
+            rx="2"
+            fill="rgba(8, 51, 68, 0.4)"
+            stroke="#22d3ee"
+            stroke-width="1"
+          />
+          <text x="74" y="528" fill="#94a3b8" font-size="8">
+            Agent/developer surface
+          </text>
+          <rect
+            x="50"
+            y="538"
+            width="16"
+            height="10"
+            rx="2"
+            fill="rgba(6, 78, 59, 0.4)"
+            stroke="#34d399"
+            stroke-width="1"
+          />
+          <text x="74" y="546" fill="#94a3b8" font-size="8">
+            Framework runtime rails
+          </text>
+          <rect
+            x="50"
+            y="556"
+            width="16"
+            height="10"
+            rx="2"
+            fill="rgba(76, 29, 149, 0.4)"
+            stroke="#a78bfa"
+            stroke-width="1"
+          />
+          <text x="74" y="564" fill="#94a3b8" font-size="8">
+            Contract artifact
+          </text>
+          <rect
+            x="50"
+            y="574"
+            width="16"
+            height="10"
+            rx="2"
+            fill="rgba(30, 41, 59, 0.5)"
+            stroke="#94a3b8"
+            stroke-width="1"
+          />
+          <text x="74" y="582" fill="#94a3b8" font-size="8">
+            Human judgment
+          </text>
+        </svg>
+      </div>
+
+      <div class="cards">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-dot cyan"></div>
+            <h3>Agent development loop</h3>
+          </div>
+          <ul>
+            <li>• Human sets intent and reviews judgment calls</li>
+            <li>• Coding agent edits within framework conventions</li>
+            <li>• Tests, validation, and errors provide feedback</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-dot violet"></div>
+            <h3>Single contract</h3>
+          </div>
+          <ul>
+            <li>• Zod schema describes the boundary once</li>
+            <li>• REST, OpenAPI, MCP, and clients derive from it</li>
+            <li>• Contract drift becomes structurally harder</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-dot emerald"></div>
+            <h3>Double win</h3>
+          </div>
+          <ul>
+            <li>• Agents can build APIs with less ambiguity</li>
+            <li>• APIs become surfaces other agents can call</li>
+            <li>• Frameworks become leverage for both sides</li>
+          </ul>
+        </div>
+      </div>
+
+      <p class="footer">
+        AgentBack • agent-native API and MCP framework • generated for blog
+        sharing
+      </p>
+    </div>
+
+    <script>
+      async function copyAsImage(btn) {
+        const orig = btn.textContent;
+        try {
+          const el = document.getElementById('report-container');
+          const r = el.getBoundingClientRect();
+          const pad = 32;
+          const canvas = await html2canvas(document.body, {
+            backgroundColor: '#020617',
+            scale: 2,
+            useCORS: true,
+            ignoreElements: e => e.classList && e.classList.contains('toolbar'),
+            x: r.left + window.scrollX - pad,
+            y: r.top + window.scrollY - pad,
+            width: r.width + pad * 2,
+            height: r.height + pad * 2,
+          });
+          const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+          await navigator.clipboard.write([
+            new ClipboardItem({'image/png': blob}),
+          ]);
+          btn.textContent = '✓ Copied!';
+        } catch (e) {
+          btn.textContent = '✗ Failed';
+        }
+        setTimeout(() => (btn.textContent = orig), 2000);
+      }
+
+      async function downloadPNG(btn) {
+        const orig = btn.textContent;
+        btn.textContent = '⏳ ...';
+        try {
+          const el = document.getElementById('report-container');
+          const r = el.getBoundingClientRect();
+          const pad = 32;
+          const canvas = await html2canvas(document.body, {
+            backgroundColor: '#020617',
+            scale: 2,
+            useCORS: true,
+            ignoreElements: e => e.classList && e.classList.contains('toolbar'),
+            x: r.left + window.scrollX - pad,
+            y: r.top + window.scrollY - pad,
+            width: r.width + pad * 2,
+            height: r.height + pad * 2,
+          });
+          const link = document.createElement('a');
+          link.download = 'agentback-agent-native-framework.png';
+          link.href = canvas.toDataURL('image/png');
+          link.click();
+          btn.textContent = '✓ Done!';
+        } catch (e) {
+          btn.textContent = '✗ Failed';
+        }
+        setTimeout(() => (btn.textContent = orig), 2000);
+      }
+
+      async function downloadPDF(btn) {
+        const orig = btn.textContent;
+        btn.textContent = '⏳ ...';
+        try {
+          const el = document.getElementById('report-container');
+          const r = el.getBoundingClientRect();
+          const pad = 32;
+          const canvas = await html2canvas(document.body, {
+            backgroundColor: '#020617',
+            scale: 2,
+            useCORS: true,
+            ignoreElements: e => e.classList && e.classList.contains('toolbar'),
+            x: r.left + window.scrollX - pad,
+            y: r.top + window.scrollY - pad,
+            width: r.width + pad * 2,
+            height: r.height + pad * 2,
+          });
+          const imgData = canvas.toDataURL('image/png');
+          const {jsPDF} = window.jspdf;
+          const orientation =
+            canvas.width > canvas.height ? 'landscape' : 'portrait';
+          const pdf = new jsPDF({
+            orientation,
+            unit: 'px',
+            format: [canvas.width, canvas.height],
+            hotfixes: ['px_scaling'],
+          });
+          pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+          pdf.save('agentback-agent-native-framework.pdf');
+          btn.textContent = '✓ Done!';
+        } catch (e) {
+          btn.textContent = '✗ Failed';
+        }
+        setTimeout(() => (btn.textContent = orig), 2000);
+      }
+    </script>
+  </body>
+</html>

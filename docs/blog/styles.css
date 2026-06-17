@@ -411,6 +411,15 @@ pre code {
   text-align: center;
 }
 
+.diagram-frame {
+  background: #020617;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: block;
+  height: min(760px, 82vh);
+  width: 100%;
+}
+
 .site-footer {
   border-top: 1px solid var(--line);
   color: var(--muted);

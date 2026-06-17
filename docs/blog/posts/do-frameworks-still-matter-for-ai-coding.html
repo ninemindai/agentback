@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>
+      Do frameworks still matter when agents write code? | AgentBack Blog
+    </title>
+    <meta
+      name="description"
+      content="AI coding does not make frameworks obsolete. It changes what a framework is for: helping coding agents build correct APIs and MCP tools while exposing agentic interfaces."
+    />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="../index.html">AgentBack blog</a>
+        <div class="nav-links">
+          <a href="../../README.md">Docs</a>
+          <a href="../../../README.md">Repo README</a>
+          <a href="../diagrams/system-boundary.html">Diagram</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="post-layout">
+      <article class="post-body">
+        <p class="post-meta">June 16, 2026</p>
+        <h1>Do frameworks still matter when agents write code?</h1>
+        <p class="lede">
+          Yes. AI coding does not remove the need for frameworks. It changes the
+          job frameworks must do.
+        </p>
+
+        <p>
+          A traditional framework mainly serves human developers. It gives them
+          structure, familiar patterns, shared abstractions, and fewer decisions
+          to make on every feature. It says: put the controller here, put the
+          service there, validate input this way, expose the route that way.
+        </p>
+
+        <p>
+          That was already useful for teams. It becomes even more important when
+          the developer is a coding agent.
+        </p>
+
+        <p>
+          Agents are fast, tireless, and increasingly good at local code
+          generation. But they still need a strong operating environment.
+          Without clear conventions, they infer architecture from scattered
+          examples. Without typed contracts, they guess what a handler accepts.
+          Without runtime validation, tests, and generated docs, they do not get
+          a tight feedback loop. Without a consistent way to expose
+          capabilities, every API becomes one more bespoke integration.
+        </p>
+
+        <blockquote>
+          In the AI coding era, the value of a framework is not just helping
+          humans write less code. It is helping agents write the right code.
+        </blockquote>
+
+        <h2>The new reader of the framework is an agent</h2>
+        <p>
+          A coding agent does not experience a framework the same way a person
+          does. A person reads docs, recognizes style, remembers team norms, and
+          asks a teammate when something feels unclear. An agent mostly works
+          from the repository, the type system, the tests, the errors, and the
+          context it can load.
+        </p>
+
+        <p>
+          That changes what good framework design means. The framework has to be
+          legible to agents. It needs obvious file locations, explicit schemas,
+          machine-readable metadata, stable error shapes, generated manuals, and
+          tests that fail in ways an agent can act on. The framework should make
+          the correct path the easiest path for a model to discover.
+        </p>
+
+        <p>
+          This is not about adding a chatbot to a backend framework. It is about
+          making the framework itself agent-native: conventions, contracts,
+          runtime behavior, and documentation designed for coding agents as
+          first-class builders.
+        </p>
+
+        <h2>AgentBack's bet</h2>
+        <p>
+          AgentBack is my attempt at that shape. It is an agentic interface
+          framework for TypeScript services. The goal is to help coding agents
+          build APIs and MCP tools from the same coherent contract.
+        </p>
+
+        <p>
+          The core idea is simple: define the boundary once, then project it
+          everywhere it matters. A Zod schema should not only validate a REST
+          request. It should also give TypeScript inference to the handler,
+          produce OpenAPI, define MCP tool input and output, power typed
+          clients, explain errors, and give coding agents a contract they can
+          rely on.
+        </p>
+
+        <p>That creates a useful double win.</p>
+
+        <ul>
+          <li>
+            First, coding agents get a better way to build backend APIs: clear
+            conventions, dependency injection, schemas, authorization hooks,
+            tests, and runtime feedback instead of guesswork.
+          </li>
+          <li>
+            Second, the APIs they build naturally become agentic interfaces:
+            capabilities that AI agents can discover, understand, compose, and
+            call through REST, OpenAPI, MCP, and agent-readable docs.
+          </li>
+        </ul>
+
+        <p>
+          In other words, the framework helps agents develop the backend, and it
+          helps the backend serve agents. One investment improves both sides of
+          the system.
+        </p>
+
+        <figure class="post-figure">
+          <iframe
+            class="diagram-frame"
+            src="../diagrams/agent-native-framework.html"
+            title="AgentBack agent-native framework loop diagram"
+          ></iframe>
+          <figcaption>
+            AgentBack creates a loop: human intent guides a coding agent, the
+            framework constrains and verifies the implementation, and the
+            resulting API becomes an interface other agents can use.
+            <a href="../diagrams/agent-native-framework.html"
+              >Open the full diagram</a
+            >.
+          </figcaption>
+        </figure>
+
+        <h2>What agent-native frameworks need</h2>
+        <p>
+          I think the next generation of frameworks will compete on a different
+          set of qualities than the last generation did.
+        </p>
+
+        <p>
+          They will still need ergonomics for humans. But they will also need
+          strong affordances for agents: stable project structure, explicit
+          boundary contracts, metadata that describes auth and side effects,
+          generated documentation, inspectable runtime state, deterministic test
+          recipes, and errors that tell the agent how to fix its own call.
+        </p>
+
+        <p>
+          The best frameworks will reduce ambiguity. They will make it harder
+          for a coding agent to wire a feature in the wrong layer, forget an
+          auth rule, expose an unsafe tool, or ship an API whose docs have
+          drifted from its implementation.
+        </p>
+
+        <p>
+          That is the direction AgentBack is exploring: one container, one
+          schema, many agent-facing surfaces.
+        </p>
+
+        <h2>Why this matters now</h2>
+        <p>
+          If most code is written by humans, frameworks are leverage for humans.
+          If more code is written by agents, frameworks become leverage for
+          agents too.
+        </p>
+
+        <p>
+          The question is no longer only, "Does this framework make me faster?"
+          The better question is, "Does this framework make my coding agent more
+          reliable, and does it turn the software it creates into something
+          other agents can safely use?"
+        </p>
+
+        <p>
+          That is the real opportunity. Frameworks are not going away in the AI
+          era. They are becoming the operating layer between human intent,
+          coding agents, and agent-facing software.
+        </p>
+
+        <div class="post-actions">
+          <a class="button" href="https://github.com/ninemindai/agentback"
+            >Star AgentBack on GitHub</a
+          >
+          <a class="button secondary" href="introducing-agentback.html"
+            >Read the introduction</a
+          >
+        </div>
+      </article>
+
+      <aside class="aside" aria-label="Post links">
+        <h2>Related</h2>
+        <a href="introducing-agentback.html">Introducing AgentBack</a>
+        <a href="first-reader-is-an-agent.html"
+          >Your API's first reader is an agent</a
+        >
+        <a href="boundary-coherence.html">Boundary coherence is the product</a>
+        <a href="https://github.com/ninemindai/agentback">GitHub repo</a>
+      </aside>
+    </main>
+  </body>
+</html>
