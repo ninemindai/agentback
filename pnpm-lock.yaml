@@ -563,39 +563,15 @@ importers:
         specifier: ~4.1.9
         version: 4.1.9(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@24.12.4)(vite@8.0.13(@types/node@24.12.4)(esbuild@0.28.1)(tsx@4.21.0)(yaml@2.9.0))
 
-  packages/chat:
+  packages/cli:
     dependencies:
-      '@agentback/common':
-        specifier: workspace:~
-        version: link:../common
-      '@agentback/context':
-        specifier: workspace:~
-        version: link:../context
-      '@agentback/core':
-        specifier: workspace:~
-        version: link:../core
-      '@agentback/metadata':
-        specifier: workspace:~
-        version: link:../metadata
-      '@agentback/rest':
-        specifier: workspace:~
-        version: link:../rest
-      '@agentback/security':
-        specifier: workspace:~
-        version: link:../security
-      '@types/express':
-        specifier: ^5.0.6
-        version: 5.0.6
-      express:
-        specifier: ^5.2.1
-        version: 5.2.1
-      tslib:
-        specifier: ^2.8.1
-        version: 2.8.1
+      '@clack/prompts':
+        specifier: ^0.11.0
+        version: 0.11.0
     devDependencies:
-      '@agentback/testlab':
+      '@agentback/openapi':
         specifier: workspace:~
-        version: link:../testlab
+        version: link:../openapi
       vitest:
         specifier: ~4.1.9
         version: 4.1.9(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@24.12.4)(vite@8.0.13(@types/node@24.12.4)(esbuild@0.28.1)(tsx@4.21.0)(yaml@2.9.0))

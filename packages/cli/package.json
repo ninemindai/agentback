@@ -1,0 +1,32 @@
+{
+  "name": "@agentback/cli",
+  "version": "0.0.1",
+  "description": "AgentBack CLI: deploy an AgentBack app (agentback deploy vercel)",
+  "type": "module",
+  "bin": {
+    "agentback": "dist/cli.js",
+    "abc": "dist/cli.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "engines": {"node": ">=22.13"},
+  "dependencies": {
+    "@clack/prompts": "^0.11.0"
+  },
+  "devDependencies": {
+    "@agentback/openapi": "workspace:~",
+    "vitest": "~4.1.9"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ninemindai/agentback.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://agentback.dev",
+  "bugs": "https://github.com/ninemindai/agentback/issues"
+}
