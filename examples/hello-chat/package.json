@@ -1,0 +1,28 @@
+{
+  "name": "hello-chat",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node dist/index.js",
+    "start:telegram": "node dist/try-telegram.js",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@agentback/chat": "workspace:*",
+    "@agentback/core": "workspace:*",
+    "@agentback/rest": "workspace:*",
+    "@chat-adapter/slack": "^4.31.0",
+    "@chat-adapter/state-memory": "^4.31.0",
+    "@chat-adapter/telegram": "^4.31.0",
+    "chat": "^4.31.0",
+    "tslib": "^2.8.1"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "homepage": "https://agentback.dev",
+  "bugs": "https://github.com/ninemindai/agentback/issues"
+}
