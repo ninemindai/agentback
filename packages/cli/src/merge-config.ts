@@ -57,7 +57,7 @@ export function mergeVercelConfig(
     }
     if (opts.force) warnings.push('Overwrote existing vercel.json `rewrites`.');
   }
-  json.rewrites = [CANONICAL_REWRITE];
+  json.rewrites = [{...CANONICAL_REWRITE}];
 
   return {json, warnings};
 }

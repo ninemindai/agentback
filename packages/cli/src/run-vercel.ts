@@ -31,12 +31,12 @@ function detectPackageManager(): 'pnpm' | 'yarn' | 'bun' | 'npm' {
   return 'npm';
 }
 
-function writeRootFiles(args: DeployArgs, cwd: string): void {
-  const builder = resolveBuilder({
-    entry: args.entry,
-    exportName: args.exportName,
-    cwd,
-  });
+function writeRootFiles(
+  args: DeployArgs,
+  builder: {entry: string; exportName: string},
+  includeConsoleAssets: boolean,
+  cwd: string,
+): void {
   // The builder entry is repo-root-relative; api/index.ts sits one level deeper
   // in api/, so a root-relative path (bare or ./-prefixed) gets a ../ prefix.
   // An absolute path passes through unchanged.
@@ -66,7 +66,7 @@ function writeRootFiles(args: DeployArgs, cwd: string): void {
     : undefined;
   const {json, warnings} = mergeVercelConfig(existing, {
     packageManager: detectPackageManager(),
-    includeConsoleAssets: args.console,
+    includeConsoleAssets,
     force: args.force,
     eject: args.eject,
   });
@@ -99,8 +99,20 @@ export async function runVercelDeploy(
   args: DeployArgs,
   deps: RunDeps,
 ): Promise<RunOutcome> {
-  enforceConsoleGate(args);
-  writeRootFiles(args, deps.cwd);
+  const builder = resolveBuilder({
+    entry: args.entry,
+    exportName: args.exportName,
+    cwd: deps.cwd,
+  });
+  const isConsoleBuilder = builder.exportName === 'buildConsoleApp';
+  const consoleIntent = args.console || isConsoleBuilder;
+  enforceConsoleGate({console: consoleIntent, unsafePublicConsole: args.unsafePublicConsole});
+  if (args.console && !isConsoleBuilder) {
+    console.warn(
+      'warning: --console was set but the resolved builder is not the console builder; no console assets bundled.',
+    );
+  }
+  writeRootFiles(args, builder, isConsoleBuilder, deps.cwd);
   if (args.eject) return {status: 'ejected'};
 
   await preflight(deps.exec);

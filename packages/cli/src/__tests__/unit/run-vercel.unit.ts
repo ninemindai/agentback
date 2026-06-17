@@ -116,4 +116,47 @@ describe('runVercelDeploy', () => {
     expect(apiContent).toContain("from '../dist/main.js'");
     expect(apiContent).not.toContain("from 'dist/main.js'");
   });
+
+  it('bypass closed: dist/console.js without --console or ack rejects', async () => {
+    // dist/main.js already present from beforeEach; also add console.js
+    writeFileSync(path.join(cwd, 'dist', 'console.js'), '');
+    await expect(
+      runVercelDeploy(parseDeployArgs(['vercel']), {
+        exec: fakeExec({}),
+        fetchFn: okFetch,
+        cwd,
+      }),
+    ).rejects.toThrow(/unsafe-public-console/);
+  });
+
+  it('console builder with ack: writes vercel.json with swagger-ui-dist', async () => {
+    writeFileSync(path.join(cwd, 'dist', 'console.js'), '');
+    await runVercelDeploy(
+      parseDeployArgs(['vercel', '--eject', '--unsafe-public-console']),
+      {exec: fakeExec({}), fetchFn: okFetch, cwd},
+    );
+    const vercelJson = JSON.parse(
+      readFileSync(path.join(cwd, 'vercel.json'), 'utf8'),
+    ) as Record<string, unknown>;
+    const fns = vercelJson.functions as Record<string, {includeFiles?: string}>;
+    expect(fns['api/index.ts'].includeFiles).toContain('swagger-ui-dist');
+  });
+
+  it('mismatch: --console with only dist/main.js writes vercel.json without includeFiles', async () => {
+    // dist/main.js only (no console.js) — resolveBuilder picks main
+    await runVercelDeploy(
+      parseDeployArgs([
+        'vercel',
+        '--eject',
+        '--console',
+        '--unsafe-public-console',
+      ]),
+      {exec: fakeExec({}), fetchFn: okFetch, cwd},
+    );
+    const vercelJson = JSON.parse(
+      readFileSync(path.join(cwd, 'vercel.json'), 'utf8'),
+    ) as Record<string, unknown>;
+    const fns = vercelJson.functions as Record<string, {includeFiles?: string}>;
+    expect(fns['api/index.ts'].includeFiles).toBeUndefined();
+  });
 });

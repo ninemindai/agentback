@@ -8,7 +8,6 @@ export interface DeployArgs {
   target: 'vercel';
   entry?: string;
   exportName?: string;
-  name?: string;
   prod: boolean;
   console: boolean;
   unsafePublicConsole: boolean;
@@ -20,7 +19,7 @@ export interface DeployArgs {
   help: boolean;
 }
 
-const VALUE_FLAGS = new Set(['--entry', '--export', '--name', '--verify-path']);
+const VALUE_FLAGS = new Set(['--entry', '--export', '--verify-path']);
 const BOOL_FLAGS = new Set([
   '--prod',
   '--console',
@@ -63,7 +62,6 @@ export function parseDeployArgs(argv: string[]): DeployArgs {
       if (v === undefined) bad(`deploy: ${f} needs a value`);
       if (f === '--entry') out.entry = v;
       else if (f === '--export') out.exportName = v;
-      else if (f === '--name') out.name = v;
       else if (f === '--verify-path') out.verifyPath = v;
     } else if (BOOL_FLAGS.has(f)) {
       if (f === '--prod') out.prod = true;

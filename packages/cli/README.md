@@ -38,7 +38,7 @@ To run the e2e test locally:
 3. Set the opt-in flag and run the test:
 
 ```bash
-ABC_E2E_VERCEL=1 pnpm -F @agentback/cli exec vitest run packages/cli/dist/__tests__/e2e/deploy-vercel.e2e.js
+ABC_E2E_VERCEL=1 pnpm -F @agentback/cli build && pnpm exec vitest run packages/cli/dist/__tests__/e2e/deploy-vercel.e2e.js
 ```
 
 The test deploys a fixture app and verifies that the deployment succeeds and `/openapi.json` is reachable. It times out after 3 minutes if the deploy does not complete.

@@ -1,6 +1,6 @@
 {
   "name": "@agentback/cli",
-  "version": "0.0.1",
+  "version": "0.4.0",
   "description": "AgentBack CLI: deploy an AgentBack app (agentback deploy vercel)",
   "type": "module",
   "bin": {
@@ -17,9 +17,6 @@
   },
   "engines": {
     "node": ">=22.13"
-  },
-  "dependencies": {
-    "@clack/prompts": "^0.11.0"
   },
   "devDependencies": {
     "@agentback/openapi": "workspace:~",

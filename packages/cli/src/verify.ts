@@ -14,8 +14,16 @@ export async function verifyDeploy(
   fetchFn: typeof fetch = globalThis.fetch,
 ): Promise<VerifyResult> {
   const target = new URL(opts.verifyPath, url).toString();
-  const res = await fetchFn(target, {headers: opts.headers});
-  if (res.status === 200) return {ok: true, status: 200};
-  const text = await res.text().catch(() => '');
-  return {ok: false, status: res.status, body: text.slice(0, 500)};
+  try {
+    const res = await fetchFn(target, {
+      headers: opts.headers,
+      signal: AbortSignal.timeout(15000),
+    });
+    if (res.status === 200) return {ok: true, status: 200};
+    const text = await res.text().catch(() => '');
+    return {ok: false, status: res.status, body: text.slice(0, 500)};
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {ok: false, status: 0, body: msg};
+  }
 }

@@ -19,8 +19,6 @@ describe('parseDeployArgs', () => {
     const a = parseDeployArgs([
       'vercel',
       '--prod',
-      '--name',
-      'svc',
       '--entry',
       'dist/main.js',
       '--export',
@@ -36,7 +34,6 @@ describe('parseDeployArgs', () => {
     ]);
     expect(a).toMatchObject({
       prod: true,
-      name: 'svc',
       entry: 'dist/main.js',
       exportName: 'buildApp',
       console: true,
