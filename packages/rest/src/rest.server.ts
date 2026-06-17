@@ -1034,6 +1034,11 @@ export class RestServer implements Server {
         next(err);
       }
     });
+    // Neutral fetch path: same spec, served as JSON via fetchHandler().
+    this.addFetchHandler('GET', specPath, async () => {
+      const spec = await this.getApiSpec();
+      return globalThis.Response.json(spec);
+    });
 
     this.mountAxRoutes(specPath);
 
@@ -1078,6 +1083,17 @@ export class RestServer implements Server {
       };
     this.app.get(llmsTxtPath, serve(generateLlmsTxt));
     this.app.get(llmsFullTxtPath, serve(generateLlmsFullTxt));
+    // Neutral fetch path: same AX documents via fetchHandler().
+    const textResponse = async (body: string) =>
+      new globalThis.Response(body, {
+        headers: {'content-type': 'text/plain; charset=utf-8'},
+      });
+    this.addFetchHandler('GET', llmsTxtPath, async () =>
+      textResponse(await render(generateLlmsTxt)),
+    );
+    this.addFetchHandler('GET', llmsFullTxtPath, async () =>
+      textResponse(await render(generateLlmsFullTxt)),
+    );
   }
 
   /** Resolve contributed {@link AxSection}s (bind order preserved). */
