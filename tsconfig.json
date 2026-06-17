@@ -40,6 +40,7 @@
     {"path": "packages/messaging-bullmq"},
     {"path": "packages/drizzle"},
     {"path": "packages/extension-otel"},
+    {"path": "packages/chat"},
     {"path": "packages/testing"},
     {"path": "packages/create-agentback"},
     {"path": "examples/hello-rest"},

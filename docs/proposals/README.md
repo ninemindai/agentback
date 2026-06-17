@@ -32,6 +32,12 @@ tracked in the doc headers.
 | ---- | -------------------------------------------- | ----------------------------------------------------------------- |
 | P2-1 | [Publish pipeline](p2-1-publish-pipeline.md) | Manual all-at-once release workflow; gates P0-4's `npm create` UX |
 
+## Exploratory — not part of the reviewed roadmap
+
+| #   | Proposal                                    | One-liner                                                                                              |
+| --- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| E-1 | [Chat channels](chat-channels.md)           | `@agentback/chat` — chat platforms (Slack/Discord/…) as a third inbound surface via Vercel's Chat SDK |
+
 ## Sequencing constraints (from eng review)
 
 - **P0-1 step 0** (per-request context guarantee in `mcp`) must land before

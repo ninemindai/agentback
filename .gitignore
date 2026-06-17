@@ -14,3 +14,6 @@ build
 
 # local pnpm store fallback (created by some pnpm operations)
 .pnpm-store/
+
+# throwaway design spikes (isolated from the pnpm workspace)
+spike/
