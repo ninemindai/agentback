@@ -117,6 +117,23 @@ export interface RestServerConfig {
    * `web` | `express`) selects the default; otherwise `'express'`.
    */
   dispatch?: 'express' | 'web';
+  /**
+   * Which HTTP listener `start()` binds. **Experimental** — the root-cutover
+   * prototype (see docs/superpowers/specs/2026-06-16-fetch-seam-root-cutover.md).
+   *
+   * - `'express'` (default) — `start()` binds `expressApp.listen(...)`; Express
+   *   owns routing. All features work, including `@agentback/mcp-http` and raw
+   *   `@inject(HTTP_REQUEST/HTTP_RESPONSE)` routes.
+   * - `'native'` — `start()` serves `fetchHandler()` directly via a Node
+   *   `http.createServer(createNodeListener(...))`, making the runtime-neutral
+   *   Router the single source of truth (parity with how Bun/Fastify/Hono host
+   *   the app). `@api` routes, `/openapi.json`, `/llms.txt`, and the `install*`
+   *   UIs are served; **`mcp-http` and raw-req/res routes are unsupported** and
+   *   `start()` throws if such a route is registered.
+   *
+   * `'native'` implies the `'web'` dispatch pipeline regardless of `dispatch`.
+   */
+  listener?: 'express' | 'native';
   /** Server-sent events (stream routes declared with `streamOf:`). */
   sse?: {
     /**
@@ -130,7 +147,13 @@ export interface RestServerConfig {
 export const DEFAULT_REST_CONFIG: Required<
   Omit<
     RestServerConfig,
-    'openApiSpec' | 'cors' | 'sse' | 'ax' | 'bodyParser' | 'dispatch'
+    | 'openApiSpec'
+    | 'cors'
+    | 'sse'
+    | 'ax'
+    | 'bodyParser'
+    | 'dispatch'
+    | 'listener'
   >
 > & {
   openApiSpec: NonNullable<RestServerConfig['openApiSpec']>;

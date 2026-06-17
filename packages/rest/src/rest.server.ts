@@ -59,7 +59,7 @@ import express, {
   type Request,
   type Response,
 } from 'express';
-import type {Server as HttpServer} from 'http';
+import {createServer as createHttpServer, type Server as HttpServer} from 'http';
 import {Readable} from 'node:stream';
 import {
   RestBindings,
@@ -93,6 +93,7 @@ import {collectRoutes} from './web/collect-routes.js';
 import {Router} from './web/router.js';
 import {RestHandler} from './web/rest-handler.js';
 import {createFetchHost, type FetchHost} from './host/fetch.js';
+import {createNodeListener} from './host/node.js';
 import {writeWebResponseToNode} from './host/node-response.js';
 import {
   collectWebMiddleware,
@@ -132,7 +133,13 @@ export class RestServer implements Server {
   readonly config: Required<
     Omit<
       RestServerConfig,
-      'openApiSpec' | 'cors' | 'sse' | 'ax' | 'bodyParser' | 'dispatch'
+      | 'openApiSpec'
+      | 'cors'
+      | 'sse'
+      | 'ax'
+      | 'bodyParser'
+      | 'dispatch'
+      | 'listener'
     >
   > & {
     openApiSpec: NonNullable<RestServerConfig['openApiSpec']>;
@@ -140,10 +147,15 @@ export class RestServer implements Server {
     sse?: RestServerConfig['sse'];
     ax?: RestServerConfig['ax'];
     bodyParser?: RestServerConfig['bodyParser'];
+    dispatch?: RestServerConfig['dispatch'];
+    listener?: RestServerConfig['listener'];
   };
 
   /** Selected per-route dispatch pipeline; see {@link RestServerConfig.dispatch}. */
   protected readonly dispatchMode: 'express' | 'web';
+
+  /** Selected HTTP listener; see {@link RestServerConfig.listener}. */
+  protected readonly listenerMode: 'express' | 'native';
 
   constructor(
     @inject(CoreBindings.APPLICATION_INSTANCE)
@@ -163,7 +175,11 @@ export class RestServer implements Server {
     // (test-only) AGENTBACK_REST_DISPATCH env var; otherwise 'express'. The env
     // override lets the ENTIRE existing test suite run through the Web pipeline
     // without editing a single test — the parity arbiter for web-dispatch mode.
-    this.dispatchMode = resolveDispatchMode(cfg.dispatch);
+    this.listenerMode = cfg.listener ?? 'express';
+    // Native listener serves fetchHandler() directly, which always runs the Web
+    // pipeline — so force web dispatch in native mode regardless of `dispatch`.
+    this.dispatchMode =
+      this.listenerMode === 'native' ? 'web' : resolveDispatchMode(cfg.dispatch);
     this.app = express();
     // CORS and body parsing are themselves entries in the LB middleware chain
     // (tagged with groups), not bare `app.use` calls — so their order relative
@@ -1113,8 +1129,13 @@ export class RestServer implements Server {
     this.mountAllControllers();
     this.mountFrameworkRoutes();
     // Serverless targets (Vercel, Lambda) own the HTTP listener: routes are
-    // now fully mounted, so the caller exports `expressApp` and we bind nothing.
+    // now fully mounted, so the caller exports `expressApp` (or `fetchHandler()`)
+    // and we bind nothing.
     if (!this.config.listen) return;
+    if (this.listenerMode === 'native') {
+      await this.startNativeListener();
+      return;
+    }
     await new Promise<void>(resolve => {
       this.httpServer = this.app.listen(
         this.config.port,
@@ -1125,6 +1146,77 @@ export class RestServer implements Server {
         },
       );
     });
+  }
+
+  /**
+   * Experimental native listener (`rest.listener: 'native'`): serve
+   * `fetchHandler()` through a Node `http` server via {@link createNodeListener}
+   * instead of `expressApp.listen()`, making the runtime-neutral Router the
+   * single source of truth — the same surface Bun/Fastify/Hono host. Throws if a
+   * route opted into Express semantics (raw req/res injection or a dispatch-seam
+   * override), since the Web pipeline can't serve those. See
+   * docs/superpowers/specs/2026-06-16-fetch-seam-root-cutover.md.
+   */
+  protected async startNativeListener(): Promise<void> {
+    const coupled = this.findExpressCoupledRoute();
+    if (coupled) {
+      throw new Error(
+        `@agentback/rest: rest.listener: 'native' cannot serve route ` +
+          `${coupled.ctor.name}.${coupled.methodName} — it ` +
+          `${coupled.reason}, which requires the Express listener. Use ` +
+          `rest.listener: 'express' (the default) for this app.`,
+      );
+    }
+    const listener = createNodeListener(this.fetchHandler());
+    await new Promise<void>(resolve => {
+      this.httpServer = createHttpServer(listener).listen(
+        this.config.port,
+        this.config.host,
+        () => {
+          this._listening = true;
+          resolve();
+        },
+      );
+    });
+  }
+
+  /**
+   * Find the first registered `@api` route that is inherently Express-coupled
+   * (raw `@inject(HTTP_REQUEST/HTTP_RESPONSE)`), or report the dispatch-seam
+   * override. Used to fail loudly before binding the native listener.
+   */
+  private findExpressCoupledRoute():
+    | {ctor: Function; methodName: string; reason: string}
+    | undefined {
+    if (this.overridesExpressDispatchSeam()) {
+      // A subclass took over the Express dispatch seam; no single route to name.
+      return {
+        ctor: this.constructor,
+        methodName: '(dispatch seam)',
+        reason: 'overrides an Express dispatch seam (dispatch/sendResult/…)',
+      };
+    }
+    for (const b of this.context.findByTag(CoreTags.CONTROLLER)) {
+      const ctor = b.valueConstructor;
+      if (typeof ctor !== 'function') continue;
+      const spec = getControllerSpec(ctor);
+      for (const item of Object.values(spec.paths ?? {})) {
+        for (const operation of Object.values(item as Record<string, unknown>)) {
+          if (!operation || typeof operation !== 'object') continue;
+          const methodName = (operation as {operationId: string}).operationId
+            .split('.')
+            .pop()!;
+          if (injectsRawExpressObjects(ctor, methodName)) {
+            return {
+              ctor,
+              methodName,
+              reason: 'injects the raw Express request/response',
+            };
+          }
+        }
+      }
+    }
+    return undefined;
   }
 
   async stop(): Promise<void> {

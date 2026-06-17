@@ -2,6 +2,7 @@
 // Node module: hello-hosts
 // This file is licensed under the MIT License.
 
+/// <reference types="bun" />
 // Run: bun run src/bun.ts  (NOT compiled by tsc — Bun runs TypeScript natively)
 // Bun.serve is the most direct mapping: its `fetch` field IS the FetchHost interface.
 

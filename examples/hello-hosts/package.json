@@ -7,6 +7,7 @@
     "build": "tsc -b",
     "start:fastify": "node --enable-source-maps dist/fastify.js",
     "start:hono": "node --enable-source-maps dist/hono.js",
+    "start:native": "node --enable-source-maps dist/native.js",
     "start:bun": "bun run src/bun.ts",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
