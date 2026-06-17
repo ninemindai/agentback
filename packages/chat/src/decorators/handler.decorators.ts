@@ -18,19 +18,24 @@ import type {
 // trick `@tool` uses to keep the descriptor check on the *parameters*.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Awaitable = any;
+// Trailing slots after the event args carry method-level `@inject(...)` params
+// (woven from the per-call context), so the constraint allows extra parameters —
+// exactly like `@tool`'s `...rest: any[]`.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Injected = any[];
 
-/** Handlers for message-shaped events: `(thread, message)`. */
+/** Handlers for message-shaped events: `(thread, message, ...@inject)`. */
 export type ChatMessageHandler = (
   thread: ChatThread,
   message: ChatMessage,
+  ...injected: Injected
 ) => Awaitable;
 
 /**
  * A method decorator that constrains the decorated method to `Fn`. Like
  * `@tool`, the constraint lives on the `TypedPropertyDescriptor`, so a method
- * whose signature doesn't match errors precisely at the `@on*` line. Handlers
- * receive exactly the event arguments (no method-level `@inject` weaving), so
- * the signature is exact — a method may take fewer parameters, but not more.
+ * with a wrong event-arg type errors precisely at the `@on*` line. Trailing
+ * `@inject(...)` parameters are allowed (woven from the per-call context).
  */
 type HandlerDecorator<Fn> = (
   target: object,
@@ -77,19 +82,19 @@ export function onDirectMessage(): HandlerDecorator<ChatMessageHandler> {
 }
 /** Handle an interactive action — button click, etc. (`chat.onAction`). */
 export function onAction(): HandlerDecorator<
-  (event: ChatActionEvent) => Awaitable
+  (event: ChatActionEvent, ...injected: Injected) => Awaitable
 > {
   return handlerDecorator('action');
 }
 /** Handle a reaction add/remove (`chat.onReaction`). */
 export function onReaction(): HandlerDecorator<
-  (event: ChatReactionEvent) => Awaitable
+  (event: ChatReactionEvent, ...injected: Injected) => Awaitable
 > {
   return handlerDecorator('reaction');
 }
 /** Handle a slash command (`chat.onSlashCommand`). */
 export function onSlashCommand(): HandlerDecorator<
-  (event: ChatSlashCommandEvent) => Awaitable
+  (event: ChatSlashCommandEvent, ...injected: Injected) => Awaitable
 > {
   return handlerDecorator('slashCommand');
 }

@@ -57,6 +57,21 @@ export interface ChatThread {
 export interface ChatMessage {
   readonly text?: string;
   readonly isMention?: boolean;
+  /** Who sent it (`message.author`). */
+  readonly author?: ChatSender;
+}
+
+/**
+ * The identity of whoever produced an event — `message.author` for messages,
+ * `event.user` for actions/reactions (structural subset of Chat SDK's `Author`).
+ * A {@link ChatPrincipalResolver} maps this to a `UserProfile`.
+ */
+export interface ChatSender {
+  readonly userId: string;
+  readonly userName?: string;
+  readonly fullName?: string;
+  readonly isBot?: boolean | 'unknown';
+  readonly isMe?: boolean;
 }
 
 // Event handles for the non-message events. Kept as loose, all-optional
@@ -67,17 +82,20 @@ export interface ChatMessage {
 /** Interactive action — button click, etc. (subset of Chat SDK's `ActionEvent`). */
 export interface ChatActionEvent {
   readonly actionId?: string;
-  readonly thread?: ChatThread;
+  readonly thread?: ChatThread | null;
+  readonly user?: ChatSender;
 }
 
 /** Reaction add/remove (subset of Chat SDK's `ReactionEvent`). */
 export interface ChatReactionEvent {
-  readonly thread?: ChatThread;
+  readonly thread?: ChatThread | null;
   readonly emoji?: string;
+  readonly user?: ChatSender;
 }
 
 /** Slash command invocation (subset of Chat SDK's `SlashCommandEvent`). */
 export interface ChatSlashCommandEvent {
   readonly command?: string;
-  readonly thread?: ChatThread;
+  readonly thread?: ChatThread | null;
+  readonly user?: ChatSender;
 }

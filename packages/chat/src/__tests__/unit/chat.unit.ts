@@ -3,9 +3,14 @@
 // License text available at https://opensource.org/license/mit/
 
 import {describe, it, expect} from 'vitest';
-import {injectable} from '@agentback/context';
+import {inject, injectable} from '@agentback/context';
 import {service} from '@agentback/core';
 import {RestApplication} from '@agentback/rest';
+import {
+  SecurityBindings,
+  securityId,
+  type UserProfile,
+} from '@agentback/security';
 import {
   ChatComponent,
   chatBot,
@@ -63,9 +68,28 @@ class SignatureChecks {
   @onMention()
   wrongMessageType(_thread: ChatThread, _message: number): void {}
 
-  // @ts-expect-error a handler cannot declare params the runtime won't pass
+  // Trailing @inject params are allowed (woven from the per-call context).
   @onMention()
-  tooManyParams(_t: ChatThread, _m: ChatMessage, _extra: string): void {}
+  withInject(
+    _thread: ChatThread,
+    _message: ChatMessage,
+    @inject(SecurityBindings.USER, {optional: true}) _user?: UserProfile,
+  ): void {}
+}
+
+// Injects the per-call principal established by the resolver.
+@chatBot()
+class PrincipalBot {
+  seenUserId?: string;
+
+  @onMention()
+  async greet(
+    _thread: ChatThread,
+    _message: ChatMessage,
+    @inject(SecurityBindings.USER, {optional: true}) user?: UserProfile,
+  ): Promise<void> {
+    this.seenUserId = user?.[securityId];
+  }
 }
 
 // Two mention handlers on one class; the first throws. Used to prove the
@@ -244,11 +268,33 @@ describe('@agentback/chat', () => {
     app.component(ChatComponent);
     app.service(FanOutBot);
     const server = await app.get<ChatServer>(ChatBindings.SERVER);
-    await server.register(chat, 'parallel');
+    await server.register(chat, {dispatch: 'parallel'});
     const bot = await app.get<FanOutBot>('services.FanOutBot');
     const thread = {post: async () => undefined} as ChatThread;
     await chat.mention!(thread, {text: 'hi'});
     expect([...bot.ran].sort()).toEqual(['first', 'second']); // both ran; order not guaranteed
+  });
+
+  it('establishes the principal and weaves method @inject', async () => {
+    const chat = new StubChat();
+    const app = new RestApplication();
+    app.component(ChatComponent);
+    app.service(PrincipalBot);
+    const server = await app.get<ChatServer>(ChatBindings.SERVER);
+    await server.register(chat, {
+      // map the parsed sender -> a UserProfile (like REST/MCP principal mapping)
+      principal: sender =>
+        sender
+          ? {[securityId]: sender.userId, name: sender.userName}
+          : undefined,
+    });
+    const bot = await app.get<PrincipalBot>('services.PrincipalBot');
+    const thread = {post: async () => undefined} as ChatThread;
+    await chat.mention!(thread, {
+      text: 'hi',
+      author: {userId: 'u1', userName: 'alice'},
+    });
+    expect(bot.seenUserId).toBe('u1'); // SecurityBindings.USER reached the method
   });
 
   it('preserves exact request bytes end-to-end (raw-body path)', async () => {

@@ -9,7 +9,11 @@ import type {
 } from 'express';
 import {loggers} from '@agentback/common';
 import type {RestApplication} from '@agentback/rest';
-import {ChatBindings, type ChatDispatch} from './keys.js';
+import {
+  ChatBindings,
+  type ChatDispatch,
+  type ChatPrincipalResolver,
+} from './keys.js';
 import type {ChatLike} from './port.js';
 
 const log = loggers('agentback:chat');
@@ -56,6 +60,12 @@ export interface InstallChatOptions {
    * `parallel`. Errors are isolated either way. See {@link ChatDispatch}.
    */
   dispatch?: ChatDispatch;
+  /**
+   * Establish the authenticated principal per event. Runs at dispatch with the
+   * sender the runtime parsed; its result is bound as `SecurityBindings.USER`
+   * in the per-call context. See {@link ChatPrincipalResolver}.
+   */
+  principal?: ChatPrincipalResolver;
 }
 
 /**
@@ -97,10 +107,14 @@ export async function installChat(
     paths: {...bound?.paths, ...options.paths},
     waitUntil: options.waitUntil,
     dispatch: options.dispatch ?? bound?.dispatch,
+    principal: options.principal,
   };
 
   const server = await app.get(ChatBindings.SERVER);
-  await server.register(options.chat, merged.dispatch);
+  await server.register(options.chat, {
+    dispatch: merged.dispatch,
+    principal: merged.principal,
+  });
 
   const rest = await app.restServer;
   const handle = mountChatWebhooks(options.chat, rest.expressApp, merged);

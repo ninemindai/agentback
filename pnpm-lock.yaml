@@ -577,6 +577,9 @@ importers:
       '@agentback/rest':
         specifier: workspace:~
         version: link:../rest
+      '@agentback/security':
+        specifier: workspace:~
+        version: link:../security
       '@types/express':
         specifier: ^5.0.6
         version: 5.0.6

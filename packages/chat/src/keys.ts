@@ -4,8 +4,9 @@
 
 import {BindingKey} from '@agentback/context';
 import {MetadataAccessor} from '@agentback/metadata';
+import type {UserProfile} from '@agentback/security';
 import type {ChatServer} from './chat.server.js';
-import type {ChatLike} from './port.js';
+import type {ChatLike, ChatSender, ChatThread} from './port.js';
 
 export namespace ChatBindings {
   /** The discovery/registration server. Bound by {@link ChatComponent}. */
@@ -17,7 +18,29 @@ export namespace ChatBindings {
    * **not** belong here: keep them in env, where the chat adapters read them.
    */
   export const CONFIG = BindingKey.create<ChatRuntimeConfig>('chat.config');
+
+  // Per-call bindings: populated in a request-scoped child context for the
+  // duration of one event dispatch, so handlers (and the services they inject)
+  // can `@inject` them. Inject optionally — they're absent outside a dispatch.
+
+  /** The sender (`message.author` / `event.user`) of the current event. */
+  export const SENDER = BindingKey.create<ChatSender>('chat.request.sender');
+  /** The thread the current event occurred in. */
+  export const THREAD = BindingKey.create<ChatThread>('chat.request.thread');
+  /** The raw event the runtime delivered (message or event object). */
+  export const EVENT = BindingKey.create<unknown>('chat.request.event');
 }
+
+/**
+ * Establishes the authenticated principal for an inbound chat event. Configured
+ * at the boundary (`installChat`), it runs per dispatch with the sender the
+ * runtime parsed from the payload; its result is bound as `SecurityBindings.USER`
+ * in the per-call context, so chat authorizes the same way as REST and MCP.
+ */
+export type ChatPrincipalResolver = (
+  sender: ChatSender | undefined,
+  context: {event: ChatEvent; thread?: ChatThread | null; raw: unknown},
+) => UserProfile | undefined | Promise<UserProfile | undefined>;
 
 /**
  * How a composite runs the multiple handlers registered for one event:

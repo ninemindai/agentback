@@ -2,21 +2,41 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {ContextView} from '@agentback/context';
+import {
+  Context,
+  ContextView,
+  resolveInjectedArguments,
+} from '@agentback/context';
 import {extensions} from '@agentback/core';
 import {MetadataInspector} from '@agentback/metadata';
 import {loggers} from '@agentback/common';
+import {SecurityBindings} from '@agentback/security';
 import {
   CHAT_HANDLERS,
+  ChatBindings,
   ChatKeys,
   EVENT_TO_RUNTIME_METHOD,
   type ChatDispatch,
   type ChatEvent,
   type ChatHandlerMetadata,
+  type ChatPrincipalResolver,
 } from './keys.js';
-import type {ChatLike, ChatRuntimeHandler} from './port.js';
+import type {
+  ChatLike,
+  ChatRuntimeHandler,
+  ChatSender,
+  ChatThread,
+} from './port.js';
 
 const log = loggers('agentback:chat');
+
+/** Options for {@link ChatServer.register}. */
+export interface ChatRegisterOptions {
+  /** Sequential (default) or parallel handler execution. */
+  dispatch?: ChatDispatch;
+  /** Establishes `SecurityBindings.USER` per event from the parsed sender. */
+  principal?: ChatPrincipalResolver;
+}
 
 /** One discovered handler: which class method handles which event. */
 export interface ChatHandlerBinding {
@@ -69,49 +89,39 @@ export class ChatServer {
   }
 
   /**
-   * Resolve each `@chatBot` instance and subscribe its `@on*` methods to the
-   * chat runtime. Instances are resolved through their own binding so
-   * constructor `@inject` works; a singleton resolves once and is shared.
-   * Handlers whose event the runtime does not support are skipped with a warn.
+   * Subscribe every `@chatBot`'s `@on*` methods to the chat runtime.
    *
    * One **composite** handler is registered per event, backed by the array of
-   * that event's handlers — so delegation is ours: ordered + error-isolated,
-   * `sequential` (default) or `parallel` per {@link ChatDispatch}.
+   * that event's handlers, so delegation is ours: ordered + error-isolated,
+   * `sequential` (default) or `parallel`. Each dispatch runs in a per-call child
+   * context that binds the sender/thread/event and — via `options.principal` —
+   * `SecurityBindings.USER`. Handlers are resolved through their own binding
+   * against that child (scope-correct: a singleton stays shared and reads
+   * per-call values via method `@inject`; a per-call-scoped bot reads them in
+   * its constructor), and method-level `@inject` is woven from the same context.
+   * Handlers whose event the runtime does not support are skipped with a warn.
    */
   async register(
     chat: ChatLike,
-    dispatch: ChatDispatch = 'sequential',
+    options: ChatRegisterOptions = {},
   ): Promise<void> {
-    // 1. Group decorated methods by their binding so each contributor resolves
-    //    once, then bind each method to its resolved instance, grouped by event.
-    const byKey = new Map<string, ChatHandlerBinding[]>();
-    for (const h of this.listHandlers()) {
-      const list = byKey.get(h.bindingKey);
-      if (list) list.push(h);
-      else byKey.set(h.bindingKey, [h]);
-    }
+    const dispatch = options.dispatch ?? 'sequential';
+    // Group decorated methods by event (each carries its binding + method, to
+    // resolve scope-correctly per call).
     const byEvent = new Map<ChatEvent, BoundHandler[]>();
-    for (const [bindingKey, handlers] of byKey) {
-      const instance =
-        await this.handlersView.context.get<Record<string, ChatRuntimeHandler>>(
-          bindingKey,
-        );
-      for (const {ctor, meta} of handlers) {
-        const methodName = meta.methodName as string;
-        const bound: BoundHandler = {
-          label: `${ctor.name}.${methodName}`,
-          invoke: (...args) => instance[methodName].apply(instance, args),
-        };
-        const list = byEvent.get(meta.event);
-        if (list) list.push(bound);
-        else byEvent.set(meta.event, [bound]);
-      }
+    for (const {ctor, bindingKey, meta} of this.listHandlers()) {
+      const bound: BoundHandler = {
+        label: `${ctor.name}.${String(meta.methodName)}`,
+        ctor,
+        bindingKey,
+        methodName: meta.methodName as string,
+      };
+      const list = byEvent.get(meta.event);
+      if (list) list.push(bound);
+      else byEvent.set(meta.event, [bound]);
     }
 
-    // 2. Register ONE composite handler per event. The composite — not the
-    //    runtime's dispatch loop — owns delegation, so ordering and error
-    //    isolation are ours: a throwing handler is logged and skipped, never
-    //    aborting its siblings (and the rejection never reaches the runtime).
+    const parent = this.handlersView.context;
     for (const [event, bound] of byEvent) {
       const runtimeMethod = EVENT_TO_RUNTIME_METHOD[event];
       const subscribe = chat[runtimeMethod] as
@@ -126,7 +136,10 @@ export class ChatServer {
         );
         continue;
       }
-      subscribe.call(chat, makeComposite(bound, event, dispatch));
+      subscribe.call(
+        chat,
+        makeComposite(parent, bound, event, dispatch, options.principal),
+      );
       log.info(
         'wired %d handler(s) -> chat.%s (@%s, %s)',
         bound.length,
@@ -138,43 +151,98 @@ export class ChatServer {
   }
 }
 
-/** One resolved handler the composite delegates to. */
+/** A discovered handler the composite resolves and invokes per call. */
 interface BoundHandler {
   label: string;
-  invoke: ChatRuntimeHandler;
+  ctor: Function;
+  bindingKey: string;
+  methodName: string;
+}
+
+/** Extract the sender + thread the runtime delivered for an event. */
+function extractCallData(
+  event: ChatEvent,
+  args: unknown[],
+): {sender?: ChatSender; thread?: ChatThread | null; raw: unknown} {
+  if (event === 'mention' || event === 'message' || event === 'directMessage') {
+    const [thread, message] = args as [
+      ChatThread | undefined,
+      {author?: ChatSender} | undefined,
+    ];
+    return {thread, sender: message?.author, raw: message};
+  }
+  const [evt] = args as [
+    {user?: ChatSender; thread?: ChatThread | null} | undefined,
+  ];
+  return {thread: evt?.thread, sender: evt?.user, raw: evt};
 }
 
 /**
  * Build the single handler the runtime sees for an event. Backed by the array
- * of that event's handlers, it owns delegation: errors are always isolated (a
- * throwing handler is logged, never aborting siblings), run `sequential`
- * (ordered) or `parallel` (`Promise.allSettled`).
+ * of that event's handlers, it owns delegation: a per-call child context (with
+ * sender/thread/event + the resolved principal) is created, every handler is
+ * resolved + `@inject`-woven + invoked against it, errors are isolated, and the
+ * context is closed when the dispatch settles.
  */
 function makeComposite(
+  parent: Context,
   bound: BoundHandler[],
   event: ChatEvent,
   dispatch: ChatDispatch,
+  principal?: ChatPrincipalResolver,
 ): ChatRuntimeHandler {
   const onError = (h: BoundHandler, err: unknown): void => {
     log.error('chat handler %s (@%s) threw: %s', h.label, event, err);
   };
-  if (dispatch === 'parallel') {
-    return async (...args: unknown[]) => {
-      const results = await Promise.allSettled(
-        bound.map(h => h.invoke(...args)),
-      );
-      results.forEach((r, i) => {
-        if (r.status === 'rejected') onError(bound[i], r.reason);
-      });
-    };
-  }
+
+  const invoke = async (
+    h: BoundHandler,
+    ctx: Context,
+    args: unknown[],
+  ): Promise<void> => {
+    // Event args fill the leading (non-@inject) slots; method-level @inject
+    // params are resolved from the per-call context.
+    const woven = await resolveInjectedArguments(
+      h.ctor.prototype,
+      h.methodName,
+      ctx,
+      undefined,
+      args,
+    );
+    const instance = await ctx.get<Record<string, Function>>(h.bindingKey);
+    await instance[h.methodName].apply(instance, woven);
+  };
+
   return async (...args: unknown[]) => {
-    for (const h of bound) {
-      try {
-        await h.invoke(...args);
-      } catch (err) {
-        onError(h, err);
+    const ctx = new Context(parent, 'chat.request');
+    try {
+      const {sender, thread, raw} = extractCallData(event, args);
+      ctx.bind(ChatBindings.EVENT).to(raw);
+      if (sender !== undefined) ctx.bind(ChatBindings.SENDER).to(sender);
+      if (thread != null) ctx.bind(ChatBindings.THREAD).to(thread);
+      if (principal) {
+        const user = await principal(sender, {event, thread, raw});
+        if (user) ctx.bind(SecurityBindings.USER).to(user);
       }
+
+      if (dispatch === 'parallel') {
+        const results = await Promise.allSettled(
+          bound.map(h => invoke(h, ctx, args)),
+        );
+        results.forEach((r, i) => {
+          if (r.status === 'rejected') onError(bound[i], r.reason);
+        });
+      } else {
+        for (const h of bound) {
+          try {
+            await invoke(h, ctx, args);
+          } catch (err) {
+            onError(h, err);
+          }
+        }
+      }
+    } finally {
+      ctx.close();
     }
   };
 }

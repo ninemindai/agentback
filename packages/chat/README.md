@@ -97,7 +97,39 @@ await app.start();
 | `@onReaction()`      | `onReaction`          | `(event)`                 |
 | `@onSlashCommand()`  | `onSlashCommand`      | `(event)`                 |
 
-An event whose method the runtime doesn't expose is skipped with a warning. Use `onChatEvent('<event>')` for the generic form.
+An event whose method the runtime doesn't expose is skipped with a warning. Use `onChatEvent('<event>')` for the generic form. Signatures are checked at the decorator (a wrong event-arg type errors there, like `@tool`); trailing `@inject(...)` params are allowed.
+
+## Per-call context: principal, injection, dispatch
+
+Each event dispatches in a **per-call child context**. The composite binds the sender/thread/event and — via the `principal` resolver you configure at `installChat` — `SecurityBindings.USER`, so chat authorizes the same way as REST and MCP. Handlers (and the services they inject) read these via `@inject`; the resolver runs at dispatch with the sender the runtime parsed.
+
+```ts
+await installChat(app, {
+  chat,
+  principal: sender =>
+    sender ? {[securityId]: sender.userId, name: sender.userName} : undefined,
+  dispatch: 'parallel', // or 'sequential' (default)
+});
+
+@chatBot() // SINGLETON by default
+class SupportBot {
+  @onMention()
+  async handle(
+    thread: ChatThread,
+    message: ChatMessage,
+    @inject(SecurityBindings.USER, {optional: true}) user?: UserProfile,
+  ) {
+    /* user is the per-call principal */
+  }
+}
+```
+
+**Constructor vs method injection depends on scope** (a singleton's constructor only sees app-level deps):
+
+- `SINGLETON` (default) — read per-call values via **method** `@inject` (shown above).
+- `@chatBot({scope: BindingScope.TRANSIENT})` — the instance is resolved per call, so **constructor** `@inject` gets them too.
+
+**Dispatch** controls how multiple handlers for one event run — `sequential` (default, ordered) or `parallel` (`Promise.allSettled`). **Errors are isolated either way**: a throwing handler is logged and never aborts its siblings.
 
 ## Configuration: secrets vs structure
 
@@ -113,6 +145,7 @@ import {ChatBindings} from '@agentback/chat';
 app.bind(ChatBindings.CONFIG).to({
   basePath: '/hooks',
   paths: {slack: '/hooks/slack-events'},
+  dispatch: 'sequential',
 });
 ```
 
