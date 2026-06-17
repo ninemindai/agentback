@@ -79,3 +79,37 @@ describe('capability registry', () => {
     ).toThrow(/console.*not supported/i);
   });
 });
+
+describe('drizzle capability', () => {
+  it('adds drizzle deps + schema + controller for hybrid', () => {
+    const {dir} = scaffold({
+      name: 'dz',
+      template: 'hybrid',
+      cwd,
+      capabilities: ['drizzle'],
+    });
+    const pkg = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    expect(pkg.dependencies['@agentback/drizzle']).toBeDefined();
+    expect(pkg.dependencies['drizzle-orm']).toBe('^0.45.2');
+    expect(appFile(dir, 'src/db/schema.ts')).toContain('pgTable');
+    expect(appFile(dir, 'src/controllers/users.controller.ts')).toContain('@mcpServer');
+    const appTs = appFile(dir, 'src/application.ts');
+    expect(appTs).toContain('this.restController(UsersController)');
+    expect(appTs).toContain('this.service(UsersController)');
+    expect(appTs).toContain('USER_STORE');
+    expect(appTs).not.toContain('{{agentback:');
+  });
+
+  it('uses a tool-only controller for the mcp template', () => {
+    const {dir} = scaffold({
+      name: 'dzm',
+      template: 'mcp',
+      cwd,
+      capabilities: ['drizzle'],
+    });
+    expect(appFile(dir, 'src/tools/users.tools.ts')).toContain('@tool');
+    const appTs = appFile(dir, 'src/application.ts');
+    expect(appTs).toContain('this.service(UsersTools)');
+    expect(appTs).not.toContain('restController');
+  });
+});

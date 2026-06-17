@@ -98,6 +98,40 @@ export const CAPABILITIES: readonly Capability[] = [
       retargetReadmeToConsole(ctx.dir);
     },
   },
+  {
+    name: 'drizzle',
+    label: 'Drizzle ORM (example table + route/tool)',
+    templates: ['hybrid', 'rest', 'mcp'],
+    deps: {
+      '@agentback/drizzle': '{{version}}',
+      'drizzle-orm': '^0.45.2',
+      'drizzle-zod': '^0.8.3',
+    },
+    wire: {
+      rest: {
+        imports:
+          "import {UsersController} from './controllers/users.controller.js';\nimport {USER_STORE, InMemoryUserStore} from './stores/user-store.js';\nimport {BindingScope} from '@agentback/core';",
+        components:
+          'this.bind(USER_STORE).toClass(InMemoryUserStore).inScope(BindingScope.SINGLETON);',
+        registrations: 'this.restController(UsersController);',
+      },
+      hybrid: {
+        imports:
+          "import {UsersController} from './controllers/users.controller.js';\nimport {USER_STORE, InMemoryUserStore} from './stores/user-store.js';\nimport {BindingScope} from '@agentback/core';",
+        components:
+          'this.bind(USER_STORE).toClass(InMemoryUserStore).inScope(BindingScope.SINGLETON);',
+        registrations:
+          'this.restController(UsersController);\n    this.service(UsersController);',
+      },
+      mcp: {
+        imports:
+          "import {UsersTools} from './tools/users.tools.js';\nimport {USER_STORE, InMemoryUserStore} from './stores/user-store.js';\nimport {BindingScope} from '@agentback/core';",
+        components:
+          'this.bind(USER_STORE).toClass(InMemoryUserStore).inScope(BindingScope.SINGLETON);',
+        registrations: 'this.service(UsersTools);',
+      },
+    },
+  },
 ];
 
 export function capabilityNames(template: TemplateName): string[] {
