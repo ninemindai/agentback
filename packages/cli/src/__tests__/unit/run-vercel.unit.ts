@@ -2,7 +2,14 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync} from 'fs';
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'fs';
 import {tmpdir} from 'os';
 import path from 'path';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
@@ -10,7 +17,8 @@ import {runVercelDeploy} from '../../run-vercel.js';
 import {parseDeployArgs} from '../../args.js';
 import type {Exec} from '../../exec.js';
 
-const okFetch = (async () => new Response('{}', {status: 200})) as unknown as typeof fetch;
+const okFetch = (async () =>
+  new Response('{}', {status: 200})) as unknown as typeof fetch;
 
 function fakeExec(map: Record<string, {code: number; stdout?: string}>): Exec {
   return async (cmd, args) => {
@@ -31,7 +39,11 @@ describe('runVercelDeploy', () => {
 
   it('writes root files and stops on --eject', async () => {
     const exec = vi.fn(fakeExec({}));
-    const out = await runVercelDeploy(parseDeployArgs(['vercel', '--eject']), {exec, fetchFn: okFetch, cwd});
+    const out = await runVercelDeploy(parseDeployArgs(['vercel', '--eject']), {
+      exec,
+      fetchFn: okFetch,
+      cwd,
+    });
     expect(out.status).toBe('ejected');
     expect(existsSync(path.join(cwd, 'api', 'index.ts'))).toBe(true);
     expect(existsSync(path.join(cwd, 'vercel.json'))).toBe(true);
@@ -40,7 +52,10 @@ describe('runVercelDeploy', () => {
 
   it('--dry-run preflights but never deploys', async () => {
     const exec = vi.fn(fakeExec({'vercel whoami': {code: 0}}));
-    const out = await runVercelDeploy(parseDeployArgs(['vercel', '--dry-run']), {exec, fetchFn: okFetch, cwd});
+    const out = await runVercelDeploy(
+      parseDeployArgs(['vercel', '--dry-run']),
+      {exec, fetchFn: okFetch, cwd},
+    );
     expect(out.status).toBe('dry-run');
     // whoami may run; deploy must not.
     const calledDeploy = exec.mock.calls.some(c => c[1][0] === 'deploy');
@@ -52,7 +67,11 @@ describe('runVercelDeploy', () => {
       'vercel whoami': {code: 0},
       'vercel deploy': {code: 0, stdout: 'https://demo-abc.vercel.app\n'},
     });
-    const out = await runVercelDeploy(parseDeployArgs(['vercel']), {exec, fetchFn: okFetch, cwd});
+    const out = await runVercelDeploy(parseDeployArgs(['vercel']), {
+      exec,
+      fetchFn: okFetch,
+      cwd,
+    });
     expect(out.status).toBe('deployed');
     expect(out.url).toBe('https://demo-abc.vercel.app');
     expect(out.verify?.ok).toBe(true);
@@ -61,7 +80,11 @@ describe('runVercelDeploy', () => {
   it('throws an actionable error when not authed', async () => {
     const exec = fakeExec({'vercel whoami': {code: 1}});
     await expect(
-      runVercelDeploy(parseDeployArgs(['vercel']), {exec, fetchFn: okFetch, cwd}),
+      runVercelDeploy(parseDeployArgs(['vercel']), {
+        exec,
+        fetchFn: okFetch,
+        cwd,
+      }),
     ).rejects.toThrow(/login/i);
   });
 
@@ -69,13 +92,24 @@ describe('runVercelDeploy', () => {
     mkdirSync(path.join(cwd, 'api'));
     writeFileSync(path.join(cwd, 'api', 'index.ts'), '// user file');
     await expect(
-      runVercelDeploy(parseDeployArgs(['vercel', '--eject']), {exec: fakeExec({}), fetchFn: okFetch, cwd}),
+      runVercelDeploy(parseDeployArgs(['vercel', '--eject']), {
+        exec: fakeExec({}),
+        fetchFn: okFetch,
+        cwd,
+      }),
     ).rejects.toThrow(/force/i);
   });
 
   it('bare --entry path produces ../-prefixed import in api/index.ts', async () => {
     await runVercelDeploy(
-      parseDeployArgs(['vercel', '--eject', '--entry', 'dist/main.js', '--export', 'buildApp']),
+      parseDeployArgs([
+        'vercel',
+        '--eject',
+        '--entry',
+        'dist/main.js',
+        '--export',
+        'buildApp',
+      ]),
       {exec: fakeExec({}), fetchFn: okFetch, cwd},
     );
     const apiContent = readFileSync(path.join(cwd, 'api', 'index.ts'), 'utf8');

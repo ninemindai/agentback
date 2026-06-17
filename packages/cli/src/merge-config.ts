@@ -42,7 +42,11 @@ export function mergeVercelConfig(
     Array.isArray(existingRewrites) &&
     existingRewrites.length === 1 &&
     JSON.stringify(existingRewrites[0]) === JSON.stringify(CANONICAL_REWRITE);
-  if (Array.isArray(existingRewrites) && existingRewrites.length > 0 && !isCanonical) {
+  if (
+    Array.isArray(existingRewrites) &&
+    existingRewrites.length > 0 &&
+    !isCanonical
+  ) {
     if (!opts.force && !opts.eject) {
       throw new AgentError(
         'vercel.json already defines `rewrites`. A catch-all rewrite would ' +

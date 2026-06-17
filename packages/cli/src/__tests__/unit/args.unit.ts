@@ -17,14 +17,35 @@ describe('parseDeployArgs', () => {
 
   it('parses flags and values', () => {
     const a = parseDeployArgs([
-      'vercel', '--prod', '--name', 'svc', '--entry', 'dist/main.js',
-      '--export', 'buildApp', '--console', '--unsafe-public-console',
-      '--eject', '--force', '--dry-run', '--yes', '--verify-path', '/v1/openapi.json',
+      'vercel',
+      '--prod',
+      '--name',
+      'svc',
+      '--entry',
+      'dist/main.js',
+      '--export',
+      'buildApp',
+      '--console',
+      '--unsafe-public-console',
+      '--eject',
+      '--force',
+      '--dry-run',
+      '--yes',
+      '--verify-path',
+      '/v1/openapi.json',
     ]);
     expect(a).toMatchObject({
-      prod: true, name: 'svc', entry: 'dist/main.js', exportName: 'buildApp',
-      console: true, unsafePublicConsole: true, eject: true, force: true,
-      dryRun: true, yes: true, verifyPath: '/v1/openapi.json',
+      prod: true,
+      name: 'svc',
+      entry: 'dist/main.js',
+      exportName: 'buildApp',
+      console: true,
+      unsafePublicConsole: true,
+      eject: true,
+      force: true,
+      dryRun: true,
+      yes: true,
+      verifyPath: '/v1/openapi.json',
     });
   });
 

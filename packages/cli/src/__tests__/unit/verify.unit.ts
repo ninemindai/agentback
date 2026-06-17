@@ -14,12 +14,20 @@ function stub(status: number, body: string): typeof fetch {
 
 describe('verifyDeploy', () => {
   it('passes on 200', async () => {
-    const r = await verifyDeploy('https://x.vercel.app', {verifyPath: '/openapi.json'}, stub(200, '{"openapi":"3.1.1"}'));
+    const r = await verifyDeploy(
+      'https://x.vercel.app',
+      {verifyPath: '/openapi.json'},
+      stub(200, '{"openapi":"3.1.1"}'),
+    );
     expect(r).toMatchObject({ok: true, status: 200});
   });
 
   it('fails on non-200 and returns body', async () => {
-    const r = await verifyDeploy('https://x.vercel.app', {verifyPath: '/openapi.json'}, stub(500, 'boom'));
+    const r = await verifyDeploy(
+      'https://x.vercel.app',
+      {verifyPath: '/openapi.json'},
+      stub(500, 'boom'),
+    );
     expect(r.ok).toBe(false);
     expect(r.status).toBe(500);
     expect(r.body).toContain('boom');
@@ -31,7 +39,11 @@ describe('verifyDeploy', () => {
       seen = String(input);
       return new Response('{}', {status: 200});
     }) as unknown as typeof fetch;
-    await verifyDeploy('https://x.vercel.app', {verifyPath: '/v1/openapi.json'}, fetchFn);
+    await verifyDeploy(
+      'https://x.vercel.app',
+      {verifyPath: '/v1/openapi.json'},
+      fetchFn,
+    );
     expect(seen).toBe('https://x.vercel.app/v1/openapi.json');
   });
 });

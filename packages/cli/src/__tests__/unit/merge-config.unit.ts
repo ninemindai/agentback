@@ -5,7 +5,12 @@
 import {describe, expect, it} from 'vitest';
 import {mergeVercelConfig} from '../../merge-config.js';
 
-const base = {packageManager: 'pnpm', includeConsoleAssets: false, force: false, eject: false} as const;
+const base = {
+  packageManager: 'pnpm',
+  includeConsoleAssets: false,
+  force: false,
+  eject: false,
+} as const;
 
 describe('mergeVercelConfig', () => {
   it('writes a fresh canonical config (no hardcoded build/public)', () => {
@@ -19,8 +24,13 @@ describe('mergeVercelConfig', () => {
   it('adds console includeFiles only when requested', () => {
     const off = mergeVercelConfig(undefined, base).json as any;
     expect(off.functions['api/index.ts'].includeFiles).toBeUndefined();
-    const on = mergeVercelConfig(undefined, {...base, includeConsoleAssets: true}).json as any;
-    expect(on.functions['api/index.ts'].includeFiles).toContain('swagger-ui-dist');
+    const on = mergeVercelConfig(undefined, {
+      ...base,
+      includeConsoleAssets: true,
+    }).json as any;
+    expect(on.functions['api/index.ts'].includeFiles).toContain(
+      'swagger-ui-dist',
+    );
   });
 
   it('preserves unrelated user keys', () => {
