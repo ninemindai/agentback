@@ -17,45 +17,34 @@ clients, tests, and runtime validation all share one Zod contract.
 
 ## Why another API framework?
 
-Your API has a second audience now. Alongside the apps that call it, AI agents
-read it, invoke it, and chain it into workflows — and they consume a different
-surface: MCP tools, machine-readable docs, and structured errors they can
-recover from on their own.
+Your API has two audiences now: apps and agents. Same operations, different
+surfaces — REST for apps, MCP tools and machine-readable docs for agents.
 
-That surface describes the _same operations_ your REST API already exposes. Yet
-most stacks make you spell each operation out several times over: a Zod schema
-to validate it, a hand-written OpenAPI block to document it, a separate MCP tool
-definition for agents, a client type for your TypeScript callers. One contract,
-copied into four or five places. Add a field and you edit all of them; miss one
-and they drift — silently, until an agent sends the body your OpenAPI promised
-and your validator rejects it.
+Most stacks make you describe each operation four or five times: a Zod schema, an
+OpenAPI block, an MCP tool definition, a client type. One contract, copied
+everywhere. Add a field, edit all of them. Miss one, they drift — quietly, until
+an agent sends the body your docs promised and your validator throws.
 
-Express, Fastify, Nest, and tRPC each handle one or two of these boundaries
-well. The agent surface is the afterthought — a separate adapter and a second
-source of truth for the same call.
-
-AgentBack makes the schema the source. Declare an operation once with a Zod
-schema on the decorator, and that one schema becomes the runtime validator, the
-`z.infer` type, the OpenAPI 3.1 contract, the MCP input/output schema, the typed
-client, and the rendered docs — derived, never duplicated. Change the schema and
-every boundary moves with it.
+AgentBack describes it once.
 
 ```ts
 const OrderId = z.object({id: z.string()});
 const Order = z.object({id: z.string(), status: z.enum(['open', 'shipped'])});
 
-// One pair of schemas, both boundaries — no second source of truth:
-@get('/orders/{id}', {path: OrderId, response: Order}) // → REST route + OpenAPI + typed client
+@get('/orders/{id}', {path: OrderId, response: Order}) // → REST + OpenAPI + typed client
 async getOrder(input) { /* … */ }
 
-@tool('get_order', {input: OrderId, output: Order}) // → MCP tool, the same schemas
+@tool('get_order', {input: OrderId, output: Order}) // → MCP tool, same schemas
 async getOrderTool(input) { /* … */ }
 ```
 
-It isn't "Express, but newer." It's the layer that keeps one operation coherent
-across the app boundary and the agent boundary — on a dependency-injection core
-you can extend, runnable on any HTTP host (Node, Fastify, Hono, Bun, Deno,
-Workers) from a single `fetch` handler.
+One Zod schema becomes the validator, the `z.infer` type, the OpenAPI 3.1
+contract, the MCP schema, the typed client, and the docs. Change the schema;
+every boundary follows.
+
+Not "Express, but newer." The layer that keeps one operation coherent across the
+app boundary and the agent boundary — on a DI core you can extend, on any host
+(Node, Fastify, Hono, Bun, Deno, Workers) from one `fetch` handler.
 
 ## What's inside
 
