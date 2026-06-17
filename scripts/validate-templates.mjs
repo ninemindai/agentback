@@ -25,11 +25,22 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const TEMPLATES = ['rest', 'mcp', 'hybrid'];
 const CLI = join(ROOT, 'packages/create-agentback/dist/cli.js');
 
-const apps = TEMPLATES.map(t => ({
-  template: t,
-  name: `tmpl-check-${t}`,
-  dir: join(ROOT, 'examples', `tmpl-check-${t}`),
-}));
+const apps = [
+  ...TEMPLATES.map(t => ({
+    template: t,
+    name: `tmpl-check-${t}`,
+    dir: join(ROOT, 'examples', `tmpl-check-${t}`),
+    extraArgs: [],
+  })),
+  // Capability-combo app: proves the --drizzle + --auth overlay TS compiles +
+  // tests against the live workspace packages (not just syntax-checks).
+  {
+    template: 'hybrid',
+    name: 'tmpl-check-caps',
+    dir: join(ROOT, 'examples', 'tmpl-check-caps'),
+    extraArgs: ['--drizzle', '--auth'],
+  },
+];
 
 function run(cmd, args, cwd = ROOT) {
   execFileSync(cmd, args, {cwd, stdio: 'inherit'});
@@ -59,7 +70,7 @@ function main() {
     rmSync(app.dir, {recursive: true, force: true});
     run(
       'node',
-      [CLI, app.name, '--template', app.template],
+      [CLI, app.name, '--template', app.template, ...app.extraArgs],
       join(ROOT, 'examples'),
     );
 

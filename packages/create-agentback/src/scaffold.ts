@@ -13,12 +13,15 @@ import {
 } from 'fs';
 import path from 'path';
 import {fileURLToPath} from 'url';
+import {
+  applyCapability,
+  capabilitiesRoot,
+  CAPABILITIES,
+  findCapability,
+} from './capabilities.js';
 
 export const TEMPLATES = ['hybrid', 'rest', 'mcp'] as const;
 export type TemplateName = (typeof TEMPLATES)[number];
-
-/** Templates with an HTTP server that can host the `/console` dev UI. */
-export const CONSOLE_TEMPLATES: readonly TemplateName[] = ['hybrid', 'rest'];
 
 export interface ScaffoldOptions {
   /** App name — becomes the directory and package name. */
@@ -38,6 +41,14 @@ export interface ScaffoldOptions {
    * and `rest` templates (the stdio `mcp` template has no HTTP server).
    */
   console?: boolean;
+  /**
+   * HTTP host options baked into the scaffolded RestApplication config.
+   * Rejected for the stdio `mcp` template (no REST server). Omitted keys fall
+   * back to framework defaults (3000/127.0.0.1) and runtime PORT/HOST env.
+   */
+  host?: {port?: number; host?: string; basePath?: string};
+  /** Opt-in capability add-ons (e.g. 'drizzle', 'auth', 'console'). */
+  capabilities?: string[];
 }
 
 export interface ScaffoldResult {
@@ -50,6 +61,52 @@ const NAME_RE = /^(?:@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
 
 /** Files that get `{{name}}` / `{{version}}` substitution after copy. */
 const SUBSTITUTED = /\.(json|md|ts)$/;
+
+/** Templates that have an HTTP server (and thus accept host options). */
+const REST_TEMPLATES: readonly TemplateName[] = ['hybrid', 'rest'];
+
+/** Render the `rest: {...}` config body from host options (no surrounding braces). */
+function renderRestConfig(host?: ScaffoldOptions['host']): string {
+  if (!host) return '';
+  const parts: string[] = [];
+  if (host.port !== undefined) parts.push(`port: ${host.port}`);
+  // JSON.stringify quotes + escapes string values so a host/basePath that
+  // contains a quote can't emit broken TS.
+  if (host.host !== undefined) parts.push(`host: ${JSON.stringify(host.host)}`);
+  if (host.basePath !== undefined)
+    parts.push(`basePath: ${JSON.stringify(host.basePath)}`);
+  return parts.length ? `rest: {${parts.join(', ')}}` : '';
+}
+
+/**
+ * Fill a named anchor in a file, re-emitting the anchor so multiple capabilities
+ * can stack at the same point. `kind: 'line'` targets `// {{agentback:tag}}`;
+ * `kind: 'inline'` targets the inline block-comment form (used inside super()).
+ */
+function fillAnchor(
+  text: string,
+  tag: string,
+  insert: string,
+  kind: 'line' | 'inline' = 'line',
+): string {
+  if (kind === 'inline') {
+    const re = new RegExp(`/\\* \\{\\{agentback:${tag}\\}\\} \\*/`);
+    return text.replace(re, insert);
+  }
+  const re = new RegExp(`([ \\t]*)// \\{\\{agentback:${tag}\\}\\}`);
+  return text.replace(
+    re,
+    (_m, indent: string) =>
+      `${indent}${insert}\n${indent}// {{agentback:${tag}}}`,
+  );
+}
+
+/** Remove every remaining `{{agentback:*}}` anchor (line + inline forms). */
+function stripAnchors(text: string): string {
+  return text
+    .replace(/^[ \t]*\/\/ \{\{agentback:[^}]+\}\}\n/gm, '')
+    .replace(/\/\* \{\{agentback:[^}]+\}\} \*\//g, '');
+}
 
 function templatesRoot(): string {
   // dist/scaffold.js → ../templates (the templates dir ships uncompiled).
@@ -85,47 +142,6 @@ function walk(dir: string, base = dir): string[] {
 }
 
 /**
- * Replace the standalone explorer/inspector deps with `@agentback/console`,
- * which composes them into one mounted UI. Leaves `{{version}}` in place for
- * the substitution pass. Writes plain 2-space JSON (the scaffolded app, not a
- * linted workspace file).
- */
-function retargetDepsToConsole(dir: string, template: TemplateName): void {
-  const pkgPath = path.join(dir, 'package.json');
-  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as {
-    dependencies?: Record<string, string>;
-  };
-  const drop =
-    template === 'hybrid'
-      ? ['@agentback/rest-explorer', '@agentback/mcp-inspector']
-      : ['@agentback/rest-explorer'];
-  const kept = Object.entries(pkg.dependencies ?? {}).filter(
-    ([k]) => !drop.includes(k),
-  );
-  // Place `@agentback/console` ahead of the other @agentback deps.
-  const at = kept.findIndex(([k]) => k.startsWith('@agentback/'));
-  kept.splice(at < 0 ? kept.length : at, 0, [
-    '@agentback/console',
-    '{{version}}',
-  ]);
-  pkg.dependencies = Object.fromEntries(kept);
-  writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
-}
-
-/** Point the README's URL hints at `/console` instead of the explorers. */
-function retargetReadmeToConsole(dir: string): void {
-  const readmePath = path.join(dir, 'README.md');
-  if (!existsSync(readmePath)) return;
-  const text = readFileSync(readmePath, 'utf8')
-    .replace('REST + Swagger UI at /explorer', 'REST + dev console at /console')
-    .replace(
-      '`GET /explorer` (Swagger UI) · `GET /mcp-inspector` · `POST /mcp` (MCP HTTP)',
-      '`GET /console` (dev console) · `POST /mcp` (MCP HTTP)',
-    );
-  writeFileSync(readmePath, text);
-}
-
-/**
  * Copy a template into `<cwd>/<name>` with `{{name}}`/`{{version}}`
  * substitution. Refuses to overwrite an existing non-empty directory.
  */
@@ -142,12 +158,6 @@ export function scaffold(options: ScaffoldOptions): ScaffoldResult {
       `Unknown template '${template}'. Available: ${TEMPLATES.join(', ')}.`,
     );
   }
-  if (options.console && !CONSOLE_TEMPLATES.includes(template)) {
-    throw new Error(
-      `--console is not supported for the '${template}' template; the console ` +
-        `needs an HTTP server. Use --template ${CONSOLE_TEMPLATES.join(' or ')}.`,
-    );
-  }
   const src = path.join(templatesRoot(), template);
   if (!existsSync(src)) {
     throw new Error(`Template directory missing: ${src}`);
@@ -159,6 +169,28 @@ export function scaffold(options: ScaffoldOptions): ScaffoldResult {
     throw new Error(`Target directory ${dir} already exists and is not empty.`);
   }
 
+  // Normalize the legacy `console: true` flag into the capability list, then
+  // validate every capability against the template BEFORE copying anything so a
+  // misconfiguration never leaves a partial directory behind. The per-capability
+  // `applyCapability` re-checks (idempotent) once the copy has happened.
+  const caps = [...(options.capabilities ?? [])];
+  if (options.console && !caps.includes('console')) caps.push('console');
+  for (const capName of caps) {
+    const cap = findCapability(capName);
+    if (!cap) {
+      throw new Error(
+        `Unknown capability '${capName}'. Available: ` +
+          `${CAPABILITIES.map(c => c.name).join(', ')}.`,
+      );
+    }
+    if (!cap.templates.includes(template)) {
+      throw new Error(
+        `Capability '${capName}' is not supported for the '${template}' ` +
+          `template. Available templates: ${cap.templates.join(', ')}.`,
+      );
+    }
+  }
+
   cpSync(src, dir, {recursive: true});
 
   // npm and pnpm strip a literal `.gitignore` from published tarballs, so the
@@ -168,18 +200,44 @@ export function scaffold(options: ScaffoldOptions): ScaffoldResult {
     renameSync(dotlessGitignore, path.join(dir, '.gitignore'));
   }
 
-  // Console-capable templates ship a `src/main.console.ts` overlay next to the
-  // default `src/main.ts`. With --console, swap it in and retarget deps + docs
-  // from the standalone explorers to `@agentback/console`; otherwise drop it.
+  // Console-capable templates ship a `src/main.console.ts` overlay. Swap it in
+  // when console is selected; otherwise drop it.
   const consoleEntry = path.join(dir, 'src', 'main.console.ts');
   if (existsSync(consoleEntry)) {
-    if (options.console) {
+    if (caps.includes('console')) {
       renameSync(consoleEntry, path.join(dir, 'src', 'main.ts'));
-      retargetDepsToConsole(dir, template);
-      retargetReadmeToConsole(dir);
     } else {
       rmSync(consoleEntry);
     }
+  }
+
+  // Apply each capability: validate, merge deps, copy overlays, collect wiring.
+  const wirings = caps.map(name =>
+    applyCapability(name, {dir, template, capRoot: capabilitiesRoot()}),
+  );
+
+  // Host options → RestApplication config. Rejected for the stdio mcp template.
+  if (options.host && !REST_TEMPLATES.includes(template)) {
+    throw new Error(
+      `host options are not supported for the '${template}' template; it has ` +
+        `no HTTP server. Use --template ${REST_TEMPLATES.join(' or ')}.`,
+    );
+  }
+  const appTsPath = path.join(dir, 'src', 'application.ts');
+  if (existsSync(appTsPath)) {
+    let appTs = readFileSync(appTsPath, 'utf8');
+    const restConfig = renderRestConfig(options.host);
+    if (restConfig)
+      appTs = fillAnchor(appTs, 'rest-config', restConfig, 'inline');
+    for (const w of wirings) {
+      if (!w) continue;
+      if (w.imports) appTs = fillAnchor(appTs, 'imports', w.imports);
+      if (w.components) appTs = fillAnchor(appTs, 'components', w.components);
+      if (w.registrations)
+        appTs = fillAnchor(appTs, 'registrations', w.registrations);
+    }
+    appTs = stripAnchors(appTs);
+    writeFileSync(appTsPath, appTs);
   }
 
   const version = options.version ?? ownVersion();
