@@ -1,6 +1,11 @@
 // Copyright Ninemind.ai 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
+//
+// INVARIANT: @agentback/rest declares sideEffects:false for edge tree-shaking —
+// no module in this package may have import-time side effects (loggers/Symbol.for/
+// const-init are fine; reflect-metadata, global patches, and load-time decorator
+// registration are NOT).
 
 import {readFile} from 'node:fs/promises';
 import {join, normalize} from 'node:path';
