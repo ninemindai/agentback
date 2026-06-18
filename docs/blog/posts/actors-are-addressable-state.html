@@ -47,6 +47,14 @@
           runtime.
         </p>
 
+        <p>
+          <a href="../diagrams/actor-runtime.html"
+            ><strong>Diagram: the actor runtime at a glance</strong></a
+          >
+          — addressing, the per-identity mailbox, the turn lifecycle, and the
+          in-memory &rarr; Redis adapter swap, on one canvas.
+        </p>
+
         <h2>An actor is a DI service with a stable address</h2>
         <p>
           The model is deliberately small: an actor is a DI service implementing
@@ -170,6 +178,7 @@ installRedisActors(this, {connection: {url: process.env.REDIS_URL}});</code></pr
           >One container, two surfaces</a
         >
         <a href="../../actor-model.md">Actor programming model</a>
+        <a href="../diagrams/actor-runtime.html">Actor runtime diagram</a>
       </aside>
     </main>
   </body>
