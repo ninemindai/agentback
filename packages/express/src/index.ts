@@ -29,6 +29,9 @@ export * from './middleware-registry.js';
 export * from './mixins/middleware.mixin.js';
 export * from './providers/invoke-middleware.provider.js';
 export * from './types.js';
+export * from './express-service.js';
+export * from './express-service-keys.js';
+export * from './express-component.js';
 // Runtime value re-export (types.ts keeps it type-only for the edge subpaths):
 // preserves `import {Router} from '@agentback/express'` for Node consumers who
 // build Express routers. The barrel is Node-only regardless (express.server above).

@@ -29,7 +29,18 @@ function loadMulter(): typeof import('multer') {
     'node:module',
   ) as typeof import('node:module');
   const require = nodeModule.createRequire(import.meta.url);
-  return require('multer') as typeof import('multer');
+  try {
+    return require('multer') as typeof import('multer');
+  } catch {
+    // multer is an OPTIONAL peer dependency (uploads on the Express host only).
+    // Fail with guidance instead of a raw ERR_MODULE_NOT_FOUND.
+    throw new Error(
+      "@agentback/rest: file uploads require the optional peer dependency " +
+        "'multer'. Install it (`npm i multer`) to use fileField() routes on " +
+        "the Express host, or serve via `listener: 'native'`, where multipart " +
+        'is parsed with Web FormData (no multer needed).',
+    );
+  }
 }
 
 /**
