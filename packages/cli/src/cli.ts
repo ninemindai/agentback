@@ -10,11 +10,12 @@ import {parseDeployArgs} from './args.js';
 import {nodeExec} from './exec.js';
 import {runDeploy} from './run-deploy.js';
 import {vercelTarget} from './targets/vercel.js';
+import {cloudflareTarget} from './targets/cloudflare.js';
 
 export const USAGE = `agentback — deploy an AgentBack app
 
 Usage:
-  agentback deploy vercel [options]
+  agentback deploy (vercel|cloudflare) [options]
 
 Options:
   --entry <path>            built module exporting the app builder
@@ -42,7 +43,8 @@ export async function main(argv: string[]): Promise<number> {
       console.log(USAGE);
       return 0;
     }
-    const target = vercelTarget;
+    const target =
+      args.target === 'cloudflare' ? cloudflareTarget : vercelTarget;
     const out = await runDeploy(args, target, {
       exec: nodeExec,
       fetchFn: globalThis.fetch,

@@ -51,7 +51,17 @@ describe('parseDeployArgs', () => {
   });
 
   it('throws on unknown target', () => {
-    expect(() => parseDeployArgs(['cloudflare'])).toThrow(/vercel/i);
+    expect(() => parseDeployArgs(['fly'])).toThrow(/vercel|cloudflare/i);
+  });
+
+  it('accepts cloudflare and its aliases', () => {
+    expect(parseDeployArgs(['cloudflare']).target).toBe('cloudflare');
+    expect(parseDeployArgs(['cf']).target).toBe('cloudflare');
+    expect(parseDeployArgs(['workers']).target).toBe('cloudflare');
+  });
+
+  it('still rejects an unknown target', () => {
+    expect(() => parseDeployArgs(['fly'])).toThrow(/vercel|cloudflare/i);
   });
 
   it('throws on unknown flag', () => {
