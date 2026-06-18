@@ -590,6 +590,9 @@ importers:
       '@agentback/rest':
         specifier: workspace:~
         version: link:../../../rest
+      tslib:
+        specifier: ^2.8.1
+        version: 2.8.1
       zod:
         specifier: ^4.4.3
         version: 4.4.3

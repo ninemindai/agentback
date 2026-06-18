@@ -10,6 +10,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./fs": {
+      "types": "./dist/fs/fs-file-store.d.ts",
+      "import": "./dist/fs/fs-file-store.js"
+    },
     "./testing": {
       "types": "./dist/testing/conformance.d.ts",
       "import": "./dist/testing/conformance.js"

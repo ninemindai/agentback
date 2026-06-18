@@ -3,12 +3,34 @@
 // License text available at https://opensource.org/license/mit/
 
 import {randomUUID} from 'node:crypto';
-import multer from 'multer';
+// `multer` is the Express-path multipart parser; `multer/storage/disk` pulls
+// `node:fs`, which is edge-hostile. Import it as a TYPE only and load the
+// runtime lazily via createRequire inside `makeMultipartMiddleware` (the
+// Express/Node mount path), so a fetch-only worker never drags it onto the
+// static bundle graph. Mirrors the edge-safe dotenv loader in @agentback/common.
+import type multer from 'multer';
 import type {Request, RequestHandler} from 'express';
 import createError from 'http-errors';
 import type {Context} from '@agentback/context';
 import {FILE_STORE, type FileStore} from '@agentback/files';
 import type {FileFieldEntry, UploadedFile} from '@agentback/openapi';
+
+/**
+ * Resolve the `multer` runtime lazily, off the static import graph. Uses
+ * `process.getBuiltinModule('node:module')` + `createRequire` so the
+ * `require('multer')` literal never appears in an esbuild `platform:'browser'`
+ * bundle — only called on the Express host when a `fileField` route mounts.
+ */
+function loadMulter(): typeof import('multer') {
+  const _process = process as NodeJS.Process & {
+    getBuiltinModule?<T = unknown>(id: string): T;
+  };
+  const nodeModule = _process.getBuiltinModule!(
+    'node:module',
+  ) as typeof import('node:module');
+  const require = nodeModule.createRequire(import.meta.url);
+  return require('multer') as typeof import('multer');
+}
 
 /**
  * A multer `StorageEngine` that streams each uploaded file straight to the
@@ -92,7 +114,7 @@ export function makeMultipartMiddleware(
     fileFields.map(f => [f.name, f.options.mimeTypes]),
   );
 
-  const upload = multer({
+  const upload = loadMulter()({
     storage: fileStoreStorage(() =>
       context.get<FileStore>(FILE_STORE, {optional: true}),
     ),

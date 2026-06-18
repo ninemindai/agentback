@@ -4,7 +4,10 @@
 
 import {Application, ApplicationConfig} from '@agentback/core';
 import type {Binding} from '@agentback/context';
-import {MiddlewareMixin} from '@agentback/express';
+// Subpath import (not the package barrel): the mixin and its transitive graph
+// are Express-runtime-free, but the barrel re-exports `express.server`, which
+// would pull Express (node:fs/node:net) onto the edge static graph.
+import {MiddlewareMixin} from '@agentback/express/mixins/middleware.mixin';
 import {loggers} from '@agentback/common';
 import {RestServer} from './rest.server.js';
 import {RestBindings} from './keys.js';

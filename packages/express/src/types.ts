@@ -13,11 +13,15 @@ import {
   Next,
   ValueOrPromise,
 } from '@agentback/core';
-import {Request, RequestHandler, Response} from 'express';
+import type {Request, RequestHandler, Response} from 'express';
 import onFinished from 'on-finished';
 import {MiddlewareBindings} from './keys.js';
 
-export {Request, Response, Router, RouterOptions} from 'express';
+// Type-only re-export: `express` is value-imported only by `express.server.ts`
+// (the real Express host). Keeping these names off the *runtime* graph here is
+// what lets the middleware/mixin foundation (and thus `@agentback/rest`) bundle
+// edge-clean — importing a constant or the mixin must not drag Express in.
+export type {Request, Response, Router, RouterOptions} from 'express';
 
 /**
  * An object holding HTTP request, response and other data

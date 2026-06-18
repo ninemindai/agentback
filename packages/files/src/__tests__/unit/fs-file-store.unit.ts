@@ -6,7 +6,7 @@ import {afterAll, describe, expect, it} from 'vitest';
 import {existsSync, mkdtempSync, readFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {FsFileStore} from '../../index.js';
+import {FsFileStore} from '../../fs/fs-file-store.js';
 import {runFileStoreConformance} from '../../testing/conformance.js';
 
 const root = mkdtempSync(join(tmpdir(), 'agentback-fs-'));
