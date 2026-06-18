@@ -12,6 +12,11 @@ describe('generateEntry', () => {
     expect(src).toContain("import {buildApp} from '../dist/main.js'");
   });
 
+  it("static-imports express + cors so node-file-trace bundles them (rest loads them lazily via createRequire)", () => {
+    expect(src).toContain("import 'express'");
+    expect(src).toContain("import 'cors'");
+  });
+
   it('uses Node http types, never @vercel/node', () => {
     expect(src).toContain("from 'node:http'");
     expect(src).not.toContain('@vercel/node');

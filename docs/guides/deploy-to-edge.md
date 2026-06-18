@@ -273,3 +273,20 @@ agentback deploy cloudflare --eject
 # Inspect .agentback/deploy/cloudflare/worker.ts and wrangler.toml, then:
 wrangler deploy
 ```
+
+## Deploying the Express host to a serverless platform (Vercel)
+
+`agentback deploy vercel` targets a Node serverless function and hands the
+platform your **Express** app, so it's the Node/Express host (not the edge
+path). Two things to know:
+
+- **Declare `express` + `cors` (and `multer` if you use uploads) in your app's
+  `dependencies`** — they are optional peer deps of `@agentback/rest` (see the
+  v0.5.0 release notes), so they are not installed transitively.
+- **Static-import them in the function entry.** `@agentback/rest` loads
+  express/cors lazily via `createRequire` (to keep edge builds Express-free),
+  which serverless bundlers (Vercel's `node-file-trace`) **cannot follow** — so
+  the deployed function omits them and crashes with `Cannot find module 'cors'`.
+  The generated entry (`agentback deploy vercel`) already includes
+  `import 'express'; import 'cors';` for this reason; if you hand-write the
+  function or use a different platform, add those side-effect imports yourself.

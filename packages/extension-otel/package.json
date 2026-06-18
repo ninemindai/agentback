@@ -1,6 +1,6 @@
 {
   "name": "@agentback/extension-otel",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "OpenTelemetry tracing across REST, MCP, and jobs — @opentelemetry/api only; bring your own SDK/exporter",
   "type": "module",
   "main": "dist/index.js",

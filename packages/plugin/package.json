@@ -1,6 +1,6 @@
 {
   "name": "@agentback/plugin",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Discover, gate, and mount Component-contributing plugins into an AgentBack Application",
   "type": "module",
   "main": "dist/index.js",
