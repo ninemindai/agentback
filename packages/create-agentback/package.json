@@ -1,6 +1,6 @@
 {
   "name": "create-agentback",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Scaffold an AgentBack app: npm create agentback my-service [--template rest|mcp|hybrid]",
   "type": "module",
   "bin": {
