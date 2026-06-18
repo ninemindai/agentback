@@ -18,6 +18,7 @@ export * from './host/fetch.js';
 export * from './host/node.js';
 export * from './host/fastify.js';
 export * from './host/asset-source.js';
+export {fromDisk} from './host/asset-source-disk.js';
 export * from './host/static.js';
 export * from './rest.server.js';
 export * from './rest.application.js';

@@ -25,6 +25,19 @@ export function scanImports(modules: string[]): Diagnostic {
   return {ok: true, message: ''};
 }
 
+// Bare Node.js built-in names (without the node: prefix) used by CJS packages.
+// These must be externalized alongside 'node:*' so that transitive CJS
+// dependencies (multer, busboy, express, etc.) don't cause build failures
+// when the worker is bundled with platform:'browser'.
+const BARE_NODE_BUILTINS = [
+  'assert', 'buffer', 'child_process', 'cluster', 'console', 'constants',
+  'crypto', 'dgram', 'dns', 'domain', 'events', 'fs', 'http', 'http2',
+  'https', 'module', 'net', 'os', 'path', 'perf_hooks', 'process',
+  'punycode', 'querystring', 'readline', 'repl', 'stream', 'string_decoder',
+  'sys', 'timers', 'tls', 'trace_events', 'tty', 'url', 'util', 'v8',
+  'vm', 'worker_threads', 'zlib',
+];
+
 export async function runBundleDoctor(
   entryPath: string,
   esbuildImpl?: typeof import('esbuild'),
@@ -39,15 +52,21 @@ export async function runBundleDoctor(
       metafile: true,
       platform: 'browser',
       format: 'esm',
-      external: ['node:*'],
+      // 'node:*' covers the explicit-protocol form; BARE_NODE_BUILTINS covers
+      // CJS transitive deps that still import without the node: prefix.
+      external: ['node:*', ...BARE_NODE_BUILTINS],
       logLevel: 'silent',
     });
   } catch (err) {
     return {ok: false, message: `Worker bundle failed to compile: ${(err as Error).message}`};
   }
+  // Use metafile.outputs (not inputs) so only imports that survive tree-shaking
+  // are checked. Dead-code-eliminated node: imports (e.g. @agentback/rest's
+  // `fromDisk` / node:fs when the worker only uses `fetchHandler`) are dropped
+  // from outputs.imports even though they still appear in inputs.
   const nodeImports = new Set<string>();
-  for (const input of Object.values(result.metafile?.inputs ?? {})) {
-    for (const imp of (input as {imports?: Array<{path: string}>}).imports ?? []) {
+  for (const output of Object.values(result.metafile?.outputs ?? {})) {
+    for (const imp of (output as {imports?: Array<{path: string; kind: string}>}).imports ?? []) {
       if (imp.path.startsWith('node:')) nodeImports.add(imp.path);
     }
   }

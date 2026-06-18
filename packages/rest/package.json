@@ -54,6 +54,7 @@
   "engines": {
     "node": ">=22.13"
   },
+  "sideEffects": false,
   "license": "MIT",
   "repository": {
     "type": "git",
