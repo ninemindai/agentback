@@ -59,13 +59,14 @@ Read top-to-bottom the first time; jump around afterwards.
 
 ### Reference & design
 
-| Doc                                                          | Purpose                                                                                                                     |
-| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| [Architecture overview](architecture/overview.md)            | The big picture: how a request flows, how servers discover bindings, full package layering. Diagrams included.              |
-| [Package catalog](packages.md)                               | Every `@agentback/*` package and `create-agentback`, grouped by layer (DI foundation, REST/MCP/clients, platform).          |
-| [Metering & payments](architecture/metering-and-payments.md) | Counting every REST/MCP call (`metering`) and gating or billing the paid ones — x402 / MPP / Stripe (`payments`). Diagrams. |
-| [Boundary coherence (design thesis)](agent-ergonomics.md)    | _Why_ the framework is shaped this way — the "one artifact, viewed differently" bet and what it buys AI-led teams.          |
-| [Database story](db-story.md)                                | The framework's stance on persistence (Drizzle recipe), and why there's no built-in ORM.                                    |
+| Doc                                                          | Purpose                                                                                                                                         |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Architecture overview](architecture/overview.md)            | The big picture: how a request flows, how servers discover bindings, full package layering. Diagrams included.                                  |
+| [Package catalog](packages.md)                               | Every `@agentback/*` package and `create-agentback`, grouped by layer (DI foundation, REST/MCP/clients, platform).                              |
+| [Metering & payments](architecture/metering-and-payments.md) | Counting every REST/MCP call (`metering`) and gating or billing the paid ones — x402 / MPP / Stripe (`payments`). Diagrams.                     |
+| [Boundary coherence (design thesis)](agent-ergonomics.md)    | _Why_ the framework is shaped this way — the "one artifact, viewed differently" bet and what it buys AI-led teams.                              |
+| [Database story](db-story.md)                                | The framework's stance on persistence (Drizzle recipe), and why there's no built-in ORM.                                                        |
+| [Actor model](actor-model.md) _(experimental)_               | The actor spike: `@actor` services, per-identity serialized turns, the `ActorRuntime` port, and the Redis adapter. See `examples/hello-actors`. |
 
 Every package under [`packages/`](../packages/) carries its own `README.md` with
 its exports, a usage snippet, and where it sits in the layering.
@@ -130,6 +131,7 @@ pnpm -F hello-client start       # the typed client calling hello-rest's schemas
 | `examples/hello-hybrid`   | REST + MCP in one process                  | [Hybrid](guides/build-a-hybrid-app.md)                                    |
 | `examples/hello-client`   | Schema-shared typed client                 | [Hybrid](guides/build-a-hybrid-app.md#a-type-safe-client-with-no-codegen) |
 | `examples/hello-mcp-apps` | MCP Apps `ui://` widget rendered by a host | [MCP Apps](guides/mcp-apps-widgets.md)                                    |
+| `examples/hello-actors`   | Addressable, serialized actors over REST   | [Actor model](actor-model.md) _(experimental)_                            |
 
 ## Conventions in these docs
 

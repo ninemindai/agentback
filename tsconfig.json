@@ -54,6 +54,7 @@
     {"path": "examples/hello-hybrid"},
     {"path": "examples/hello-drizzle"},
     {"path": "examples/hello-jobs"},
+    {"path": "examples/hello-actors"},
     {"path": "examples/hello-client"},
     {"path": "examples/hello-console"},
     {"path": "examples/hello-oauth2"},

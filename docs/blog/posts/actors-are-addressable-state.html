@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Actors are addressable state | AgentBack Blog</title>
+    <meta
+      name="description"
+      content="An actor in AgentBack isn't a new runtime or an agent loop. It's a DI service with a stable address and one guarantee: one turn at a time per identity, with the same Zod schemas everything else uses."
+    />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="../index.html">AgentBack blog</a>
+        <div class="nav-links">
+          <a href="../../README.md">Docs</a>
+          <a href="../../../README.md">Repo README</a>
+          <a href="../diagrams/system-boundary.html">Diagram</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="post-layout">
+      <article class="post-body">
+        <p class="post-meta">June 18, 2026 · experimental spike</p>
+        <h1>Actors are addressable state</h1>
+        <p class="lede">
+          Some state refuses to be a stateless handler over a database row. A
+          shopping cart, a chat session, a game room, a rate counter — each one
+          needs a single writer at a time, picked by identity. The usual answers
+          are a pile of row locks or an external actor runtime that wants to own
+          your process model. AgentBack's actor spike takes a smaller step: an
+          actor is the framework you already have, plus one guarantee.
+        </p>
+
+        <p>
+          Reach for the naive version and the bug writes itself. Two requests
+          load the same cart, each adds an item to its own copy, each saves —
+          and one write clobbers the other. The fix is to make access to a given
+          cart serial: one turn at a time, for <em>that</em> cart, while other
+          carts run freely. You can buy that with per-row locking and a lot of
+          care, or you can adopt an actor framework that asks you to write your
+          domain logic inside its abstractions and its lifecycle. The spike asks
+          whether AgentBack can offer the serialization without the second
+          runtime.
+        </p>
+
+        <h2>An actor is a DI service with a stable address</h2>
+        <p>
+          The model is deliberately small: an actor is a DI service implementing
+          a typed state machine with a stable address. The key discipline is
+          that <strong>state is an explicit argument and return value, never an
+          instance field.</strong> The service object holds behavior and
+          injected dependencies; the state lives in the runtime. That one rule
+          is what makes turns serializable, failures rollback-able, and the
+          backing store swappable.
+        </p>
+
+        <pre><code class="language-ts">@actor('cart', {state: CartState})
+class CartActor implements Actor&lt;z.infer&lt;typeof CartState&gt;&gt; {
+  constructor(@inject('services.Catalog') private catalog: Catalog) {}
+
+  initialState() {
+    return {items: {}};
+  }
+
+  @actorCommand('add', {input: AddItem, output: CartView})
+  add(state: z.infer&lt;typeof CartState&gt;, input: z.infer&lt;typeof AddItem&gt;) {
+    this.catalog.assertExists(input.sku); // AgentError -> 400 on unknown SKU
+    state.items[input.sku] = (state.items[input.sku] ?? 0) + input.qty;
+    return {state, result: cartView(state)};
+  }
+}</code></pre>
+
+        <p>
+          The same Zod schemas that validate the command and the result are the
+          <code>z.infer</code> TypeScript types and the contract the REST route
+          publishes. The actor is a normal service, so it injects a
+          <code>Catalog</code> through the same container as everything else, and
+          a domain error it throws (an <code>AgentError</code>) reaches the
+          caller as a 400 instead of a redacted 500. Nothing here is a new
+          execution model — it's a decorator and a method.
+        </p>
+
+        <h2>The address is the API</h2>
+        <p>
+          <code>cart/&lt;id&gt;</code> is the unit of both state and
+          serialization. Two ids are independent; the same id is one logical
+          line of turns. A REST controller is simply a <em>caller</em> — actors
+          do not become endpoints by themselves, which keeps the transport
+          decision yours:
+        </p>
+
+        <pre><code class="language-ts">@post('/{id}/items', {path: CartPath, body: AddItem, headers: IdempotencyHeaders, response: CartView})
+async add(input) {
+  const turn = await this.carts.invoke(
+    'cart',
+    input.path.id,                              // the actor's address
+    {name: 'add', input: input.body},
+    {requestId: input.headers['idempotency-key']}, // the turn's identity
+  );
+  return turn.output;
+}</code></pre>
+
+        <p>
+          The cart id in the URL is the address. The <code>Idempotency-Key</code>
+          header becomes the turn's <code>requestId</code>, and that is where the
+          state discipline pays off: because state is a value the runtime clones
+          before each turn, a handler that throws or returns a schema-invalid
+          result commits nothing, and a retried request with a committed
+          <code>requestId</code> replays the stored result instead of running
+          <code>add</code> twice. Reusing that key for a <em>different</em>
+          payload is rejected. A double-clicked "add to cart" is a no-op, for
+          free.
+        </p>
+
+        <h2>The runtime is a port, not a framework</h2>
+        <p>
+          The decorated class is the authoring model; the runtime contract
+          underneath it — <code>ActorRuntime</code>, with a normalized
+          <code>ActorDefinition</code> — has no idea decorators or DI exist. That
+          boundary is the whole point. The in-memory adapter is a single-process
+          reference for tests and API validation. Swap it for the Redis adapter
+          and the same actor serializes <em>across</em> processes: a per-identity
+          lease coordinates one turn at a time, and the next state plus the
+          dedup result commit atomically in a Lua script. The actor and the
+          controller do not change a line:
+        </p>
+
+        <pre><code class="language-ts">// instead of: this.component(InMemoryActorsComponent)
+installRedisActors(this, {connection: {url: process.env.REDIS_URL}});</code></pre>
+
+        <p>
+          Every adapter has to pass the same conformance suite — per-identity
+          serialization, cross-identity concurrency, rollback, request replay,
+          collision rejection, and an atomic commit of state plus result. A
+          queue acknowledgement next to an unrelated database write does not
+          meet that contract, and the suite says so.
+        </p>
+
+        <h2>What it deliberately isn't</h2>
+        <p>
+          This is a spike, and its honesty is in its non-goals. There is no
+          distributed directory or placement, no activation, passivation,
+          reminders, or supervision, and no agent loop — AgentBack is not trying
+          to become an orchestration runtime. The runtime can roll back actor
+          state; it cannot un-send an email or un-charge a card, so durable
+          actors still owe you an outbox or idempotent downstream calls. The
+          next real acceptance gate is one adapter on a backend with native
+          per-key serialization and transactional storage — Cloudflare Durable
+          Objects — proving crash and retry behavior, not just the in-process
+          contract.
+        </p>
+
+        <p>
+          A cart is not a row, and an actor is not a runtime. It's an address, a
+          schema, and one turn at a time — the pieces AgentBack already had,
+          pointed at the one problem stateless handlers can't solve.
+        </p>
+      </article>
+
+      <aside class="aside" aria-label="Post links">
+        <h2>Related</h2>
+        <a href="../posts/errors-agents-can-fix.html"
+          >Errors an agent can fix</a
+        >
+        <a href="../posts/one-container-two-surfaces.html"
+          >One container, two surfaces</a
+        >
+        <a href="../../actor-model.md">Actor programming model</a>
+      </aside>
+    </main>
+  </body>
+</html>
