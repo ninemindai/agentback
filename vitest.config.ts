@@ -11,6 +11,7 @@ export default defineConfig({
     // emits tests under dist/__tests__.
     include: [
       'packages/*/dist/__tests__/**/*.{test,spec,unit,integration,acceptance,e2e}.js',
+      'packages/*/dist/**/__tests__/**/*.{test,spec,unit,integration,acceptance,e2e}.js',
     ],
     exclude: ['**/node_modules/**', 'dist/**/__tests__/fixtures/**'],
     // Generous timeout for integration tests that spin up HTTP servers.

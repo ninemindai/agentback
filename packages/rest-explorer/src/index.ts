@@ -4,7 +4,7 @@
 
 import express from 'express';
 import swaggerUI from 'swagger-ui-dist';
-import {RestApplication, RestServer, serveStaticDir} from '@agentback/rest';
+import {AssetSource, fromDisk, RestApplication, RestServer} from '@agentback/rest';
 
 export interface ExplorerOptions {
   /** URL path where the explorer is mounted. Default `/explorer`. */
@@ -13,9 +13,15 @@ export interface ExplorerOptions {
   specUrl?: string;
   /** Page title for the explorer. Default `API Explorer`. */
   title?: string;
+  /**
+   * Override the static asset source. Defaults to reading from
+   * `swagger-ui-dist` on disk (`fromDisk`). Pass a custom {@link AssetSource}
+   * to serve from a CDN or edge KV store.
+   */
+  assets?: AssetSource;
 }
 
-const DEFAULTS: Required<ExplorerOptions> = {
+const DEFAULTS: Required<Omit<ExplorerOptions, 'assets'>> = {
   path: '/explorer',
   specUrl: '/openapi.json',
   title: 'API Explorer',
@@ -70,7 +76,7 @@ export function mountExplorer(
   // Neutral fetch path (Bun/Deno/Fastify hosts via fetchHandler()).
   // The HTML shell and redirect are exact handlers (highest priority), then the
   // prefix handler serves static assets from the swagger-ui-dist directory.
-  const serveAsset = serveStaticDir(fsPath);
+  const serveAsset = opts.assets ?? fromDisk(fsPath);
   server.addFetchHandler(
     'GET',
     opts.path + '/',
@@ -102,7 +108,7 @@ export function apiConsoleFeature(options: ExplorerOptions = {}) {
   };
 }
 
-function indexHtml(opts: Required<ExplorerOptions>): string {
+function indexHtml(opts: Required<Omit<ExplorerOptions, 'assets'>>): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>

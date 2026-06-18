@@ -15,7 +15,7 @@ import {
 } from '@agentback/mcp-connect';
 import {THEME_CSS, THEME_FONTS_HREF} from '@agentback/console-theme';
 import type {RestApplication, RestServer} from '@agentback/rest';
-import {serveStaticDir} from '@agentback/rest';
+import {AssetSource, fromDisk} from '@agentback/rest';
 
 const API_BASE = '/mcp-inspector/api';
 const DEFAULT_CONNECT_PATH = '/mcp-connect';
@@ -33,6 +33,12 @@ export interface InspectorOptions {
    * path or reuse an existing registry. Omit to keep the inspector local-only.
    */
   connect?: boolean | McpConnectOptions;
+  /**
+   * Override the static asset source. Defaults to reading from the package's
+   * bundled `client/` directory on disk (`fromDisk`). Pass a custom
+   * {@link AssetSource} to serve from a CDN or edge KV store.
+   */
+  assets?: AssetSource;
 }
 
 /** Where the UI finds the mcp-connect API + OAuth callback (null = disabled). */
@@ -270,7 +276,7 @@ export function mountInspector(
   });
 
   // Neutral fetch path (Bun/Deno/Fastify hosts via fetchHandler()).
-  const serveAsset = serveStaticDir(clientDir);
+  const serveAsset = options.assets ?? fromDisk(clientDir);
   const htmlResponse = async () =>
     new Response(html, {headers: {'content-type': 'text/html; charset=utf-8'}});
   server.addFetchHandler('GET', opts.path, htmlResponse);
