@@ -120,3 +120,70 @@ describe("rest.listener: 'native' — guards Express-coupled routes", () => {
     await expect(app.start()).rejects.toThrow(/native.*cannot serve route/s);
   });
 });
+
+// Edge/serverless shape: `listen: false` + native. These guard the runtime
+// edge-readiness fixes — a worker bundles clean yet must also (a) never touch
+// Express at start() and (b) enforce the same start-time guardrails as Express.
+describe("rest.listener: 'native' — edge (listen: false)", () => {
+  const PingOut = z.object({pong: z.boolean()});
+
+  it('start() mounts NO Express app yet still serves via fetchHandler()', async () => {
+    @api({})
+    class PingController {
+      @get('/ping', {response: PingOut})
+      async ping(): Promise<z.infer<typeof PingOut>> {
+        return {pong: true};
+      }
+    }
+    const app = new RestApplication({
+      rest: {listen: false, listener: 'native'},
+    });
+    app.restController(PingController);
+    await app.start();
+    const server = await app.getServer<RestServer>('RestServer');
+    // The Express app is created lazily in ensureExpressApp(); native start()
+    // must never trigger it (it would pull the Node-only express runtime —
+    // fatal on a Worker isolate). The private `_app` field stays undefined.
+    expect((server as unknown as {_app?: unknown})._app).toBeUndefined();
+    // …and the fetch surface still serves the route.
+    const res = await server.fetchHandler().fetch(new Request('http://x/ping'));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({pong: true});
+  });
+
+  it('throws at start() on an Express-coupled route — even with listen:false', async () => {
+    @api({})
+    class RawController {
+      @get('/raw')
+      async raw(
+        @inject(RestBindings.HTTP_REQUEST) _req: unknown,
+      ): Promise<{ok: boolean}> {
+        return {ok: true};
+      }
+    }
+    const app = new RestApplication({
+      rest: {listen: false, listener: 'native'},
+    });
+    app.restController(RawController);
+    await expect(app.start()).rejects.toThrow(/native.*cannot serve route/s);
+  });
+
+  it('throws at start() on a placeholder/schema mismatch (parity with Express)', async () => {
+    @api({})
+    class BadPathController {
+      // URL has {id} but declares no `path:` schema — the guardrail must fire
+      // on the native path too (it runs in collectRoutes, forced at start()).
+      @get('/item/{id}', {response: PingOut})
+      async item(): Promise<z.infer<typeof PingOut>> {
+        return {pong: true};
+      }
+    }
+    const app = new RestApplication({
+      rest: {listen: false, listener: 'native'},
+    });
+    app.restController(BadPathController);
+    await expect(app.start()).rejects.toThrow(
+      /placeholders \{id\} but no path: schema/s,
+    );
+  });
+});

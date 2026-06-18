@@ -15,6 +15,40 @@
 // DotenvConfigOutput / DotenvParseOutput are pure TypeScript interfaces with
 // no runtime footprint, so we can import them as `import type`.
 import type {DotenvConfigOutput, DotenvParseOutput} from 'dotenv';
+import {loggers} from './debug-factory.js';
+
+const log = loggers('agentback:common:env');
+
+// ---------------------------------------------------------------------------
+// Node-runtime detection
+// ---------------------------------------------------------------------------
+
+/**
+ * True only on a real Node runtime with a usable filesystem + module loader.
+ *
+ * Cloudflare's `nodejs_compat` **fakes** `process.versions.node` (a real Node
+ * version string), so that check alone passes on Workers. The reliable
+ * additional signal is a `file:` `import.meta.url`: Node ESM always has one; a
+ * bundled Worker isolate leaves it `undefined` (which is what made
+ * `createRequire(import.meta.url)` throw). Both must hold.
+ *
+ * Takes both signals as explicit args (no defaults) so every branch — incl.
+ * "no process" — is unit-testable without faking globals; callers pass the
+ * real values.
+ *
+ * @internal
+ */
+export function hasNodeFileSystem(
+  proc: {versions?: {node?: string}} | undefined,
+  moduleUrl: string | undefined,
+): boolean {
+  return (
+    proc !== undefined &&
+    !!proc.versions?.node &&
+    typeof moduleUrl === 'string' &&
+    moduleUrl.startsWith('file:')
+  );
+}
 
 // ---------------------------------------------------------------------------
 // loadEnvFiles
@@ -42,22 +76,11 @@ import type {DotenvConfigOutput, DotenvParseOutput} from 'dotenv';
  * @returns Object with merged `parsed` containing all loaded env vars
  */
 export function loadEnvFiles(): DotenvConfigOutput {
-  // --- Non-Node guard --------------------------------------------------
-  // On Cloudflare Workers / browser, process is undefined or has no .versions.
-  //
-  // CAVEAT: Cloudflare's `nodejs_compat` FAKES `process.versions.node` (sets it
-  // to a real Node version string), so `!process.versions?.node` is NOT enough —
-  // it passes through on Workers. The reliable real-Node signal is a `file:`
-  // `import.meta.url`: Node ESM always has one; a bundled Worker isolate leaves
-  // it `undefined`, which is what made `createRequire(import.meta.url)` throw at
-  // module load. Bail unless we have a usable file URL to anchor `createRequire`.
+  // Non-Node guard (Workers/browser): no filesystem to read .env from.
+  // See hasNodeFileSystem for why process.versions.node alone is insufficient.
   const here = import.meta.url;
-  if (
-    typeof process === 'undefined' ||
-    !process.versions?.node ||
-    typeof here !== 'string' ||
-    !here.startsWith('file:')
-  ) {
+  const proc = typeof process === 'undefined' ? undefined : process;
+  if (!hasNodeFileSystem(proc, here)) {
     return {parsed: {}};
   }
 
@@ -143,7 +166,15 @@ export function loadEnvFiles(): DotenvConfigOutput {
     }
 
     return {parsed: merged};
-  } catch {
+  } catch (err) {
+    // .env auto-loading is an optional Node convenience, so we still degrade to
+    // a no-op rather than crash the importing module — but we must NOT swallow
+    // silently: on real Node this catch only fires on a genuine fault (a
+    // malformed .env, an fs permission error), which a developer needs to see.
+    log.warn(
+      'loadEnvFiles failed; continuing without .env files: %s',
+      err instanceof Error ? err.message : String(err),
+    );
     return {parsed: {}};
   }
 }
