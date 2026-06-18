@@ -34,6 +34,8 @@
     {"path": "packages/plugin"},
     {"path": "packages/common"},
     {"path": "packages/messaging"},
+    {"path": "packages/actors"},
+    {"path": "packages/actors-redis"},
     {"path": "packages/files"},
     {"path": "packages/files-s3"},
     {"path": "packages/metering"},
