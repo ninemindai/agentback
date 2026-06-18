@@ -18,7 +18,7 @@
 - **Run a single test file:** `pnpm exec vitest run packages/context-explorer/dist/__tests__/integration/explorer.integration.js`
 - **File header** (three lines) on every new source file:
   ```ts
-  // Copyright ninemind.ai and LoopBack contributors. All Rights Reserved.
+  // Copyright ninemind.ai 2026. All Rights Reserved.
   // Node module: @agentback/context-explorer
   // This file is licensed under the MIT License.
   ```
@@ -116,7 +116,7 @@ This task writes the new integration test FIRST (it will fail to compile/run unt
 - [ ] **Step 1: Replace the test file** with the model-oriented suite
 
 ```ts
-// Copyright Ninemind.ai 2026. All Rights Reserved.
+// Copyright ninemind.ai 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -380,7 +380,7 @@ Expected: FAIL — `installContextExplorer` still works, but the test imports/as
 - [ ] **Step 1: Write `model.ts`**
 
 ```ts
-// Copyright ninemind.ai and LoopBack contributors. All Rights Reserved.
+// Copyright ninemind.ai 2026. All Rights Reserved.
 // Node module: @agentback/context-explorer
 // This file is licensed under the MIT License.
 
@@ -749,7 +749,7 @@ git commit -m "feat(context-explorer): consolidated /model endpoint (tags values
 - [ ] **Step 1: Rewrite `api.ts`**
 
 ```ts
-// Copyright Ninemind.ai 2026. All Rights Reserved.
+// Copyright ninemind.ai 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1111,7 +1111,7 @@ git commit -m "test(console): repoint context-explorer assertions from /bindings
 - [ ] **Step 1: Write the unit test**
 
 ```ts
-// Copyright ninemind.ai and LoopBack contributors. All Rights Reserved.
+// Copyright ninemind.ai 2026. All Rights Reserved.
 // Node module: @agentback/context-explorer
 // This file is licensed under the MIT License.
 
@@ -1232,7 +1232,7 @@ export type ContextNode = z.infer<typeof ContextNode>;
 - [ ] **Step 1: Write `src/lib/selectors.ts`** (pure logic, tsc-compiled, type-only import from `model.js` so esbuild keeps the browser bundle clean)
 
 ```ts
-// Copyright ninemind.ai and LoopBack contributors. All Rights Reserved.
+// Copyright ninemind.ai 2026. All Rights Reserved.
 // Node module: @agentback/context-explorer
 // This file is licensed under the MIT License.
 
@@ -1315,7 +1315,7 @@ export function dualByCtor(
 - [ ] **Step 2: Write `src/lib/hierarchy.ts`**
 
 ```ts
-// Copyright ninemind.ai and LoopBack contributors. All Rights Reserved.
+// Copyright ninemind.ai 2026. All Rights Reserved.
 // Node module: @agentback/context-explorer
 // This file is licensed under the MIT License.
 
@@ -1379,7 +1379,7 @@ git commit -m "feat(context-explorer): pure selectors (facets, extensions, confi
 - [ ] **Step 1: Write `FacetNav.tsx`**
 
 ```tsx
-// Copyright ninemind.ai and LoopBack contributors. All Rights Reserved.
+// Copyright ninemind.ai 2026. All Rights Reserved.
 // Node module: @agentback/context-explorer
 // This file is licensed under the MIT License.
 
@@ -1577,7 +1577,7 @@ git commit -m "feat(context-explorer): FacetNav component + scope/type color tok
 - [ ] **Step 1: Write `ResultsList.tsx`** (replaces BindingList; adds color classes + kind chips)
 
 ```tsx
-// Copyright ninemind.ai and LoopBack contributors. All Rights Reserved.
+// Copyright ninemind.ai 2026. All Rights Reserved.
 // Node module: @agentback/context-explorer
 // This file is licensed under the MIT License.
 
@@ -1734,7 +1734,7 @@ git commit -m "feat(context-explorer): three-pane facet shell with scope/type vi
 - [ ] **Step 1: Extend `BindingDetail` props + render**
 
 ```tsx
-// Copyright ninemind.ai and LoopBack contributors. All Rights Reserved.
+// Copyright ninemind.ai 2026. All Rights Reserved.
 // Node module: @agentback/context-explorer
 // This file is licensed under the MIT License.
 
@@ -1934,7 +1934,7 @@ git commit -m "feat(context-explorer): detail-pane config + extension wiring (it
 - [ ] **Step 1: Write `HierarchyView.tsx`**
 
 ```tsx
-// Copyright ninemind.ai and LoopBack contributors. All Rights Reserved.
+// Copyright ninemind.ai 2026. All Rights Reserved.
 // Node module: @agentback/context-explorer
 // This file is licensed under the MIT License.
 

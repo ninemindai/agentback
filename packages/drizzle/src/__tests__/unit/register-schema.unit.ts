@@ -1,4 +1,4 @@
-// Copyright Ninemind.ai 2026. All Rights Reserved.
+// Copyright ninemind.ai 2026. All Rights Reserved.
 // Node module: @agentback/drizzle
 // This file is licensed under the MIT License.
 

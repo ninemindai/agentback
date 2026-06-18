@@ -201,7 +201,7 @@ Right after a publish, a consumer `npm install` can briefly 404 the new version 
 The project is MIT-licensed (root `LICENSE`, `Copyright (c) ninemind.ai`). Every source file carries a three-line header — keep it on new files:
 
 ```ts
-// Copyright ninemind.ai and LoopBack contributors. All Rights Reserved.
+// Copyright ninemind.ai 2026. All Rights Reserved.
 // Node module: @agentback/<pkg>
 // This file is licensed under the MIT License.
 ```

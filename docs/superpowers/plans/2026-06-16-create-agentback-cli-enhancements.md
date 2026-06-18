@@ -16,7 +16,7 @@
 - **Branch.** Work happens on `feat/create-agentback-cli-enhancements` (already created; the design spec is committed there).
 - **License header** on every new source file:
   ```ts
-  // Copyright Ninemind.ai 2026. All Rights Reserved.
+  // Copyright ninemind.ai 2026. All Rights Reserved.
   // This file is licensed under the MIT License.
   // License text available at https://opensource.org/license/mit/
   ```
@@ -160,7 +160,7 @@ The anchor helpers and host-option rendering live in `scaffold.ts` (anchors are 
 Create `packages/create-agentback/src/__tests__/capabilities.test.ts`:
 
 ```ts
-// Copyright Ninemind.ai 2026. All Rights Reserved.
+// Copyright ninemind.ai 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -376,7 +376,7 @@ Expected: FAIL — `capabilities.ts` does not exist (build error / import failur
 - [ ] **Step 3: Create `packages/create-agentback/src/capabilities.ts`**
 
 ```ts
-// Copyright Ninemind.ai 2026. All Rights Reserved.
+// Copyright ninemind.ai 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -991,7 +991,7 @@ Replace `packages/create-agentback/src/cli.ts` with:
 
 ```ts
 #!/usr/bin/env node
-// Copyright Ninemind.ai 2026. All Rights Reserved.
+// Copyright ninemind.ai 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
