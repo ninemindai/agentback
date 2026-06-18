@@ -14,7 +14,7 @@ maintaining this index.
 | 003  | Typecheck React client trees and gate the check in CI          | P1       | S/M    | —          | DONE   |
 | 004  | Make `multer` an optional peer dependency of `@agentback/rest` | P2       | S/M    | —          | DONE   |
 | 005  | Introduce `ExpressService`: DI-owned Express host RestServer injects | P2  | L      | —          | DONE   |
-| 006  | Phase 2: decouple `@agentback/rest` from the Express runtime (edge installs drop `express`) | P3 | XL | 005, item D | DEFERRED (P2.0 measured) |
+| 006  | Phase 2: `EdgeRestApplication` / `ExpressRestApplication` split (edge installs drop `express`) | P3 | L (core) | 005 | TODO (design; P2.0 measured) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale: finding fixed independently or approach
@@ -42,15 +42,16 @@ abandoned)
   `packages/cli/fixtures/cf-app` (`{ok:true}`) is the gate for this in both.
 - 004 is the lower-risk near-term win (the Web multipart adapter already exists);
   005 is core-`RestServer` surgery — land 004 first if sequencing.
-- Plan 006 is the **Phase-2 design spec** (added 2026-06-18): it documents why
-  "drop express from rest's deps" is a no-op (express is transitive via
-  `rest → @agentback/express → express`) and the real path — split
-  `@agentback/express` into a neutral middleware package + an optional Express
-  host, gated on the item-D default-listener flip. It is XL and starts with a
-  read-only measurement phase (P2.0) that is the go/no-go. Its payoff (no
-  `express` in an edge app's `node_modules`) is marginal over Phase 1 (which
-  already keeps express out of the edge *bundle*), so P2.0's gap list decides
-  whether it's worth executing.
+- Plan 006 is the **Phase-2 design spec** (added 2026-06-18, revised to the
+  two-class design): why "drop express from rest's deps" is a no-op (express is
+  transitive via `rest → @agentback/express → express`), and the path —
+  `EdgeRestApplication` (neutral, no express) + `ExpressRestApplication` (Express
+  host) over a neutral-package split. P2.0 was measured (45 fails under a global
+  native default), but the two-class design **reframes those gaps as the edge
+  class's incremental feature backlog, not a gate** — so the core (P2.1 extract →
+  P2.2 the classes → P2.3 drop express from the edge install) is a contained
+  increment, no longer blocked on the item-D global default flip. P2.4 (porting
+  every Express feature to the fetch path) stays open-ended / demand-driven.
 
 ## Findings considered and rejected
 
