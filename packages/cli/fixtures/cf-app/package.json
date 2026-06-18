@@ -1,0 +1,23 @@
+{
+  "name": "@agentback/fixture-cf-app",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@agentback/openapi": "workspace:~",
+    "@agentback/rest": "workspace:~",
+    "zod": "^4.4.3"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "license": "MIT"
+}
