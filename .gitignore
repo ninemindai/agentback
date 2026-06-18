@@ -14,3 +14,7 @@ build
 
 # local pnpm store fallback (created by some pnpm operations)
 .pnpm-store/
+
+# `agentback deploy` generated artifacts (worker entry + merged wrangler config)
+.agentback/
+packages/cli/fixtures/cf-app/wrangler.toml

@@ -1124,13 +1124,18 @@ export class RestServer implements Server {
     const specPath =
       (this.config.basePath ?? '') +
       (this.config.openApiSpec?.path ?? '/openapi.json');
-    this.ensureExpressApp().get(specPath, async (_req, res, next) => {
-      try {
-        res.json(await this.getApiSpec());
-      } catch (err) {
-        next(err);
-      }
-    });
+    // Native mode serves these through fetchHandler() only — never touch
+    // ensureExpressApp() (it would pull the Node-only express runtime).
+    const native = this.listenerMode === 'native';
+    if (!native) {
+      this.ensureExpressApp().get(specPath, async (_req, res, next) => {
+        try {
+          res.json(await this.getApiSpec());
+        } catch (err) {
+          next(err);
+        }
+      });
+    }
     // Neutral fetch path: same spec, served as JSON via fetchHandler().
     this.addFetchHandler('GET', specPath, async () => {
       const spec = await this.getApiSpec();
@@ -1139,11 +1144,13 @@ export class RestServer implements Server {
 
     this.mountAxRoutes(specPath);
 
-    this.ensureExpressApp().use(
-      (err: unknown, req: Request, res: Response, _next: NextFunction) => {
-        this.sendError(req, res, err);
-      },
-    );
+    if (!native) {
+      this.ensureExpressApp().use(
+        (err: unknown, req: Request, res: Response, _next: NextFunction) => {
+          this.sendError(req, res, err);
+        },
+      );
+    }
   }
 
   /**
@@ -1178,8 +1185,10 @@ export class RestServer implements Server {
           next(err);
         }
       };
-    this.ensureExpressApp().get(llmsTxtPath, serve(generateLlmsTxt));
-    this.ensureExpressApp().get(llmsFullTxtPath, serve(generateLlmsFullTxt));
+    if (this.listenerMode !== 'native') {
+      this.ensureExpressApp().get(llmsTxtPath, serve(generateLlmsTxt));
+      this.ensureExpressApp().get(llmsFullTxtPath, serve(generateLlmsFullTxt));
+    }
     // Neutral fetch path: same AX documents via fetchHandler().
     const textResponse = async (body: string) =>
       new globalThis.Response(body, {
@@ -1207,7 +1216,15 @@ export class RestServer implements Server {
     // so it fronts every route — including `install*`-mounted ones registered
     // before `start()`. It still picks up middleware bound after construction
     // because `toExpressMiddleware` resolves the chain lazily per request.
-    this.mountAllControllers();
+    // In native mode the runtime-neutral fetchHandler() is the single router:
+    // @api routes are collected from the DI context by collectRoutes(), so we
+    // must NOT mount them on Express — ensureExpressApp() pulls the Node-only
+    // express runtime via createRequire(), which is fatal on an edge isolate
+    // (no `import.meta.url`, no express module). mountFrameworkRoutes() still
+    // runs but registers only its fetch half in native mode.
+    if (this.listenerMode !== 'native') {
+      this.mountAllControllers();
+    }
     this.mountFrameworkRoutes();
     // Serverless targets (Vercel, Lambda) own the HTTP listener: routes are
     // now fully mounted, so the caller exports `expressApp` (or `fetchHandler()`)

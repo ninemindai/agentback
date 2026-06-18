@@ -17,7 +17,12 @@ export class PingController {
 export async function buildApp(opts?: {
   listen?: boolean;
 }): Promise<RestApplication> {
-  const app = new RestApplication({rest: {listen: opts?.listen ?? false}});
+  // listener: 'native' makes fetchHandler() the single router — no Express
+  // route mounting at start() — which is required to run on an edge isolate
+  // (Cloudflare Workers): the Node-only express runtime can't load there.
+  const app = new RestApplication({
+    rest: {listen: opts?.listen ?? false, listener: 'native'},
+  });
   app.restController(PingController);
   await app.start();
   return app;

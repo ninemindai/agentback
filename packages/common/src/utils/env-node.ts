@@ -44,89 +44,108 @@ import type {DotenvConfigOutput, DotenvParseOutput} from 'dotenv';
 export function loadEnvFiles(): DotenvConfigOutput {
   // --- Non-Node guard --------------------------------------------------
   // On Cloudflare Workers / browser, process is undefined or has no .versions.
-  // Return the same empty shape used when no .env files are present.
-  if (typeof process === 'undefined' || !process.versions?.node) {
+  //
+  // CAVEAT: Cloudflare's `nodejs_compat` FAKES `process.versions.node` (sets it
+  // to a real Node version string), so `!process.versions?.node` is NOT enough —
+  // it passes through on Workers. The reliable real-Node signal is a `file:`
+  // `import.meta.url`: Node ESM always has one; a bundled Worker isolate leaves
+  // it `undefined`, which is what made `createRequire(import.meta.url)` throw at
+  // module load. Bail unless we have a usable file URL to anchor `createRequire`.
+  const here = import.meta.url;
+  if (
+    typeof process === 'undefined' ||
+    !process.versions?.node ||
+    typeof here !== 'string' ||
+    !here.startsWith('file:')
+  ) {
     return {parsed: {}};
   }
 
-  // --- Runtime-resolve Node builtins -----------------------------------
-  // process.getBuiltinModule is available on Node ≥ 22.13 (our engine floor).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const _process = process as any;
-  const fs = _process.getBuiltinModule('node:fs') as typeof import('node:fs');
-  const path = _process.getBuiltinModule(
-    'node:path',
-  ) as typeof import('node:path');
-  const nodeModule = _process.getBuiltinModule(
-    'node:module',
-  ) as typeof import('node:module');
+  // Defense in depth: .env auto-loading is an optional Node convenience — any
+  // failure resolving Node builtins / dotenv (e.g. an edge runtime that slips
+  // past the guard) must degrade to a no-op, never crash the importing module.
+  try {
+    // --- Runtime-resolve Node builtins ---------------------------------
+    // process.getBuiltinModule is available on Node ≥ 22.13 (our engine floor).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const _process = process as any;
+    const fs = _process.getBuiltinModule('node:fs') as typeof import('node:fs');
+    const path = _process.getBuiltinModule(
+      'node:path',
+    ) as typeof import('node:path');
+    const nodeModule = _process.getBuiltinModule(
+      'node:module',
+    ) as typeof import('node:module');
 
-  // --- Runtime-require dotenv (npm package, not a builtin) -------------
-  const require = nodeModule.createRequire(import.meta.url);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const {config} = require('dotenv') as typeof import('dotenv');
+    // --- Runtime-require dotenv (npm package, not a builtin) -----------
+    const require = nodeModule.createRequire(here);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const {config} = require('dotenv') as typeof import('dotenv');
 
-  // --- Resolve monorepo root -------------------------------------------
-  // Allow override via MONOREPO_ROOT_PATH env var (for wrapper repos that embed
-  // this workspace), otherwise navigate from packages/common/src/utils/ up to
-  // monorepo root.
-  const monorepoRoot =
-    process.env.MONOREPO_ROOT_PATH ??
-    path.resolve(import.meta.dirname, '../../../../');
+    // --- Resolve monorepo root -----------------------------------------
+    // Allow override via MONOREPO_ROOT_PATH env var (for wrapper repos that
+    // embed this workspace), otherwise navigate from packages/common/src/utils/
+    // up to monorepo root.
+    const monorepoRoot =
+      process.env.MONOREPO_ROOT_PATH ??
+      path.resolve(import.meta.dirname, '../../../../');
 
-  // --- Determine env suffix from NODE_ENV ------------------------------
-  const nodeEnv = process.env.NODE_ENV;
-  let envSuffix: string;
-  if (!nodeEnv) {
-    envSuffix = 'dev';
-  } else {
-    switch (nodeEnv.toLowerCase()) {
-      case 'production':
-      case 'prod':
-        envSuffix = 'production';
-        break;
-      case 'development':
-      case 'dev':
-        envSuffix = 'dev';
-        break;
-      case 'staging':
-        envSuffix = 'staging';
-        break;
-      case 'qa':
-        envSuffix = 'qa';
-        break;
-      case 'test':
-        envSuffix = 'test';
-        break;
-      default:
-        envSuffix = nodeEnv;
+    // --- Determine env suffix from NODE_ENV ----------------------------
+    const nodeEnv = process.env.NODE_ENV;
+    let envSuffix: string;
+    if (!nodeEnv) {
+      envSuffix = 'dev';
+    } else {
+      switch (nodeEnv.toLowerCase()) {
+        case 'production':
+        case 'prod':
+          envSuffix = 'production';
+          break;
+        case 'development':
+        case 'dev':
+          envSuffix = 'dev';
+          break;
+        case 'staging':
+          envSuffix = 'staging';
+          break;
+        case 'qa':
+          envSuffix = 'qa';
+          break;
+        case 'test':
+          envSuffix = 'test';
+          break;
+        default:
+          envSuffix = nodeEnv;
+      }
     }
-  }
 
-  // --- Load files in reverse priority order (most specific first) ------
-  const merged: DotenvParseOutput = {};
-  const files = [
-    `.env.${envSuffix}`, // e.g., .env.production, .env.dev
-    '.env.local', // local overrides (gitignored)
-    '.env', // common defaults
-  ];
+    // --- Load files in reverse priority order (most specific first) ----
+    const merged: DotenvParseOutput = {};
+    const files = [
+      `.env.${envSuffix}`, // e.g., .env.production, .env.dev
+      '.env.local', // local overrides (gitignored)
+      '.env', // common defaults
+    ];
 
-  for (const file of files) {
-    const filePath = path.resolve(monorepoRoot, file);
-    if (fs.existsSync(filePath)) {
-      const result = config({path: filePath, quiet: true});
-      if (result.parsed) {
-        // Merge: existing keys take precedence (first loaded wins)
-        for (const [key, value] of Object.entries(result.parsed)) {
-          if (!(key in merged)) {
-            merged[key] = value;
+    for (const file of files) {
+      const filePath = path.resolve(monorepoRoot, file);
+      if (fs.existsSync(filePath)) {
+        const result = config({path: filePath, quiet: true});
+        if (result.parsed) {
+          // Merge: existing keys take precedence (first loaded wins)
+          for (const [key, value] of Object.entries(result.parsed)) {
+            if (!(key in merged)) {
+              merged[key] = value;
+            }
           }
         }
       }
     }
-  }
 
-  return {parsed: merged};
+    return {parsed: merged};
+  } catch {
+    return {parsed: {}};
+  }
 }
 
 // Load .env files from monorepo root with cascading precedence.
