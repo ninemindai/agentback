@@ -1,10 +1,48 @@
-# Full `RestApplication` Edge-Readiness — Follow-up Spec (stub)
+# Full `RestApplication` Edge-Readiness — Follow-up Spec
 
-**Date:** 2026-06-17
-**Status:** Backlog — spun off from Phase 2a (Cloudflare Workers)
+**Date:** 2026-06-17 (resolved 2026-06-18)
+**Status:** ✅ **DONE** — a real `RestApplication` is deployed and verified on Cloudflare Workers.
 **Origin:** During Phase 2a implementation, the accurate bundle doctor correctly reported that a real `RestApplication` worker does **not** bundle clean for a Cloudflare Workers isolate. The deploy tooling + doctor shipped; making a real app actually run on the edge is this separate initiative.
 
 ---
+
+## Resolution (2026-06-18)
+
+A real `RestApplication` (the `packages/cli/fixtures/cf-app` fixture) now **deploys and runs** on Cloudflare Workers — `agentback deploy cloudflare` serves `/openapi.json`, `/ping`, and `/llms.txt` all `200` on `workers.dev`. Landed in two commits on `design/agentback-deploy`:
+
+- **`ca2300d` — bundle-clean** (the static graph; this spec's original scope).
+- **`d16e913` — runtime-clean** (a second class of failure this stub did **not** anticipate — see below).
+
+### Layer 1 — bundle-clean (`ca2300d`)
+
+The transitive-tail prediction below was directionally right but mis-attributed the root cause. The real driver was **barrel topology**, not per-dep node usage. Final fixes (only `node:fs`/`node:fs/promises`/`node:net` actually fail the `nodejs_compat` doctor):
+
+- **Express was still static** — `@agentback/rest` imported a constant (`rest/keys.ts`) and `MiddlewareMixin` (`rest/rest.application.ts`) from the `@agentback/express` **barrel**, which re-exports `express.server`/`express.application` → the whole Express runtime (`view.js`=`node:fs`, `request.js`=`node:net`, + `etag`/`send`/`cookie-signature`). Fix: made `@agentback/express`'s `types.ts` express imports type-only, added subpath exports (`./types`, `./keys`, `./mixins/middleware.mixin`), and pointed `rest` at the subpaths (never the barrel). This alone removed `node:net` and the entire etag/send/cookie tail.
+- **multer** (`rest/multipart.ts`) — `import type multer` + lazy runtime via `getBuiltinModule`+`createRequire`; loads only when an upload route mounts.
+- **`@agentback/files` `FsFileStore`** — moved off the barrel to a `@agentback/files/fs` subpath so `FILE_STORE`/`FileStore` importers don't pull `node:fs`.
+- **`fromDisk` (`asset-source-disk`)** — **NOT** lazy-loaded (that defeats the doctor's intentional `Entry B` detection of Node-only asset sources). Real fix: `rest/index.ts` changed `export * from './host/static.js'` → a **named** re-export, so esbuild tree-shakes the unused `fromDisk`/`serveStaticDir` (star re-exports are retained conservatively; named ones tree-shake under `sideEffects:false`).
+
+### Layer 2 — runtime-clean (`d16e913`) — what the stub missed
+
+**The bundle doctor is a *static* analyzer; bundle-clean ≠ runtime-clean.** A worker that bundles `{ok:true}` still crashed on Workers in two ways the doctor cannot see:
+
+1. **Global-scope ops** — Workers forbid generating random values / IO / timers at module-load (global scope). `@agentback/context`'s `unique-id.ts` ran `hyperid()` at import, which seeds a random UUID at construction → startup-validation crash. Fix: `generateUniqueId` now delegates to `@agentback/common`'s `generateIdSync` (nanoid-backed; randomness only on call). Also removed the dead deprecated `uuid()` helper + `UUID_PATTERN` from `value-promise.ts`; dropped `hyperid` + `uuid` from `context`.
+2. **Runtime Node-API reach** — `RestServer.start()` mounted `@api` routes on Express via `ensureExpressApp()` → `createRequire(import.meta.url)`; `import.meta.url` is `undefined` on a Worker (and express isn't bundled). Fix: in **`listener: 'native'`** mode, `start()`/`mountFrameworkRoutes()`/`mountAxRoutes()` skip **all** Express mounting — `fetchHandler()` is the single router via `collectRoutes()`. **Edge apps must set `rest: {listener: 'native'}`** (the cf-app fixture does). Express mode is unchanged.
+3. Also hardened `@agentback/common`'s `loadEnvFiles` guard: `nodejs_compat` **fakes** `process.versions.node`, so the guard additionally requires a `file:` `import.meta.url` and wraps the body in try/catch (optional `.env` loading must never crash a worker).
+
+### Regression posture
+
+Full `pnpm verify` (2350 tests) green throughout; Node Express/upload/cookie behavior unchanged (the doctor's `Entry A`/`Entry B` tree-shaking tests and the rest acceptance suite all pass). Acceptance met: doctor `{ok:true}` **and** a real `wrangler deploy` serving `/openapi.json` 200.
+
+### Follow-ups (not yet done)
+
+- A `wrangler dev`-based CI smoke test (boot the worker, hit `/openapi.json`) would catch *runtime* regressions without a credential-gated real deploy — neither the doctor nor `pnpm verify` would have caught Layer 2.
+- `auto`-detect or document `listener: 'native'` in the generated worker so edge users don't have to set it by hand.
+
+---
+
+## Original analysis (historical — superseded by the Resolution above)
+
 
 ## Problem
 
