@@ -24,6 +24,21 @@
       "types": "./dist/mixins/middleware.mixin.d.ts",
       "import": "./dist/mixins/middleware.mixin.js",
       "default": "./dist/mixins/middleware.mixin.js"
+    },
+    "./express-service": {
+      "types": "./dist/express-service.d.ts",
+      "import": "./dist/express-service.js",
+      "default": "./dist/express-service.js"
+    },
+    "./express-service-keys": {
+      "types": "./dist/express-service-keys.d.ts",
+      "import": "./dist/express-service-keys.js",
+      "default": "./dist/express-service-keys.js"
+    },
+    "./express-component": {
+      "types": "./dist/express-component.d.ts",
+      "import": "./dist/express-component.js",
+      "default": "./dist/express-component.js"
     }
   },
   "files": [
@@ -41,11 +56,13 @@
     "@agentback/http-server": "workspace:~",
     "@agentback/metadata": "workspace:~",
     "@types/body-parser": "^1.19.6",
+    "@types/cors": "~2.8.19",
     "@types/express": "^5.0.6",
     "@types/express-serve-static-core": "^5.1.1",
     "@types/http-errors": "^2.0.5",
     "@types/on-finished": "^2.3.5",
     "body-parser": "^2.3.0",
+    "cors": "~2.8.6",
     "debug": "^4.4.3",
     "express": "^5.2.1",
     "http-errors": "^2.0.1",

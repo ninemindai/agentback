@@ -12,6 +12,8 @@ maintaining this index.
 | 001  | Require an explicit auth posture for the unified console       | P1       | M      | —          | DONE   |
 | 002  | Sanitize internal 5xx error messages in REST, MCP, and streams | P1       | M      | —          | DONE   |
 | 003  | Typecheck React client trees and gate the check in CI          | P1       | S/M    | —          | DONE   |
+| 004  | Make `multer` an optional peer dependency of `@agentback/rest` | P2       | S/M    | —          | DONE   |
+| 005  | Introduce `ExpressService`: DI-owned Express host RestServer injects | P2  | L      | —          | DONE   |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale: finding fixed independently or approach
@@ -24,6 +26,21 @@ abandoned)
   package-level verification.
 - If executing in one branch instead of isolated worktrees, run them in numeric
   order to keep review smaller.
+- Plans 004 and 005 (added 2026-06-18) are the "make Express/multer optional via
+  DI" pair, and are **independent of each other** and of 001–003. Both are
+  **Phase-1 only**: they introduce the seam (a peer dep for multer; an
+  `ExpressService` for Express) without yet removing the hard deps. The real
+  install-time optionality (dropping `express`/`cors`/`multer` from
+  `@agentback/rest`'s `dependencies`) is **Phase 2**, gated on flipping the
+  default listener to `'native'` — the `fetch-seam-root-cutover` spec's
+  "item D / full demotion". Do not attempt Phase 2 inside 004/005.
+- **Key caveat carried in both plans:** DI / peer-deps fixes the npm *install*
+  graph, not the esbuild *bundle* graph. The dep must live in a module the edge
+  build never statically imports (subpath imports, not the `@agentback/express`
+  barrel), or it re-enters a Worker bundle. The bundle doctor on
+  `packages/cli/fixtures/cf-app` (`{ok:true}`) is the gate for this in both.
+- 004 is the lower-risk near-term win (the Web multipart adapter already exists);
+  005 is core-`RestServer` surgery — land 004 first if sequencing.
 
 ## Findings considered and rejected
 

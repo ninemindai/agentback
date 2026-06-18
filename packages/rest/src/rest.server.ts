@@ -82,6 +82,13 @@ import {lookupSuccessStatus} from './route-meta.js';
 import {SSE_FRAMER, JSONL_FRAMER} from './stream-framers.js';
 import {collectRoutes} from './web/collect-routes.js';
 import {assertPathSchemaMatch} from './route-path-validation.js';
+// Edge-safe subpath imports: the KEY value module references only BindingKey +
+// a type (no Express runtime), and the ExpressService import is type-only. The
+// Express-runtime-bearing class is never on this static graph — RestServer gets
+// the Express runtime from an injected ExpressService, or (default) lazily via
+// the loaders below. NOT the @agentback/express barrel (it pulls express.server).
+import {EXPRESS_SERVICE_KEY} from '@agentback/express/express-service-keys';
+import type {ExpressService} from '@agentback/express/express-service';
 import {Router} from './web/router.js';
 import {RestHandler} from './web/rest-handler.js';
 import {createFetchHost, type FetchHost} from './host/fetch.js';
@@ -181,6 +188,7 @@ function webRequestFromExpress(req: Request): globalThis.Request {
 
 export class RestServer implements Server {
   private _app?: Express;
+  private _defaultExpressService?: ExpressService;
   private httpServer?: HttpServer;
   private _listening = false;
   readonly config: Required<
@@ -215,6 +223,12 @@ export class RestServer implements Server {
     protected context: Context,
     @config()
     cfg: RestServerConfig = {},
+    // The Express host runtime, injected when an ExpressComponent is registered.
+    // Optional: absent on edge / `listener: 'native'` apps (which never touch
+    // Express) and absent by default, where `expressService()` falls back to the
+    // lazy loaders below — keeping behavior and the edge bundle unchanged.
+    @inject(EXPRESS_SERVICE_KEY, {optional: true})
+    private injectedExpressService?: ExpressService,
   ) {
     this.config = {
       ...DEFAULT_REST_CONFIG,
@@ -246,11 +260,35 @@ export class RestServer implements Server {
    * the Node `express` or `http` packages.  Every Express-path method goes
    * through this getter; {@link fetchHandler} must never call it.
    */
+  /**
+   * The Express host runtime. Returns the injected {@link ExpressService} when
+   * one is bound (via an `ExpressComponent`), else lazily assembles the default
+   * from the createRequire loaders below — so the out-of-the-box Express path is
+   * byte-equivalent to building Express inline, and a fetch-only / native worker
+   * never reaches this code. This is the SINGLE place the loaders are called.
+   */
+  private expressService(): ExpressService {
+    if (this.injectedExpressService) return this.injectedExpressService;
+    return (this._defaultExpressService ??= this.buildDefaultExpressService());
+  }
+
+  private buildDefaultExpressService(): ExpressService {
+    const expressLib = loadExpress();
+    const {registerExpressMiddleware, toExpressMiddleware} =
+      loadExpressHelpers();
+    return {
+      app: expressLib(),
+      express: expressLib,
+      cors: loadCors(),
+      registerExpressMiddleware,
+      toExpressMiddleware,
+    };
+  }
+
   private ensureExpressApp(): Express {
     if (!this._app) {
-      const expressLib = loadExpress();
-      const {toExpressMiddleware} = loadExpressHelpers();
-      this._app = expressLib();
+      const svc = this.expressService();
+      this._app = svc.app;
       // CORS and body parsing are themselves entries in the LB middleware chain
       // (tagged with groups), not bare `app.use` calls — so their order relative
       // to user middleware is governed by the chain's topological sort, and body
@@ -265,7 +303,7 @@ export class RestServer implements Server {
       // mounted afterward, including ones added by `install*` helpers
       // (mcp-http's `/mcp`, rest-explorer, console, …) before `start()` runs —
       // otherwise those routes would shadow the chain and bypass it entirely.
-      this._app.use(toExpressMiddleware(this.context));
+      this._app.use(svc.toExpressMiddleware(this.context));
     }
     return this._app;
   }
@@ -282,9 +320,8 @@ export class RestServer implements Server {
    * the server accepts media types beyond `application/json`.
    */
   protected registerBuiltinMiddleware(): void {
-    const {registerExpressMiddleware} = loadExpressHelpers();
-    const corsLib = loadCors();
-    const expressLib = loadExpress();
+    const {registerExpressMiddleware, cors: corsLib, express: expressLib} =
+      this.expressService();
     if (this.config.cors) {
       registerExpressMiddleware(
         this.context,
@@ -330,7 +367,7 @@ export class RestServer implements Server {
     opt: boolean | C | undefined,
   ): void {
     if (!opt) return;
-    const {registerExpressMiddleware} = loadExpressHelpers();
+    const {registerExpressMiddleware} = this.expressService();
     registerExpressMiddleware<C>(
       this.context,
       factory,
