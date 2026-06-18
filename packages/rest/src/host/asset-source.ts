@@ -75,7 +75,13 @@ export function fromCdn(
 
     // 5. Fetch the resolved URL (not the raw concatenated string).
     const res = await fetchFn(target.toString());
-    if (res.status !== 200) return undefined;
+    // On fetch-based runtimes (Workers) an unconsumed response body holds the
+    // connection open until GC, so cancel it on every early return rather than
+    // leaking it (CDN 404s and disallowed content-types both carry a body).
+    if (res.status !== 200) {
+      await res.body?.cancel();
+      return undefined;
+    }
 
     // 6. Content-type allowlist — do not serve text/html on our origin.
     const ct = (res.headers.get('content-type') ?? '').toLowerCase();
@@ -83,7 +89,10 @@ export function fromCdn(
     const allowed = ALLOWED_CDN_TYPES.some(
       prefix => mediaType === prefix || mediaType.startsWith(prefix),
     );
-    if (!allowed) return undefined;
+    if (!allowed) {
+      await res.body?.cancel();
+      return undefined;
+    }
 
     return new globalThis.Response(res.body, {
       headers: {
