@@ -19,20 +19,20 @@
  *
  * @packageDocumentation
  */
+// The neutral middleware machinery moved to @agentback/middleware. Re-exported
+// here so existing `import {MiddlewareMixin, MiddlewareGroups, ...} from
+// '@agentback/express'` keeps working (back-compat). New code may import these
+// from @agentback/middleware directly.
+export * from '@agentback/middleware';
+// The Express host modules (value-import express; Node-only).
 export * from './express.application.js';
 export * from './express.server.js';
-export * from './group-sorter.js';
-export * from './keys.js';
-export * from './middleware.js';
-export * from './middleware-interceptor.js';
-export * from './middleware-registry.js';
-export * from './mixins/middleware.mixin.js';
-export * from './providers/invoke-middleware.provider.js';
-export * from './types.js';
-export * from './express-service.js';
-export * from './express-service-keys.js';
 export * from './express-component.js';
-// Runtime value re-export (types.ts keeps it type-only for the edge subpaths):
-// preserves `import {Router} from '@agentback/express'` for Node consumers who
-// build Express routers. The barrel is Node-only regardless (express.server above).
+// `ExpressService` is both the neutral INTERFACE (re-exported from
+// @agentback/middleware above) and the concrete CLASS here. The explicit
+// named re-export disambiguates the two `export *` sources: `ExpressService`
+// from @agentback/express is the class (which implements the interface).
+export {ExpressService} from './express-service.js';
+// Runtime value re-export: preserves `import {Router} from '@agentback/express'`
+// for Node consumers who build Express routers. The barrel is Node-only.
 export {Router} from 'express';

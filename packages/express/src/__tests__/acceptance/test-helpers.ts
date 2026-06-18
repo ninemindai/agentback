@@ -17,7 +17,7 @@ import {
 import bodyParser from 'body-parser';
 import {NextFunction, Request, Response} from 'express';
 import {ExpressApplication} from '../../express.application.js';
-import {ExpressRequestHandler} from '../../types.js';
+import {ExpressRequestHandler} from '@agentback/middleware';
 import {SpyAction, SpyConfig} from '../fixtures/spy-config.js';
 
 export {default as spy} from '../fixtures/spy.middleware.js';

@@ -16,9 +16,9 @@ import {
 } from '@agentback/http-server';
 import {loggers} from '@agentback/common';
 import express from 'express';
-import {toExpressMiddleware} from './middleware.js';
-import {BaseMiddlewareRegistry} from './middleware-registry.js';
-import {getMiddlewareContext, MiddlewareContext, Request} from './types.js';
+import {toExpressMiddleware} from '@agentback/middleware';
+import {BaseMiddlewareRegistry} from '@agentback/middleware';
+import {getMiddlewareContext, MiddlewareContext, type Request} from '@agentback/middleware';
 
 const log = loggers('loopback:middleware');
 

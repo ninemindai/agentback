@@ -19,7 +19,7 @@ import {
   registerExpressMiddleware,
   toExpressMiddleware,
   type ExpressService,
-} from '@agentback/express';
+} from '@agentback/middleware';
 import {RestApplication} from '../../rest.application.js';
 import type {RestServer} from '../../rest.server.js';
 

@@ -6,6 +6,7 @@
     {"path": "packages/core"},
     {"path": "packages/config"},
     {"path": "packages/http-server"},
+    {"path": "packages/middleware"},
     {"path": "packages/express"},
     {"path": "packages/openapi"},
     {"path": "packages/rest"},

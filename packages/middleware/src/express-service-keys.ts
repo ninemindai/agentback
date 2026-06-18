@@ -3,17 +3,17 @@
 // License text available at https://opensource.org/license/mit/
 
 import {BindingKey} from '@agentback/core';
-import type {ExpressService} from './express-service.js';
+import type {ExpressService} from './express-service.interface.js';
 
 /**
  * DI binding key for the {@link ExpressService} — the Express host runtime
  * `@agentback/rest`'s `RestServer` injects (`{optional: true}`) instead of
  * reaching for Express via `createRequire`.
  *
- * This module is import-safe on the edge: it only references `BindingKey` and a
- * TYPE, so importing the key never pulls the Express runtime onto a Worker's
- * static graph. The {@link ExpressService} CLASS (which value-imports express)
- * lives in `./express-service.js` and must only be loaded on the Node host.
+ * Lives in the neutral `@agentback/middleware` package and references only
+ * `BindingKey` + the `ExpressService` TYPE, so importing the key never pulls the
+ * Express runtime onto an edge bundle/install. The concrete `ExpressService`
+ * CLASS (which value-imports express) lives in `@agentback/express`.
  */
 export const EXPRESS_SERVICE_KEY = BindingKey.create<ExpressService>(
   'services.ExpressService',

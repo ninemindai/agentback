@@ -11,7 +11,7 @@ import {
   InvokeMiddlewareProvider,
   toMiddleware,
 } from '../../index.js';
-import {InvokeMiddleware} from '../../types.js';
+import {InvokeMiddleware} from '@agentback/middleware';
 import spyMiddlewareFactory from '../fixtures/spy.middleware.js';
 import {spy, TestHelper} from './test-helpers.js';
 

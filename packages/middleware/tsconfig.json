@@ -9,21 +9,8 @@
   "exclude": ["dist", "node_modules"],
   "references": [
     {"path": "../common"},
-    {"path": "../middleware"},
-    {
-      "path": "../metadata"
-    },
-    {
-      "path": "../context"
-    },
-    {
-      "path": "../core"
-    },
-    {
-      "path": "../http-server"
-    },
-    {
-      "path": "../testlab"
-    }
+    {"path": "../context"},
+    {"path": "../core"},
+    {"path": "../testlab"}
   ]
 }

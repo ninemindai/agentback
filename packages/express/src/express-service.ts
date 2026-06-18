@@ -3,10 +3,14 @@
 // License text available at https://opensource.org/license/mit/
 
 import {BindingScope, ContextTags, injectable} from '@agentback/core';
+import {
+  EXPRESS_SERVICE_KEY,
+  registerExpressMiddleware,
+  toExpressMiddleware,
+  type ExpressService as ExpressServiceInterface,
+} from '@agentback/middleware';
 import express, {type Express} from 'express';
 import cors from 'cors';
-import {registerExpressMiddleware, toExpressMiddleware} from './middleware.js';
-import {EXPRESS_SERVICE_KEY} from './express-service-keys.js';
 
 /**
  * DI-owned Express host. A singleton service that holds the Express `app` plus
@@ -14,20 +18,19 @@ import {EXPRESS_SERVICE_KEY} from './express-service-keys.js';
  * the LoopBack middleware chain: the `express` factory (with its `json` /
  * `urlencoded` / `text` / `raw` body parsers), `cors`, and the chain helpers.
  *
- * This is the injectable seam behind which the Express host lives, so it can be
- * provided, stubbed, or omitted via DI — the analogue of {@link CoreBindings.FETCH}
- * for the HTTP host. Modeled on `@factionvc/express`'s `ExpressService`.
+ * Implements the neutral {@link ExpressServiceInterface} from
+ * `@agentback/middleware` (where the binding key + interface live, Express-free)
+ * so `RestServer` can depend on the seam without pulling Express.
  *
  * NODE-ONLY: this module value-imports `express`/`cors`, so it must never be on
  * the static graph of an edge (Cloudflare Workers) / `listener: 'native'` app.
- * It is registered via {@link ExpressComponent} only on the Node host; the key
- * lives in the import-safe `./express-service-keys.js`.
+ * It is registered via {@link ExpressComponent} only on the Node host.
  */
 @injectable({
   scope: BindingScope.SINGLETON,
   tags: {[ContextTags.KEY]: EXPRESS_SERVICE_KEY},
 })
-export class ExpressService {
+export class ExpressService implements ExpressServiceInterface {
   /** The Express application RestServer mounts `@api` routes + the chain onto. */
   readonly app: Express = express();
   /** The `express` module: app factory plus json/urlencoded/text/raw parsers. */
