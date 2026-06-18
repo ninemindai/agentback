@@ -21,7 +21,13 @@ import {MiddlewareBindings} from './keys.js';
 // (the real Express host). Keeping these names off the *runtime* graph here is
 // what lets the middleware/mixin foundation (and thus `@agentback/rest`) bundle
 // edge-clean — importing a constant or the mixin must not drag Express in.
-export type {Request, Response, Router, RouterOptions} from 'express';
+//
+// `Router` is intentionally NOT re-exported here: it is the one runtime VALUE
+// among these names, so the package barrel (index.ts) re-exports it as a value
+// from 'express' to preserve the public `import {Router} from '@agentback/express'`
+// API. The barrel is Node-only anyway (it pulls express.server), so that does
+// not affect edge consumers, who import the edge-safe subpaths — never the barrel.
+export type {Request, Response, RouterOptions} from 'express';
 
 /**
  * An object holding HTTP request, response and other data

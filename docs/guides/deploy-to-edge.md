@@ -155,22 +155,33 @@ Deno.serve({port: 3000}, fetchHandler.fetch);
 ```ts
 import {RestApplication} from '@agentback/rest';
 
-const app = new RestApplication({rest: {listen: false, listener: 'native'}});
-app.restController(MyController);
-await app.start();                       // collects routes; mounts NO Express
-const server = await app.getServer('RestServer');
-const fetchHandler = server.fetchHandler();
+// Build on the FIRST REQUEST, not at module scope. Constructing the app runs
+// the DI container's ID generator (crypto randomness), and Workers forbid
+// generating random values during global evaluation — a module-scope
+// `new RestApplication()` throws at startup. The promise is cached, so only the
+// first request pays cold-start; the rest reuse the handler.
+let booted: Promise<{fetch(req: Request): Promise<Response>}> | undefined;
+const host = () =>
+  (booted ??= (async () => {
+    const app = new RestApplication({rest: {listen: false, listener: 'native'}});
+    app.restController(MyController);
+    await app.start();                   // collects routes; mounts NO Express
+    const server = await app.getServer('RestServer');
+    return server.fetchHandler();
+  })());
 
 export default {
-  fetch(request: Request): Promise<Response> {
-    return fetchHandler.fetch(request);
+  async fetch(request: Request): Promise<Response> {
+    return (await host()).fetch(request);
   },
 };
 ```
 
-Build the app once at module scope (cold start), then reuse `fetchHandler`
-across requests. On Workers, `FileStore` should be R2 and any Node-only deps must
-be avoided in the route handlers.
+This is exactly the wrapper `agentback deploy cloudflare` generates. Construction
+is deferred into `fetch()` because Workers reject randomness/IO at global scope
+(see the constraints below); the cached `booted` promise means subsequent
+requests reuse the handler. On Workers, `FileStore` should be R2 and any
+Node-only deps must be avoided in the route handlers.
 
 Two edge-runtime constraints the **bundle doctor cannot catch** (it is a *static*
 analyzer — bundle-clean ≠ runtime-clean), already handled by the framework but
