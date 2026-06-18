@@ -4,7 +4,7 @@
 
 import {z} from 'zod';
 import {api, get} from '@agentback/openapi';
-import {RestApplication} from '@agentback/rest';
+import {EdgeRestApplication} from '@agentback/rest';
 
 export const PingOut = z.object({pong: z.boolean()});
 
@@ -18,13 +18,11 @@ export class PingController {
 
 export async function buildApp(opts?: {
   listen?: boolean;
-}): Promise<RestApplication> {
-  // listener: 'native' makes fetchHandler() the single router — no Express
-  // route mounting at start() — which is required to run on an edge isolate
-  // (Cloudflare Workers): the Node-only express runtime can't load there.
-  const app = new RestApplication({
-    rest: {listen: opts?.listen ?? false, listener: 'native'},
-  });
+}): Promise<EdgeRestApplication> {
+  // EdgeRestApplication is the fetch/edge host: pinned to listener:'native', so
+  // fetchHandler() is the single router and start() mounts no Express — the
+  // Node-only express runtime is never reached on a Cloudflare Workers isolate.
+  const app = new EdgeRestApplication({rest: {listen: opts?.listen ?? false}});
   app.restController(PingController);
   await app.start();
   return app;
