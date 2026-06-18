@@ -637,6 +637,9 @@ importers:
       '@types/toposort':
         specifier: ^2.0.7
         version: 2.0.7
+      esbuild:
+        specifier: ~0.28.1
+        version: 0.28.1
 
   packages/config:
     dependencies:
