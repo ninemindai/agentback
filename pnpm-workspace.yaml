@@ -1,6 +1,7 @@
 packages:
   - 'packages/*'
   - 'examples/*'
+  - 'packages/cli/fixtures/*'
 
 # Security override: force the patched hono (transitive via
 # @modelcontextprotocol/sdk → @hono/node-server) — fixes GHSA-f577-qrjj-4474,

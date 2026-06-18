@@ -196,3 +196,36 @@ Node, Fastify, Hono, Bun, Deno, and Workers all take the same
 `fetch(Request): Promise<Response>`, so each deployment is a thin wrapper around
 the one `fetchHandler`. The Zod schemas, OpenAPI, MCP projection, auth, and error
 envelopes are identical wherever it runs.
+
+## Deploying to Cloudflare Workers with the CLI
+
+The `agentback deploy cloudflare` command automates the full deploy pipeline:
+
+1. **Generate** — writes `.agentback/deploy/cloudflare/worker.ts` (a thin fetch-handler wrapper around `buildApp`) and merges `wrangler.toml`.
+2. **Preflight** — runs the bundle doctor: esbuild-bundles the generated worker and checks for denied `node:` imports (e.g. `node:fs`, `node:path`) that would be rejected by the Workers runtime. The fetch path of `@agentback/rest` is edge-safe; only `fromDisk` / `serveStaticDir` pull in `node:fs`, so REST-only apps pass automatically.
+3. **Deploy** — calls `wrangler deploy` and parses the `*.workers.dev` URL from the output.
+4. **Verify** — HTTP-GETs `/openapi.json` on the live worker to confirm the deployment is serving correctly.
+
+```bash
+# Install prerequisites
+npm install -g wrangler
+wrangler login
+
+# Build your app, then deploy
+pnpm build
+agentback deploy cloudflare --prod
+```
+
+The `--dry-run` flag stops after preflight (no `wrangler` invocation), useful in CI to validate that the bundle is Workers-compatible without spending a deploy.
+
+```bash
+agentback deploy cloudflare --dry-run
+```
+
+To inspect the generated files before deploying (eject mode):
+
+```bash
+agentback deploy cloudflare --eject
+# Inspect .agentback/deploy/cloudflare/worker.ts and wrangler.toml, then:
+wrangler deploy
+```

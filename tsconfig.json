@@ -44,6 +44,7 @@
     {"path": "packages/testing"},
     {"path": "packages/create-agentback"},
     {"path": "packages/cli"},
+    {"path": "packages/cli/fixtures/cf-app"},
     {"path": "examples/hello-rest"},
     {"path": "examples/hello-hosts"},
     {"path": "examples/hello-mcp"},
