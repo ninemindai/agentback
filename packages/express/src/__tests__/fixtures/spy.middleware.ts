@@ -7,7 +7,7 @@ import {expect} from 'vitest';
 import {loggers} from '@agentback/common';
 import HttpErrors from 'http-errors';
 import {ExpressMiddlewareFactory, MIDDLEWARE_CONTEXT} from '../../index.js';
-import {getMiddlewareContext} from '../../types.js';
+import {getMiddlewareContext} from '@agentback/middleware';
 import {SpyConfig} from './spy-config.js';
 
 const log = loggers('loopback:middleware:spy');

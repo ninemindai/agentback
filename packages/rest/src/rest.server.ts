@@ -26,7 +26,7 @@ import {SecurityBindings, UserProfile} from '@agentback/security';
 import createError from 'http-errors';
 import {CoreBindings, CoreTags, Server} from '@agentback/core';
 // TYPE-ONLY imports — erased at compile time; safe to bundle for any runtime.
-import type {ExpressMiddlewareFactory} from '@agentback/express';
+import type {ExpressMiddlewareFactory} from '@agentback/middleware';
 import {
   assembleOpenApiSpec,
   buildErrorEnvelope,
@@ -82,13 +82,12 @@ import {lookupSuccessStatus} from './route-meta.js';
 import {SSE_FRAMER, JSONL_FRAMER} from './stream-framers.js';
 import {collectRoutes} from './web/collect-routes.js';
 import {assertPathSchemaMatch} from './route-path-validation.js';
-// Edge-safe subpath imports: the KEY value module references only BindingKey +
-// a type (no Express runtime), and the ExpressService import is type-only. The
-// Express-runtime-bearing class is never on this static graph — RestServer gets
-// the Express runtime from an injected ExpressService, or (default) lazily via
-// the loaders below. NOT the @agentback/express barrel (it pulls express.server).
-import {EXPRESS_SERVICE_KEY} from '@agentback/express/express-service-keys';
-import type {ExpressService} from '@agentback/express/express-service';
+// From the neutral @agentback/middleware package: the binding KEY (value) and
+// the ExpressService INTERFACE (type) are both Express-free, so RestServer
+// stays off the Express runtime graph. The concrete ExpressService CLASS lives
+// in @agentback/express and is reached only via an injected binding or (default)
+// the lazy createRequire loaders below — never a static import here.
+import {EXPRESS_SERVICE_KEY, type ExpressService} from '@agentback/middleware';
 import {Router} from './web/router.js';
 import {RestHandler} from './web/rest-handler.js';
 import {createFetchHost, type FetchHost} from './host/fetch.js';
@@ -132,24 +131,41 @@ function nodeRequire(): NodeRequire {
 }
 
 // Cached lazily-loaded express default export (the factory + sub-parsers).
+// `express` is an OPTIONAL peer dependency — only the Express host path
+// (RestApplication / listener:'express') needs it; an EdgeRestApplication never
+// calls this. Fail with guidance instead of a raw ERR_MODULE_NOT_FOUND.
 let _expressLib: typeof import('express') | undefined;
 function loadExpress(): typeof import('express') {
-  return (_expressLib ??= nodeRequire()('express') as typeof import('express'));
+  if (_expressLib) return _expressLib;
+  try {
+    return (_expressLib = nodeRequire()('express') as typeof import('express'));
+  } catch {
+    throw new Error(
+      '@agentback/rest: the Express host requires the optional peer ' +
+        "dependencies 'express' and 'cors'. Install them (`npm i express " +
+        "cors`) to use RestApplication / listener:'express', or use " +
+        "EdgeRestApplication (listener:'native'), which needs neither.",
+    );
+  }
 }
 
-// Cached lazily-loaded @agentback/express helpers.
+// Cached lazily-loaded middleware-chain helpers. These live in the neutral
+// @agentback/middleware package (always installed), so this require never needs
+// the optional @agentback/express host — only the express()/cors() factories do.
 let _expressHelpers:
   | {
-      registerExpressMiddleware: typeof import('@agentback/express').registerExpressMiddleware;
-      toExpressMiddleware: typeof import('@agentback/express').toExpressMiddleware;
+      registerExpressMiddleware: typeof import('@agentback/middleware').registerExpressMiddleware;
+      toExpressMiddleware: typeof import('@agentback/middleware').toExpressMiddleware;
     }
   | undefined;
 function loadExpressHelpers(): {
-  registerExpressMiddleware: typeof import('@agentback/express').registerExpressMiddleware;
-  toExpressMiddleware: typeof import('@agentback/express').toExpressMiddleware;
+  registerExpressMiddleware: typeof import('@agentback/middleware').registerExpressMiddleware;
+  toExpressMiddleware: typeof import('@agentback/middleware').toExpressMiddleware;
 } {
   if (!_expressHelpers) {
-    const mod = nodeRequire()('@agentback/express') as typeof import('@agentback/express');
+    const mod = nodeRequire()(
+      '@agentback/middleware',
+    ) as typeof import('@agentback/middleware');
     _expressHelpers = {
       registerExpressMiddleware: mod.registerExpressMiddleware,
       toExpressMiddleware: mod.toExpressMiddleware,
@@ -246,7 +262,9 @@ export class RestServer implements Server {
     // Native listener serves fetchHandler() directly, which always runs the Web
     // pipeline — so force web dispatch in native mode regardless of `dispatch`.
     this.dispatchMode =
-      this.listenerMode === 'native' ? 'web' : resolveDispatchMode(cfg.dispatch);
+      this.listenerMode === 'native'
+        ? 'web'
+        : resolveDispatchMode(cfg.dispatch);
     // Express is initialised lazily in ensureExpressApp() so that a Worker
     // using only fetchHandler() can import this module without pulling in the
     // Node `express` or `http` packages.  No Express work in the constructor.
@@ -320,8 +338,11 @@ export class RestServer implements Server {
    * the server accepts media types beyond `application/json`.
    */
   protected registerBuiltinMiddleware(): void {
-    const {registerExpressMiddleware, cors: corsLib, express: expressLib} =
-      this.expressService();
+    const {
+      registerExpressMiddleware,
+      cors: corsLib,
+      express: expressLib,
+    } = this.expressService();
     if (this.config.cors) {
       registerExpressMiddleware(
         this.context,
@@ -1346,7 +1367,9 @@ export class RestServer implements Server {
       if (typeof ctor !== 'function') continue;
       const spec = getControllerSpec(ctor);
       for (const item of Object.values(spec.paths ?? {})) {
-        for (const operation of Object.values(item as Record<string, unknown>)) {
+        for (const operation of Object.values(
+          item as Record<string, unknown>,
+        )) {
           if (!operation || typeof operation !== 'object') continue;
           const methodName = (operation as {operationId: string}).operationId
             .split('.')
@@ -1459,14 +1482,15 @@ export class RestServer implements Server {
       // built-in 404 (avoids an unnecessary async closure per miss).
       const notFound =
         exactEntries.length > 0 || prefixEntries.length > 0
-          ? async (
-              req: globalThis.Request,
-            ): Promise<globalThis.Response> => {
+          ? async (req: globalThis.Request): Promise<globalThis.Response> => {
               const {pathname} = new URL(req.url);
 
               // Exact handlers are checked first (priority over prefix matches).
               for (const e of exactEntries) {
-                if (e.method === req.method.toUpperCase() && pathname === e.path) {
+                if (
+                  e.method === req.method.toUpperCase() &&
+                  pathname === e.path
+                ) {
                   return e.fn(req);
                 }
               }

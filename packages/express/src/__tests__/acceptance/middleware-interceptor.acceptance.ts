@@ -31,7 +31,7 @@ import {
   registerExpressMiddlewareInterceptor,
   toInterceptor,
 } from '../../index.js';
-import {ExpressMiddlewareFactory} from '../../types.js';
+import {ExpressMiddlewareFactory} from '@agentback/middleware';
 import {SpyAction} from '../fixtures/spy-config.js';
 import {spy, SpyConfig, TestFunction, TestHelper} from './test-helpers.js';
 
