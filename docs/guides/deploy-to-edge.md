@@ -145,25 +145,24 @@ Deno.serve({port: 3000}, fetchHandler.fetch);
 
 ## Cloudflare Workers
 
-> **Edge apps MUST use `rest: {listener: 'native'}`.** In the default `'express'`
-> listener, `start()` mounts every route on Express, which lazy-loads the Node
-> `express` runtime via `createRequire(import.meta.url)` — `import.meta.url` is
-> `undefined` in a Worker isolate (and `express` isn't bundled), so the worker
-> throws at startup. Native mode makes `fetchHandler()` the single router and
-> skips all Express mounting, so nothing Node-only is reached.
+> **Use `EdgeRestApplication`.** It is the fetch/edge host: pinned to
+> `listener: 'native'` (so `start()` mounts no Express), and its dependency
+> closure contains **no `express`/`cors`** — `npm install` of an
+> `EdgeRestApplication` app pulls neither the express runtime nor the package.
+> `RestApplication` (a.k.a. `ExpressRestApplication`) is the Node/Express host;
+> on a Worker it would try to load the Node-only `express` runtime and throw.
 
 ```ts
-import {RestApplication} from '@agentback/rest';
+import {EdgeRestApplication} from '@agentback/rest';
 
 // Build on the FIRST REQUEST, not at module scope. Constructing the app runs
-// the DI container's ID generator (crypto randomness), and Workers forbid
-// generating random values during global evaluation — a module-scope
-// `new RestApplication()` throws at startup. The promise is cached, so only the
-// first request pays cold-start; the rest reuse the handler.
+// the DI container's ID generator, and Workers forbid generating random values
+// during global evaluation — a module-scope `new EdgeRestApplication()` throws
+// at startup. The cached promise means only the first request pays cold-start.
 let booted: Promise<{fetch(req: Request): Promise<Response>}> | undefined;
 const host = () =>
   (booted ??= (async () => {
-    const app = new RestApplication({rest: {listen: false, listener: 'native'}});
+    const app = new EdgeRestApplication({rest: {listen: false}});
     app.restController(MyController);
     await app.start();                   // collects routes; mounts NO Express
     const server = await app.getServer('RestServer');
@@ -182,6 +181,11 @@ is deferred into `fetch()` because Workers reject randomness/IO at global scope
 (see the constraints below); the cached `booted` promise means subsequent
 requests reuse the handler. On Workers, `FileStore` should be R2 and any
 Node-only deps must be avoided in the route handlers.
+
+`EdgeRestApplication` deliberately omits `app.middleware`/`app.expressMiddleware`
+(Express-only) — use `app.webMiddleware` for the runtime-neutral chain. It
+supports `@api` routes, `/openapi.json`, `/llms.txt`, and MCP-over-fetch; the
+`install*` UIs (console/explorers) are Express-host-only for now.
 
 Two edge-runtime constraints the **bundle doctor cannot catch** (it is a *static*
 analyzer — bundle-clean ≠ runtime-clean), already handled by the framework but
@@ -242,9 +246,9 @@ The `agentback deploy cloudflare` command automates the full deploy pipeline:
 3. **Deploy** — calls `wrangler deploy` and parses the `*.workers.dev` URL from the output.
 4. **Verify** — HTTP-GETs `/openapi.json` on the live worker to confirm the deployment is serving correctly.
 
-> Your `buildApp` must construct the app in **`listener: 'native'`** mode — e.g.
-> `new RestApplication({rest: {listen: false, listener: 'native'}})` — or the
-> generated worker throws at startup (see the Cloudflare Workers section above).
+> Your `buildApp` must construct an **`EdgeRestApplication`** (or a
+> `RestApplication` with `rest: {listener: 'native'}`) — the Express-host default
+> throws at startup on a Worker (see the Cloudflare Workers section above).
 
 ```bash
 # Install prerequisites

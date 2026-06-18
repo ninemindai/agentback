@@ -17,9 +17,10 @@ Each package also ships its own `README.md` under [`packages/`](../packages/).
 | Package                       | Role                                                                    |
 | ----------------------------- | ----------------------------------------------------------------------- |
 | `@agentback/http-server`      | HTTP server with graceful stop (port of `@loopback/http-server`)        |
-| `@agentback/express`          | Express integration + middleware (port of `@loopback/express`)          |
+| `@agentback/middleware`       | Runtime-neutral middleware-chain machinery (Express-free; shared by `rest` + the Express host) |
+| `@agentback/express`          | Optional Express **host** (`ExpressService`, the LB middleware chain over `express`/`cors`) |
 | `@agentback/openapi`          | Zod-first decorators + OpenAPI 3.1.1 emission                           |
-| `@agentback/rest`             | Minimal REST server with Zod request/body validation                    |
+| `@agentback/rest`             | REST server (Zod validation); `RestApplication`/`ExpressRestApplication` (Express) + `EdgeRestApplication` (fetch/Workers, no `express` install) |
 | `@agentback/rest-explorer`    | Mounts Swagger UI 5.x at `/explorer`                                    |
 | `@agentback/context-explorer` | Mounts a context/binding explorer UI                                    |
 | `@agentback/schema-explorer`  | Mounts a schema/entity provenance explorer UI (REST + MCP + Drizzle)    |
@@ -50,11 +51,12 @@ Each package also ships its own `README.md` under [`packages/`](../packages/).
 | `@agentback/messaging`             | Zod-typed JobQueue/EventBus/Scheduler ports with in-memory adapter       |
 | `@agentback/messaging-bullmq`      | BullMQ + Redis Streams durable adapter for messaging ports               |
 | `@agentback/drizzle`               | Drizzle ORM binding and drizzle-zod recipe                               |
-| `@agentback/files`                 | `FileStore` port for uploads/downloads + in-memory & filesystem adapters |
+| `@agentback/files`                 | `FileStore` port for uploads/downloads + in-memory adapter (the disk `FsFileStore` is the Node-only `@agentback/files/fs` subpath) |
 | `@agentback/files-s3`              | S3 `FileStore` adapter (streaming via AWS SDK v3)                        |
 | `@agentback/plugin`                | Plugin discovery, gating, and component mounting                         |
 | `@agentback/testing`               | Test harness with typed REST client, supertest, and in-memory MCP        |
 | `@agentback/testlab`               | Lower-level test helpers used by the package test suites                 |
 | `create-agentback`                 | `npm create` scaffold for REST, MCP, and hybrid services                 |
+| `@agentback/cli`                   | `agentback`/`abc` CLI — `deploy` to Vercel and Cloudflare Workers (bundle doctor + wrangler) |
 | `@agentback/console`               | Combined context, schema, REST/OpenAPI, and MCP admin console            |
 | `@agentback/console-theme`         | Shared styling for console and explorer UIs                              |
