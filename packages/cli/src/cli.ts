@@ -8,7 +8,8 @@ import {fileURLToPath} from 'node:url';
 import {AgentError} from '@agentback/openapi';
 import {parseDeployArgs} from './args.js';
 import {nodeExec} from './exec.js';
-import {runVercelDeploy} from './run-vercel.js';
+import {runDeploy} from './run-deploy.js';
+import {vercelTarget} from './targets/vercel.js';
 
 export const USAGE = `agentback — deploy an AgentBack app
 
@@ -41,7 +42,8 @@ export async function main(argv: string[]): Promise<number> {
       console.log(USAGE);
       return 0;
     }
-    const out = await runVercelDeploy(args, {
+    const target = vercelTarget;
+    const out = await runDeploy(args, target, {
       exec: nodeExec,
       fetchFn: globalThis.fetch,
       cwd: process.cwd(),
