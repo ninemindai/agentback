@@ -11,7 +11,7 @@ import {apiConsoleFeature} from '@agentback/rest-explorer';
 import {mcpConsoleFeature} from '@agentback/mcp-inspector';
 import {schemaConsoleFeature} from '@agentback/schema-explorer';
 import type {RestApplication, RestServer} from '@agentback/rest';
-import {serveStaticDir} from '@agentback/rest';
+import {AssetSource, fromDisk} from '@agentback/rest';
 
 /**
  * A server-side panel contribution: registers the panel's JSON API (no
@@ -44,6 +44,12 @@ export interface ConsoleOptions {
    * The server is the authority; the client only hides nav.
    */
   auth?: RequestHandler | RequestHandler[];
+  /**
+   * Override the static asset source. Defaults to reading from the package's
+   * bundled `client/` directory on disk (`fromDisk`). Pass a custom
+   * {@link AssetSource} to serve from a CDN or edge KV store.
+   */
+  assets?: AssetSource;
   /**
    * Explicitly allow mounting the console without server-side auth.
    * Unsafe outside local development.
@@ -102,7 +108,7 @@ export async function installConsole(
 
   for (const feature of features) await feature.install(app);
 
-  mountConsole(server, {basePath, title, features});
+  mountConsole(server, {basePath, title, features, assets: options.assets});
   return {basePath, features};
 }
 
@@ -112,7 +118,7 @@ export async function installConsole(
  */
 export function mountConsole(
   server: RestServer,
-  options: {basePath: string; title: string; features: ConsoleFeature[]},
+  options: {basePath: string; title: string; features: ConsoleFeature[]; assets?: AssetSource},
 ): void {
   const {basePath, title, features} = options;
   const app = server.expressApp;
@@ -134,7 +140,7 @@ export function mountConsole(
   });
 
   // Neutral fetch path (Bun/Deno/Fastify hosts via fetchHandler()).
-  const serveAsset = serveStaticDir(clientDir);
+  const serveAsset = options.assets ?? fromDisk(clientDir);
   const htmlResponse = async () =>
     new Response(html, {headers: {'content-type': 'text/html; charset=utf-8'}});
   server.addFetchHandler('GET', basePath, htmlResponse);
