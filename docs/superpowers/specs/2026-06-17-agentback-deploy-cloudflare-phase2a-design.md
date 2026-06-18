@@ -1,8 +1,11 @@
 # `agentback deploy cloudflare` (Phase 2a) — Design
 
 **Date:** 2026-06-17
-**Status:** Approved design, pre-implementation
+**Status:** Partially delivered — tooling + accurate doctor landed; full `RestApplication`-on-Workers deferred (see status note).
 **Supersedes/extends:** [2026-06-17-agentback-deploy-design.md](2026-06-17-agentback-deploy-design.md) (Phase 1, Vercel). This is the first slice of that spec's §12 "Phase 2" carve-out.
+
+> **⚠️ Implementation status (2026-06-17).** Landed: the deploy tooling (`DeployTarget` extraction, Cloudflare target, fetch-leaf worker + `wrangler.toml`, `AssetSource` D+C, CLI wiring) and an **accurate, tree-shaking-aware bundle doctor** (`nodejs_compat`-correct DENY list + bare-name detection), plus an edge-safety down-payment (`@agentback/common` dotenv/env no longer pollutes a Worker bundle).
+> **Deferred:** the doctor honestly reports that a real `RestApplication` does **not** yet bundle clean for a Workers isolate — it pulls Express's transitive ecosystem (multer/busboy, etag, cookie-signature, send→`fs`). The "fetch handler ⇒ runs on the edge" assumption held for the *logic* but not the *packaging*. Tracked in **[2026-06-17-restapplication-edge-readiness-followup.md](2026-06-17-restapplication-edge-readiness-followup.md)** (a lazy-Express starting point exists at commit `4a906d0`). The credential-gated CF e2e validates the doctor + pipeline against an edge-clean `createFetchHost` worker; the real-app e2e waits on the follow-up. The doctor correctly saying "not edge-ready yet" — instead of greenlighting a worker that would 500 — is itself a primary outcome of this phase.
 **Scope:** Add **Cloudflare Workers** as a deploy target for an AgentBack app's **REST + OpenAPI** surface, by extracting a reusable `DeployTarget` seam from the concrete Vercel path and adding a Cloudflare adapter, a static bundle doctor, and a CDN-backed `AssetSource` so the dev UIs work without a filesystem. **Edge MCP, Deno Deploy, and Vercel `--edge` are Phase 2b (separate spec).**
 
 ---
