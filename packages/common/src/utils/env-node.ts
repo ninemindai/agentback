@@ -195,7 +195,17 @@ export const DOTENV_CONFIG: DotenvConfigOutput = loadEnvFiles();
  * @return The filename without its extension.
  */
 export function stripExt(name: string) {
-  if (typeof process === 'undefined' || !process.versions?.node) return name;
+  // Two-signal guard (see hasNodeFileSystem): nodejs_compat fakes
+  // process.versions.node, so checking it alone would let a Worker reach
+  // getBuiltinModule (absent there) and throw.
+  if (
+    !hasNodeFileSystem(
+      typeof process === 'undefined' ? undefined : process,
+      import.meta.url,
+    )
+  ) {
+    return name;
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const path = (process as any).getBuiltinModule(
     'node:path',
@@ -211,7 +221,16 @@ export function stripExt(name: string) {
  * @returns
  */
 export function isMain(module: string | object | ImportMeta) {
-  if (typeof process === 'undefined' || !process.versions?.node) return false;
+  // Two-signal guard (see hasNodeFileSystem): process.versions.node alone is
+  // faked under nodejs_compat, so it would pass on a Worker and then throw.
+  if (
+    !hasNodeFileSystem(
+      typeof process === 'undefined' ? undefined : process,
+      import.meta.url,
+    )
+  ) {
+    return false;
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const _process = process as any;
