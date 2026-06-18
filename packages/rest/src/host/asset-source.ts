@@ -72,3 +72,26 @@ export function fromDisk(dir: string): AssetSource {
     }
   };
 }
+
+/**
+ * Serve assets from a CDN base URL instead of disk — for edge runtimes (no fs).
+ * jsdelivr/unpkg serve any published npm package's files by version, e.g.
+ * `https://cdn.jsdelivr.net/npm/@agentback/console@0.4.0/dist/client`.
+ */
+export function fromCdn(
+  baseUrl: string,
+  fetchFn: typeof globalThis.fetch = globalThis.fetch,
+): AssetSource {
+  const base = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+  return async (suffix: string): Promise<globalThis.Response | undefined> => {
+    const url = base + (suffix.startsWith('/') ? suffix : '/' + suffix);
+    const res = await fetchFn(url);
+    if (res.status !== 200) return undefined;
+    return new globalThis.Response(res.body, {
+      headers: {
+        'content-type': res.headers.get('content-type') ?? 'application/octet-stream',
+        'cache-control': 'public, max-age=31536000, immutable',
+      },
+    });
+  };
+}

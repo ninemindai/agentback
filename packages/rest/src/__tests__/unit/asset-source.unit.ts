@@ -6,7 +6,7 @@ import {mkdtempSync, writeFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
-import {fromDisk} from '../../host/asset-source.js';
+import {fromDisk, fromCdn} from '../../host/asset-source.js';
 
 describe('fromDisk', () => {
   let dir: string;
@@ -26,5 +26,24 @@ describe('fromDisk', () => {
 
   it('rejects path traversal', async () => {
     expect(await fromDisk(dir)('/../secret')).toBeUndefined();
+  });
+});
+
+describe('fromCdn', () => {
+  it('proxies an asset from the CDN base', async () => {
+    const calls: string[] = [];
+    const fetchFn = (async (u: any) => {
+      calls.push(String(u));
+      return new Response('body', {status: 200, headers: {'content-type': 'application/javascript'}});
+    }) as unknown as typeof fetch;
+    const res = await fromCdn('https://cdn.example/npm/pkg@1/dist', fetchFn)('/main.js');
+    expect(calls[0]).toBe('https://cdn.example/npm/pkg@1/dist/main.js');
+    expect(res?.status).toBe(200);
+    expect(await res?.text()).toBe('body');
+  });
+
+  it('returns undefined when the CDN 404s', async () => {
+    const fetchFn = (async () => new Response('', {status: 404})) as unknown as typeof fetch;
+    expect(await fromCdn('https://cdn.example/x', fetchFn)('/missing.js')).toBeUndefined();
   });
 });
