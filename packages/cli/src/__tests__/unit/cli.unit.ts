@@ -18,4 +18,11 @@ describe('main', () => {
     expect(err).toHaveBeenCalledWith(expect.stringMatching(/unknown flag/i));
     err.mockRestore();
   });
+
+  it('maps a bad flag on cloudflare to exit 1 with a clean message', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await main(['deploy', 'cloudflare', '--bogus'])).toBe(1);
+    expect(err).toHaveBeenCalledWith(expect.stringMatching(/unknown flag/i));
+    err.mockRestore();
+  });
 });

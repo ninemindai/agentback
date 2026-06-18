@@ -5,7 +5,7 @@
 import {AgentError, ErrorCodes} from '@agentback/openapi';
 
 export interface DeployArgs {
-  target: 'vercel';
+  target: 'vercel' | 'cloudflare';
   entry?: string;
   exportName?: string;
   prod: boolean;
@@ -38,12 +38,24 @@ function bad(message: string): never {
 
 export function parseDeployArgs(argv: string[]): DeployArgs {
   const [target, ...rest] = argv;
-  if (!target) bad('deploy: missing target. Usage: agentback deploy vercel');
-  if (target !== 'vercel')
-    bad(`deploy: unknown target '${target}' (only 'vercel' in Phase 1)`);
+  if (!target)
+    bad('deploy: missing target. Usage: agentback deploy vercel|cloudflare');
+
+  const TARGETS: Record<string, 'vercel' | 'cloudflare'> = {
+    vercel: 'vercel',
+    cloudflare: 'cloudflare',
+    cf: 'cloudflare',
+    workers: 'cloudflare',
+  };
+
+  const resolved = TARGETS[target];
+  if (!resolved)
+    bad(
+      `deploy: unknown target '${target}' (supported: vercel, cloudflare)`,
+    );
 
   const out: DeployArgs = {
-    target: 'vercel',
+    target: resolved,
     prod: false,
     console: false,
     unsafePublicConsole: false,
