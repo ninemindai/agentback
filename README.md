@@ -115,6 +115,13 @@ Node listener, Fastify, Hono, Bun, Deno, and Workers — see
 [`examples/hello-hosts`](examples/hello-hosts/README.md) and the
 [HTTP hosts guide](docs/guides/deploy-to-edge.md).
 
+Pick your host by class: `RestApplication` (a.k.a. `ExpressRestApplication`) for
+the Node/Express host, or **`EdgeRestApplication`** for fetch/edge — the latter
+installs **no `express`/`cors`** (the neutral middleware machinery lives in
+`@agentback/middleware`). Ship either with `agentback deploy vercel` or
+`agentback deploy cloudflare` (the `@agentback/cli`, with a `nodejs_compat`-aware
+bundle-doctor preflight).
+
 ## Documentation
 
 Full docs live in **[`docs/`](docs/README.md)** — a guided path from the core

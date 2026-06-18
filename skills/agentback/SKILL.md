@@ -142,7 +142,7 @@ if (isMain(import.meta)) await main();
 | Concept             | Key APIs                                                                       | Notes                                                                                                                                     |
 | ------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | DI container        | `Context`, `BindingKey.create<T>()`, `@inject`, `@injectable`                  | Ported from `@loopback/core`; import from `@agentback/core`                                                                               |
-| App + servers       | `RestApplication`, `MCPApplication`, `Application`, `Server`                   | `RestApplication` for HTTP (REST + MCP-over-HTTP); `MCPApplication` for a stdio MCP server. Servers discover bindings by tag at `start()` |
+| App + servers       | `RestApplication`/`ExpressRestApplication`, `EdgeRestApplication`, `MCPApplication`, `Application`, `Server`                   | `RestApplication` for the Node/Express HTTP host; `EdgeRestApplication` for fetch/edge (Workers/Bun/Deno, no `express` install); `MCPApplication` for a stdio MCP server. Servers discover bindings by tag at `start()` |
 | Components          | `Component` with `components[]` / `services[]` / `bindings[]`                  | Composable packaging; `app.component(X)`                                                                                                  |
 | REST routing        | `@api`, `@get/@post/@put/@patch/@del`, `{path,query,body,headers,response}`    | Zod on the decorator; slot 0 = validated input bundle                                                                                     |
 | MCP tools           | `@mcpServer`, `@tool('name', {input, output, scope?})`, `@resource`, `@prompt` | Zod on the decorator; stdio + HTTP transport                                                                                              |
@@ -184,10 +184,15 @@ if (isMain(import.meta)) await main();
   REST+MCP class (`@api` + `@mcpServer`) needs **both** `restController` (the
   routes) and `service` (the MCP extension). See
   [mcp-tools.md](references/mcp-tools.md).
-- **`express` is on `^5`**; the REST core is being made host-portable (a
-  runtime-neutral `Request → Response` handler), so it can ride on a Node host
-  (Express today) or a Web-standard runtime (Workers/Deno, Hono's territory).
-  The schema-typed `client` depends on nothing but `zod` (browser-safe).
+- **The REST core is host-portable.** `RestServer.fetchHandler()` is a
+  runtime-neutral `Request → Response` handler. Pick the host by class:
+  `RestApplication` / `ExpressRestApplication` (Node/Express host, `express` on
+  `^5`) or `EdgeRestApplication` (fetch/edge: Workers/Bun/Deno — pinned to
+  `listener: 'native'`, installs **no `express`/`cors`**). The neutral
+  middleware machinery lives in `@agentback/middleware`; `express`/`cors`/`multer`
+  are optional peer deps of `@agentback/rest`. Deploy via `agentback deploy
+  vercel|cloudflare` (`@agentback/cli`). The schema-typed `client` depends on
+  nothing but `zod` (browser-safe).
 - Every source file carries the three-line MIT header
   (`// Copyright ninemind.ai 2026. All Rights Reserved.`).
 
