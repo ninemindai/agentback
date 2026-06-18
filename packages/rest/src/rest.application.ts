@@ -19,13 +19,15 @@ let webMiddlewareSeq = 0;
 const log = loggers('agentback:rest:application');
 
 /**
- * Convenience Application subclass that pre-registers a RestServer, tags
- * controllers so the REST server can discover them at start, and exposes
- * `app.middleware(...)` / `app.expressMiddleware(...)` for registering
- * Express middleware that runs through the framework's middleware chain
- * before every route handler.
+ * Host-neutral REST application base: pre-registers a {@link RestServer},
+ * resolves its port/host from config + `PORT`/`HOST` env, exposes
+ * `restController(...)` and the runtime-neutral `webMiddleware(...)`, and the
+ * `restServer` accessor. Carries NO Express coupling — it extends the core
+ * `Application` directly. {@link EdgeRestApplication} is this base wired to the
+ * native (fetch) listener; {@link RestApplication} layers the Express
+ * middleware chain on top via {@link MiddlewareMixin}.
  */
-export class RestApplication extends MiddlewareMixin(Application) {
+export class BaseRestApplication extends Application {
   constructor(config?: ApplicationConfig) {
     super(config);
     this.server(RestServer);
@@ -112,5 +114,39 @@ export class RestApplication extends MiddlewareMixin(Application) {
 
   get restServer(): Promise<RestServer> {
     return this.get<RestServer>(RestBindings.SERVER);
+  }
+}
+
+/**
+ * The default REST application: {@link BaseRestApplication} plus the Express
+ * middleware chain (`app.middleware(...)` / `app.expressMiddleware(...)`) via
+ * {@link MiddlewareMixin}. Hosted by Express (`listener: 'express'`, the
+ * default). For an edge / fetch-only app that must not pull the Express
+ * runtime, use {@link EdgeRestApplication} instead.
+ *
+ * `ExpressRestApplication` is exported as an explicit alias of this class.
+ */
+export class RestApplication extends MiddlewareMixin(BaseRestApplication) {}
+
+export {RestApplication as ExpressRestApplication};
+
+/**
+ * Edge / fetch-only REST application: {@link BaseRestApplication} pinned to the
+ * runtime-neutral native listener (`listener: 'native'`). `RestServer.start()`
+ * mounts NO Express, so nothing pulls the Node-only `express`/`cors` runtime —
+ * the app bundles clean for Cloudflare Workers / Bun / Deno and serves through
+ * `fetchHandler()`. It deliberately does NOT expose `app.middleware` /
+ * `app.expressMiddleware` (Express-only); use `app.webMiddleware` for the fetch
+ * path. The native listener is forced regardless of any `rest.listener` passed.
+ */
+export class EdgeRestApplication extends BaseRestApplication {
+  constructor(config?: ApplicationConfig) {
+    super({
+      ...config,
+      rest: {
+        ...(config?.rest as RestServerConfig | undefined),
+        listener: 'native',
+      },
+    });
   }
 }
