@@ -4,19 +4,32 @@
 
 import type {Diagnostic} from './deploy-target.js';
 
+// Modules that genuinely do NOT work on Cloudflare Workers even with
+// nodejs_compat. Pure-JS builtins like node:path, node:crypto, node:stream,
+// node:http, node:https, etc. are supported and must NOT appear here.
 const DENY = new Set([
-  'node:fs', 'node:fs/promises', 'node:path', 'node:net', 'node:http',
-  'node:https', 'node:child_process', 'node:cluster', 'node:dgram', 'node:tls',
+  'node:fs', 'node:fs/promises',
+  'node:child_process', 'node:cluster', 'node:dgram', 'node:tls', 'node:net',
+  'node:worker_threads', 'node:v8', 'node:vm', 'node:inspector',
+  'node:readline', 'node:repl',
 ]);
 // Allowed under Cloudflare's nodejs_compat; everything not in DENY is treated as
 // allowed (npm packages bundle normally; only the DENY node: builtins fail).
+
+// Bare Node.js built-in names (without node: prefix) that CJS packages import.
+// Used to normalize bare names to their node: form before the deny check so
+// that transitive CJS deps (e.g. dotenv's bare `require('fs')`) are caught.
+const DENY_BARE_NAMES = new Set([
+  'fs', 'fs/promises', 'child_process', 'cluster', 'dgram', 'tls', 'net',
+  'worker_threads', 'v8', 'vm', 'inspector', 'readline', 'repl',
+]);
 
 export function scanImports(modules: string[]): Diagnostic {
   for (const m of modules) {
     // Match a denied builtin, ignoring a subpath after the base (node:fs/x).
     const denied = [...DENY].find(d => m === d || m.startsWith(d + '/'));
     if (denied) {
-      const hint = denied.includes('fs') || denied.includes('path')
+      const hint = denied.includes('fs')
         ? ' (likely `serveStaticDir` on disk — switch the dev UI to the CDN `AssetSource`, or omit it for edge)'
         : ' (no Cloudflare Workers equivalent)';
       return {ok: false, message: `Edge-incompatible import: ${denied}${hint}`};
@@ -67,7 +80,17 @@ export async function runBundleDoctor(
   const nodeImports = new Set<string>();
   for (const output of Object.values(result.metafile?.outputs ?? {})) {
     for (const imp of (output as {imports?: Array<{path: string; kind: string}>}).imports ?? []) {
-      if (imp.path.startsWith('node:')) nodeImports.add(imp.path);
+      const p = imp.path;
+      if (p.startsWith('node:')) {
+        nodeImports.add(p);
+      } else {
+        // CJS packages (e.g. dotenv) import builtins by bare name without the
+        // node: prefix. Normalize to node: form so the deny check catches them.
+        const base = p.includes('/') ? p.slice(0, p.indexOf('/')) : p;
+        if (DENY_BARE_NAMES.has(base) || DENY_BARE_NAMES.has(p)) {
+          nodeImports.add('node:' + p);
+        }
+      }
     }
   }
   return scanImports([...nodeImports]);
