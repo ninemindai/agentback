@@ -25,12 +25,8 @@ import {
 import {SecurityBindings, UserProfile} from '@agentback/security';
 import createError from 'http-errors';
 import {CoreBindings, CoreTags, Server} from '@agentback/core';
-import {
-  registerExpressMiddleware,
-  toExpressMiddleware,
-  type ExpressMiddlewareFactory,
-} from '@agentback/express';
-import cors from 'cors';
+// TYPE-ONLY imports — erased at compile time; safe to bundle for any runtime.
+import type {ExpressMiddlewareFactory} from '@agentback/express';
 import {
   assembleOpenApiSpec,
   buildErrorEnvelope,
@@ -53,13 +49,9 @@ import {
   type ConfirmationStore,
   type IdempotencyStore,
 } from '@agentback/common';
-import express, {
-  type Express,
-  type NextFunction,
-  type Request,
-  type Response,
-} from 'express';
-import {createServer as createHttpServer, type Server as HttpServer} from 'http';
+// TYPE-ONLY — erased at compile time; no runtime 'express' or 'http' import.
+import type {Express, NextFunction, Request, Response} from 'express';
+import type {Server as HttpServer} from 'http';
 import {Readable} from 'node:stream';
 import {
   RestBindings,
@@ -106,6 +98,67 @@ import {resolveControllerInstance} from './controller-resolver.js';
 
 const log = loggers('agentback:rest:server');
 
+// ---------------------------------------------------------------------------
+// Lazy Node loaders — never called from fetchHandler()/the Web path.
+// We avoid top-level `import express from 'express'` so a Cloudflare Worker
+// that only uses fetchHandler() can bundle this file without pulling in Express
+// or Node's `http` module.  In a plain Node process these are called once on
+// first Express use and the result is memoised.
+// ---------------------------------------------------------------------------
+
+/** Return a Node `require` function resolved relative to this ESM file. */
+function makeNodeRequire(): NodeRequire {
+  // process.getBuiltinModule is Node 22.13+ only — never present in Workers.
+  const nodeModule = (
+    process as typeof process & {
+      getBuiltinModule(id: string): unknown;
+    }
+  ).getBuiltinModule('node:module') as {
+    createRequire(url: string): NodeRequire;
+  };
+  return nodeModule.createRequire(import.meta.url);
+}
+
+let _req: NodeRequire | undefined;
+function nodeRequire(): NodeRequire {
+  return (_req ??= makeNodeRequire());
+}
+
+// Cached lazily-loaded express default export (the factory + sub-parsers).
+let _expressLib: typeof import('express') | undefined;
+function loadExpress(): typeof import('express') {
+  return (_expressLib ??= nodeRequire()('express') as typeof import('express'));
+}
+
+// Cached lazily-loaded @agentback/express helpers.
+let _expressHelpers:
+  | {
+      registerExpressMiddleware: typeof import('@agentback/express').registerExpressMiddleware;
+      toExpressMiddleware: typeof import('@agentback/express').toExpressMiddleware;
+    }
+  | undefined;
+function loadExpressHelpers(): {
+  registerExpressMiddleware: typeof import('@agentback/express').registerExpressMiddleware;
+  toExpressMiddleware: typeof import('@agentback/express').toExpressMiddleware;
+} {
+  if (!_expressHelpers) {
+    const mod = nodeRequire()('@agentback/express') as typeof import('@agentback/express');
+    _expressHelpers = {
+      registerExpressMiddleware: mod.registerExpressMiddleware,
+      toExpressMiddleware: mod.toExpressMiddleware,
+    };
+  }
+  return _expressHelpers;
+}
+
+// Cached lazily-loaded cors default export.
+let _corsLib: typeof import('cors') | undefined;
+function loadCors(): typeof import('cors') {
+  return (_corsLib ??= nodeRequire()('cors') as typeof import('cors'));
+}
+
+// ---------------------------------------------------------------------------
+
 /**
  * Build a runtime-neutral Web {@link globalThis.Request} view of an Express
  * request for {@link RestDispatchInfo.request}. Carries method, absolute URL
@@ -127,7 +180,7 @@ function webRequestFromExpress(req: Request): globalThis.Request {
 }
 
 export class RestServer implements Server {
-  private app: Express;
+  private _app?: Express;
   private httpServer?: HttpServer;
   private _listening = false;
   readonly config: Required<
@@ -180,22 +233,41 @@ export class RestServer implements Server {
     // pipeline — so force web dispatch in native mode regardless of `dispatch`.
     this.dispatchMode =
       this.listenerMode === 'native' ? 'web' : resolveDispatchMode(cfg.dispatch);
-    this.app = express();
-    // CORS and body parsing are themselves entries in the LB middleware chain
-    // (tagged with groups), not bare `app.use` calls — so their order relative
-    // to user middleware is governed by the chain's topological sort, and body
-    // parsing is configurable beyond JSON. See registerBuiltinMiddleware.
-    this.registerBuiltinMiddleware();
-    // Mount the LB-style middleware chain as the FIRST (and only) app-level
-    // handler, matching upstream LB4's ExpressServer ("1st Express
-    // middleware"). `toExpressMiddleware` discovers and sorts the chain lazily
-    // per request, so middleware bound later — via `app.middleware(...)` /
-    // `app.expressMiddleware(...)` before `app.start()` — still participate.
-    // Mounting here (not in `start()`) means it sits in FRONT of every route
-    // mounted afterward, including ones added by `install*` helpers
-    // (mcp-http's `/mcp`, rest-explorer, console, …) before `start()` runs —
-    // otherwise those routes would shadow the chain and bypass it entirely.
-    this.app.use(toExpressMiddleware(this.context));
+    // Express is initialised lazily in ensureExpressApp() so that a Worker
+    // using only fetchHandler() can import this module without pulling in the
+    // Node `express` or `http` packages.  No Express work in the constructor.
+  }
+
+  /**
+   * Return the Express app, creating and wiring it on first call (lazy init).
+   *
+   * Express is NOT initialised in the constructor so that a Cloudflare Worker
+   * using only {@link fetchHandler} can import `RestServer` without pulling in
+   * the Node `express` or `http` packages.  Every Express-path method goes
+   * through this getter; {@link fetchHandler} must never call it.
+   */
+  private ensureExpressApp(): Express {
+    if (!this._app) {
+      const expressLib = loadExpress();
+      const {toExpressMiddleware} = loadExpressHelpers();
+      this._app = expressLib();
+      // CORS and body parsing are themselves entries in the LB middleware chain
+      // (tagged with groups), not bare `app.use` calls — so their order relative
+      // to user middleware is governed by the chain's topological sort, and body
+      // parsing is configurable beyond JSON. See registerBuiltinMiddleware.
+      this.registerBuiltinMiddleware();
+      // Mount the LB-style middleware chain as the FIRST (and only) app-level
+      // handler, matching upstream LB4's ExpressServer ("1st Express
+      // middleware"). `toExpressMiddleware` discovers and sorts the chain lazily
+      // per request, so middleware bound later — via `app.middleware(...)` /
+      // `app.expressMiddleware(...)` before `app.start()` — still participate.
+      // Mounting here (not in `start()`) means it sits in FRONT of every route
+      // mounted afterward, including ones added by `install*` helpers
+      // (mcp-http's `/mcp`, rest-explorer, console, …) before `start()` runs —
+      // otherwise those routes would shadow the chain and bypass it entirely.
+      this._app.use(toExpressMiddleware(this.context));
+    }
+    return this._app;
   }
 
   /**
@@ -210,10 +282,13 @@ export class RestServer implements Server {
    * the server accepts media types beyond `application/json`.
    */
   protected registerBuiltinMiddleware(): void {
+    const {registerExpressMiddleware} = loadExpressHelpers();
+    const corsLib = loadCors();
+    const expressLib = loadExpress();
     if (this.config.cors) {
       registerExpressMiddleware(
         this.context,
-        cors,
+        corsLib,
         this.config.cors === true ? undefined : this.config.cors,
         {
           injectConfiguration: false,
@@ -231,16 +306,16 @@ export class RestServer implements Server {
     if (bp === false) return; // explicit opt-out: no body parser at all
     // Unset → JSON-only default. Otherwise honor each enabled parser.
     const cfg: BodyParserConfig = bp ?? {json: true};
-    this.registerBodyParser('json', express.json, cfg.json ?? true);
+    this.registerBodyParser('json', expressLib.json, cfg.json ?? true);
     // Bare `true` → `{extended: true}`: `express.urlencoded(undefined)` logs the
     // Express 4 "undefined extended" deprecation, so supply the option explicitly.
     this.registerBodyParser(
       'urlencoded',
-      express.urlencoded,
+      expressLib.urlencoded,
       cfg.urlencoded === true ? {extended: true} : cfg.urlencoded,
     );
-    this.registerBodyParser('text', express.text, cfg.text);
-    this.registerBodyParser('raw', express.raw, cfg.raw);
+    this.registerBodyParser('text', expressLib.text, cfg.text);
+    this.registerBodyParser('raw', expressLib.raw, cfg.raw);
   }
 
   /**
@@ -255,6 +330,7 @@ export class RestServer implements Server {
     opt: boolean | C | undefined,
   ): void {
     if (!opt) return;
+    const {registerExpressMiddleware} = loadExpressHelpers();
     registerExpressMiddleware<C>(
       this.context,
       factory,
@@ -355,13 +431,13 @@ export class RestServer implements Server {
           !injectsRawExpressObjects(ctor, methodName) &&
           !this.overridesExpressDispatchSeam();
         if (fileFields.length && !handlerIsWeb) {
-          this.app[expressVerb](
+          this.ensureExpressApp()[expressVerb](
             route,
             makeMultipartMiddleware(fileFields, this.context),
             handler,
           );
         } else {
-          this.app[expressVerb](route, handler);
+          this.ensureExpressApp()[expressVerb](route, handler);
         }
       }
     }
@@ -1048,7 +1124,7 @@ export class RestServer implements Server {
     const specPath =
       (this.config.basePath ?? '') +
       (this.config.openApiSpec?.path ?? '/openapi.json');
-    this.app.get(specPath, async (_req, res, next) => {
+    this.ensureExpressApp().get(specPath, async (_req, res, next) => {
       try {
         res.json(await this.getApiSpec());
       } catch (err) {
@@ -1063,7 +1139,7 @@ export class RestServer implements Server {
 
     this.mountAxRoutes(specPath);
 
-    this.app.use(
+    this.ensureExpressApp().use(
       (err: unknown, req: Request, res: Response, _next: NextFunction) => {
         this.sendError(req, res, err);
       },
@@ -1102,8 +1178,8 @@ export class RestServer implements Server {
           next(err);
         }
       };
-    this.app.get(llmsTxtPath, serve(generateLlmsTxt));
-    this.app.get(llmsFullTxtPath, serve(generateLlmsFullTxt));
+    this.ensureExpressApp().get(llmsTxtPath, serve(generateLlmsTxt));
+    this.ensureExpressApp().get(llmsFullTxtPath, serve(generateLlmsFullTxt));
     // Neutral fetch path: same AX documents via fetchHandler().
     const textResponse = async (body: string) =>
       new globalThis.Response(body, {
@@ -1142,7 +1218,7 @@ export class RestServer implements Server {
       return;
     }
     await new Promise<void>(resolve => {
-      this.httpServer = this.app.listen(
+      this.httpServer = this.ensureExpressApp().listen(
         this.config.port,
         this.config.host,
         () => {
@@ -1173,6 +1249,11 @@ export class RestServer implements Server {
       );
     }
     const listener = createNodeListener(this.fetchHandler());
+    const {createServer: createHttpServer} = (
+      process as typeof process & {
+        getBuiltinModule(id: string): unknown;
+      }
+    ).getBuiltinModule('node:http') as typeof import('http');
     await new Promise<void>(resolve => {
       this.httpServer = createHttpServer(listener).listen(
         this.config.port,
@@ -1243,7 +1324,7 @@ export class RestServer implements Server {
 
   /** Get the underlying express app (escape hatch). */
   get expressApp(): Express {
-    return this.app;
+    return this.ensureExpressApp();
   }
 
   private _fetchHost?: FetchHost;
@@ -1382,9 +1463,8 @@ export class RestServer implements Server {
       };
 
       this._fetchHost = {
-        // `Request`/`Response` are shadowed by the `express` import in this
-        // file; the Web onion deals in the global (WHATWG) types, so name them
-        // explicitly via `globalThis`.
+        // The Web onion deals in the global (WHATWG) Request/Response types;
+        // use `globalThis.*` to be explicit and match the Web-host contract.
         fetch: async (
           req: globalThis.Request,
         ): Promise<globalThis.Response> => {

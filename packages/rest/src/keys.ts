@@ -3,7 +3,12 @@
 // License text available at https://opensource.org/license/mit/
 
 import {BindingKey, type Context} from '@agentback/context';
-import {DEFAULT_MIDDLEWARE_GROUP, MiddlewareGroups} from '@agentback/express';
+// Import from express subpaths, NOT the package barrel: the barrel re-exports
+// `express.server` (the real Express host), which would drag Express runtime
+// (node:fs/node:net) onto the static graph and break edge bundling. These two
+// leaves are Express-runtime-free (constants only).
+import {DEFAULT_MIDDLEWARE_GROUP} from '@agentback/express/keys';
+import {MiddlewareGroups} from '@agentback/express/types';
 import type {ConfirmationStore, IdempotencyStore} from '@agentback/common';
 import type {RouteSchemas} from '@agentback/openapi';
 import type {Request, Response} from 'express';
