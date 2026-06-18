@@ -2,8 +2,6 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import './env.js';
-
 import debug, {Debugger, log} from 'debug';
 import {InspectOptions} from 'util';
 import {LogLevel, isDebugEnabled, isLogEnabled, redactData} from './debug.js';
