@@ -1,6 +1,6 @@
 {
   "name": "@agentback/cli",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "AgentBack CLI: deploy an AgentBack app (agentback deploy vercel)",
   "type": "module",
   "bin": {

@@ -1,6 +1,6 @@
 {
   "name": "@agentback/payments",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "PaymentRail seam for REST/MCP calls. Ships an x402 (HTTP 402) adapter; MPP/Stripe are the next adapters. Orchestrates payment authorization; does not settle.",
   "type": "module",
   "main": "dist/index.js",
