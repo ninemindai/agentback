@@ -4,19 +4,37 @@
 
 import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {dirname, join, resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {runBundleDoctor} from '../../bundle-doctor.js';
 
+// When compiled, this file lives at:
+//   packages/cli/dist/__tests__/integration/bundle-doctor.integration.js
+// Two levels up is packages/cli/dist, which has access to @agentback/rest via
+// the package's node_modules symlink. Entries that import @agentback/rest must
+// be written under this directory so esbuild's Node module resolution can find
+// the package.
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+// dist/__tests__/integration → dist
+const cliDist = resolve(__dirname, '../..');
+
 describe('runBundleDoctor (real esbuild)', () => {
   let tmpDir: string;
+  // Separate temp dir for entries that need @agentback/rest resolution.
+  // Must be INSIDE the CLI package tree so esbuild can walk up to find
+  // packages/cli/node_modules/@agentback/rest.
+  let restTmpDir: string;
 
   beforeAll(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'bundle-doctor-'));
+    restTmpDir = mkdtempSync(join(cliDist, '.bundle-doctor-rest-'));
   });
 
   afterAll(() => {
     rmSync(tmpDir, {recursive: true, force: true});
+    rmSync(restTmpDir, {recursive: true, force: true});
   });
 
   it(
@@ -58,5 +76,55 @@ describe('runBundleDoctor (real esbuild)', () => {
       expect(result.message).toMatch(/Worker bundle failed to compile/);
     },
     20_000,
+  );
+
+  // ── Framework tree-shaking tests ──────────────────────────────────────────
+  // These tests use the real @agentback/rest package to prove the doctor is
+  // tree-shaking-aware: it must NOT false-positive on workers that only use
+  // the edge-compatible fetch path (where node:fs is dead code), and MUST
+  // flag workers that actually reach fromDisk / serveStaticDir.
+
+  it(
+    'Entry A — @agentback/rest fetch-only path → ok:true (node:fs tree-shaken)',
+    async () => {
+      const entry = join(restTmpDir, 'entry-rest-fetch.ts');
+      // Import only the edge-safe createFetchHost — does NOT pull in fromDisk
+      // or asset-source-disk.ts, so node:fs is dead code and tree-shaken away.
+      writeFileSync(
+        entry,
+        [
+          `import {createFetchHost} from '@agentback/rest';`,
+          `const host = createFetchHost({`,
+          `  router: {match: () => null} as any,`,
+          `  dispatch: () => Promise.resolve(new Response('ok')),`,
+          `});`,
+          `export default host;`,
+        ].join('\n'),
+      );
+      const result = await runBundleDoctor(entry);
+      expect(result.ok).toBe(true);
+    },
+    30_000,
+  );
+
+  it(
+    'Entry B — @agentback/rest fromDisk usage → ok:false naming node:fs',
+    async () => {
+      const entry = join(restTmpDir, 'entry-rest-disk.ts');
+      // Explicitly imports fromDisk, which lives in asset-source-disk.ts and
+      // transitively pulls in node:fs/promises and node:path. The doctor must
+      // report the denied import.
+      writeFileSync(
+        entry,
+        [
+          `import {fromDisk} from '@agentback/rest';`,
+          `export const assetSource = fromDisk('/public');`,
+        ].join('\n'),
+      );
+      const result = await runBundleDoctor(entry);
+      expect(result.ok).toBe(false);
+      expect(result.message).toMatch(/node:fs/);
+    },
+    30_000,
   );
 });

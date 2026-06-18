@@ -24,6 +24,7 @@
   },
   "devDependencies": {
     "@agentback/openapi": "workspace:~",
+    "@agentback/rest": "workspace:~",
     "vitest": "~4.1.9"
   },
   "license": "MIT",
