@@ -145,7 +145,22 @@ Deno.serve({port: 3000}, fetchHandler.fetch);
 
 ## Cloudflare Workers
 
+> **Edge apps MUST use `rest: {listener: 'native'}`.** In the default `'express'`
+> listener, `start()` mounts every route on Express, which lazy-loads the Node
+> `express` runtime via `createRequire(import.meta.url)` — `import.meta.url` is
+> `undefined` in a Worker isolate (and `express` isn't bundled), so the worker
+> throws at startup. Native mode makes `fetchHandler()` the single router and
+> skips all Express mounting, so nothing Node-only is reached.
+
 ```ts
+import {RestApplication} from '@agentback/rest';
+
+const app = new RestApplication({rest: {listen: false, listener: 'native'}});
+app.restController(MyController);
+await app.start();                       // collects routes; mounts NO Express
+const server = await app.getServer('RestServer');
+const fetchHandler = server.fetchHandler();
+
 export default {
   fetch(request: Request): Promise<Response> {
     return fetchHandler.fetch(request);
@@ -156,6 +171,16 @@ export default {
 Build the app once at module scope (cold start), then reuse `fetchHandler`
 across requests. On Workers, `FileStore` should be R2 and any Node-only deps must
 be avoided in the route handlers.
+
+Two edge-runtime constraints the **bundle doctor cannot catch** (it is a *static*
+analyzer — bundle-clean ≠ runtime-clean), already handled by the framework but
+worth knowing if you author module-scope code:
+
+- **No "generate random values" / IO / timers in the global (module-load) scope** —
+  Workers reject it at startup validation. Generate IDs *inside* handlers (the
+  framework's `generateUniqueId` and `crypto.randomUUID()` are call-time safe).
+- **`nodejs_compat` fakes `process.versions.node`** — don't gate "am I on Node?"
+  on that alone; also check `import.meta.url` is a `file:` URL.
 
 ## MCP-over-HTTP on any host
 
@@ -202,9 +227,13 @@ envelopes are identical wherever it runs.
 The `agentback deploy cloudflare` command automates the full deploy pipeline:
 
 1. **Generate** — writes `.agentback/deploy/cloudflare/worker.ts` (a thin fetch-handler wrapper around `buildApp`) and merges `wrangler.toml`.
-2. **Preflight** — runs the bundle doctor: esbuild-bundles the generated worker and checks for denied `node:` imports (e.g. `node:fs`, `node:path`) that would be rejected by the Workers runtime. The fetch path of `@agentback/rest` is edge-safe; only `fromDisk` / `serveStaticDir` pull in `node:fs`, so REST-only apps pass automatically.
+2. **Preflight** — runs the bundle doctor: esbuild-bundles the generated worker and checks for denied `node:` imports (`node:fs`, `node:fs/promises`, `node:net`, …) that the Workers runtime rejects. The fetch path of `@agentback/rest` is edge-safe; `fromDisk`/`serveStaticDir` (which pull `node:fs`) tree-shake away unless your app actually imports them, so a REST-only app passes. **Note:** the doctor is *static* — passing it proves the bundle is clean, **not** that the worker runs. Use `listener: 'native'` (below) and a real deploy to confirm runtime behavior.
 3. **Deploy** — calls `wrangler deploy` and parses the `*.workers.dev` URL from the output.
 4. **Verify** — HTTP-GETs `/openapi.json` on the live worker to confirm the deployment is serving correctly.
+
+> Your `buildApp` must construct the app in **`listener: 'native'`** mode — e.g.
+> `new RestApplication({rest: {listen: false, listener: 'native'}})` — or the
+> generated worker throws at startup (see the Cloudflare Workers section above).
 
 ```bash
 # Install prerequisites
