@@ -34,7 +34,6 @@ import {
   fileFieldsOf,
   getControllerSpec,
   lookupRouteSchemas,
-  schemaPropertyInfo,
   standardParse,
   OAS_ENHANCER_EXTENSION_POINT,
   type OASEnhancer,
@@ -82,6 +81,7 @@ import {
 import {lookupSuccessStatus} from './route-meta.js';
 import {SSE_FRAMER, JSONL_FRAMER} from './stream-framers.js';
 import {collectRoutes} from './web/collect-routes.js';
+import {assertPathSchemaMatch} from './route-path-validation.js';
 import {Router} from './web/router.js';
 import {RestHandler} from './web/rest-handler.js';
 import {createFetchHost, type FetchHost} from './host/fetch.js';
@@ -373,28 +373,9 @@ export class RestServer implements Server {
         const schemas = lookupRouteSchemas(ctor.prototype, methodName) ?? {};
 
         // Guardrail: URL placeholders must match the `path:` schema's keys.
-        const placeholders = extractPathPlaceholders(path);
-        if (schemas.path) {
-          const schemaKeys = schemaPropertyInfo(schemas.path).keys;
-          const missing = placeholders.filter(p => !schemaKeys.includes(p));
-          const extra = schemaKeys.filter(k => !placeholders.includes(k));
-          if (missing.length || extra.length) {
-            const parts: string[] = [];
-            if (missing.length)
-              parts.push(`URL has {${missing.join(', ')}} but schema doesn't`);
-            if (extra.length)
-              parts.push(`schema has [${extra.join(', ')}] but URL doesn't`);
-            throw new Error(
-              `${ctor.name}.${methodName} @${verb}('${path}'): ` +
-                `path placeholders don't match the path schema — ${parts.join('; ')}.`,
-            );
-          }
-        } else if (placeholders.length) {
-          throw new Error(
-            `${ctor.name}.${methodName} @${verb}('${path}'): ` +
-              `URL has placeholders {${placeholders.join(', ')}} but no path: schema is declared.`,
-          );
-        }
+        // Shared with the fetch/native path (collectRoutes) so the check is
+        // enforced identically on every host — see route-path-validation.ts.
+        assertPathSchemaMatch(ctor.name, methodName, verb, path, schemas);
 
         const route = prefix + toExpressPath(path);
         log.debug(
@@ -1226,6 +1207,19 @@ export class RestServer implements Server {
       this.mountAllControllers();
     }
     this.mountFrameworkRoutes();
+    // In native mode the Web pipeline can't serve Express-coupled routes (raw
+    // `@inject(HTTP_REQUEST/HTTP_RESPONSE)` or a dispatch-seam override). Fail
+    // loudly at start() — INCLUDING `listen:false` (edge/serverless), where no
+    // listener binds and `startNativeListener()` never runs — so the misconfig
+    // surfaces here instead of as a silent failure on the edge.
+    if (this.listenerMode === 'native') {
+      this.assertNoExpressCoupledRoute();
+      // Build the fetch router now (memoized) so collectRoutes' placeholder/
+      // schema validation runs at start() — matching the Express path's
+      // start-time guarantee — even when listen:false (edge/serverless), where
+      // it would otherwise first run on the initial request.
+      this.fetchHandler();
+    }
     // Serverless targets (Vercel, Lambda) own the HTTP listener: routes are
     // now fully mounted, so the caller exports `expressApp` (or `fetchHandler()`)
     // and we bind nothing.
@@ -1256,15 +1250,9 @@ export class RestServer implements Server {
    * docs/superpowers/specs/2026-06-16-fetch-seam-root-cutover.md.
    */
   protected async startNativeListener(): Promise<void> {
-    const coupled = this.findExpressCoupledRoute();
-    if (coupled) {
-      throw new Error(
-        `@agentback/rest: rest.listener: 'native' cannot serve route ` +
-          `${coupled.ctor.name}.${coupled.methodName} — it ` +
-          `${coupled.reason}, which requires the Express listener. Use ` +
-          `rest.listener: 'express' (the default) for this app.`,
-      );
-    }
+    // start() already asserts this in the native branch (incl. listen:false);
+    // re-assert here so the guard holds if a subclass calls this directly.
+    this.assertNoExpressCoupledRoute();
     const listener = createNodeListener(this.fetchHandler());
     const {createServer: createHttpServer} = (
       process as typeof process & {
@@ -1281,6 +1269,23 @@ export class RestServer implements Server {
         },
       );
     });
+  }
+
+  /**
+   * Throw if any route requires Express semantics the native Web pipeline can't
+   * serve. Run in `start()` for native mode (incl. `listen:false`) so an edge
+   * deploy fails at startup with a clear message rather than silently.
+   */
+  private assertNoExpressCoupledRoute(): void {
+    const coupled = this.findExpressCoupledRoute();
+    if (coupled) {
+      throw new Error(
+        `@agentback/rest: rest.listener: 'native' cannot serve route ` +
+          `${coupled.ctor.name}.${coupled.methodName} — it ` +
+          `${coupled.reason}, which requires the Express listener. Use ` +
+          `rest.listener: 'express' (the default) for this app.`,
+      );
+    }
   }
 
   /**
@@ -1612,10 +1617,6 @@ function toExpressPath(p: string): string {
 }
 
 /** Extract `{name}` placeholders from an OpenAPI-style path template. */
-function extractPathPlaceholders(p: string): string[] {
-  return Array.from(p.matchAll(/\{([^}]+)\}/g)).map(m => m[1]);
-}
-
 /**
  * Validate the four input slots and assemble the `{body, path, query, headers}`
  * bundle in the order the schemas were declared. Throws a 422 / 400 with Zod

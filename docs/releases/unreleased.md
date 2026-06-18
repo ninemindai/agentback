@@ -1,0 +1,69 @@
+# Unreleased
+
+Lockstep release (rename this file to the chosen version at release time).
+Headline: **a real `RestApplication` now runs on Cloudflare Workers** (and any
+Web-standard edge runtime), end-to-end — bundle-clean *and* runtime-clean.
+
+> **Version bump required.** This release contains **breaking changes** to
+> `@agentback/files` and `@agentback/context` (below). Per the lockstep policy,
+> bump every `@agentback/*` package + `create-agentback` together; the breaking
+> surface means **at least a minor** bump from `0.4.x` (suggested: `0.5.0`).
+
+## ✨ Highlights
+
+### Full edge-readiness — `RestApplication` on Cloudflare Workers
+
+A real app (controllers + `/openapi.json` + `/llms.txt`) deploys via
+`agentback deploy cloudflare` and serves on `workers.dev`. Two layers of work:
+
+- **Bundle-clean** — severed Node-only modules (`node:fs`/`node:fs/promises`/
+  `node:net`) from the static graph of a fetch-only app: `@agentback/express`
+  is reached via subpaths (not the barrel, which re-exports the Express
+  server), `multer` is lazy-loaded, and `FsFileStore`/`fromDisk` no longer ride
+  the barrel into edge bundles.
+- **Runtime-clean** — eliminated global-scope randomness at module load
+  (ID generation is call-time only) and the Express-mounting that `start()` did
+  in native mode; hardened the `.env` loader's Node-detection guard against
+  Cloudflare's `nodejs_compat` (which fakes `process.versions.node`).
+
+**Edge apps must construct with `rest: {listener: 'native'}`** — see
+[docs/guides/deploy-to-edge.md](../guides/deploy-to-edge.md). In native mode the
+runtime-neutral `fetchHandler()` is the single router; `start()` mounts nothing
+on Express. The placeholder-vs-schema and Express-coupled-route guardrails now
+fire at `start()` on the native path too (parity with Express).
+
+## ⚠️ Breaking changes
+
+### `@agentback/files`: `FsFileStore` moved to the `/fs` subpath
+
+`FsFileStore` pulls `node:fs`, which is edge-hostile, so it is no longer
+re-exported from the package barrel (importers that only want the `FileStore`
+port / `FILE_STORE` key now stay edge-clean).
+
+```diff
+- import {FsFileStore} from '@agentback/files';
++ import {FsFileStore} from '@agentback/files/fs';
+```
+
+`InMemoryFileStore`, the `FileStore` port, and `FILE_STORE` are unchanged on the
+barrel. (`@agentback/files-s3`'s `S3FileStore` is unaffected.)
+
+### `@agentback/context`: removed the deprecated `uuid()` helper + `UUID_PATTERN`
+
+Both were `@deprecated` and unused internally. Replace with:
+
+```diff
+- import {uuid} from '@agentback/context';
+- const id = uuid();
++ const id = crypto.randomUUID();        // or generateUniqueId() for internal ids
+```
+
+`generateUniqueId()` is unchanged in name but is now backed by
+`@agentback/common`'s `generateIdSync` (nanoid) instead of `hyperid`; its output
+format changed (no monotonic `-<counter>` suffix). It remains `@internal`.
+
+## 🔧 Notable internal changes
+
+- `@agentback/context` drops the `hyperid` and `uuid` dependencies.
+- Route placeholder-vs-schema validation extracted to a shared module so the
+  Express and fetch/native paths enforce it identically.

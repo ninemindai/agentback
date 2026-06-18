@@ -6,6 +6,7 @@ import type {Context} from '@agentback/context';
 import {CoreTags} from '@agentback/core';
 import {getControllerSpec, lookupRouteSchemas} from '@agentback/openapi';
 import {lookupSuccessStatus} from '../route-meta.js';
+import {assertPathSchemaMatch} from '../route-path-validation.js';
 import type {RouteRecord} from './router.js';
 import type {RouteValue} from './route-value.js';
 
@@ -34,6 +35,10 @@ export function collectRoutes(
           .split('.')
           .pop()!;
         const schemas = lookupRouteSchemas(ctor.prototype, methodName) ?? {};
+        // Same start-time guardrail RestServer.controller() runs on the Express
+        // path — enforced here so native/edge hosts (which skip controller())
+        // reject placeholder/schema mismatches identically.
+        assertPathSchemaMatch(ctor.name, methodName, verb, path, schemas);
         records.push({
           method: verb.toUpperCase(),
           template: prefix + path,
