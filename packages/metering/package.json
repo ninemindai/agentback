@@ -1,6 +1,6 @@
 {
   "name": "@agentback/metering",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Rail-neutral usage metering for REST + MCP calls: per-principal UsageEvents, pluggable sink (audit log), and per-principal quota",
   "type": "module",
   "main": "dist/index.js",
