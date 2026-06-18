@@ -15,11 +15,14 @@ import {BindingScope, ContextTags, inject, injectable} from '@agentback/core';
 import type {RedisConnectionManager} from '@agentback/messaging-bullmq';
 import {REDIS_ACTOR_CONNECTIONS, REDIS_ACTOR_OPTIONS} from './keys.js';
 
+// The lease token (a UUID held in KEYS[1]) is the sole mutual-exclusion guard.
+// Acquire is one atomic `SET NX PX`. A separate fencing token is unnecessary:
+// every state write goes through COMMIT_TURN, which re-checks `GET(lease) ==
+// token` atomically in the same Lua call, so a stale holder can never commit —
+// Redis itself performs the check-and-set there is no out-of-band write path.
 const ACQUIRE_LEASE = `
-if redis.call('EXISTS', KEYS[1]) == 1 then return nil end
-local fence = redis.call('INCR', KEYS[2])
-redis.call('SET', KEYS[1], ARGV[1] .. ':' .. fence, 'PX', ARGV[2])
-return tostring(fence)
+if redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2], 'NX') then return 1 end
+return nil
 `;
 
 const RENEW_LEASE = `
@@ -41,16 +44,7 @@ if ttl and ttl > 0 then redis.call('EXPIRE', KEYS[3], ttl) end
 return 1
 `;
 
-const COMMIT_INITIAL_STATE = `
-if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
-if redis.call('EXISTS', KEYS[2]) == 0 then
-  redis.call('SET', KEYS[2], ARGV[2])
-end
-return 1
-`;
-
 interface StoredState {
-  version: number;
   state: unknown;
 }
 
@@ -63,7 +57,6 @@ interface ActorKeys {
   state: string;
   dedup: string;
   lease: string;
-  fence: string;
 }
 
 interface Lease {
@@ -165,18 +158,13 @@ export class RedisActorRuntime implements ActorRuntime {
     this.assertRegistered(definition);
     assertId(id);
     const actor = {type: definition.name, id};
-    return this.withLease(actor, async (lease, keys) => {
-      const stored = await this.readState(definition, actor, keys);
-      if (!stored.persisted) {
-        const committed = await this.evalNumber(
-          COMMIT_INITIAL_STATE,
-          [keys.lease, keys.state],
-          [lease.value, stringify({version: 0, state: stored.state})],
-        );
-        if (!committed) throw new ActorLeaseLostError(actor);
-      }
-      return structuredClone(stored.state);
-    });
+    // Reads do not take the per-identity lease. COMMIT_TURN's state SET is
+    // atomic, so a lone GET observes either the pre- or post-commit value (never
+    // a torn one); an absent key returns the computed initial state without
+    // persisting it (a read must not mutate Redis).
+    return structuredClone(
+      await this.readState(definition, actor, this.keys(actor)),
+    );
   }
 
   private async invoke<S, C, R>(
@@ -203,8 +191,8 @@ export class RedisActorRuntime implements ActorRuntime {
         return definition.result.parse(committed.result);
       }
 
-      const stored = await this.readState(definition, actor, keys);
-      const workingState = structuredClone(stored.state);
+      const state = await this.readState(definition, actor, keys);
+      const workingState = structuredClone(state);
       const turn = await definition.receive(
         {actor, requestId},
         workingState,
@@ -214,10 +202,7 @@ export class RedisActorRuntime implements ActorRuntime {
       const result = definition.result.parse(turn.result);
       if (lease.lost) throw new ActorLeaseLostError(actor);
 
-      const stateRecord: StoredState = {
-        version: stored.version + 1,
-        state: nextState,
-      };
+      const stateRecord: StoredState = {state: nextState};
       const resultRecord: StoredResult = {
         commandFingerprint: fingerprint,
         result,
@@ -242,30 +227,18 @@ export class RedisActorRuntime implements ActorRuntime {
     definition: ActorDefinition<S, C, R>,
     actor: ActorId,
     keys: ActorKeys,
-  ): Promise<{state: S; version: number; persisted: boolean}> {
+  ): Promise<S> {
     const raw = await this.connections.base.get(keys.state);
     if (raw === null) {
-      return {
-        state: definition.state.parse(await definition.initialState(actor.id)),
-        version: 0,
-        persisted: false,
-      };
+      return definition.state.parse(await definition.initialState(actor.id));
     }
     const stored = JSON.parse(raw) as StoredState;
-    if (
-      !Number.isSafeInteger(stored.version) ||
-      stored.version < 0 ||
-      !('state' in stored)
-    ) {
+    if (typeof stored !== 'object' || stored === null || !('state' in stored)) {
       throw new Error(
         `Persisted state for actor '${actor.type}/${actor.id}' is invalid.`,
       );
     }
-    return {
-      state: definition.state.parse(stored.state),
-      version: stored.version,
-      persisted: true,
-    };
+    return definition.state.parse(stored.state);
   }
 
   private async withLease<T>(
@@ -289,16 +262,14 @@ export class RedisActorRuntime implements ActorRuntime {
     const token = crypto.randomUUID();
     const deadline = Date.now() + this.acquireTimeoutMs;
     while (Date.now() < deadline) {
-      const fence = await this.connections.base.eval(
+      const acquired = await this.connections.base.eval(
         ACQUIRE_LEASE,
-        2,
+        1,
         keys.lease,
-        keys.fence,
         token,
         String(this.leaseMs),
       );
-      if (fence !== null)
-        return {value: `${token}:${String(fence)}`, lost: false};
+      if (acquired !== null) return {value: token, lost: false};
       await sleep(this.leaseRetryMs);
     }
     throw new ActorLeaseTimeoutError(actor);
@@ -328,7 +299,6 @@ export class RedisActorRuntime implements ActorRuntime {
       state: `${base}:state`,
       dedup: `${base}:dedup`,
       lease: `${base}:lease`,
-      fence: `${base}:fence`,
     };
   }
 

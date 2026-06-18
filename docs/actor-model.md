@@ -136,7 +136,7 @@ Production actors should persist an outbox with state, call idempotent services 
 
 ## Redis adapter
 
-`@agentback/actors-redis` rebinds `ACTOR_RUNTIME` to a singleton `RedisActorRuntime`. It reuses the exported `RedisConnectionManager` from `messaging-bullmq`, coordinates each identity with a renewable fenced lease, and atomically commits JSON state plus the dedup result in Lua. `installRedisActors` can own its manager or share `BullMQMessagingComponent.connections`.
+`@agentback/actors-redis` rebinds `ACTOR_RUNTIME` to a singleton `RedisActorRuntime`. It reuses the exported `RedisConnectionManager` from `messaging-bullmq`, coordinates each identity with a renewable lease token, and atomically commits JSON state plus the dedup result in Lua. The lease token is the sole mutual-exclusion guard: the commit script re-checks lease ownership in the same Lua call (`GET(lease) == token`), so a stale holder cannot write — no separate fencing token is needed when the store does the check-and-set atomically. Reads (`state()`) take no lease. `installRedisActors` can own its manager or share `BullMQMessagingComponent.connections`.
 
 This mode persists completed turns but does not durably queue pending commands. Durable request/reply queuing remains separate because the current `JobQueue` port has no result channel.
 

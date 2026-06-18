@@ -202,8 +202,8 @@ The project is MIT-licensed (root `LICENSE`, `Copyright (c) ninemind.ai`). Every
 
 ```ts
 // Copyright ninemind.ai 2026. All Rights Reserved.
-// Node module: @agentback/<pkg>
 // This file is licensed under the MIT License.
+// License text available at https://opensource.org/license/mit/
 ```
 
 **Do not reintroduce `Copyright IBM Corp.` headers.** This is a LoopBack 4 fork; much of `metadata`/`context`/`core`/`http-server`/`express`/the auth stack/`extension-*`/`testlab` is ported from upstream. MIT requires retaining the upstream copyright + permission notice, but **not per-file** — that attribution lives once in root `THIRD-PARTY-NOTICES.md`. If you port more code from another MIT/BSD/Apache project, add its notice there; don't paste its per-file headers in.

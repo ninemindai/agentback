@@ -142,9 +142,37 @@ export class ActorRegistry implements LifeCycleObserver {
       );
     }
 
+    // Validate and normalize each command's input at the envelope boundary so
+    // the runtime computes its fingerprint (and request dedup) over parsed,
+    // default-applied values rather than the raw payload.
+    const command = z
+      .object({name: z.string().min(1), input: z.unknown()})
+      .transform((envelope, ctx): ActorServiceCommand => {
+        const metadata = commands.get(envelope.name);
+        if (!metadata) {
+          ctx.addIssue({
+            code: 'custom',
+            message: `Unknown command '${envelope.name}' for actor '${actorMeta.name}'.`,
+          });
+          return z.NEVER;
+        }
+        const parsed = metadata.input.safeParse(envelope.input);
+        if (!parsed.success) {
+          for (const issue of parsed.error.issues) {
+            ctx.addIssue({
+              code: 'custom',
+              path: ['input', ...issue.path],
+              message: issue.message,
+            });
+          }
+          return z.NEVER;
+        }
+        return {name: envelope.name, input: parsed.data};
+      });
+
     return defineActor(actorMeta.name, {
       state: actorMeta.state,
-      command: z.object({name: z.string().min(1), input: z.unknown()}),
+      command,
       result: z.object({name: z.string(), output: z.unknown()}),
       initialState: async id => {
         const instance = await this.resolve(bindingKey);
@@ -153,12 +181,13 @@ export class ActorRegistry implements LifeCycleObserver {
       receive: async (ctx, state, command) => {
         const metadata = commands.get(command.name);
         if (!metadata) {
+          // Unreachable via `command` parsing above; kept for adapters that call
+          // `receive` with an already-validated envelope.
           throw new Error(
             `Unknown command '${command.name}' for actor '${actorMeta.name}'.`,
           );
         }
         const instance = await this.resolve(bindingKey);
-        const input = metadata.input.parse(command.input);
         const method = (instance as unknown as Record<string, unknown>)[
           String(metadata.methodName)
         ] as ActorMethod;
@@ -167,7 +196,7 @@ export class ActorRegistry implements LifeCycleObserver {
             `Actor '${actorMeta.name}' command '${metadata.name}' is not callable.`,
           );
         }
-        const turn = await method.call(instance, state, input, ctx);
+        const turn = await method.call(instance, state, command.input, ctx);
         const output = metadata.output.parse(turn.result);
         return {
           state: turn.state,

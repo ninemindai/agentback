@@ -47,19 +47,26 @@ export function runActorRuntimeConformance(
       });
     }
 
-    it('serializes turns for the same actor identity', async () => {
+    it('serializes concurrent turns for one identity (mutual exclusion)', async () => {
       const runtime = makeRuntime();
       const definition = counter();
       runtime.register(definition);
       const ref = runtime.ref(definition, 'one');
 
-      const [first, second] = await Promise.all([
+      // Two overlapping turns. Mutual exclusion means each reads the other's
+      // committed state, so the two results are {1} and {2} and the final state
+      // is 2. Submission order is NOT part of the port contract — a distributed
+      // adapter resolves the lock by a race, not a FIFO queue — so we assert the
+      // set of results, not which call returned which. (The in-memory adapter's
+      // stronger FIFO guarantee is covered in its own unit test.)
+      const results = await Promise.all([
         ref.invoke({type: 'add', amount: 1, waitMs: 30}),
         ref.invoke({type: 'add', amount: 1, waitMs: 0}),
       ]);
 
-      expect(first.value).toBe(1);
-      expect(second.value).toBe(2);
+      expect(results.map(turn => turn.value).sort((a, b) => a - b)).toEqual([
+        1, 2,
+      ]);
       expect(await runtime.state(definition, 'one')).toEqual({value: 2});
     });
 

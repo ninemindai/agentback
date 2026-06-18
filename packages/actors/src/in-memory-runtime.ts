@@ -54,6 +54,15 @@ export function actorCommandFingerprint(value: unknown): string {
   return JSON.stringify(canonicalize(value));
 }
 
+export interface InMemoryActorRuntimeOptions {
+  /**
+   * Max committed request results retained per actor for idempotent replay.
+   * The map is bounded FIFO: once full, the oldest entry is evicted, so
+   * replaying a since-evicted requestId re-runs the command. Default 1024.
+   */
+  dedupLimit?: number;
+}
+
 /**
  * Single-process reference adapter for tests and design validation.
  *
@@ -69,6 +78,15 @@ export class InMemoryActorRuntime implements ActorRuntime {
   private readonly definitions = new Map<string, object>();
   private readonly actors = new Map<string, StoredActor>();
   private readonly tails = new Map<string, Promise<void>>();
+  private readonly dedupLimit: number;
+
+  constructor(options: InMemoryActorRuntimeOptions = {}) {
+    const limit = options.dedupLimit ?? 1024;
+    if (!Number.isInteger(limit) || limit < 1) {
+      throw new Error('dedupLimit must be a positive integer.');
+    }
+    this.dedupLimit = limit;
+  }
 
   register<S, C, R>(definition: ActorDefinition<S, C, R>): void {
     const existing = this.definitions.get(definition.name);
@@ -147,6 +165,12 @@ export class InMemoryActorRuntime implements ActorRuntime {
         commandFingerprint: fingerprint,
         result: structuredClone(result),
       });
+      // Bound the dedup map. Map preserves insertion order, so the first key is
+      // the oldest; the entry just added is newest and survives eviction.
+      while (stored.results.size > this.dedupLimit) {
+        const oldest = stored.results.keys().next().value as string;
+        stored.results.delete(oldest);
+      }
       return structuredClone(result);
     });
   }

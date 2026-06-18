@@ -1,6 +1,6 @@
 {
   "name": "@agentback/actors",
-  "version": "0.4.0",
+  "version": "0.5.2",
   "description": "Experimental Zod-typed actor runtime port with an in-memory adapter",
   "type": "module",
   "main": "dist/index.js",
