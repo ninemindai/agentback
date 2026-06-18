@@ -4,5 +4,5 @@
 
 import {fromDisk} from './asset-source-disk.js';
 
-/** @deprecated use `fromDisk` from asset-source. Kept for back-compat. */
+/** @deprecated use `fromDisk` from `@agentback/rest` (host/asset-source-disk). Kept for back-compat. */
 export const serveStaticDir = fromDisk;
