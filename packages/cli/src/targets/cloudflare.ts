@@ -43,7 +43,7 @@ export const cloudflareTarget: DeployTarget = {
     return [{path: 'wrangler.toml', contents: toml}];
   },
 
-  async preflight(o: GenerateOpts, deps: RunDeps): Promise<Diagnostic[]> {
+  async preflight(o: GenerateOpts, _deps: RunDeps): Promise<Diagnostic[]> {
     const diags: Diagnostic[] = [];
     // 1. Bundle doctor (static, before deploy).
     diags.push(await runBundleDoctor(path.join(o.cwd, WORKER_PATH)));
@@ -61,13 +61,13 @@ export const cloudflareTarget: DeployTarget = {
         {code: ErrorCodes.INVALID_INPUT},
       );
     }
-    const res = await deps.exec('wrangler', ['deploy', ...(args.prod ? [] : ['--env', 'preview'])]);
+    const res = await deps.exec('wrangler', ['deploy']);
     if (res.code !== 0) {
       throw new AgentError(`wrangler deploy failed (exit ${res.code}).`, {code: ErrorCodes.INVALID_INPUT});
     }
     const m = res.stdout.match(/https:\/\/\S+\.workers\.dev\S*/);
     if (!m) throw new AgentError('Could not find a workers.dev URL in wrangler output.', {code: ErrorCodes.INVALID_INPUT});
-    return {url: m[0]};
+    return {url: m[0].replace(/[.,)]+$/, '')};
   },
 
   defaultVerifyPath() {
