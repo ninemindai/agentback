@@ -18,7 +18,12 @@ export function mergeWrangler(
     : {};
 
   // `main` is load-bearing: if the user set a different one, don't silently steal it.
-  if (typeof obj.main === 'string' && obj.main !== opts.main && !opts.force && !opts.eject) {
+  if (
+    typeof obj.main === 'string' &&
+    obj.main !== opts.main &&
+    !opts.force &&
+    !opts.eject
+  ) {
     throw new AgentError(
       `wrangler.toml already sets \`main\` to "${obj.main}". Re-run with --force ` +
         `to point it at the generated worker, or --eject to wire it by hand.`,
@@ -26,14 +31,18 @@ export function mergeWrangler(
     );
   }
   if (typeof obj.main === 'string' && obj.main !== opts.main && opts.force) {
-    warnings.push(`Overwrote wrangler.toml \`main\` ("${obj.main}" → "${opts.main}").`);
+    warnings.push(
+      `Overwrote wrangler.toml \`main\` ("${obj.main}" → "${opts.main}").`,
+    );
   }
 
   obj.name = obj.name ?? opts.name; // don't clobber a user-chosen name
   obj.main = opts.main;
   obj.compatibility_date = obj.compatibility_date ?? COMPAT_DATE;
   const flags = new Set([
-    ...((Array.isArray(obj.compatibility_flags) ? obj.compatibility_flags : []) as string[]),
+    ...((Array.isArray(obj.compatibility_flags)
+      ? obj.compatibility_flags
+      : []) as string[]),
     'nodejs_compat',
   ]);
   obj.compatibility_flags = [...flags];

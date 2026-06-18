@@ -3,7 +3,9 @@
 // License text available at https://opensource.org/license/mit/
 
 /** A function that resolves a URL suffix to a Response, or undefined if not found. */
-export type AssetSource = (suffix: string) => Promise<globalThis.Response | undefined>;
+export type AssetSource = (
+  suffix: string,
+) => Promise<globalThis.Response | undefined>;
 
 /**
  * Allowed content-type prefixes for CDN-proxied assets. `text/html` is
@@ -85,7 +87,8 @@ export function fromCdn(
 
     return new globalThis.Response(res.body, {
       headers: {
-        'content-type': res.headers.get('content-type') ?? 'application/octet-stream',
+        'content-type':
+          res.headers.get('content-type') ?? 'application/octet-stream',
         'cache-control': 'public, max-age=31536000, immutable',
       },
     });

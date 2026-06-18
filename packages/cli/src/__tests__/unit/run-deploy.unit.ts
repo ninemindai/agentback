@@ -40,11 +40,15 @@ describe('runDeploy', () => {
 
   it('writes root files and stops on --eject', async () => {
     const exec = vi.fn(fakeExec({}));
-    const out = await runDeploy(parseDeployArgs(['vercel', '--eject']), vercelTarget, {
-      exec,
-      fetchFn: okFetch,
-      cwd,
-    });
+    const out = await runDeploy(
+      parseDeployArgs(['vercel', '--eject']),
+      vercelTarget,
+      {
+        exec,
+        fetchFn: okFetch,
+        cwd,
+      },
+    );
     expect(out.status).toBe('ejected');
     expect(existsSync(path.join(cwd, 'api', 'index.ts'))).toBe(true);
     expect(existsSync(path.join(cwd, 'vercel.json'))).toBe(true);

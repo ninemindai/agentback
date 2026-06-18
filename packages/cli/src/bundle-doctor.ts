@@ -8,10 +8,19 @@ import type {Diagnostic} from './deploy-target.js';
 // nodejs_compat. Pure-JS builtins like node:path, node:crypto, node:stream,
 // node:http, node:https, etc. are supported and must NOT appear here.
 const DENY = new Set([
-  'node:fs', 'node:fs/promises',
-  'node:child_process', 'node:cluster', 'node:dgram', 'node:tls', 'node:net',
-  'node:worker_threads', 'node:v8', 'node:vm', 'node:inspector',
-  'node:readline', 'node:repl',
+  'node:fs',
+  'node:fs/promises',
+  'node:child_process',
+  'node:cluster',
+  'node:dgram',
+  'node:tls',
+  'node:net',
+  'node:worker_threads',
+  'node:v8',
+  'node:vm',
+  'node:inspector',
+  'node:readline',
+  'node:repl',
 ]);
 // Allowed under Cloudflare's nodejs_compat; everything not in DENY is treated as
 // allowed (npm packages bundle normally; only the DENY node: builtins fail).
@@ -20,8 +29,19 @@ const DENY = new Set([
 // Used to normalize bare names to their node: form before the deny check so
 // that transitive CJS deps (e.g. dotenv's bare `require('fs')`) are caught.
 const DENY_BARE_NAMES = new Set([
-  'fs', 'fs/promises', 'child_process', 'cluster', 'dgram', 'tls', 'net',
-  'worker_threads', 'v8', 'vm', 'inspector', 'readline', 'repl',
+  'fs',
+  'fs/promises',
+  'child_process',
+  'cluster',
+  'dgram',
+  'tls',
+  'net',
+  'worker_threads',
+  'v8',
+  'vm',
+  'inspector',
+  'readline',
+  'repl',
 ]);
 
 export function scanImports(modules: string[]): Diagnostic {
@@ -43,12 +63,44 @@ export function scanImports(modules: string[]): Diagnostic {
 // dependencies (multer, busboy, express, etc.) don't cause build failures
 // when the worker is bundled with platform:'browser'.
 const BARE_NODE_BUILTINS = [
-  'assert', 'buffer', 'child_process', 'cluster', 'console', 'constants',
-  'crypto', 'dgram', 'dns', 'domain', 'events', 'fs', 'http', 'http2',
-  'https', 'module', 'net', 'os', 'path', 'perf_hooks', 'process',
-  'punycode', 'querystring', 'readline', 'repl', 'stream', 'string_decoder',
-  'sys', 'timers', 'tls', 'trace_events', 'tty', 'url', 'util', 'v8',
-  'vm', 'worker_threads', 'zlib',
+  'assert',
+  'buffer',
+  'child_process',
+  'cluster',
+  'console',
+  'constants',
+  'crypto',
+  'dgram',
+  'dns',
+  'domain',
+  'events',
+  'fs',
+  'http',
+  'http2',
+  'https',
+  'module',
+  'net',
+  'os',
+  'path',
+  'perf_hooks',
+  'process',
+  'punycode',
+  'querystring',
+  'readline',
+  'repl',
+  'stream',
+  'string_decoder',
+  'sys',
+  'timers',
+  'tls',
+  'trace_events',
+  'tty',
+  'url',
+  'util',
+  'v8',
+  'vm',
+  'worker_threads',
+  'zlib',
 ];
 
 export async function runBundleDoctor(
@@ -71,7 +123,10 @@ export async function runBundleDoctor(
       logLevel: 'silent',
     });
   } catch (err) {
-    return {ok: false, message: `Worker bundle failed to compile: ${(err as Error).message}`};
+    return {
+      ok: false,
+      message: `Worker bundle failed to compile: ${(err as Error).message}`,
+    };
   }
   // Use metafile.outputs (not inputs) so only imports that survive tree-shaking
   // are checked. Dead-code-eliminated node: imports (e.g. @agentback/rest's
@@ -79,7 +134,9 @@ export async function runBundleDoctor(
   // from outputs.imports even though they still appear in inputs.
   const nodeImports = new Set<string>();
   for (const output of Object.values(result.metafile?.outputs ?? {})) {
-    for (const imp of (output as {imports?: Array<{path: string; kind: string}>}).imports ?? []) {
+    for (const imp of (
+      output as {imports?: Array<{path: string; kind: string}>}
+    ).imports ?? []) {
       const p = imp.path;
       if (p.startsWith('node:')) {
         nodeImports.add(p);

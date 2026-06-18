@@ -61,39 +61,35 @@ describe('runDeploy cloudflare (dry-run, real esbuild preflight)', () => {
     rmSync(tmpDir, {recursive: true, force: true});
   });
 
-  it(
-    'dry-run returns {status: "dry-run"} without invoking exec',
-    async () => {
-      const args: DeployArgs = {
-        target: 'cloudflare',
-        // No --entry: resolveBuilder probes dist/main.js first, which we wrote above.
-        entry: undefined,
-        exportName: 'buildApp',
-        prod: false,
-        console: false,
-        unsafePublicConsole: false,
-        eject: false,
-        force: true,
-        dryRun: true,
-        yes: true,
-        verifyPath: '/openapi.json',
-        help: false,
-      };
+  it('dry-run returns {status: "dry-run"} without invoking exec', async () => {
+    const args: DeployArgs = {
+      target: 'cloudflare',
+      // No --entry: resolveBuilder probes dist/main.js first, which we wrote above.
+      entry: undefined,
+      exportName: 'buildApp',
+      prod: false,
+      console: false,
+      unsafePublicConsole: false,
+      eject: false,
+      force: true,
+      dryRun: true,
+      yes: true,
+      verifyPath: '/openapi.json',
+      help: false,
+    };
 
-      // exec MUST NOT be called in dry-run mode (wrangler is only called in
-      // target.deploy(), which dry-run never reaches).
-      const deps: RunDeps = {
-        exec: () => {
-          throw new Error('exec must not be called during dry-run');
-        },
-        fetchFn: globalThis.fetch,
-        cwd: tmpDir,
-      };
+    // exec MUST NOT be called in dry-run mode (wrangler is only called in
+    // target.deploy(), which dry-run never reaches).
+    const deps: RunDeps = {
+      exec: () => {
+        throw new Error('exec must not be called during dry-run');
+      },
+      fetchFn: globalThis.fetch,
+      cwd: tmpDir,
+    };
 
-      const result = await runDeploy(args, cloudflareTarget, deps);
-      expect(result.status).toBe('dry-run');
-      expect(result.url).toBeUndefined();
-    },
-    60_000,
-  );
+    const result = await runDeploy(args, cloudflareTarget, deps);
+    expect(result.status).toBe('dry-run');
+    expect(result.url).toBeUndefined();
+  }, 60_000);
 });

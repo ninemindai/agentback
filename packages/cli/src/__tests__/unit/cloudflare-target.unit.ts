@@ -8,7 +8,10 @@ import {cloudflareTarget} from '../../targets/cloudflare.js';
 
 const opts = {
   builder: {entry: './dist/main.js', exportName: 'buildApp'},
-  cwd: '/tmp/app', isConsoleBuilder: false, force: false, eject: false,
+  cwd: '/tmp/app',
+  isConsoleBuilder: false,
+  force: false,
+  eject: false,
 };
 
 describe('cloudflareTarget', () => {
@@ -20,7 +23,10 @@ describe('cloudflareTarget', () => {
     expect(edit.contents).toContain('fetchHandler()');
   });
   it('generates a wrangler.toml with nodejs_compat + main', () => {
-    const edits = cloudflareTarget.generateConfig({...opts, builder: {...opts.builder}});
+    const edits = cloudflareTarget.generateConfig({
+      ...opts,
+      builder: {...opts.builder},
+    });
     const wr = edits.find(e => e.path === 'wrangler.toml')!;
     const o = parse(wr.contents) as any;
     expect(o.main).toBe('.agentback/deploy/cloudflare/worker.ts');

@@ -6,7 +6,12 @@ import {describe, expect, it} from 'vitest';
 import {parse} from 'smol-toml';
 import {mergeWrangler} from '../../merge-wrangler.js';
 
-const base = {name: 'svc', main: '.agentback/deploy/cloudflare/worker.ts', force: false, eject: false};
+const base = {
+  name: 'svc',
+  main: '.agentback/deploy/cloudflare/worker.ts',
+  force: false,
+  eject: false,
+};
 
 describe('mergeWrangler', () => {
   it('writes a fresh config with nodejs_compat', () => {
@@ -18,15 +23,23 @@ describe('mergeWrangler', () => {
     expect(typeof o.compatibility_date).toBe('string');
   });
   it('preserves unrelated user keys', () => {
-    const {toml} = mergeWrangler('account_id = "abc"\n[vars]\nFOO = "1"\n', base);
+    const {toml} = mergeWrangler(
+      'account_id = "abc"\n[vars]\nFOO = "1"\n',
+      base,
+    );
     const o = parse(toml) as any;
     expect(o.account_id).toBe('abc');
     expect(o.vars.FOO).toBe('1');
     expect(o.compatibility_flags).toContain('nodejs_compat');
   });
   it('warns + overwrites a conflicting main only under force', () => {
-    expect(() => mergeWrangler('main = "src/other.ts"\n', base)).toThrow(/main/i);
-    const {toml, warnings} = mergeWrangler('main = "src/other.ts"\n', {...base, force: true});
+    expect(() => mergeWrangler('main = "src/other.ts"\n', base)).toThrow(
+      /main/i,
+    );
+    const {toml, warnings} = mergeWrangler('main = "src/other.ts"\n', {
+      ...base,
+      force: true,
+    });
     expect((parse(toml) as any).main).toBe(base.main);
     expect(warnings.join(' ')).toMatch(/main/i);
   });

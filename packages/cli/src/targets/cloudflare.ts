@@ -6,7 +6,13 @@ import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {AgentError, ErrorCodes} from '@agentback/openapi';
 import type {DeployArgs} from '../args.js';
-import type {DeployTarget, GenerateOpts, RunDeps, Diagnostic, FileEdit} from '../deploy-target.js';
+import type {
+  DeployTarget,
+  GenerateOpts,
+  RunDeps,
+  Diagnostic,
+  FileEdit,
+} from '../deploy-target.js';
 import {generateWorker} from '../generate-worker.js';
 import {mergeWrangler} from '../merge-wrangler.js';
 import {runBundleDoctor} from '../bundle-doctor.js'; // Task 5
@@ -34,25 +40,30 @@ export const cloudflareTarget: DeployTarget = {
 
   generateConfig(o: GenerateOpts): FileEdit[] {
     const wranglerPath = path.join(o.cwd, 'wrangler.toml');
-    const existing = existsSync(wranglerPath) ? readFileSync(wranglerPath, 'utf8') : undefined;
+    const existing = existsSync(wranglerPath)
+      ? readFileSync(wranglerPath, 'utf8')
+      : undefined;
     const name = readName(o.cwd);
     const {toml, warnings} = mergeWrangler(existing, {
-      name, main: WORKER_PATH, force: o.force, eject: o.eject,
+      name,
+      main: WORKER_PATH,
+      force: o.force,
+      eject: o.eject,
     });
     for (const w of warnings) console.warn(`warning: ${w}`);
     return [{path: 'wrangler.toml', contents: toml}];
   },
 
   async preflight(o: GenerateOpts, _deps: RunDeps): Promise<Diagnostic[]> {
-    const diags: Diagnostic[] = [];
-    // 1. Bundle doctor (static, before deploy).
-    diags.push(await runBundleDoctor(path.join(o.cwd, WORKER_PATH)));
-    // 2. wrangler installed + authed.
-    diags.push({ok: true, message: ''}); // placeholder; real exec check below in deploy preflight
-    return diags;
+    return [await runBundleDoctor(path.join(o.cwd, WORKER_PATH))];
   },
 
   async deploy(args: DeployArgs, deps: RunDeps): Promise<{url: string}> {
+    if (args.prod) {
+      console.warn(
+        'warning: Cloudflare Workers has a single deploy environment; --prod has no effect.',
+      );
+    }
     const who = await deps.exec('wrangler', ['whoami']);
     if (who.code !== 0) {
       throw new AgentError(
@@ -63,10 +74,16 @@ export const cloudflareTarget: DeployTarget = {
     }
     const res = await deps.exec('wrangler', ['deploy']);
     if (res.code !== 0) {
-      throw new AgentError(`wrangler deploy failed (exit ${res.code}).`, {code: ErrorCodes.INVALID_INPUT});
+      throw new AgentError(`wrangler deploy failed (exit ${res.code}).`, {
+        code: ErrorCodes.INVALID_INPUT,
+      });
     }
     const m = res.stdout.match(/https:\/\/\S+\.workers\.dev\S*/);
-    if (!m) throw new AgentError('Could not find a workers.dev URL in wrangler output.', {code: ErrorCodes.INVALID_INPUT});
+    if (!m)
+      throw new AgentError(
+        'Could not find a workers.dev URL in wrangler output.',
+        {code: ErrorCodes.INVALID_INPUT},
+      );
     return {url: m[0].replace(/[.,)]+$/, '')};
   },
 
@@ -77,7 +94,9 @@ export const cloudflareTarget: DeployTarget = {
 
 function readName(cwd: string): string {
   try {
-    const pkg = JSON.parse(readFileSync(path.join(cwd, 'package.json'), 'utf8')) as {name?: string};
+    const pkg = JSON.parse(
+      readFileSync(path.join(cwd, 'package.json'), 'utf8'),
+    ) as {name?: string};
     return (pkg.name ?? 'agentback-worker').replace(/^@[^/]+\//, '');
   } catch {
     return 'agentback-worker';
