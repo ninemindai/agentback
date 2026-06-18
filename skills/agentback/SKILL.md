@@ -189,7 +189,7 @@ if (isMain(import.meta)) await main();
   (Express today) or a Web-standard runtime (Workers/Deno, Hono's territory).
   The schema-typed `client` depends on nothing but `zod` (browser-safe).
 - Every source file carries the three-line MIT header
-  (`// Copyright ninemind.ai and LoopBack contributors. …`).
+  (`// Copyright ninemind.ai 2026. All Rights Reserved.`).
 
 ## References
 

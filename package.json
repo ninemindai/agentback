@@ -35,7 +35,7 @@
     "vitest": "~4.1.9"
   },
   "license": "MIT",
-  "copyright.owner": "Ninemind.ai",
+  "copyright.owner": "ninemind.ai",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ninemindai/agentback.git"

@@ -1,4 +1,4 @@
-// Copyright ninemind.ai and LoopBack contributors. All Rights Reserved.
+// Copyright ninemind.ai 2026. All Rights Reserved.
 // Node module: @agentback/context-explorer
 // This file is licensed under the MIT License.
 
