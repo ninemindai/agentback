@@ -14,8 +14,7 @@ const DENY = new Set([
 export function scanImports(modules: string[]): Diagnostic {
   for (const m of modules) {
     // Match a denied builtin, ignoring a subpath after the base (node:fs/x).
-    const base = m.startsWith('node:') ? m : m;
-    const denied = [...DENY].find(d => base === d || base.startsWith(d + '/'));
+    const denied = [...DENY].find(d => m === d || m.startsWith(d + '/'));
     if (denied) {
       const hint = denied.includes('fs') || denied.includes('path')
         ? ' (likely `serveStaticDir` on disk — switch the dev UI to the CDN `AssetSource`, or omit it for edge)'
@@ -40,13 +39,17 @@ export async function runBundleDoctor(
       metafile: true,
       platform: 'browser',
       format: 'esm',
+      external: ['node:*'],
       logLevel: 'silent',
     });
   } catch (err) {
     return {ok: false, message: `Worker bundle failed to compile: ${(err as Error).message}`};
   }
-  const inputs = Object.keys(result.metafile?.inputs ?? {});
-  // esbuild records node: builtins as inputs prefixed with the namespace.
-  const nodeImports = inputs.filter(i => i.startsWith('node:'));
-  return scanImports(nodeImports);
+  const nodeImports = new Set<string>();
+  for (const input of Object.values(result.metafile?.inputs ?? {})) {
+    for (const imp of (input as {imports?: Array<{path: string}>}).imports ?? []) {
+      if (imp.path.startsWith('node:')) nodeImports.add(imp.path);
+    }
+  }
+  return scanImports([...nodeImports]);
 }
