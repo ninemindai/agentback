@@ -78,6 +78,42 @@ describe('runBundleDoctor (real esbuild)', () => {
     20_000,
   );
 
+  // ── nodejs_compat allow-list fixes ────────────────────────────────────────
+
+  it(
+    'returns ok:true for an entry that only imports node:path (now allowed)',
+    async () => {
+      const entry = join(tmpDir, 'entry-path.ts');
+      writeFileSync(
+        entry,
+        `import {join} from 'node:path'; export const x = join;`,
+      );
+      const result = await runBundleDoctor(entry);
+      expect(result.ok).toBe(true);
+    },
+    20_000,
+  );
+
+  it(
+    'returns ok:false naming node:fs for an entry that imports bare fs (CJS shim)',
+    async () => {
+      // Write a tiny CJS module that does require('fs') by bare name.
+      const shimPath = join(tmpDir, 'bare-fs-shim.cjs');
+      writeFileSync(shimPath, `'use strict'; const fs = require('fs'); module.exports = fs;`);
+      const entry = join(tmpDir, 'entry-bare-fs.ts');
+      writeFileSync(
+        entry,
+        // Import the CJS shim so esbuild bundles it and records the bare 'fs'
+        // external in the metafile outputs.imports.
+        `import shim from './bare-fs-shim.cjs'; export const y = shim;`,
+      );
+      const result = await runBundleDoctor(entry);
+      expect(result.ok).toBe(false);
+      expect(result.message).toMatch(/node:fs/);
+    },
+    20_000,
+  );
+
   // ── Framework tree-shaking tests ──────────────────────────────────────────
   // These tests use the real @agentback/rest package to prove the doctor is
   // tree-shaking-aware: it must NOT false-positive on workers that only use
