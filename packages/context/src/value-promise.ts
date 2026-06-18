@@ -7,7 +7,6 @@
  * utility methods to handle values and/or promises.
  */
 
-import {v4 as uuidv4} from 'uuid';
 /**
  * A class constructor accepting arbitrary arguments.
  */
@@ -297,21 +296,3 @@ export function transformValueOrPromise<T, V>(
     return transformer(valueOrPromise);
   }
 }
-
-/**
- * A utility to generate uuid v4
- *
- * @deprecated Use `generateUniqueId`, [uuid](https://www.npmjs.com/package/uuid)
- * or [hyperid](https://www.npmjs.com/package/hyperid) instead.
- */
-export function uuid() {
-  return uuidv4();
-}
-
-/**
- * A regular expression for testing uuid v4 PATTERN
- * @deprecated This pattern is an internal helper used by unit-tests, we are no
- * longer using it.
- */
-export const UUID_PATTERN =
-  /[0-9A-F]{8}-[0-9A-F]{4}-[4][0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}/i;
