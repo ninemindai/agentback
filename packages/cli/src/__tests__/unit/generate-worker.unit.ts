@@ -6,7 +6,10 @@ import {describe, expect, it} from 'vitest';
 import {generateWorker} from '../../generate-worker.js';
 
 describe('generateWorker', () => {
-  const src = generateWorker({entry: '../../../dist/main.js', exportName: 'buildApp'});
+  const src = generateWorker({
+    entry: '../../../dist/main.js',
+    exportName: 'buildApp',
+  });
   it('imports the builder and uses the fetch path', () => {
     expect(src).toContain("import {buildApp} from '../../../dist/main.js'");
     expect(src).toContain('fetchHandler()');

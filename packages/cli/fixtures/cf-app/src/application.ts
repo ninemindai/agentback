@@ -14,7 +14,9 @@ export class PingController {
   }
 }
 
-export async function buildApp(opts?: {listen?: boolean}): Promise<RestApplication> {
+export async function buildApp(opts?: {
+  listen?: boolean;
+}): Promise<RestApplication> {
   const app = new RestApplication({rest: {listen: opts?.listen ?? false}});
   app.restController(PingController);
   await app.start();

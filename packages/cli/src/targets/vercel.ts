@@ -8,7 +8,13 @@ import path from 'node:path';
 import type {DeployArgs} from '../args.js';
 import {generateEntry} from '../generate-entry.js';
 import {mergeVercelConfig} from '../merge-config.js';
-import type {DeployTarget, Diagnostic, FileEdit, GenerateOpts, RunDeps} from '../deploy-target.js';
+import type {
+  DeployTarget,
+  Diagnostic,
+  FileEdit,
+  GenerateOpts,
+  RunDeps,
+} from '../deploy-target.js';
 
 function detectPackageManager(): 'pnpm' | 'yarn' | 'bun' | 'npm' {
   const ua = process.env.npm_config_user_agent ?? '';
@@ -34,14 +40,20 @@ export const vercelTarget: DeployTarget = {
   generateEntry(o: GenerateOpts): FileEdit {
     const stripped = o.builder.entry.replace(/^\.\//, '');
     const entryFromApi = stripped.startsWith('/') ? stripped : '../' + stripped;
-    const contents = generateEntry({entry: entryFromApi, exportName: o.builder.exportName});
+    const contents = generateEntry({
+      entry: entryFromApi,
+      exportName: o.builder.exportName,
+    });
     return {path: 'api/index.ts', contents};
   },
 
   generateConfig(o: GenerateOpts): FileEdit[] {
     const vercelPath = path.join(o.cwd, 'vercel.json');
     const existing = existsSync(vercelPath)
-      ? (JSON.parse(readFileSync(vercelPath, 'utf8')) as Record<string, unknown>)
+      ? (JSON.parse(readFileSync(vercelPath, 'utf8')) as Record<
+          string,
+          unknown
+        >)
       : undefined;
     const {json, warnings} = mergeVercelConfig(existing, {
       packageManager: detectPackageManager(),
@@ -50,7 +62,9 @@ export const vercelTarget: DeployTarget = {
       eject: o.eject,
     });
     for (const w of warnings) console.warn(`warning: ${w}`);
-    return [{path: 'vercel.json', contents: JSON.stringify(json, null, 2) + '\n'}];
+    return [
+      {path: 'vercel.json', contents: JSON.stringify(json, null, 2) + '\n'},
+    ];
   },
 
   async preflight(_o: GenerateOpts, deps: RunDeps): Promise<Diagnostic[]> {

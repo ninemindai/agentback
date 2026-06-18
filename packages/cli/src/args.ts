@@ -50,9 +50,7 @@ export function parseDeployArgs(argv: string[]): DeployArgs {
 
   const resolved = TARGETS[target];
   if (!resolved)
-    bad(
-      `deploy: unknown target '${target}' (supported: vercel, cloudflare)`,
-    );
+    bad(`deploy: unknown target '${target}' (supported: vercel, cloudflare)`);
 
   const out: DeployArgs = {
     target: resolved,
