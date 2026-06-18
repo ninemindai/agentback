@@ -29,7 +29,8 @@
   },
   "devDependencies": {
     "@types/debug": "^4.1.13",
-    "@types/toposort": "^2.0.7"
+    "@types/toposort": "^2.0.7",
+    "esbuild": "~0.28.1"
   },
   "engines": {
     "node": ">=22.13"
