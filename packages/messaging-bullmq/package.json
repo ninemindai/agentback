@@ -1,6 +1,6 @@
 {
   "name": "@agentback/messaging-bullmq",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Durable Layer-2 messaging adapter: BullMQ job queue + Redis Streams event bus behind @agentback/messaging ports",
   "type": "module",
   "main": "dist/index.js",
