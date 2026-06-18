@@ -82,12 +82,20 @@ import {lookupSuccessStatus} from './route-meta.js';
 import {SSE_FRAMER, JSONL_FRAMER} from './stream-framers.js';
 import {collectRoutes} from './web/collect-routes.js';
 import {assertPathSchemaMatch} from './route-path-validation.js';
-// From the neutral @agentback/middleware package: the binding KEY (value) and
-// the ExpressService INTERFACE (type) are both Express-free, so RestServer
-// stays off the Express runtime graph. The concrete ExpressService CLASS lives
-// in @agentback/express and is reached only via an injected binding or (default)
-// the lazy createRequire loaders below — never a static import here.
-import {EXPRESS_SERVICE_KEY, type ExpressService} from '@agentback/middleware';
+// From the neutral @agentback/middleware package (Express-free, so a static
+// import adds nothing edge-hostile — the bundle doctor confirms): the binding
+// KEY, the chain helpers, and the ExpressService INTERFACE (type). middleware is
+// ESM-only — NEVER `createRequire()` it (that throws ERR_REQUIRE_ESM on runtimes
+// without require-of-ESM, e.g. Vercel serverless); a static ESM import is correct
+// and works everywhere. Only the CJS optional peers (express/cors) use the lazy
+// createRequire loaders below. The concrete ExpressService CLASS lives in
+// @agentback/express, reached only via an injected binding or that lazy default.
+import {
+  EXPRESS_SERVICE_KEY,
+  registerExpressMiddleware,
+  toExpressMiddleware,
+  type ExpressService,
+} from '@agentback/middleware';
 import {Router} from './web/router.js';
 import {RestHandler} from './web/rest-handler.js';
 import {createFetchHost, type FetchHost} from './host/fetch.js';
@@ -149,30 +157,8 @@ function loadExpress(): typeof import('express') {
   }
 }
 
-// Cached lazily-loaded middleware-chain helpers. These live in the neutral
-// @agentback/middleware package (always installed), so this require never needs
-// the optional @agentback/express host — only the express()/cors() factories do.
-let _expressHelpers:
-  | {
-      registerExpressMiddleware: typeof import('@agentback/middleware').registerExpressMiddleware;
-      toExpressMiddleware: typeof import('@agentback/middleware').toExpressMiddleware;
-    }
-  | undefined;
-function loadExpressHelpers(): {
-  registerExpressMiddleware: typeof import('@agentback/middleware').registerExpressMiddleware;
-  toExpressMiddleware: typeof import('@agentback/middleware').toExpressMiddleware;
-} {
-  if (!_expressHelpers) {
-    const mod = nodeRequire()(
-      '@agentback/middleware',
-    ) as typeof import('@agentback/middleware');
-    _expressHelpers = {
-      registerExpressMiddleware: mod.registerExpressMiddleware,
-      toExpressMiddleware: mod.toExpressMiddleware,
-    };
-  }
-  return _expressHelpers;
-}
+// (Middleware-chain helpers `registerExpressMiddleware`/`toExpressMiddleware` are
+// statically imported from @agentback/middleware at the top — no lazy loader.)
 
 // Cached lazily-loaded cors default export.
 let _corsLib: typeof import('cors') | undefined;
@@ -292,8 +278,6 @@ export class RestServer implements Server {
 
   private buildDefaultExpressService(): ExpressService {
     const expressLib = loadExpress();
-    const {registerExpressMiddleware, toExpressMiddleware} =
-      loadExpressHelpers();
     return {
       app: expressLib(),
       express: expressLib,
