@@ -14,7 +14,7 @@ maintaining this index.
 | 003  | Typecheck React client trees and gate the check in CI          | P1       | S/M    | —          | DONE   |
 | 004  | Make `multer` an optional peer dependency of `@agentback/rest` | P2       | S/M    | —          | DONE   |
 | 005  | Introduce `ExpressService`: DI-owned Express host RestServer injects | P2  | L      | —          | DONE   |
-| 006  | Phase 2: decouple `@agentback/rest` from the Express runtime (edge installs drop `express`) | P3 | XL | 005, item D | TODO (design) |
+| 006  | Phase 2: decouple `@agentback/rest` from the Express runtime (edge installs drop `express`) | P3 | XL | 005, item D | DEFERRED (P2.0 measured) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale: finding fixed independently or approach

@@ -68,7 +68,20 @@ Even after the split, the **default** app must not require the host. Today the d
 
 ## Phased execution (each phase ships + verifies independently)
 
-**P2.0 — Measure the gate (do this FIRST; read-only).** Temporarily set `DEFAULT_REST_CONFIG.listener = 'native'`, rebuild, run the full suite + examples, and catalog every failure into "Express-coupled-by-design" vs "native parity gap." This sizes item D and must inform whether to proceed. Revert the temporary flip. Deliverable: a gap list. **Do not continue to P2.1 until this is understood.**
+**P2.0 — Measure the gate (do this FIRST; read-only).** Temporarily set the listener default to `'native'` (`rest.server.ts` `cfg.listener ?? 'native'`), rebuild, run the full suite + examples, and catalog every failure into "Express-coupled-by-design" vs "native parity gap." This sizes item D and must inform whether to proceed. Revert the temporary flip. Deliverable: a gap list. **Do not continue to P2.1 until this is understood.**
+
+### P2.0 RESULTS (measured 2026-06-18 @ `c3b4d77`+flip)
+
+Flipped the listener default to `'native'`, full `vitest run`: **45 failed / 2313 passed / 33 skipped.** Categorized by failure reason:
+
+| Category | ~count | What it is | Verdict |
+|---|---|---|---|
+| **Express-coupled-by-design** | 3 | `assertNoExpressCoupledRoute` correctly fired: raw `@inject(HTTP_REQUEST/RESPONSE)` (`req-injection`) + dispatch-seam subclasses (`EnvelopeRestServer`, `AuditRestServer` in `rest-server.integration`). | **Not a gap.** These tests just need explicit `listener: 'express'`. Native behaving correctly. |
+| **install\*/extension/UI routes 404 on native** | ~28 | Routes mounted via `app.get`/`app.use` on `expressApp` (not `addFetchHandler`): `extension-health` (/health, /ready), `extension-metrics` (/metrics), `console`, `rest-explorer`, `mcp-inspector`, `mcp-http` + `per-session`, `mcp-connect`, `chat` webhook. The fetch router doesn't know them → 404. | **Real gap = fetch-seam backlog item F2** ("neutralize install\* UIs") + extension route re-expression. Large. |
+| **body-parser / CORS / raw-body config** | ~9 | The web path parses bodies via `Request.json()/formData()` and does NOT honor the Express `bodyParser` config (`text`/`raw`/`urlencoded`) or CORS-origin/raw-byte semantics identically (`body-parser.integration`, chat raw-body, a CORS-origin assertion). | **Real gap = backlog items B/C** (web body-parse + CORS parity). |
+| **dispatch hooks / auth / metering parity** | ~5 | A few `expected 'authorize'/'connected'/401` — dispatch hooks, authz, and `mcp-connect` state not firing identically on the web path. | **Real gap = backlog items C1/C2.** |
+
+**Go/no-go verdict: DEFER Phase 2 (do NOT proceed to P2.1 now).** ~42 of the 45 failures are genuine native-parity gaps spanning the fetch-seam backlog's B / C1 / C2 / F2 items (install UIs, extension routes, web body-parsing, CORS, hooks, auth). Item D (native as the default) is **far** — closing these is a multi-plan effort, and it is the true cost of Phase 2, exactly as this spec warned. Phase 1 already delivered the property most apps want (express out of the edge **bundle**); Phase 2's marginal gain (express out of the edge **install**) does not justify the item-D effort yet. Revisit when/if the fetch-seam backlog (B/C/F2) is being closed for other reasons — then Phase 2's P2.1 split falls out cheaply.
 
 **P2.1 — Extract the neutral package (no behavior change).** Create `@agentback/middleware`; move the 8 neutral modules; update `@agentback/express` to depend on + re-export it (back-compat); update `@agentback/rest`'s subpath imports to point at the neutral package; add the new package to `tsconfig.json` refs + `pnpm-workspace`. **`express` is NOT yet removed anywhere.** Verify: `pnpm verify` green; cf-app bundle doctor `{ok:true}`; a real Workers deploy still serves 200s.
 
