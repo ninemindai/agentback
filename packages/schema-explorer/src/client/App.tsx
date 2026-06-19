@@ -8,8 +8,9 @@ import {ApiProvider} from './ApiContext';
 import {SchemaList} from './components/SchemaList';
 import {SchemaDetail} from './components/SchemaDetail';
 import {SchemaGraphView} from './components/SchemaGraphView';
+import {OkfView} from './components/OkfView';
 
-type View = 'browse' | 'graph';
+type View = 'browse' | 'graph' | 'okf';
 
 /**
  * Schema explorer root. Indexes the app's domain schemas: a filterable catalog
@@ -84,10 +85,18 @@ export function App({
             >
               Graph
             </button>
+            <button
+              className={'btn' + (view === 'okf' ? '' : ' ghost')}
+              onClick={() => setView('okf')}
+            >
+              Knowledge
+            </button>
           </div>
         </header>
 
-        {view === 'graph' ? (
+        {view === 'okf' ? (
+          <OkfView />
+        ) : view === 'graph' ? (
           <div className="graphpane">
             <SchemaGraphView selectedId={selectedId} onSelect={setSelectedId} />
           </div>

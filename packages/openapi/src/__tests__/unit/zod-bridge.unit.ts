@@ -59,6 +59,25 @@ describe('zod-bridge', () => {
       );
       expect((schema as Record<string, unknown>).required).toEqual(['name']);
     });
+
+    it('describes a date as a date-time string (not an empty schema)', () => {
+      // `z.date()` is unrepresentable in JSON Schema; rather than emit `{}`
+      // (an undescribed boundary), map it to the conventional OpenAPI shape so
+      // a Drizzle `timestamp` column reads as `string (date-time)` everywhere.
+      const schema = zodToOpenApiSchema(z.date()) as Record<string, unknown>;
+      expect(schema.type).toBe('string');
+      expect(schema.format).toBe('date-time');
+    });
+
+    it('maps a date field inside an object to date-time', () => {
+      const schema = zodToOpenApiSchema(
+        z.object({createdAt: z.date(), name: z.string()}),
+      ) as {properties: Record<string, {type?: string; format?: string}>};
+      expect(schema.properties.createdAt).toEqual({
+        type: 'string',
+        format: 'date-time',
+      });
+    });
   });
 
   describe('attach/getZodSchema (symbol-key)', () => {

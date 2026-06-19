@@ -55,10 +55,20 @@ export interface SchemaGraph {
   edges: SchemaEdge[];
 }
 
+export interface OkfFile {
+  path: string;
+  content: string;
+}
+
+export interface OkfBundle {
+  files: OkfFile[];
+}
+
 /** The schema-explorer operations, bound to one API base. */
 export interface SchemaApi {
   fetchSchemas(): Promise<SchemaNode[]>;
   fetchGraph(): Promise<SchemaGraph>;
+  fetchOkf(): Promise<OkfBundle>;
 }
 
 export function makeApi(apiBase: string): SchemaApi {
@@ -70,5 +80,6 @@ export function makeApi(apiBase: string): SchemaApi {
   return {
     fetchSchemas: () => getJson<SchemaNode[]>('/schemas'),
     fetchGraph: () => getJson<SchemaGraph>('/graph'),
+    fetchOkf: () => getJson<OkfBundle>('/okf'),
   };
 }

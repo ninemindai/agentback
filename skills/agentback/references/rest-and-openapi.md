@@ -274,7 +274,11 @@ response is sent.
 At spec-assembly time, every Zod schema stored in the route registry is
 converted via Zod v4's native `z.toJSONSchema({target: 'draft-2020-12'})`.
 OpenAPI 3.1's default dialect is JSON Schema 2020-12, so this is a direct
-mapping — no adapter, no `x-ts-type` inlining.
+mapping — no adapter, no `x-ts-type` inlining. One override: `z.date()` is
+unrepresentable in JSON Schema (would emit `{}`), so it's mapped to the
+conventional `{type: 'string', format: 'date-time'}` — a Drizzle `timestamp`
+column thus reads as a date-time string across `/openapi.json`, MCP
+`inputSchema`, and the explorers.
 
 The spec is assembled lazily at each `GET /openapi.json` request (or when
 `restServer.getApiSpec()` is called directly), so it always reflects the
@@ -361,6 +365,14 @@ await installConsole(app, {unsafeAllowUnauthenticated: true}); // all panels →
   `bindSchema(app, 'User', User, {table})` from `@agentback/openapi`, or the
   `register{Insert,Select,Update}Schema` helpers in `@agentback/drizzle/zod`.
   Unregistered schemas still appear (discovered from the routes/tools using them).
+  schema-explorer also **exports the graph as an OKF (Open Knowledge Format)
+  bundle** — a portable directory of markdown+frontmatter docs an agent can
+  ingest verbatim (a comprehension-oriented projection of the same source of
+  truth, distinct from the OpenAPI/MCP wire contracts). Fetch it at
+  `GET /schema-explorer/api/okf`, call `buildOkfBundle(app)` /
+  `inventoryToOkf(inv, {exclude?})` (emit-only, deterministic, dev-tooling
+  controllers omitted by default), or browse/download it (`.zip` / single `.md`)
+  from the **Knowledge** tab.
 - **console** composes context-explorer, schema-explorer, rest-explorer, and
   mcp-inspector behind one shell at `/console`; it requires an explicit auth
   posture (`auth` middleware, or `unsafeAllowUnauthenticated: true` for local dev).

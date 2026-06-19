@@ -18,8 +18,10 @@ import {THEME_CSS, THEME_FONTS_HREF} from '@agentback/console-theme';
 import type {RestApplication, RestServer} from '@agentback/rest';
 import {serveStaticDir} from '@agentback/rest';
 import {buildSchemaInventory} from './inventory.js';
+import {buildOkfBundle} from './okf.js';
 
 export * from './inventory.js';
+export * from './okf.js';
 
 /** Fixed base path of the JSON API exposed by {@link SchemaExplorerController}. */
 const API_BASE = '/schema-explorer/api';
@@ -91,6 +93,12 @@ const SchemaGraph = z.object({
 
 type SchemaGraph = z.infer<typeof SchemaGraph>;
 
+const OkfBundle = z.object({
+  files: z.array(z.object({path: z.string(), content: z.string()})),
+});
+
+type OkfBundle = z.infer<typeof OkfBundle>;
+
 // ---- Controller (the dogfooded REST API) ------------------------------------
 
 /**
@@ -123,6 +131,16 @@ export class SchemaExplorerController {
   @get('/graph', {response: SchemaGraph})
   async graph(): Promise<SchemaGraph> {
     return buildSchemaInventory(this.app);
+  }
+
+  /**
+   * The same schema graph serialized as an OKF (Open Knowledge Format) bundle:
+   * a set of portable markdown docs. Drives the Knowledge tab's file tree and
+   * the client-side `.zip` export; an agent can also fetch this directly.
+   */
+  @get('/okf', {response: OkfBundle})
+  async okf(): Promise<OkfBundle> {
+    return buildOkfBundle(this.app);
   }
 }
 
@@ -346,6 +364,41 @@ const EXPLORER_CSS = `
    names (e.g. "GET /x/api/inspect · response") need a smaller masthead. */
 .schemax .drawer .detail h2 { font-size:1.2rem; line-height:1.2; word-break:normal; overflow-wrap:break-word; }
 @keyframes slidein { from { transform:translateX(12px); opacity:0; } to { transform:none; opacity:1; } }
+/* ---- Knowledge tab: OKF file tree + rendered markdown ---- */
+.schemax .okf { display:grid; grid-template-columns:minmax(220px,300px) 1fr; flex:1; min-height:0; }
+.schemax .okf-tree { border-right:1px solid var(--line-2); overflow:auto; padding:.9rem; }
+.schemax .okf-export { position:relative; margin-bottom:.8rem; }
+.schemax .okf-menu { position:absolute; z-index:5; margin-top:.3rem; background:var(--card); border:1px solid var(--line-2); border-radius:6px; box-shadow:0 14px 34px -18px rgba(34,29,22,.5); overflow:hidden; min-width:170px; }
+.schemax .okf-menu button { display:block; width:100%; text-align:left; border:0; background:none; color:var(--ink); padding:.5rem .7rem; font:inherit; cursor:pointer; }
+.schemax .okf-menu button:hover { background:var(--paper); }
+.schemax .okf-group { margin-bottom:.7rem; }
+.schemax .okf-dir { font-family:var(--mono); font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; padding:.2rem .3rem; }
+.schemax .okf-file { width:100%; text-align:left; border:1px solid transparent; background:none; color:inherit; padding:.35rem .55rem; border-radius:5px; cursor:pointer; display:block; font-family:var(--mono); font-size:12.5px; }
+.schemax .okf-file:hover { background:var(--card); border-color:var(--line); }
+.schemax .okf-file.sel { background:var(--card); border-color:var(--line-2); box-shadow:inset 3px 0 0 var(--accent); }
+.schemax .okf-tree .filter { margin-bottom:.8rem; }
+.schemax .okf-doc { overflow:auto; padding:1.2rem 2.4rem 2rem; }
+.schemax .okf-doc .md { max-width:760px; }
+.schemax .okf-docbar { display:flex; align-items:center; gap:1rem; margin-bottom:1.2rem; padding-bottom:.7rem; border-bottom:1px solid var(--line); position:sticky; top:-1.2rem; background:linear-gradient(var(--paper) 70%, transparent); }
+.schemax .okf-path { font-family:var(--mono); font-size:12px; color:var(--muted); }
+.schemax .okf-rawtoggle { margin-left:auto; font-size:11px; padding:.25rem .6rem; }
+.schemax .okf-rawtoggle.on { background:var(--card); border-color:var(--accent); color:var(--accent); }
+.schemax .okf-raw { font-family:var(--mono); font-size:12.5px; line-height:1.6; white-space:pre-wrap; word-break:break-word; max-width:820px; color:var(--ink); margin:0; }
+.schemax .md h2 { font-family:var(--serif); font-weight:600; font-size:1.6rem; margin:.2rem 0 1rem; }
+.schemax .md h3 { font-family:var(--serif); font-weight:600; font-size:1.15rem; margin:1.6rem 0 .6rem; }
+.schemax .md p { line-height:1.6; margin:.6rem 0; color:var(--ink); }
+.schemax .md ul { margin:.5rem 0; padding-left:1.2rem; }
+.schemax .md li { line-height:1.7; }
+.schemax .md a { color:var(--blue); text-decoration:none; border-bottom:1px solid color-mix(in srgb, var(--blue) 30%, transparent); cursor:pointer; }
+.schemax .md a:hover { border-bottom-color:var(--blue); }
+.schemax .md code { font-family:var(--mono); font-size:.86em; background:var(--badge); color:var(--badge-ink); border-radius:3px; padding:.05rem .35rem; }
+.schemax .md table { border-collapse:collapse; width:100%; margin:.8rem 0; font-size:13px; }
+.schemax .md th, .schemax .md td { text-align:left; padding:.4rem .65rem; border-bottom:1px solid var(--line); }
+.schemax .md th { font-family:var(--sans); font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); }
+.schemax .md td { font-family:var(--mono); font-size:12.5px; }
+.schemax .md .fm { display:grid; grid-template-columns:max-content 1fr; gap:.15rem .8rem; margin:0 0 1.4rem; padding:.7rem .9rem; background:var(--card); border:1px solid var(--line); border-radius:6px; font-size:12px; }
+.schemax .md .fm dt { font-family:var(--sans); font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); }
+.schemax .md .fm dd { margin:0; font-family:var(--mono); color:var(--ink); }
 `;
 
 function escapeHtml(s: string): string {

@@ -127,6 +127,25 @@ describe('schema-explorer', () => {
     }
   });
 
+  it('serves the schema graph as an OKF bundle of markdown docs', async () => {
+    const r = await client.get('/schema-explorer/api/okf').expect(200);
+    const {files} = r.body as {files: {path: string; content: string}[]};
+    const paths = files.map(f => f.path);
+
+    // The two-tier bundle: root + per-tier indexes, plus the Widget schema doc.
+    expect(paths).toContain('index.md');
+    expect(paths).toContain('schemas/index.md');
+    expect(paths).toContain('surfaces/index.md');
+    expect(paths).toContain('schemas/widget.md');
+
+    // The Widget doc is typed `table` (it has a Drizzle origin) and links to the
+    // surfaces that use it.
+    const widget = files.find(f => f.path === 'schemas/widget.md')!;
+    expect(widget.content).toContain('type: table');
+    expect(widget.content).toContain('Backed by Drizzle table `widgets`');
+    expect(widget.content).toContain('../surfaces/');
+  });
+
   it('serves the HTML shell and the esbuild bundle', async () => {
     const html = await client.get('/schema-explorer').expect(200);
     expect(html.headers['content-type']).toMatch(/text\/html/);

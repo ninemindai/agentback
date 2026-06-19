@@ -53,6 +53,18 @@ export function zodToOpenApiSchema(
     target: 'draft-2020-12',
     unrepresentable: 'any',
     io: 'output',
+    // `z.date()` has no JSON Schema representation, so `unrepresentable: 'any'`
+    // would emit `{}` — an undescribed boundary. Map it to the conventional
+    // OpenAPI shape instead, so a Drizzle `timestamp` column reads as a
+    // date-time string across /openapi.json, MCP inputSchema, and the explorers.
+    override: ctx => {
+      const def = (ctx.zodSchema as {_zod?: {def?: {type?: string}}})._zod?.def;
+      if (def?.type === 'date') {
+        const j = ctx.jsonSchema as {type?: string; format?: string};
+        j.type = 'string';
+        j.format = 'date-time';
+      }
+    },
   });
   return json as SchemaObject;
 }

@@ -83,12 +83,47 @@ bindSchema(app, 'User', User, {table: getTableName(users), kind: 'select'});
 
 See `examples/hello-drizzle` for the second pattern end to end.
 
+## OKF export (Knowledge tab)
+
+The same schema graph serializes to an **[OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf)
+(Open Knowledge Format) bundle** — a portable, vendor-neutral directory of
+markdown + YAML-frontmatter docs an agent can ingest verbatim or you can commit
+to git. It's a sixth projection of the one source of truth (alongside OpenAPI,
+MCP `inputSchema`, REST routes, Drizzle tables), aimed at *comprehension* rather
+than the wire contract.
+
+The bundle is two-tier and cross-linked:
+
+- `schemas/<slug>.md` — one doc per entity. `type: table` when backed by a
+  Drizzle table (else `type: reference`), a field table, and a "Used by" section
+  linking the routes/tools that touch it.
+- `surfaces/<slug>.md` — one `reference` doc per REST route / MCP tool, linking
+  back to the schemas it consumes.
+- auto `index.md` files (root + per tier) for progressive disclosure.
+
+Output is **derived and emit-only**, deterministic (no timestamps, sorted), and
+by default omits the framework's own dev-tooling controllers so a bundle
+describes the app, not the explorer serving it.
+
+The **Knowledge** tab browses the bundle (file tree + rendered markdown, with
+in-tab cross-link navigation) and exports it as a directory-structured `.zip` or
+a single concatenated `.md`. Programmatic access:
+
+```ts
+import {buildOkfBundle, inventoryToOkf} from '@agentback/schema-explorer';
+
+const bundle = buildOkfBundle(app); // {files: [{path, content}]}
+// or from a prebuilt inventory, with a custom exclude predicate:
+const onlyRest = inventoryToOkf(inv, {exclude: s => s.surface === 'mcp'});
+```
+
 ## API
 
 | Route                         | Returns                                                        |
 | ----------------------------- | ------------------------------------------------------------- |
 | `GET /schema-explorer/api/schemas` | Every schema node with its cross-protocol usages + fields |
 | `GET /schema-explorer/api/graph`   | Schema nodes + surface (route/tool) nodes + role-labeled edges |
+| `GET /schema-explorer/api/okf`     | The schema graph as an OKF bundle (`{files: [{path, content}]}`) |
 
 ## Notes
 

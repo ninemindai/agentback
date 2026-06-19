@@ -23,7 +23,7 @@ Each package also ships its own `README.md` under [`packages/`](../packages/).
 | `@agentback/rest`             | REST server (Zod validation); `RestApplication`/`ExpressRestApplication` (Express) + `EdgeRestApplication` (fetch/Workers, no `express` install) |
 | `@agentback/rest-explorer`    | Mounts Swagger UI 5.x at `/explorer`                                                                                                             |
 | `@agentback/context-explorer` | Mounts a context/binding explorer UI                                                                                                             |
-| `@agentback/schema-explorer`  | Mounts a schema/entity provenance explorer UI (REST + MCP + Drizzle)                                                                             |
+| `@agentback/schema-explorer`  | Mounts a schema/entity provenance explorer UI (REST + MCP + Drizzle); exports the graph as an OKF knowledge bundle (`buildOkfBundle`, Knowledge tab) |
 | `@agentback/mcp`              | Decorator-driven MCP server (`@mcpServer`, `@tool` w/ Zod input/output)                                                                          |
 | `@agentback/mcp-inspector`    | Mounts an MCP inspector UI at `/mcp-inspector`                                                                                                   |
 | `@agentback/mcp-http`         | Exposes the MCP server over Streamable HTTP at `/mcp` (+ OAuth, scopes)                                                                          |
