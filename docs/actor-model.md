@@ -6,14 +6,14 @@ See the interactive [programming-model diagrams](architecture/diagrams/actor-pro
 
 ## The model
 
-| Concept                    | Role                                                    |
-| -------------------------- | ------------------------------------------------------- |
-| `Actor<S>`                 | Service contract requiring `initialState(id)`.          |
-| `@actor` / `@actorCommand` | Zod contracts and extension metadata.                   |
-| `Component.services`       | Standard AgentBack registration path for actor classes. |
-| `ActorRegistry`            | Discovers extensions and compiles service metadata.     |
-| `ActorRuntime`             | Routes commands, serializes turns, and commits state.   |
-| `ActorDefinition<S, C, R>` | Normalized lower-level adapter contract.                |
+| Concept                    | Role                                                                            |
+| -------------------------- | ------------------------------------------------------------------------------- |
+| `Actor<S>`                 | Service contract requiring `initialState(id)`.                                  |
+| `@actor` / `@actorCommand` | Zod contracts and extension metadata.                                           |
+| `Component.services`       | Standard AgentBack registration path for actor classes.                         |
+| `ActorRegistry`            | Discovers extensions and compiles service metadata.                             |
+| `ActorRuntime`             | Routes each command to its identity's mailbox, serializes turns, commits state. |
+| `ActorDefinition<S, C, R>` | Normalized lower-level adapter contract.                                        |
 
 The service object is behavior, not durable state. Actor state remains an explicit method argument and return value, so instance lifetime does not affect persistence, rollback, or passivation.
 
@@ -83,6 +83,14 @@ const result = await actors.invoke(
 `cart/customer-42` is the state and serialization boundary. Another call using the same identity reaches the same logical state. `cart/customer-99` has independent state and may run concurrently.
 
 The current registry uses a command envelope because different decorated methods have different input/output types. A future typed proxy can add `actors.ref(CartActor, id).add(input)` without changing the runtime contract.
+
+## The mailbox model
+
+`invoke` is not a method call on the actor — it **posts a message** (the command envelope `{name, input}`) to the mailbox addressed by `{type, id}`. Each identity has its own mailbox, and the runtime drains it **one turn at a time** in submission order. `cart/customer-42` is a single serialized line of turns; `cart/customer-99` is an independent mailbox that may run concurrently. The in-memory adapter implements the mailbox as a per-identity promise chain; the Redis adapter as a per-identity lease — same contract, different backing. (The "One turn" steps below are what the runtime does once a message reaches the front of its mailbox.)
+
+Sends are **request/reply — `ask`, not `tell`**. `invoke` resolves with the turn's result, or rejects if the handler throws or validation fails; there is no fire-and-forget primitive that posts a message and returns without awaiting the turn. That matches the callers — REST controllers and MCP tools need a reply to return — and it keeps the runtime honest: a command nobody awaits would need a durable inbox to survive a crash, and that is the job queue's role, not the in-process mailbox's.
+
+For durable, asynchronous commands, enqueue a job (`@agentback/messaging`) whose processor calls `actors.invoke(...)`: the queue owns durability and retries, while the actor still owns per-identity serialization and state. (The Redis adapter persists completed turns but likewise does not durably queue _pending_ commands — see the Redis adapter section.)
 
 ## Discovery lifecycle
 
