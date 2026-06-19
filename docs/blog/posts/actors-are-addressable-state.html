@@ -24,14 +24,14 @@
 
     <main class="post-layout">
       <article class="post-body">
-        <p class="post-meta">June 18, 2026 · experimental spike</p>
+        <p class="post-meta">June 18, 2026</p>
         <h1>Actors are addressable state</h1>
         <p class="lede">
           Some state refuses to be a stateless handler over a database row. A
           shopping cart, a chat session, a game room, a rate counter — each one
           needs a single writer at a time, picked by identity. The usual answers
           are a pile of row locks or an external actor runtime that wants to own
-          your process model. AgentBack's actor spike takes a smaller step: an
+          your process model. AgentBack's actor runtime takes a smaller step: an
           actor is the framework you already have, plus one guarantee.
         </p>
 
@@ -42,9 +42,8 @@
           cart serial: one turn at a time, for <em>that</em> cart, while other
           carts run freely. You can buy that with per-row locking and a lot of
           care, or you can adopt an actor framework that asks you to write your
-          domain logic inside its abstractions and its lifecycle. The spike asks
-          whether AgentBack can offer the serialization without the second
-          runtime.
+          domain logic inside its abstractions and its lifecycle. AgentBack's
+          actors offer that serialization without the second runtime.
         </p>
 
         <p>
@@ -150,7 +149,7 @@ installRedisActors(this, {connection: {url: process.env.REDIS_URL}});</code></pr
 
         <h2>What it deliberately isn't</h2>
         <p>
-          This is a spike, and its honesty is in its non-goals. There is no
+          The honesty of this model is in its non-goals. There is no
           distributed directory or placement, no activation, passivation,
           reminders, or supervision, and no agent loop — AgentBack is not trying
           to become an orchestration runtime. The runtime can roll back actor

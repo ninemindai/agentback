@@ -90,8 +90,8 @@ import {installRedisActors} from '@agentback/actors-redis';
 installRedisActors(this, {connection: {url: process.env.REDIS_URL}});
 ```
 
-> **Experimental.** The actor packages are a spike — the in-memory adapter is
-> for tests and API validation, and the Redis adapter persists completed turns
-> but does not durably queue pending commands. See the
+> The in-memory adapter is the single-process reference (tests and dev);
+> `@agentback/actors-redis` adds cross-process serialization and persistence —
+> completed turns are durable, though pending commands aren't queued. See the
 > [programming-model guide](../../docs/actor-model.md) for the full semantics
 > and non-goals.

@@ -1,6 +1,6 @@
-# @agentback/actors-redis (experimental)
+# @agentback/actors-redis
 
-> Redis-backed `ActorRuntime` with renewable per-identity leases, fencing, JSON state persistence, and atomic state/dedup commits.
+> Redis-backed `ActorRuntime` with renewable per-identity leases, JSON state persistence, and atomic state/dedup commits.
 
 This is the first durable adapter for `@agentback/actors`. Actor behavior stays local to each application process; Redis coordinates turns and persists state so multiple instances can address the same logical actor.
 
@@ -30,7 +30,7 @@ Passing `messaging.connections` shares the existing Redis connection tree. The a
 
 For `{actorType, actorId}` the adapter:
 
-1. acquires a Redis lease with a monotonically increasing fencing token;
+1. acquires a Redis lease (an atomic `SET NX`) keyed by identity;
 2. renews the lease while the actor method runs;
 3. checks the Redis dedup hash for `requestId` replay;
 4. loads and validates JSON state, or calls `initialState`;
@@ -58,7 +58,7 @@ State and results must be JSON-serializable. The dedup hash TTL is refreshed on 
 ## Guarantees and limits
 
 - State commit and request-result recording are atomic.
-- Fencing prevents an expired lease holder from committing.
+- The commit Lua re-checks lease ownership (`GET(lease) == token`), so an expired lease holder cannot commit — the lease token is the sole mutual-exclusion guard.
 - The same actor is serialized across processes under normal Redis availability.
 - Contending callers are not guaranteed strict FIFO ordering.
 - Lease loss can let method bodies overlap briefly, but only the current holder can commit. Methods must follow the base package's side-effect discipline.

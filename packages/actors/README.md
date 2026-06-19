@@ -1,4 +1,4 @@
-# @agentback/actors (experimental spike)
+# @agentback/actors
 
 See the [programming-model guide](../../docs/actor-model.md) for the API,
 concurrency rules, state discipline, and architecture diagrams.
@@ -6,12 +6,13 @@ concurrency rules, state discipline, and architecture diagrams.
 > Decorated actor service classes compiled into a Zod-typed runtime port, with
 > a single-process reference adapter.
 
-This package tests whether Actor semantics fit AgentBack without turning the
-framework into an orchestration runtime. It is deliberately **experimental**:
-the in-memory adapter is useful for tests and API validation, not production
-durability or distributed placement.
+Actor semantics fit AgentBack without turning the framework into an
+orchestration runtime. The in-memory adapter here is the single-process
+reference (tests, development, single-instance services); reach for
+[`@agentback/actors-redis`](../actors-redis) for cross-process serialization and
+durable state.
 
-## What the spike proves
+## What it provides
 
 - Stable identity: `{type, id}`.
 - Zod-validated state, commands, and results.
@@ -87,20 +88,19 @@ transaction as state and dedup-result persistence, or use an equivalent inbox
 protocol. A plain `JobQueue.process()` handler plus an unrelated state write is
 not sufficient.
 
-## Explicit non-goals of this spike
+## Non-goals
 
 - No distributed directory, placement, or remote transport.
-- No persistence across process restart.
+- No persistence in the in-memory adapter (single-process); use `@agentback/actors-redis` for durable, cross-process state.
 - No activation/passivation, reminders, supervision, or reentrancy.
 - No transactional user side effects. The runtime can roll back actor state;
   it cannot undo an HTTP call or database write performed by `receive`.
 - No automatic REST/MCP projection or create-agentback template.
 - No claim that agent loops should live in AgentBack.
 
-## Next acceptance gate
+## What's next
 
-Implement one real adapter against a backend with native per-key serialization
-and transactional storage (for example Cloudflare Durable Objects), then run the
-same conformance suite. Do not promote this package from experimental until the
-durable adapter demonstrates crash/retry behavior in addition to the in-process
-contract.
+A Cloudflare Durable Objects adapter — a backend with native per-key
+serialization and transactional storage — is the natural next adapter. Like
+every adapter it must pass `runActorRuntimeConformance`, and it would add
+crash/retry durability on top of the in-process contract.

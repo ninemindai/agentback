@@ -1,6 +1,6 @@
 # Actor programming model
 
-The spike models an actor as a **DI-resolved service implementing a typed state machine with a stable address**. Code invokes `{actor type, actor ID, command}` through `ActorRegistry`; the runtime allows only one command to change that actor's state at a time.
+AgentBack models an actor as a **DI-resolved service implementing a typed state machine with a stable address**. Code invokes `{actor type, actor ID, command}` through `ActorRegistry`; the runtime allows only one command to change that actor's state at a time.
 
 See the interactive [programming-model diagrams](architecture/diagrams/actor-programming-model.html) for discovery and turn lifecycle.
 
@@ -126,7 +126,7 @@ cart/customer-99:       add X ─────► add Y
 
 Commands for one identity are serialized. Different identities may run concurrently. Retrying an identical command with a committed `requestId` returns the prior result; reusing that ID for another payload is rejected.
 
-There is no cross-actor transaction or reentrancy in the spike. Placement, activation, fairness, timers, and supervision remain runtime concerns.
+There is no cross-actor transaction or reentrancy. Placement, activation, fairness, timers, and supervision remain out of scope.
 
 ## State and side effects
 
