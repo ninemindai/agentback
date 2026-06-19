@@ -92,6 +92,34 @@ Sends are **request/reply — `ask`, not `tell`**. `invoke` resolves with the tu
 
 For durable, asynchronous commands, enqueue a job (`@agentback/messaging`) whose processor calls `actors.invoke(...)`: the queue owns durability and retries, while the actor still owns per-identity serialization and state. (The Redis adapter persists completed turns but likewise does not durably queue _pending_ commands — see the Redis adapter section.)
 
+## Queries
+
+`@actorQuery(name, {input, output})` marks a **read-only** method `(state, input, ctx) => result`. Unlike a command it takes **no turn and no mailbox/lease** — the runtime reads a state snapshot and runs the method concurrently with commands and other queries — and it returns the result directly (not `{state, result}`). A query must not mutate the state it receives.
+
+```ts
+@actorQuery('total', {input: z.object({}), output: CartTotal})
+total(state: z.infer<typeof CartState>) {
+  return {total: priceOf(state.items)};
+}
+```
+
+Call a query by envelope — `registry.query('cart', id, {name: 'total', input: {}})` — or through the typed proxy (`registry.ref(CartActor, id).total({})`), which exposes commands and queries together. Reads are lease-free on the in-memory and Redis adapters alike.
+
+## Injecting an actor
+
+`registry.ref(CartActor, id)` — pass the actor **class**, not its name — returns a typed proxy whose methods mirror the `@actorCommand` and `@actorQuery` methods. To avoid passing the registry around, inject a typed **accessor** with `@injectActor`:
+
+```ts
+class CartController {
+  constructor(
+    @injectActor(CartActor) private carts: ActorAccessor<CartActor>,
+  ) {}
+  // this.carts(id).add(input, {requestId});  this.carts(id).total({});
+}
+```
+
+`@injectActor(CartActor)` resolves to `(id) => registry.ref(CartActor, id)`, so `this.carts(id)` is the typed proxy for that identity — no hand-written client class, and every call still routes through the runtime. (Do **not** inject the actor instance and call its methods directly — that bypasses the runtime.)
+
 ## Discovery lifecycle
 
 ```text

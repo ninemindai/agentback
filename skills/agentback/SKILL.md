@@ -7,9 +7,10 @@ description: >-
   REST controllers (@api, @get/@post/... with path/query/body/response schemas),
   MCP tool servers (@mcpServer, @tool with input/output schemas), OpenAPI 3.1
   emission, a schema-typed HTTP client, authentication strategies / @authorize
-  voters, rate limiting, MCP-over-HTTP auth, or the agent runtime. Triggers on
+  voters, rate limiting, MCP-over-HTTP auth, the agent runtime, or actors (stateful entities behind a stable address). Triggers on
   @agentback/core, RestApplication, MCPApplication, @api, @get, @tool,
-  @mcpServer, installMcpHttp, @authenticate, @authorize, z.infer, or building a
+  @mcpServer, installMcpHttp, @authenticate, @authorize, @actor, @actorCommand,
+  @actorQuery, ActorRegistry, @injectActor, z.infer, or building a
   hybrid REST+MCP app where both ends share the same Zod schemas. Also covers
   scaffolding a new app with `npm create agentback` / the `create-agentback`
   CLI (rest | mcp | hybrid templates).
@@ -44,6 +45,8 @@ ESM-only, Node 22.13+, TypeScript 6, pnpm workspaces. **Relative imports use
    → Auth & rate limiting ([auth-and-rate-limiting.md](references/auth-and-rate-limiting.md))
 6. **Health/metrics, middleware, subclassing the dispatcher, packaging?** →
    Composition & operations ([composition-and-operations.md](references/composition-and-operations.md))
+7. **Stateful entity behind a stable address — one writer at a time (cart,
+   conversation, counter, room)?** → Actors ([actors.md](references/actors.md))
 
 ## Getting Started: scaffold a new app
 
@@ -139,19 +142,20 @@ if (isMain(import.meta)) await main();
 
 ## Core Concepts Summary
 
-| Concept             | Key APIs                                                                       | Notes                                                                                                                                     |
-| ------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| DI container        | `Context`, `BindingKey.create<T>()`, `@inject`, `@injectable`                  | Ported from `@loopback/core`; import from `@agentback/core`                                                                               |
-| App + servers       | `RestApplication`/`ExpressRestApplication`, `EdgeRestApplication`, `MCPApplication`, `Application`, `Server`                   | `RestApplication` for the Node/Express HTTP host; `EdgeRestApplication` for fetch/edge (Workers/Bun/Deno, no `express` install); `MCPApplication` for a stdio MCP server. Servers discover bindings by tag at `start()` |
-| Components          | `Component` with `components[]` / `services[]` / `bindings[]`                  | Composable packaging; `app.component(X)`                                                                                                  |
-| REST routing        | `@api`, `@get/@post/@put/@patch/@del`, `{path,query,body,headers,response}`    | Zod on the decorator; slot 0 = validated input bundle                                                                                     |
-| MCP tools           | `@mcpServer`, `@tool('name', {input, output, scope?})`, `@resource`, `@prompt` | Zod on the decorator; stdio + HTTP transport                                                                                              |
-| OpenAPI             | emitted from Zod via `z.toJSONSchema({target:'draft-2020-12'})`                | `/openapi.json`, Swagger at `/explorer`                                                                                                   |
-| Schema-typed client | `@agentback/client` (`defineRoute`, `routeGroup`, `safeCall`)                  | Browser-safe; shares the SAME Zod schemas; no codegen                                                                                     |
-| Auth                | `@authenticate('jwt'\|'api-key'\|...)`, `@authorize({...})`, voters            | Strategies + voter pipeline; client-app scope governance                                                                                  |
-| Rate limiting       | `installRateLimit(app)`, per-tool limits for MCP-over-HTTP                     | `rate-limiter-flexible`; in-memory or Redis                                                                                               |
-| Operations          | `app.middleware()`, `installHealth`, `installMetrics`, CORS                    | Subclass `RestServer.dispatch`/`sendResult`/`sendError` for deep changes                                                                  |
-| Agent runtime       | `@agentback/agent-*` + `agent-messaging`                                       | LLM agent stack on the DI substrate: engine + triggers, turn loop, tools, durable jobs                                                    |
+| Concept             | Key APIs                                                                                                     | Notes                                                                                                                                                                                                                   |
+| ------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DI container        | `Context`, `BindingKey.create<T>()`, `@inject`, `@injectable`                                                | Ported from `@loopback/core`; import from `@agentback/core`                                                                                                                                                             |
+| App + servers       | `RestApplication`/`ExpressRestApplication`, `EdgeRestApplication`, `MCPApplication`, `Application`, `Server` | `RestApplication` for the Node/Express HTTP host; `EdgeRestApplication` for fetch/edge (Workers/Bun/Deno, no `express` install); `MCPApplication` for a stdio MCP server. Servers discover bindings by tag at `start()` |
+| Components          | `Component` with `components[]` / `services[]` / `bindings[]`                                                | Composable packaging; `app.component(X)`                                                                                                                                                                                |
+| REST routing        | `@api`, `@get/@post/@put/@patch/@del`, `{path,query,body,headers,response}`                                  | Zod on the decorator; slot 0 = validated input bundle                                                                                                                                                                   |
+| MCP tools           | `@mcpServer`, `@tool('name', {input, output, scope?})`, `@resource`, `@prompt`                               | Zod on the decorator; stdio + HTTP transport                                                                                                                                                                            |
+| OpenAPI             | emitted from Zod via `z.toJSONSchema({target:'draft-2020-12'})`                                              | `/openapi.json`, Swagger at `/explorer`                                                                                                                                                                                 |
+| Schema-typed client | `@agentback/client` (`defineRoute`, `routeGroup`, `safeCall`)                                                | Browser-safe; shares the SAME Zod schemas; no codegen                                                                                                                                                                   |
+| Auth                | `@authenticate('jwt'\|'api-key'\|...)`, `@authorize({...})`, voters                                          | Strategies + voter pipeline; client-app scope governance                                                                                                                                                                |
+| Rate limiting       | `installRateLimit(app)`, per-tool limits for MCP-over-HTTP                                                   | `rate-limiter-flexible`; in-memory or Redis                                                                                                                                                                             |
+| Operations          | `app.middleware()`, `installHealth`, `installMetrics`, CORS                                                  | Subclass `RestServer.dispatch`/`sendResult`/`sendError` for deep changes                                                                                                                                                |
+| Actors              | `@actor`/`@actorCommand`/`@actorQuery`, `ACTOR_REGISTRY`, `@injectActor`, `InMemoryActorsComponent`          | Stateful entity at `{type,id}`: serialized turns, idempotent `requestId`, lease-free queries, optional event log; `@agentback/actors`(`-redis`)                                                                         |
+| Agent runtime       | `@agentback/agent-*` + `agent-messaging`                                                                     | LLM agent stack on the DI substrate: engine + triggers, turn loop, tools, durable jobs                                                                                                                                  |
 
 ## Key Rules
 
@@ -191,7 +195,7 @@ if (isMain(import.meta)) await main();
   `listener: 'native'`, installs **no `express`/`cors`**). The neutral
   middleware machinery lives in `@agentback/middleware`; `express`/`cors`/`multer`
   are optional peer deps of `@agentback/rest`. Deploy via `agentback deploy
-  vercel|cloudflare` (`@agentback/cli`). The schema-typed `client` depends on
+vercel|cloudflare` (`@agentback/cli`). The schema-typed `client` depends on
   nothing but `zod` (browser-safe).
 - Every source file carries the three-line MIT header
   (`// Copyright ninemind.ai 2026. All Rights Reserved.`).
@@ -221,3 +225,7 @@ if (isMain(import.meta)) await main();
   [references/composition-and-operations.md](references/composition-and-operations.md)
   — components, middleware/interceptors, health/metrics, lifecycle, packaging a
   new workspace package.
+- **Actors**: [references/actors.md](references/actors.md) — `@actor` services,
+  commands + lease-free `@actorQuery`, the typed `ref(Class, id)` proxy /
+  `@injectActor`, per-identity serialization + `requestId` idempotency, the event
+  log, and the in-memory / event-sourced / Redis runtimes.
