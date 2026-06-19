@@ -147,6 +147,18 @@ installRedisActors(this, {connection: {url: process.env.REDIS_URL}});</code></pr
           meet that contract, and the suite says so.
         </p>
 
+        <h2>Reads and facts</h2>
+        <p>
+          The same boundary gives two more things almost for free. A
+          <code>@actorQuery</code> reads the state <em>without</em> taking a turn
+          — no lease, no mailbox slot — so reads run concurrently with writes and
+          with each other; you ask the address a question instead of queuing
+          behind it. And a command may return <code>events</code> alongside its
+          result: domain facts the event-log runtime persists atomically with the
+          state change and hands to subscribers. State is the boundary, a message
+          is intent, an event is fact — and all of them cross the same address.
+        </p>
+
         <h2>What it deliberately isn't</h2>
         <p>
           The honesty of this model is in its non-goals. There is no

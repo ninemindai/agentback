@@ -266,6 +266,19 @@
           <li>• Durable Objects adapter is the natural next step</li>
         </ul>
       </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot cyan"></div>
+          <h3>Reads &amp; facts</h3>
+        </div>
+        <ul>
+          <li>• <code>@actorQuery</code> — read-only, lease-free, concurrent</li>
+          <li>• typed <code>ref(Class, id)</code> proxy / <code>@injectActor</code> accessor</li>
+          <li>• commands may emit events → per-identity append-only log</li>
+          <li>• read the log or <code>subscribe</code> (Event = fact)</li>
+        </ul>
+      </div>
     </div>
 
     <p class="footer">

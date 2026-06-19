@@ -1162,10 +1162,19 @@
             <li>• Durable adapters need atomic state + inbox.</li>
           </ul>
         </div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-dot cyan"></div>
+            <h3>Beyond commands</h3>
+          </div>
+          <ul>
+            <li>• @actorQuery: read-only, lease-free, concurrent.</li>
+            <li>• ref(Class, id) typed proxy / @injectActor accessor.</li>
+            <li>• Commands may emit events → per-identity event log.</li>
+          </ul>
+        </div>
       </div>
-      <p class="footer">
-        @agentback/actors · experimental spike · programming model v0
-      </p>
+      <p class="footer">@agentback/actors · actor programming model</p>
     </div>
     <script>
       async function capture() {
