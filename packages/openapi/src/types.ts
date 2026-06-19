@@ -68,7 +68,7 @@ export function isSchemaObject(
 }
 
 export const DEFAULT_OPENAPI_SPEC_INFO = {
-  title: 'LoopBack Application',
+  title: 'AgentBack Application',
   version: '1.0.0',
 };
 
