@@ -33,6 +33,37 @@ without running `add` twice.
   client can fix (a plain `Error` would be redacted to a generic 500).
 - **One schema, many views** — `CartView` is the result of `add`/`clear` _and_
   the `GET` response.
+- **A typed actor client** — the controller injects a `Carts` facade, not the
+  raw registry (see below).
+
+## A typed actor client
+
+The controller never injects the raw `ACTOR_REGISTRY`, and it never injects the
+`CartActor` instance — calling an actor's methods directly would bypass the
+runtime (no serialization, rollback, or persisted state). Instead it injects a
+small typed facade, [`Carts`](src/carts.ts):
+
+```ts
+// src/carts.ts — inject this instead of ACTOR_REGISTRY
+export class Carts {
+  constructor(@inject(ACTOR_REGISTRY) private registry: ActorRegistry) {}
+
+  add(id: string, input: z.infer<typeof AddItem>, requestId?: string) {
+    // routes through the runtime: invoke('cart', id, {name:'add', input}, {requestId})
+    return this.command(id, 'add', input, requestId);
+  }
+  clear(id: string) {
+    return this.command(id, 'clear', {});
+  }
+  // view(id) → cartView(await registry.state('cart', id))
+}
+```
+
+Register it (`this.service(Carts)`) and the controller depends on typed methods
+— `carts.add(id, body, key)` — instead of the stringly-typed `{name, input}`
+envelope. Every call still goes through `registry.invoke`/`registry.state`, so
+all the runtime guarantees hold. This is the idiomatic "inject the actor, not
+the registry" shape until a generated typed ref lands.
 
 ## In-memory by default
 

@@ -6,6 +6,7 @@ import {RestApplication} from '@agentback/rest';
 import {InMemoryActorsComponent} from '@agentback/actors';
 import {Catalog} from './catalog.js';
 import {CartActor} from './cart.actor.js';
+import {Carts} from './carts.js';
 import {CartController} from './controllers/cart.controller.js';
 
 /**
@@ -30,8 +31,12 @@ export class HelloActorsApplication extends RestApplication {
     this.service(Catalog);
 
     // The @actor service. `service()` keeps its actor extension membership so
-    // the registry finds it at start(); the controller is just a caller.
+    // the registry finds it at start().
     this.service(CartActor);
+
+    // A typed facade over ACTOR_REGISTRY for the `cart` actor; the controller
+    // injects this instead of the raw registry.
+    this.service(Carts);
     this.restController(CartController);
   }
 }

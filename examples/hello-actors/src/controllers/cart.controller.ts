@@ -3,15 +3,17 @@
 // License text available at https://opensource.org/license/mit/
 
 // The REST controller is a *caller* of the actor — actors do not automatically
-// become endpoints. The cart id in the URL is the actor's stable address, and
-// the `Idempotency-Key` header becomes the turn's `requestId`: replaying the
-// same key returns the committed result without re-running the command.
+// become endpoints. It injects a typed `Carts` client (not the raw registry),
+// so the handlers read as plain method calls; the client routes each one through
+// the runtime. The cart id in the URL is the actor's stable address, and the
+// `Idempotency-Key` header becomes the turn's `requestId`: replaying the same
+// key returns the committed result without re-running the command.
 
 import {z} from 'zod';
 import {inject} from '@agentback/core';
 import {api, get, post, del} from '@agentback/openapi';
-import {ACTOR_REGISTRY, type ActorRegistry} from '@agentback/actors';
-import {AddItem, CartView, cartView, type CartState} from '../cart.actor.js';
+import {AddItem, CartView} from '../cart.actor.js';
+import {Carts} from '../carts.js';
 
 const CartPath = z.object({id: z.string().min(1).max(64)});
 const IdempotencyHeaders = z.object({
@@ -20,7 +22,7 @@ const IdempotencyHeaders = z.object({
 
 @api({basePath: '/carts'})
 export class CartController {
-  constructor(@inject(ACTOR_REGISTRY) private readonly carts: ActorRegistry) {}
+  constructor(@inject('services.Carts') private readonly carts: Carts) {}
 
   @post('/{id}/items', {
     path: CartPath,
@@ -33,33 +35,24 @@ export class CartController {
     body: z.infer<typeof AddItem>;
     headers: z.infer<typeof IdempotencyHeaders>;
   }): Promise<z.infer<typeof CartView>> {
-    const turn = await this.carts.invoke(
-      'cart',
+    return this.carts.add(
       input.path.id,
-      {name: 'add', input: input.body},
-      {requestId: input.headers['idempotency-key']},
+      input.body,
+      input.headers['idempotency-key'],
     );
-    return turn.output as z.infer<typeof CartView>;
   }
 
   @get('/{id}', {path: CartPath, response: CartView})
   async show(input: {
     path: z.infer<typeof CartPath>;
   }): Promise<z.infer<typeof CartView>> {
-    const state = (await this.carts.state('cart', input.path.id)) as z.infer<
-      typeof CartState
-    >;
-    return cartView(state);
+    return this.carts.view(input.path.id);
   }
 
   @del('/{id}', {path: CartPath, response: CartView})
   async clear(input: {
     path: z.infer<typeof CartPath>;
   }): Promise<z.infer<typeof CartView>> {
-    const turn = await this.carts.invoke('cart', input.path.id, {
-      name: 'clear',
-      input: {},
-    });
-    return turn.output as z.infer<typeof CartView>;
+    return this.carts.clear(input.path.id);
   }
 }
