@@ -29,8 +29,12 @@ without running `add` twice.
 - **Idempotency** — replaying an `Idempotency-Key` returns the committed result;
   reusing the key for a _different_ payload is rejected by the runtime.
 - **Domain errors** — `CartActor` injects a `Catalog` service and throws an
-  `AgentError` for an unknown SKU, which the REST server maps to a **400** the
-  client can fix (a plain `Error` would be redacted to a generic 500).
+  `AgentError` for an unknown SKU (or a checkout on an empty cart), which the
+  REST server maps to a **400** the client can fix (a plain `Error` would be
+  redacted to a generic 500).
+- **State transitions** — `POST /carts/{id}/checkout` prices the cart via the
+  `Catalog`, returns an `Order`, and empties the cart in one serialized turn;
+  the `Idempotency-Key` makes the checkout safe to retry.
 - **One schema, many views** — `CartView` is the result of `add`/`clear` _and_
   the `GET` response.
 - **A typed actor client** — the controller injects a `Carts` facade, not the
@@ -91,6 +95,13 @@ curl -s localhost:3000/carts/ada/items \
   -d '{"sku":"keyboard","qty":2}' | jq      # → {"items":{"keyboard":2},"itemCount":2}
 
 curl -s localhost:3000/carts/ada | jq        # → same view
+
+# check out: prices the cart (cents), returns an order, empties the cart
+curl -s localhost:3000/carts/ada/checkout \
+  -H 'content-type: application/json' \
+  -H 'idempotency-key: order-1' \
+  -d '{"note":"gift wrap"}' | jq            # → {"orderId":"order-1","lines":[…],"total":9998,…}
+
 curl -s -X DELETE localhost:3000/carts/ada | jq   # → {"items":{},"itemCount":0}
 # Swagger UI: http://localhost:3000/explorer/
 ```

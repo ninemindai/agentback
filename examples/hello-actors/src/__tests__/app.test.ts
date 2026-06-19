@@ -77,4 +77,56 @@ describe('hello-actors', () => {
     const res = await t.http.get('/carts/ada').expect(200);
     expect(res.body).toEqual({items: {}, itemCount: 0});
   });
+
+  it('checkout: prices the cart into an order and empties it', async () => {
+    await using t = await createTestApp(HelloActorsApplication);
+
+    await t.http.post('/carts/ada/items').send({sku: 'keyboard'}).expect(200);
+    await t.http
+      .post('/carts/ada/items')
+      .send({sku: 'mouse', qty: 2})
+      .expect(200);
+
+    const res = await t.http
+      .post('/carts/ada/checkout')
+      .set('Idempotency-Key', 'order-1')
+      .send({note: 'gift wrap'})
+      .expect(200);
+
+    expect(res.body.orderId).toBe('order-1');
+    expect(res.body.total).toBe(4999 + 2999 * 2); // keyboard + 2x mouse, cents
+    expect(res.body.note).toBe('gift wrap');
+    expect(res.body.lines).toHaveLength(2);
+
+    // The order is placed; the cart is emptied.
+    const cart = await t.http.get('/carts/ada').expect(200);
+    expect(cart.body).toEqual({items: {}, itemCount: 0});
+  });
+
+  it('checkout: an empty cart is a 400', async () => {
+    await using t = await createTestApp(HelloActorsApplication);
+
+    const res = await t.http.post('/carts/ada/checkout').send({}).expect(400);
+    expect(JSON.stringify(res.body)).toMatch(/empty cart/i);
+  });
+
+  it('checkout: replaying the Idempotency-Key returns the same order, once', async () => {
+    await using t = await createTestApp(HelloActorsApplication);
+
+    await t.http.post('/carts/ada/items').send({sku: 'keyboard'}).expect(200);
+    const first = await t.http
+      .post('/carts/ada/checkout')
+      .set('Idempotency-Key', 'order-9')
+      .send({})
+      .expect(200);
+    const replay = await t.http
+      .post('/carts/ada/checkout')
+      .set('Idempotency-Key', 'order-9')
+      .send({})
+      .expect(200);
+
+    expect(replay.body).toEqual(first.body); // committed result replayed
+    const cart = await t.http.get('/carts/ada').expect(200);
+    expect(cart.body.itemCount).toBe(0);
+  });
 });

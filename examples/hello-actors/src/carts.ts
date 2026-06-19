@@ -20,6 +20,8 @@ import {
   AddItem,
   CartActor,
   CartView,
+  Checkout,
+  Order,
   cartView,
   type CartState,
 } from './cart.actor.js';
@@ -41,6 +43,15 @@ export class Carts {
   /** Empty the cart. */
   clear(id: string): Promise<z.infer<typeof CartView>> {
     return this.registry.ref(CartActor, id).clear({});
+  }
+
+  /** Price the cart, place an order, and empty the cart. Empty cart → 400. */
+  checkout(
+    id: string,
+    input: z.infer<typeof Checkout> = {},
+    requestId?: string,
+  ): Promise<z.infer<typeof Order>> {
+    return this.registry.ref(CartActor, id).checkout(input, {requestId});
   }
 
   /** Read the current cart view (no turn taken). */

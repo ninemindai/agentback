@@ -12,7 +12,7 @@
 import {z} from 'zod';
 import {inject} from '@agentback/core';
 import {api, get, post, del} from '@agentback/openapi';
-import {AddItem, CartView} from '../cart.actor.js';
+import {AddItem, CartView, Checkout, Order} from '../cart.actor.js';
 import {Carts} from '../carts.js';
 
 const CartPath = z.object({id: z.string().min(1).max(64)});
@@ -54,5 +54,23 @@ export class CartController {
     path: z.infer<typeof CartPath>;
   }): Promise<z.infer<typeof CartView>> {
     return this.carts.clear(input.path.id);
+  }
+
+  @post('/{id}/checkout', {
+    path: CartPath,
+    body: Checkout,
+    headers: IdempotencyHeaders,
+    response: Order,
+  })
+  async checkout(input: {
+    path: z.infer<typeof CartPath>;
+    body: z.infer<typeof Checkout>;
+    headers: z.infer<typeof IdempotencyHeaders>;
+  }): Promise<z.infer<typeof Order>> {
+    return this.carts.checkout(
+      input.path.id,
+      input.body,
+      input.headers['idempotency-key'],
+    );
   }
 }

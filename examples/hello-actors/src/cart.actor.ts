@@ -10,7 +10,13 @@
 
 import {z} from 'zod';
 import {inject} from '@agentback/core';
-import {actor, actorCommand, type Actor} from '@agentback/actors';
+import {AgentError, ErrorCodes} from '@agentback/openapi';
+import {
+  actor,
+  actorCommand,
+  type Actor,
+  type ActorCommandContext,
+} from '@agentback/actors';
 import {Catalog} from './catalog.js';
 
 export const CartState = z.object({
@@ -37,6 +43,24 @@ export function cartView(
   return {items, itemCount};
 }
 
+export const Checkout = z.object({
+  note: z.string().max(280).optional().describe('Optional note for the order'),
+});
+
+export const Order = z.object({
+  orderId: z.string(),
+  lines: z.array(
+    z.object({
+      sku: z.string(),
+      qty: z.number().int().positive(),
+      unitPrice: z.number().int().nonnegative(), // cents
+      subtotal: z.number().int().nonnegative(), // cents
+    }),
+  ),
+  total: z.number().int().nonnegative(), // cents
+  note: z.string().optional(),
+});
+
 @actor('cart', {state: CartState})
 export class CartActor implements Actor<z.infer<typeof CartState>> {
   constructor(@inject('services.Catalog') private readonly catalog: Catalog) {}
@@ -56,5 +80,32 @@ export class CartActor implements Actor<z.infer<typeof CartState>> {
   clear(state: z.infer<typeof CartState>) {
     state.items = {};
     return {state, result: cartView(state)};
+  }
+
+  @actorCommand('checkout', {input: Checkout, output: Order})
+  checkout(
+    state: z.infer<typeof CartState>,
+    input: z.infer<typeof Checkout>,
+    ctx: ActorCommandContext,
+  ) {
+    const skus = Object.keys(state.items);
+    if (skus.length === 0) {
+      throw new AgentError('Cannot checkout an empty cart.', {
+        code: ErrorCodes.INVALID_INPUT,
+      });
+    }
+    const lines = skus.map(sku => {
+      const qty = state.items[sku]!;
+      const unitPrice = this.catalog.priceOf(sku);
+      return {sku, qty, unitPrice, subtotal: unitPrice * qty};
+    });
+    const order: z.infer<typeof Order> = {
+      orderId: ctx.requestId, // the turn's requestId doubles as the order id
+      lines,
+      total: lines.reduce((sum, line) => sum + line.subtotal, 0),
+      note: input.note,
+    };
+    state.items = {}; // the order is placed; the cart is emptied
+    return {state, result: order};
   }
 }

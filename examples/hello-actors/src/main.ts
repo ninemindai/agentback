@@ -27,6 +27,9 @@ async function main() {
   );
   console.log(`    GET    ${server.url}/carts/{id}`);
   console.log(`    DELETE ${server.url}/carts/{id}`);
+  console.log(
+    `    POST   ${server.url}/carts/{id}/checkout (body: {"note":"…"} → priced order)`,
+  );
   console.log(`    GET    ${server.url}/openapi.json`);
   console.log(`    GET    ${server.url}/explorer/`);
   console.log(
