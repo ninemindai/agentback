@@ -114,9 +114,16 @@ export class CartActor implements Actor<z.infer<typeof CartState>> {
     return {state, result: order};
   }
 
-  // A read-only query: no turn, no lease — runs concurrently with commands and
-  // other reads against a state snapshot. Unlike `checkout`, an empty cart is
-  // fine (total 0), because a query computes rather than transitions.
+  // Read-only queries: no turn, no lease — they run concurrently with commands
+  // and other reads against a state snapshot.
+
+  @actorQuery('view', {input: z.object({}), output: CartView})
+  view(state: z.infer<typeof CartState>) {
+    return cartView(state);
+  }
+
+  // Unlike `checkout`, an empty cart is fine here (total 0): a query computes
+  // rather than transitions.
   @actorQuery('total', {input: z.object({}), output: CartTotal})
   total(state: z.infer<typeof CartState>) {
     const total = Object.entries(state.items).reduce(

@@ -3,17 +3,23 @@
 // License text available at https://opensource.org/license/mit/
 
 // The REST controller is a *caller* of the actor — actors do not automatically
-// become endpoints. It injects a typed `Carts` client (not the raw registry),
-// so the handlers read as plain method calls; the client routes each one through
-// the runtime. The cart id in the URL is the actor's stable address, and the
-// `Idempotency-Key` header becomes the turn's `requestId`: replaying the same
-// key returns the committed result without re-running the command.
+// become endpoints. It injects a typed actor accessor with `@injectActor`, so
+// there is no hand-written client class: `this.carts(id)` is the typed proxy for
+// `cart/<id>`, and its methods mirror the `@actorCommand` / `@actorQuery`
+// methods. The cart id in the URL is the actor's stable address; the
+// `Idempotency-Key` header becomes the turn's `requestId`.
 
 import {z} from 'zod';
-import {inject} from '@agentback/core';
 import {api, get, post, del} from '@agentback/openapi';
-import {AddItem, CartTotal, CartView, Checkout, Order} from '../cart.actor.js';
-import {Carts} from '../carts.js';
+import {injectActor, type ActorAccessor} from '@agentback/actors';
+import {
+  AddItem,
+  CartActor,
+  CartTotal,
+  CartView,
+  Checkout,
+  Order,
+} from '../cart.actor.js';
 
 const CartPath = z.object({id: z.string().min(1).max(64)});
 const IdempotencyHeaders = z.object({
@@ -22,7 +28,9 @@ const IdempotencyHeaders = z.object({
 
 @api({basePath: '/carts'})
 export class CartController {
-  constructor(@inject('services.Carts') private readonly carts: Carts) {}
+  constructor(
+    @injectActor(CartActor) private readonly carts: ActorAccessor<CartActor>,
+  ) {}
 
   @post('/{id}/items', {
     path: CartPath,
@@ -35,32 +43,30 @@ export class CartController {
     body: z.infer<typeof AddItem>;
     headers: z.infer<typeof IdempotencyHeaders>;
   }): Promise<z.infer<typeof CartView>> {
-    return this.carts.add(
-      input.path.id,
-      input.body,
-      input.headers['idempotency-key'],
-    );
+    return this.carts(input.path.id).add(input.body, {
+      requestId: input.headers['idempotency-key'],
+    });
   }
 
   @get('/{id}', {path: CartPath, response: CartView})
   async show(input: {
     path: z.infer<typeof CartPath>;
   }): Promise<z.infer<typeof CartView>> {
-    return this.carts.view(input.path.id);
+    return this.carts(input.path.id).view({});
   }
 
   @get('/{id}/total', {path: CartPath, response: CartTotal})
   async total(input: {
     path: z.infer<typeof CartPath>;
   }): Promise<z.infer<typeof CartTotal>> {
-    return this.carts.total(input.path.id);
+    return this.carts(input.path.id).total({});
   }
 
   @del('/{id}', {path: CartPath, response: CartView})
   async clear(input: {
     path: z.infer<typeof CartPath>;
   }): Promise<z.infer<typeof CartView>> {
-    return this.carts.clear(input.path.id);
+    return this.carts(input.path.id).clear({});
   }
 
   @post('/{id}/checkout', {
@@ -74,10 +80,8 @@ export class CartController {
     body: z.infer<typeof Checkout>;
     headers: z.infer<typeof IdempotencyHeaders>;
   }): Promise<z.infer<typeof Order>> {
-    return this.carts.checkout(
-      input.path.id,
-      input.body,
-      input.headers['idempotency-key'],
-    );
+    return this.carts(input.path.id).checkout(input.body, {
+      requestId: input.headers['idempotency-key'],
+    });
   }
 }

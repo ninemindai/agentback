@@ -12,6 +12,7 @@ import {describe, expect, it} from 'vitest';
 import {z} from 'zod';
 import {InMemoryActorsComponent} from '../../component.js';
 import {actor, actorCommand, actorQuery} from '../../decorators.js';
+import {injectActor, type ActorAccessor} from '../../inject-actor.js';
 import {ACTOR_EXTENSIONS, ACTOR_REGISTRY} from '../../keys.js';
 import type {Actor, ActorCommandContext, ActorTurn} from '../../types.js';
 
@@ -160,6 +161,28 @@ describe('decorated actor registry', () => {
 
     class NotAnActor {}
     expect(() => registry.ref(NotAnActor, 'x')).toThrow('is not an @actor');
+    await app.stop();
+  });
+
+  it('@injectActor injects a typed actor accessor (no client class)', async () => {
+    const app = new Application();
+    app.component(InMemoryActorsComponent);
+    app.bind('services.step').to(2);
+    app.component(CounterComponent);
+
+    class Caller {
+      constructor(
+        @injectActor(CounterActor)
+        readonly counters: ActorAccessor<CounterActor>,
+      ) {}
+    }
+    app.bind('callers.Caller').toClass(Caller);
+    await app.start();
+
+    const caller = await app.get<Caller>('callers.Caller');
+    const out = await caller.counters('c1').add({amount: 4}, {requestId: 'r1'});
+    expect(out).toEqual({value: 8, requestId: 'r1'});
+    expect(await caller.counters('c1').peek({})).toEqual({value: 8});
     await app.stop();
   });
 

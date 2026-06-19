@@ -9,3 +9,4 @@ export * from './in-memory-runtime.js';
 export * from './component.js';
 export * from './decorators.js';
 export * from './registry.js';
+export * from './inject-actor.js';

@@ -38,40 +38,48 @@ without running `add` twice.
 - **Read-only queries** — `GET /carts/{id}/total` is an `@actorQuery`: it runs
   **lease-free** (no turn, concurrent with commands) against a state snapshot.
 - **One schema, many views** — `CartView` is the result of `add`/`clear` _and_
-  the `GET` response.
-- **A typed actor client** — the controller injects a `Carts` facade, not the
-  raw registry (see below).
+  the `view` query.
+- **Inject the actor, not a client** — the controller injects a typed accessor
+  with `@injectActor(CartActor)`; there is no hand-written client class.
 
-## A typed actor client
+## Injecting the actor
 
 The controller never injects the raw `ACTOR_REGISTRY`, and it never injects the
 `CartActor` instance — calling an actor's methods directly would bypass the
-runtime (no serialization, rollback, or persisted state). Instead it injects a
-small typed facade, [`Carts`](src/carts.ts), built on the registry's **typed
-proxy** `registry.ref(CartActor, id)` — whose methods mirror the `@actorCommand`
-methods:
+runtime (no serialization, rollback, or persisted state). It also doesn't need a
+hand-written client class. Instead it injects a **typed accessor**:
 
 ```ts
-// src/carts.ts — inject this instead of ACTOR_REGISTRY
-export class Carts {
-  constructor(@inject(ACTOR_REGISTRY) private registry: ActorRegistry) {}
+@api({basePath: '/carts'})
+export class CartController {
+  constructor(
+    @injectActor(CartActor) private carts: ActorAccessor<CartActor>,
+  ) {}
 
-  add(id: string, input: z.infer<typeof AddItem>, requestId?: string) {
-    return this.registry.ref(CartActor, id).add(input, {requestId}); // fully typed
+  @post('/{id}/items', {
+    /* …schemas… */
+  })
+  async add(input) {
+    // this.carts(id) is the typed proxy for cart/<id>
+    return this.carts(input.path.id).add(input.body, {
+      requestId: input.headers['idempotency-key'],
+    });
   }
-  clear(id: string) {
-    return this.registry.ref(CartActor, id).clear({});
+
+  @get('/{id}', {
+    /* … */
+  })
+  async show(input) {
+    return this.carts(input.path.id).view({}); // an @actorQuery, lease-free
   }
-  // view(id) → cartView(await registry.state('cart', id))
 }
 ```
 
-Register it (`this.service(Carts)`) and the controller depends on typed methods
-— `carts.add(id, body, key)` — instead of the stringly-typed `{name, input}`
-envelope. `registry.ref(CartActor, id)` is the typed proxy (pass the actor
-**class**, not its name); `Carts` wraps it so callers also get a stable
-injectable plus the `view` read. Every call still routes through the runtime, so
-all its guarantees hold.
+`@injectActor(CartActor)` resolves to `(id) => registry.ref(CartActor, id)` — so
+`this.carts(id)` is the typed proxy, with methods mirroring the `@actorCommand`
+and `@actorQuery` methods. Every call still routes through the runtime, so all
+its guarantees hold. Because `view` and `total` are queries on the actor, the
+accessor covers reads too — no `Carts` facade required.
 
 ## In-memory by default
 
@@ -116,8 +124,7 @@ pnpm -F hello-actors test
 
 Tests run against `src` with vitest (esbuild transpiles on the fly), like a
 standalone downstream app — see [`vitest.config.ts`](vitest.config.ts). They
-drive the four properties above over HTTP with `createTestApp`'s supertest
-bridge.
+drive the properties above over HTTP with `createTestApp`'s supertest bridge.
 
 ## Swapping in Redis (cross-process serialization)
 
