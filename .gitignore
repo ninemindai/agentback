@@ -15,6 +15,9 @@ build
 # local pnpm store fallback (created by some pnpm operations)
 .pnpm-store/
 
+# Playwright MCP session artifacts
+.playwright-mcp/
+
 # `agentback deploy` generated artifacts (worker entry + merged wrangler config)
 .agentback/
 packages/cli/fixtures/cf-app/wrangler.toml
