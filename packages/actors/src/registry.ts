@@ -21,12 +21,14 @@ import {
   ActorMetadata,
   type ActorClassMetadata,
   type ActorCommandMetadata,
+  type ActorQueryMetadata,
 } from './keys.js';
 import type {
   Actor,
   ActorCommandContext,
   ActorDefinition,
   ActorInvokeOptions,
+  ActorQueryContext,
   ActorRef,
   ActorRuntime,
   ActorServiceCommand,
@@ -45,6 +47,12 @@ type ActorMethod = (
   input: unknown,
   ctx: ActorCommandContext,
 ) => ActorTurn<unknown, unknown> | Promise<ActorTurn<unknown, unknown>>;
+
+type ActorQueryMethod = (
+  state: unknown,
+  input: unknown,
+  ctx: ActorQueryContext,
+) => unknown;
 
 /** A class decorated with `@actor` (carrying `@actorCommand` methods). */
 export type ActorClass<T extends object> = abstract new (...args: never[]) => T;
@@ -69,19 +77,39 @@ type CommandResult<F> = F extends (...args: never[]) => infer R
     : never
   : never;
 
+/** A `@actorQuery` method `(state, input, ctx) => result` (read-only, not a turn). */
+type QueryShape = (state: never, ...rest: never[]) => unknown;
+type QueryInput<F> = F extends (
+  state: never,
+  input: infer I,
+  ...rest: never[]
+) => unknown
+  ? I
+  : never;
+type QueryResult<F> = F extends (...args: never[]) => infer R
+  ? Awaited<R>
+  : never;
+
 /**
  * Strongly-typed handle to one actor identity, derived from the actor class's
- * `@actorCommand` methods: each command method becomes
- * `(input, options?) => Promise<result>`. Returned by `registry.ref(ActorClass, id)`.
+ * `@actorCommand` and `@actorQuery` methods. Each command becomes
+ * `(input, options?) => Promise<result>`; each query becomes
+ * `(input) => Promise<result>`. Returned by `registry.ref(ActorClass, id)`.
  *
- * Commands whose method declares no `input` parameter type as `unknown` input
- * (the proxy reads method signatures, not the Zod schema) — pass `{}` for them.
+ * A method that declares no `input` parameter types its input as `unknown` (the
+ * proxy reads method signatures, not the Zod schema) — pass `{}` for those.
  */
 export type ActorProxy<T> = {
   [K in keyof T as T[K] extends CommandShape ? K : never]: (
     input: CommandInput<T[K]>,
     options?: ActorInvokeOptions,
   ) => Promise<CommandResult<T[K]>>;
+} & {
+  [K in keyof Omit<T, 'initialState'> as T[K] extends CommandShape
+    ? never
+    : T[K] extends QueryShape
+      ? K
+      : never]: (input: QueryInput<T[K]>) => Promise<QueryResult<T[K]>>;
 };
 
 /**
@@ -94,6 +122,11 @@ export type ActorProxy<T> = {
 })
 export class ActorRegistry implements LifeCycleObserver {
   private readonly definitions = new Map<string, ServiceActorDefinition>();
+  /** Per-actor query metadata + binding key, for the lease-free query path. */
+  private readonly queryActors = new Map<
+    string,
+    {bindingKey: string; queries: Map<string, ActorQueryMetadata>}
+  >();
   private started = false;
 
   constructor(
@@ -182,17 +215,78 @@ export class ActorRegistry implements LifeCycleObserver {
     for (const [methodName, metadata] of Object.entries(methods)) {
       if (metadata) commandByMethod.set(methodName, metadata.name);
     }
+    const queryByMethod = new Map<string, string>();
+    const queryMethods =
+      MetadataInspector.getAllMethodMetadata<ActorQueryMetadata>(
+        ActorMetadata.QUERY,
+        fn.prototype,
+      ) ?? {};
+    for (const [methodName, metadata] of Object.entries(queryMethods)) {
+      if (metadata) queryByMethod.set(methodName, metadata.name);
+    }
 
+    const actorName = actorMeta.name;
     const ref = this.runtime.ref(definition, id);
     return new Proxy(Object.create(null) as ActorProxy<T>, {
       get: (_target, property) => {
         if (typeof property !== 'string') return undefined;
         const command = commandByMethod.get(property);
-        if (!command) return undefined;
-        return (input: unknown, options?: ActorInvokeOptions) =>
-          ref.invoke({name: command, input}, options).then(turn => turn.output);
+        if (command) {
+          return (input: unknown, options?: ActorInvokeOptions) =>
+            ref
+              .invoke({name: command, input}, options)
+              .then(turn => turn.output);
+        }
+        const query = queryByMethod.get(property);
+        if (query) {
+          return (input: unknown) => this.runQuery(actorName, query, id, input);
+        }
+        return undefined;
       },
     });
+  }
+
+  query(
+    name: string,
+    id: string,
+    query: ActorServiceCommand,
+  ): Promise<unknown> {
+    if (!this.started) throw new Error('Actor registry has not started.');
+    return this.runQuery(name, query.name, id, query.input);
+  }
+
+  /**
+   * Run one read-only query. Reads a state snapshot through the runtime's
+   * lease-free `state()` (no mailbox, no lease — concurrent with turns), then
+   * applies the DI-resolved query method and validates its output.
+   */
+  private async runQuery(
+    actorName: string,
+    queryName: string,
+    id: string,
+    input: unknown,
+  ): Promise<unknown> {
+    const entry = this.queryActors.get(actorName);
+    const metadata = entry?.queries.get(queryName);
+    if (!entry || !metadata) {
+      throw new Error(`Unknown query '${queryName}' for actor '${actorName}'.`);
+    }
+    if (!id.trim()) throw new Error('Actor id must not be empty.');
+    const parsedInput = metadata.input.parse(input);
+    const state = await this.runtime.state(this.definition(actorName), id);
+    const instance = await this.resolve(entry.bindingKey);
+    const method = (instance as unknown as Record<string, unknown>)[
+      String(metadata.methodName)
+    ] as ActorQueryMethod;
+    if (typeof method !== 'function') {
+      throw new Error(
+        `Actor '${actorName}' query '${queryName}' is not callable.`,
+      );
+    }
+    const result = await method.call(instance, state, parsedInput, {
+      actor: {type: actorName, id},
+    });
+    return metadata.output.parse(result);
   }
 
   private compile(bindingKey: string, ctor: Function): ServiceActorDefinition {
@@ -225,6 +319,30 @@ export class ActorRegistry implements LifeCycleObserver {
         `Actor '${actorMeta.name}' has no @actorCommand methods.`,
       );
     }
+
+    // Collect read-only @actorQuery methods (run lease-free; never registered
+    // with the runtime, which only knows about state + commands).
+    const queries = new Map<string, ActorQueryMetadata>();
+    const queryMeta =
+      MetadataInspector.getAllMethodMetadata<ActorQueryMetadata>(
+        ActorMetadata.QUERY,
+        ctor.prototype,
+      ) ?? {};
+    for (const [methodName, metadata] of Object.entries(queryMeta)) {
+      if (!metadata) continue;
+      if (all[methodName]) {
+        throw new Error(
+          `Actor '${actorMeta.name}' method '${methodName}' is both a command and a query.`,
+        );
+      }
+      if (queries.has(metadata.name)) {
+        throw new Error(
+          `Actor '${actorMeta.name}' has duplicate query '${metadata.name}'.`,
+        );
+      }
+      queries.set(metadata.name, {...metadata, methodName});
+    }
+    this.queryActors.set(actorMeta.name, {bindingKey, queries});
 
     // Validate and normalize each command's input at the envelope boundary so
     // the runtime computes its fingerprint (and request dedup) over parsed,

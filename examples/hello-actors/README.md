@@ -35,6 +35,8 @@ without running `add` twice.
 - **State transitions** — `POST /carts/{id}/checkout` prices the cart via the
   `Catalog`, returns an `Order`, and empties the cart in one serialized turn;
   the `Idempotency-Key` makes the checkout safe to retry.
+- **Read-only queries** — `GET /carts/{id}/total` is an `@actorQuery`: it runs
+  **lease-free** (no turn, concurrent with commands) against a state snapshot.
 - **One schema, many views** — `CartView` is the result of `add`/`clear` _and_
   the `GET` response.
 - **A typed actor client** — the controller injects a `Carts` facade, not the

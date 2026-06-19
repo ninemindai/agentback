@@ -19,6 +19,7 @@ import {ACTOR_REGISTRY, type ActorRegistry} from '@agentback/actors';
 import {
   AddItem,
   CartActor,
+  CartTotal,
   CartView,
   Checkout,
   Order,
@@ -60,5 +61,10 @@ export class Carts {
       typeof CartState
     >;
     return cartView(state);
+  }
+
+  /** Current cart total in cents — a lease-free @actorQuery (read-only). */
+  total(id: string): Promise<z.infer<typeof CartTotal>> {
+    return this.registry.ref(CartActor, id).total({});
   }
 }

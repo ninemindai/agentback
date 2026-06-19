@@ -103,6 +103,27 @@ describe('hello-actors', () => {
     expect(cart.body).toEqual({items: {}, itemCount: 0});
   });
 
+  it('query: total prices the cart lease-free without taking a turn', async () => {
+    await using t = await createTestApp(HelloActorsApplication);
+
+    await t.http.post('/carts/ada/items').send({sku: 'keyboard'}).expect(200);
+    await t.http
+      .post('/carts/ada/items')
+      .send({sku: 'mouse', qty: 2})
+      .expect(200);
+
+    const res = await t.http.get('/carts/ada/total').expect(200);
+    expect(res.body).toEqual({total: 4999 + 2999 * 2});
+
+    // A query takes no turn — the cart is unchanged.
+    const cart = await t.http.get('/carts/ada').expect(200);
+    expect(cart.body.itemCount).toBe(3);
+
+    // Unlike checkout, a query on an empty cart is fine (total 0).
+    const empty = await t.http.get('/carts/grace/total').expect(200);
+    expect(empty.body).toEqual({total: 0});
+  });
+
   it('checkout: an empty cart is a 400', async () => {
     await using t = await createTestApp(HelloActorsApplication);
 

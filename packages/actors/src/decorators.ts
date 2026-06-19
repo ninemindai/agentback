@@ -18,6 +18,7 @@ import {
   ActorMetadata,
   type ActorClassMetadata,
   type ActorCommandMetadata,
+  type ActorQueryMetadata,
 } from './keys.js';
 
 export interface ActorOptions<S> {
@@ -79,6 +80,37 @@ export function actorCommand<I, O>(
       ActorMetadata.COMMAND,
       metadata,
       {decoratorName: '@actorCommand'},
+    )(target, methodName, descriptor);
+  };
+}
+
+export interface ActorQueryOptions<I, O> {
+  input: ZodType<I>;
+  output: ZodType<O>;
+}
+
+/**
+ * Mark a service method as one typed actor query — a **read-only** operation
+ * `(state, input, ctx) => result`. Queries take no turn and no mailbox/lease, so
+ * they run concurrently with commands and other queries against a state
+ * snapshot. They must not mutate the state they receive.
+ */
+export function actorQuery<I, O>(
+  name: string,
+  options: ActorQueryOptions<I, O>,
+): MethodDecorator {
+  if (!name.trim()) throw new Error('Actor query name must not be empty.');
+  return (target, methodName, descriptor) => {
+    const metadata: ActorQueryMetadata = {
+      name,
+      input: options.input as ZodType<unknown>,
+      output: options.output as ZodType<unknown>,
+      methodName,
+    };
+    MethodDecoratorFactory.createDecorator<ActorQueryMetadata>(
+      ActorMetadata.QUERY,
+      metadata,
+      {decoratorName: '@actorQuery'},
     )(target, methodName, descriptor);
   };
 }

@@ -12,7 +12,7 @@
 import {z} from 'zod';
 import {inject} from '@agentback/core';
 import {api, get, post, del} from '@agentback/openapi';
-import {AddItem, CartView, Checkout, Order} from '../cart.actor.js';
+import {AddItem, CartTotal, CartView, Checkout, Order} from '../cart.actor.js';
 import {Carts} from '../carts.js';
 
 const CartPath = z.object({id: z.string().min(1).max(64)});
@@ -47,6 +47,13 @@ export class CartController {
     path: z.infer<typeof CartPath>;
   }): Promise<z.infer<typeof CartView>> {
     return this.carts.view(input.path.id);
+  }
+
+  @get('/{id}/total', {path: CartPath, response: CartTotal})
+  async total(input: {
+    path: z.infer<typeof CartPath>;
+  }): Promise<z.infer<typeof CartTotal>> {
+    return this.carts.total(input.path.id);
   }
 
   @del('/{id}', {path: CartPath, response: CartView})

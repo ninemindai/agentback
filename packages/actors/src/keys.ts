@@ -27,6 +27,13 @@ export interface ActorCommandMetadata {
   methodName: string | symbol;
 }
 
+export interface ActorQueryMetadata {
+  name: string;
+  input: ZodType<unknown>;
+  output: ZodType<unknown>;
+  methodName: string | symbol;
+}
+
 export namespace ActorMetadata {
   export const CLASS = MetadataAccessor.create<
     ActorClassMetadata,
@@ -36,4 +43,8 @@ export namespace ActorMetadata {
     ActorCommandMetadata,
     MethodDecorator
   >('actors:command');
+  export const QUERY = MetadataAccessor.create<
+    ActorQueryMetadata,
+    MethodDecorator
+  >('actors:query');
 }

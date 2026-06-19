@@ -11,7 +11,7 @@ import {
 import {describe, expect, it} from 'vitest';
 import {z} from 'zod';
 import {InMemoryActorsComponent} from '../../component.js';
-import {actor, actorCommand} from '../../decorators.js';
+import {actor, actorCommand, actorQuery} from '../../decorators.js';
 import {ACTOR_EXTENSIONS, ACTOR_REGISTRY} from '../../keys.js';
 import type {Actor, ActorCommandContext, ActorTurn} from '../../types.js';
 
@@ -36,6 +36,11 @@ class CounterActor implements Actor<Counter> {
   ): ActorTurn<Counter, z.infer<typeof CounterResult>> {
     state.value += input.amount * this.step;
     return {state, result: {value: state.value, requestId: ctx.requestId}};
+  }
+
+  @actorQuery('peek', {input: z.object({}), output: CounterState})
+  peek(state: Counter): Counter {
+    return {value: state.value}; // read-only
   }
 }
 
@@ -103,6 +108,45 @@ describe('decorated actor registry', () => {
       px.initialState;
     };
     void _typeChecks;
+    await app.stop();
+  });
+
+  it('runs read-only @actorQuery lease-free, via envelope and proxy', async () => {
+    const app = new Application();
+    app.component(InMemoryActorsComponent);
+    app.bind('services.step').to(2);
+    app.component(CounterComponent);
+    await app.start();
+    const registry = await app.get(ACTOR_REGISTRY);
+
+    await registry.invoke(
+      'counter',
+      'q1',
+      {name: 'add', input: {amount: 5}},
+      {requestId: 'r1'},
+    );
+
+    // Envelope query and typed-proxy query agree, and neither takes a turn.
+    const counter = registry.ref(CounterActor, 'q1');
+    const out = await counter.peek({});
+    expect(out).toEqual({value: 10});
+    expect(
+      await registry.query('counter', 'q1', {name: 'peek', input: {}}),
+    ).toEqual({value: 10});
+
+    // A query on a never-touched id returns the initial state (and stores nothing).
+    expect(
+      await registry.query('counter', 'fresh', {name: 'peek', input: {}}),
+    ).toEqual({value: 0});
+
+    // Compile-time: the query is on the same proxy, typed (never executed).
+    const _queryTypes = async (px: typeof counter) => {
+      const v: {value: number} = await px.peek({});
+      void v;
+      // @ts-expect-error — 'nope' is not a command or query on the proxy
+      px.nope;
+    };
+    void _queryTypes;
     await app.stop();
   });
 

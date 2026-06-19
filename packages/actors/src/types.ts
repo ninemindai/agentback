@@ -16,6 +16,11 @@ export interface ActorCommandContext {
   readonly requestId: string;
 }
 
+/** Context for one query. Queries are read-only, so there is no `requestId`. */
+export interface ActorQueryContext {
+  readonly actor: ActorId;
+}
+
 /** State and reply produced by one successful actor turn. */
 export interface ActorTurn<S, R> {
   state: S;

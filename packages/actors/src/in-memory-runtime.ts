@@ -116,11 +116,17 @@ export class InMemoryActorRuntime implements ActorRuntime {
   ): Promise<S> {
     this.assertRegistered(definition);
     if (!id.trim()) throw new Error('Actor id must not be empty.');
-    const actor = {type: definition.name, id};
-    return this.serialize(actorKey(actor), async () => {
-      const stored = await this.load(definition, actor);
-      return structuredClone(stored.state) as S;
-    });
+    // Reads take no mailbox slot: commit reassigns `stored.state` atomically, so
+    // a lone read observes either the pre- or post-commit value (never torn) and
+    // runs concurrently with turns and other reads. An absent actor returns its
+    // computed initial state without storing it (a read must not mutate).
+    const stored = this.actors.get(actorKey({type: definition.name, id}));
+    if (!stored) {
+      return structuredClone(
+        definition.state.parse(await definition.initialState(id)),
+      ) as S;
+    }
+    return structuredClone(stored.state) as S;
   }
 
   private async invoke<S, C, R>(

@@ -14,6 +14,7 @@ import {AgentError, ErrorCodes} from '@agentback/openapi';
 import {
   actor,
   actorCommand,
+  actorQuery,
   type Actor,
   type ActorCommandContext,
 } from '@agentback/actors';
@@ -59,6 +60,10 @@ export const Order = z.object({
   ),
   total: z.number().int().nonnegative(), // cents
   note: z.string().optional(),
+});
+
+export const CartTotal = z.object({
+  total: z.number().int().nonnegative(), // cents
 });
 
 @actor('cart', {state: CartState})
@@ -107,5 +112,17 @@ export class CartActor implements Actor<z.infer<typeof CartState>> {
     };
     state.items = {}; // the order is placed; the cart is emptied
     return {state, result: order};
+  }
+
+  // A read-only query: no turn, no lease — runs concurrently with commands and
+  // other reads against a state snapshot. Unlike `checkout`, an empty cart is
+  // fine (total 0), because a query computes rather than transitions.
+  @actorQuery('total', {input: z.object({}), output: CartTotal})
+  total(state: z.infer<typeof CartState>) {
+    const total = Object.entries(state.items).reduce(
+      (sum, [sku, qty]) => sum + this.catalog.priceOf(sku) * qty,
+      0,
+    );
+    return {total};
   }
 }

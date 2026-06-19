@@ -26,6 +26,7 @@ async function main() {
     `    POST   ${server.url}/carts/{id}/items   (body: {"sku":"keyboard"}; header: Idempotency-Key)`,
   );
   console.log(`    GET    ${server.url}/carts/{id}`);
+  console.log(`    GET    ${server.url}/carts/{id}/total   (lease-free query)`);
   console.log(`    DELETE ${server.url}/carts/{id}`);
   console.log(
     `    POST   ${server.url}/carts/{id}/checkout (body: {"note":"…"} → priced order)`,
