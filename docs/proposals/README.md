@@ -12,14 +12,14 @@ tracked in the doc headers.
 | P0-2  | [Typed streaming](p0-2-typed-streaming.md)                | `streamOf:` on verb decorators — SSE with per-item Zod validation, OpenAPI `itemSchema`, typed client consumption          |
 | P0-3  | [Standard decorators escape](p0-3-standard-decorators.md) | `static inject` injection form (phase 1) on the road off reflect-metadata/experimentalDecorators                           |
 | P0-3b | [TC39 decorators, phases 2–3](p0-3b-tc39-decorators.md)   | Runtime dual-mode metadata machinery (P2, non-breaking) then the flip to standard decorators (P3, breaking) — **deferred** |
-| P0-4  | [DX floor](p0-4-dx-floor.md)                              | `@agentback/testing` (`createTestApp`) + `create-agentback` scaffold                                             |
-| P0-5  | [Messaging Layer 2](p0-5-messaging-bullmq.md)             | `@agentback/messaging-bullmq` — durable BullMQ/Redis adapter behind the existing ports                                |
+| P0-4  | [DX floor](p0-4-dx-floor.md)                              | `@agentback/testing` (`createTestApp`) + `create-agentback` scaffold                                                       |
+| P0-5  | [Messaging Layer 2](p0-5-messaging-bullmq.md)             | `@agentback/messaging-bullmq` — durable BullMQ/Redis adapter behind the existing ports                                     |
 
 ## P1 — extend the moat
 
 | #    | Proposal                                             | One-liner                                                                                          |
 | ---- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| P1-1 | [Drizzle recipe](p1-1-drizzle-recipe.md)             | Ship `@agentback/drizzle` per [db-story.md](../db-story.md)                                   |
+| P1-1 | [Drizzle recipe](p1-1-drizzle-recipe.md)             | Ship `@agentback/drizzle` per [db-story.md](../db-story.md)                                        |
 | P1-2 | [Standard Schema compat](p1-2-standard-schema.md)    | Decorators accept any `~standard` schema; JSON-Schema emission stays mandatory                     |
 | P1-3 | [MCP suite completion](p1-3-mcp-suite-completion.md) | `mcp-host` resources/prompts aggregation; `REQUEST_EXTRA`/`PROGRESS` bindings for tools            |
 | P1-4 | [extension-otel](p1-4-extension-otel.md)             | OpenTelemetry traces across REST, MCP, and jobs — `@opentelemetry/api` only                        |
@@ -34,9 +34,10 @@ tracked in the doc headers.
 
 ## Exploratory — not part of the reviewed roadmap
 
-| #   | Proposal                                    | One-liner                                                                                              |
-| --- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| E-1 | [Chat channels](chat-channels.md)           | `@agentback/chat` — chat platforms (Slack/Discord/…) as a third inbound surface via Vercel's Chat SDK |
+| #   | Proposal                              | One-liner                                                                                             |
+| --- | ------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| E-1 | [Chat channels](chat-channels.md)     | `@agentback/chat` — chat platforms (Slack/Discord/…) as a third inbound surface via Vercel's Chat SDK |
+| E-2 | [Circuit breaker](circuit-breaker.md) | `@agentback/extension-circuit-breaker` — outbound fault tolerance; the dual of `extension-rate-limit` |
 
 ## Sequencing constraints (from eng review)
 
