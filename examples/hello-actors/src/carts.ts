@@ -3,11 +3,11 @@
 // License text available at https://opensource.org/license/mit/
 
 // A small typed client for the `cart` actor. Controllers (and any other caller)
-// inject this instead of the raw `ACTOR_REGISTRY`, so they get typed methods —
-// add(id, input) / clear(id) / view(id) — instead of the stringly-typed
-// `{name, input}` command envelope. Every call still goes through
-// `registry.invoke`/`registry.state`, so all the runtime guarantees hold:
-// per-identity serialization, validation, rollback, and requestId idempotency.
+// inject this instead of the raw `ACTOR_REGISTRY`. Internally it uses the
+// registry's typed proxy — `registry.ref(CartActor, id)` — whose methods mirror
+// the `@actorCommand` methods, so `add`/`clear` are fully typed and still route
+// through the runtime (per-identity serialization, validation, rollback,
+// requestId idempotency). `view` adds a state read the proxy doesn't cover.
 //
 // You must NOT inject the CartActor instance and call its methods directly —
 // that bypasses the runtime (no serialization, no rollback, no persisted state).
@@ -16,9 +16,13 @@
 import {z} from 'zod';
 import {inject} from '@agentback/core';
 import {ACTOR_REGISTRY, type ActorRegistry} from '@agentback/actors';
-import {AddItem, CartView, cartView, type CartState} from './cart.actor.js';
-
-const CART = 'cart'; // matches @actor('cart')
+import {
+  AddItem,
+  CartActor,
+  CartView,
+  cartView,
+  type CartState,
+} from './cart.actor.js';
 
 export class Carts {
   constructor(
@@ -31,34 +35,19 @@ export class Carts {
     input: z.infer<typeof AddItem>,
     requestId?: string,
   ): Promise<z.infer<typeof CartView>> {
-    return this.command(id, 'add', input, requestId);
+    return this.registry.ref(CartActor, id).add(input, {requestId});
   }
 
   /** Empty the cart. */
   clear(id: string): Promise<z.infer<typeof CartView>> {
-    return this.command(id, 'clear', {});
+    return this.registry.ref(CartActor, id).clear({});
   }
 
   /** Read the current cart view (no turn taken). */
   async view(id: string): Promise<z.infer<typeof CartView>> {
-    const state = (await this.registry.state(CART, id)) as z.infer<
+    const state = (await this.registry.state('cart', id)) as z.infer<
       typeof CartState
     >;
     return cartView(state);
-  }
-
-  private async command(
-    id: string,
-    name: string,
-    input: unknown,
-    requestId?: string,
-  ): Promise<z.infer<typeof CartView>> {
-    const turn = await this.registry.invoke(
-      CART,
-      id,
-      {name, input},
-      {requestId},
-    );
-    return turn.output as z.infer<typeof CartView>;
   }
 }

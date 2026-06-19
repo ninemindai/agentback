@@ -82,7 +82,7 @@ const result = await actors.invoke(
 
 `cart/customer-42` is the state and serialization boundary. Another call using the same identity reaches the same logical state. `cart/customer-99` has independent state and may run concurrently.
 
-The current registry uses a command envelope because different decorated methods have different input/output types. A future typed proxy can add `actors.ref(CartActor, id).add(input)` without changing the runtime contract.
+`invoke` uses a command envelope because different decorated methods have different input/output types. For a typed call site, pass the **actor class** instead of its name: `actors.ref(CartActor, id)` returns a proxy whose methods mirror the `@actorCommand` methods, so `actors.ref(CartActor, id).add(input, {requestId})` is fully typed and routes through the same `invoke`. The proxy reads method _signatures_ (not the Zod schemas), so a command whose method declares no `input` parameter types its input as `unknown` — pass `{}`.
 
 ## The mailbox model
 

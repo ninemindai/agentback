@@ -74,6 +74,51 @@ describe('decorated actor registry', () => {
     await app.stop();
   });
 
+  it('returns a strongly-typed proxy from ref(ActorClass, id)', async () => {
+    const app = new Application();
+    app.component(InMemoryActorsComponent);
+    app.bind('services.step').to(2);
+    app.component(CounterComponent);
+    await app.start();
+    const registry = await app.get(ACTOR_REGISTRY);
+
+    // Typed: `add` accepts {amount} and resolves to {value, requestId}; the
+    // method-name → command-name map and routing come from @actorCommand.
+    const counter = registry.ref(CounterActor, 'customer-7');
+    const out = await counter.add({amount: 3}, {requestId: 'req-9'});
+    expect(out).toEqual({value: 6, requestId: 'req-9'});
+
+    // Same identity is the same state; idempotent replay through the proxy.
+    const replay = await counter.add({amount: 3}, {requestId: 'req-9'});
+    expect(replay).toEqual(out);
+    expect(await registry.state('counter', 'customer-7')).toEqual({value: 6});
+
+    // Compile-time proof the proxy is narrowed, not `any` (never executed).
+    const _typeChecks = async (px: typeof counter) => {
+      const r: {value: number; requestId: string} = await px.add({amount: 1});
+      void r;
+      // @ts-expect-error — input must be {amount: number}
+      await px.add({nope: 1});
+      // @ts-expect-error — initialState is not a command on the proxy
+      px.initialState;
+    };
+    void _typeChecks;
+    await app.stop();
+  });
+
+  it('rejects ref() for a class that is not an @actor', async () => {
+    const app = new Application();
+    app.component(InMemoryActorsComponent);
+    app.bind('services.step').to(1);
+    app.component(CounterComponent);
+    await app.start();
+    const registry = await app.get(ACTOR_REGISTRY);
+
+    class NotAnActor {}
+    expect(() => registry.ref(NotAnActor, 'x')).toThrow('is not an @actor');
+    await app.stop();
+  });
+
   it('validates decorated command input before calling the method', async () => {
     const app = new Application();
     app.component(InMemoryActorsComponent);

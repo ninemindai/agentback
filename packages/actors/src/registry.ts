@@ -46,6 +46,44 @@ type ActorMethod = (
   ctx: ActorCommandContext,
 ) => ActorTurn<unknown, unknown> | Promise<ActorTurn<unknown, unknown>>;
 
+/** A class decorated with `@actor` (carrying `@actorCommand` methods). */
+export type ActorClass<T extends object> = abstract new (...args: never[]) => T;
+
+type AnyActorTurn = ActorTurn<unknown, unknown>;
+/** Matches any `@actorCommand` method by its `(state, input, ctx) => turn` shape. */
+type CommandShape = (
+  state: never,
+  input: never,
+  ctx: never,
+) => AnyActorTurn | Promise<AnyActorTurn>;
+type CommandInput<F> = F extends (
+  state: never,
+  input: infer I,
+  ...rest: never[]
+) => unknown
+  ? I
+  : never;
+type CommandResult<F> = F extends (...args: never[]) => infer R
+  ? Awaited<R> extends ActorTurn<unknown, infer O>
+    ? O
+    : never
+  : never;
+
+/**
+ * Strongly-typed handle to one actor identity, derived from the actor class's
+ * `@actorCommand` methods: each command method becomes
+ * `(input, options?) => Promise<result>`. Returned by `registry.ref(ActorClass, id)`.
+ *
+ * Commands whose method declares no `input` parameter type as `unknown` input
+ * (the proxy reads method signatures, not the Zod schema) — pass `{}` for them.
+ */
+export type ActorProxy<T> = {
+  [K in keyof T as T[K] extends CommandShape ? K : never]: (
+    input: CommandInput<T[K]>,
+    options?: ActorInvokeOptions,
+  ) => Promise<CommandResult<T[K]>>;
+};
+
 /**
  * Discovers `@actor` service extensions at startup and compiles their decorated
  * methods into the runtime's transport-neutral ActorDefinition contract.
@@ -92,9 +130,15 @@ export class ActorRegistry implements LifeCycleObserver {
   ref(
     name: string,
     id: string,
-  ): ActorRef<ActorServiceCommand, ActorServiceResult> {
+  ): ActorRef<ActorServiceCommand, ActorServiceResult>;
+  ref<T extends object>(actor: ActorClass<T>, id: string): ActorProxy<T>;
+  ref(
+    actor: string | ActorClass<object>,
+    id: string,
+  ): ActorRef<ActorServiceCommand, ActorServiceResult> | ActorProxy<object> {
     if (!this.started) throw new Error('Actor registry has not started.');
-    return this.runtime.ref(this.definition(name), id);
+    if (typeof actor === 'function') return this.makeProxy(actor, id);
+    return this.runtime.ref(this.definition(actor), id);
   }
 
   state(name: string, id: string): Promise<unknown> {
@@ -109,6 +153,46 @@ export class ActorRegistry implements LifeCycleObserver {
     options?: ActorInvokeOptions,
   ): Promise<ActorServiceResult> {
     return this.ref(name, id).invoke(command, options);
+  }
+
+  /**
+   * Build a typed proxy over one identity. Reads the actor name and the
+   * methodName→commandName map from `@actor`/`@actorCommand` metadata, then maps
+   * each property access to `runtime.ref(...).invoke({name, input}, options)`.
+   */
+  private makeProxy<T extends object>(
+    ctor: ActorClass<T>,
+    id: string,
+  ): ActorProxy<T> {
+    const fn = ctor as Function;
+    const actorMeta = MetadataInspector.getClassMetadata<ActorClassMetadata>(
+      ActorMetadata.CLASS,
+      fn,
+    );
+    if (!actorMeta) {
+      throw new Error(`Class '${fn.name}' is not an @actor.`);
+    }
+    const definition = this.definition(actorMeta.name); // throws if unregistered
+    const commandByMethod = new Map<string, string>();
+    const methods =
+      MetadataInspector.getAllMethodMetadata<ActorCommandMetadata>(
+        ActorMetadata.COMMAND,
+        fn.prototype,
+      ) ?? {};
+    for (const [methodName, metadata] of Object.entries(methods)) {
+      if (metadata) commandByMethod.set(methodName, metadata.name);
+    }
+
+    const ref = this.runtime.ref(definition, id);
+    return new Proxy(Object.create(null) as ActorProxy<T>, {
+      get: (_target, property) => {
+        if (typeof property !== 'string') return undefined;
+        const command = commandByMethod.get(property);
+        if (!command) return undefined;
+        return (input: unknown, options?: ActorInvokeOptions) =>
+          ref.invoke({name: command, input}, options).then(turn => turn.output);
+      },
+    });
   }
 
   private compile(bindingKey: string, ctor: Function): ServiceActorDefinition {
