@@ -25,7 +25,8 @@
   "devDependencies": {
     "@agentback/openapi": "workspace:~",
     "@agentback/rest": "workspace:~",
-    "vitest": "~4.1.9"
+    "vitest": "~4.1.9",
+    "wrangler": "^4.102.0"
   },
   "license": "MIT",
   "repository": {

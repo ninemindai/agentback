@@ -21,6 +21,8 @@ Options:
   --entry <path>            built module exporting the app builder
   --export <name>           builder export name (default: buildApp)
   --prod                    production deploy (default: preview)
+  --temporary               cloudflare: deploy to a throwaway preview account
+                            (no signup/auth; expires in 60 min — must run unauthenticated)
   --console                 also deploy the dev console (needs auth or --unsafe-public-console)
   --unsafe-public-console   acknowledge publishing console internals unauthenticated
   --eject                   write api/index.ts + vercel.json, then stop

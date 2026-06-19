@@ -64,19 +64,36 @@ export const cloudflareTarget: DeployTarget = {
         'warning: Cloudflare Workers has a single deploy environment; --prod has no effect.',
       );
     }
-    const who = await deps.exec('wrangler', ['whoami']);
-    if (who.code !== 0) {
-      throw new AgentError(
-        'Wrangler is not installed or not authenticated. Install with ' +
-          '`npm i -g wrangler`, then run `wrangler login`.',
-        {code: ErrorCodes.INVALID_INPUT},
-      );
+    // `--temporary` provisions a throwaway preview account on the fly, so it
+    // requires the *inverse* of the normal flow: wrangler refuses it when you
+    // are authenticated (or CLOUDFLARE_API_TOKEN is set). Skip the whoami gate
+    // — a CI runner is naturally unauthenticated — and let wrangler enforce it.
+    if (!args.temporary) {
+      const who = await deps.exec('wrangler', ['whoami']);
+      if (who.code !== 0) {
+        throw new AgentError(
+          'Wrangler is not installed or not authenticated. Install with ' +
+            '`npm i -g wrangler`, then run `wrangler login` (or pass ' +
+            '`--temporary` to deploy to a throwaway preview account).',
+          {code: ErrorCodes.INVALID_INPUT},
+        );
+      }
     }
-    const res = await deps.exec('wrangler', ['deploy']);
+    const res = await deps.exec(
+      'wrangler',
+      args.temporary ? ['deploy', '--temporary'] : ['deploy'],
+    );
     if (res.code !== 0) {
-      throw new AgentError(`wrangler deploy failed (exit ${res.code}).`, {
-        code: ErrorCodes.INVALID_INPUT,
-      });
+      const hint = args.temporary
+        ? ' `--temporary` only works unauthenticated — log out and unset ' +
+          'CLOUDFLARE_API_TOKEN first.'
+        : '';
+      throw new AgentError(
+        `wrangler deploy failed (exit ${res.code}).${hint}`,
+        {
+          code: ErrorCodes.INVALID_INPUT,
+        },
+      );
     }
     const m = res.stdout.match(/https:\/\/\S+\.workers\.dev\S*/);
     if (!m)

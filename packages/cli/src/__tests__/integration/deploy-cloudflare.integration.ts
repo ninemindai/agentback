@@ -70,6 +70,7 @@ describe('runDeploy cloudflare (dry-run, real esbuild preflight)', () => {
       entry: undefined,
       exportName: 'buildApp',
       prod: false,
+      temporary: false,
       console: false,
       unsafePublicConsole: false,
       eject: false,

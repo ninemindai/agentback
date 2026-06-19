@@ -266,6 +266,14 @@ The `--dry-run` flag stops after preflight (no `wrangler` invocation), useful in
 agentback deploy cloudflare --dry-run
 ```
 
+The `--temporary` flag deploys to a **throwaway preview account** — no Cloudflare signup, account, or token. Wrangler provisions a temporary account on the fly (proof-of-work), deploys, and prints a claim URL; the deployment expires after 60 minutes unless claimed. It is the secretless way to run a *real* deploy in CI (the `--dry-run` doctor only proves the bundle is clean, not that the worker runs):
+
+```bash
+agentback deploy cloudflare --temporary
+```
+
+`--temporary` only works **unauthenticated** — wrangler refuses it when you are logged in or `CLOUDFLARE_API_TOKEN` is set, so the inverse of the normal `wrangler login` prerequisite applies. Requires wrangler ≥ 4.102.
+
 To inspect the generated files before deploying (eject mode):
 
 ```bash

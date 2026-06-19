@@ -46,6 +46,11 @@ describe('parseDeployArgs', () => {
     });
   });
 
+  it('parses --temporary (default false)', () => {
+    expect(parseDeployArgs(['cloudflare']).temporary).toBe(false);
+    expect(parseDeployArgs(['cloudflare', '--temporary']).temporary).toBe(true);
+  });
+
   it('throws on missing target', () => {
     expect(() => parseDeployArgs([])).toThrow(/target/i);
   });

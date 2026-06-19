@@ -9,6 +9,7 @@ export interface DeployArgs {
   entry?: string;
   exportName?: string;
   prod: boolean;
+  temporary: boolean;
   console: boolean;
   unsafePublicConsole: boolean;
   eject: boolean;
@@ -22,6 +23,7 @@ export interface DeployArgs {
 const VALUE_FLAGS = new Set(['--entry', '--export', '--verify-path']);
 const BOOL_FLAGS = new Set([
   '--prod',
+  '--temporary',
   '--console',
   '--unsafe-public-console',
   '--eject',
@@ -55,6 +57,7 @@ export function parseDeployArgs(argv: string[]): DeployArgs {
   const out: DeployArgs = {
     target: resolved,
     prod: false,
+    temporary: false,
     console: false,
     unsafePublicConsole: false,
     eject: false,
@@ -75,6 +78,7 @@ export function parseDeployArgs(argv: string[]): DeployArgs {
       else if (f === '--verify-path') out.verifyPath = v;
     } else if (BOOL_FLAGS.has(f)) {
       if (f === '--prod') out.prod = true;
+      else if (f === '--temporary') out.temporary = true;
       else if (f === '--console') out.console = true;
       else if (f === '--unsafe-public-console') out.unsafePublicConsole = true;
       else if (f === '--eject') out.eject = true;

@@ -450,6 +450,14 @@ binds a port as a normal long-running server. Two deploy notes:
   packaging; deploy from a project that installs `@agentback/*` as normal
   (copied) dependencies.
 
+For Cloudflare Workers, `agentback deploy cloudflare` (`@agentback/cli`) runs
+generate → preflight (bundle doctor) → `wrangler deploy` → verify `/openapi.json`.
+`--dry-run` stops after preflight; `--temporary` deploys to a **throwaway preview
+account** (no signup/token, 60-min TTL) for a *secretless* real deploy in CI.
+`--temporary` only works **unauthenticated** — wrangler refuses it when logged in
+or `CLOUDFLARE_API_TOKEN` is set (the inverse of the normal `wrangler login`
+prerequisite); needs wrangler ≥ 4.102.
+
 ## Key Rules
 
 - **ESM `.js` extensions on all relative imports** — `import {foo} from './bar.js'`

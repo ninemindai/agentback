@@ -63,6 +63,14 @@ Eject (write files, stop before deploy so you can customise):
 agentback deploy cloudflare --eject
 ```
 
+Deploy to a **throwaway preview account** — no Cloudflare signup, account, or token. Wrangler provisions a temporary account on the fly (via proof-of-work), deploys, and prints a claim URL; the deployment expires after 60 minutes unless claimed:
+
+```bash
+agentback deploy cloudflare --temporary
+```
+
+`--temporary` only works **unauthenticated** — wrangler refuses it when you are logged in or `CLOUDFLARE_API_TOKEN` is set. This makes it ideal for CI smoke-tests that deploy without storing any Cloudflare secret. Requires wrangler ≥ 4.102 (the flag is undocumented/hidden but accepted).
+
 The generated worker entry is written to `.agentback/deploy/cloudflare/worker.ts`. It boots your `buildApp` function at cold-start and forwards every request to `server.fetchHandler()` — no Node-only APIs in the request path.
 
 ## End-to-end testing
@@ -99,6 +107,20 @@ ABC_E2E_CF=1 pnpm -F @agentback/cli build && \
 ```
 
 The test deploys the fixture app and verifies the deployment succeeds. It times out after 3 minutes if the deploy does not complete.
+
+### Cloudflare Workers e2e — secretless (`--temporary`)
+
+A second variant (same file, gated on `ABC_E2E_CF_TEMP=1`) deploys via `--temporary`, so it needs **no `CLOUDFLARE_API_TOKEN`**. It must run **unauthenticated** — wrangler refuses `--temporary` when a session or token is present. CI runners are unauthenticated by default; to run locally, isolate wrangler's home so it can't see your session:
+
+```bash
+ABC_E2E_CF_TEMP=1 pnpm -F @agentback/cli build && \
+  cd packages/cli/fixtures/cf-app && \
+  env -u CLOUDFLARE_API_TOKEN HOME=$(mktemp -d) \
+    PATH="../../node_modules/.bin:$PATH" \
+    pnpm exec vitest run ../../dist/__tests__/e2e/deploy-cloudflare.e2e.js
+```
+
+The temporary-account endpoint is anonymous and may rate-limit, so keep this **non-blocking** in CI rather than a required check.
 
 ### Dry-run integration test
 
