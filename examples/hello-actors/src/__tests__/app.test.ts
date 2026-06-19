@@ -8,6 +8,7 @@
 
 import {describe, expect, it} from 'vitest';
 import {createTestApp} from '@agentback/testing';
+import {ACTOR_REGISTRY, type ActorRegistry} from '@agentback/actors';
 import {HelloActorsApplication} from '../application.js';
 
 describe('hello-actors', () => {
@@ -122,6 +123,26 @@ describe('hello-actors', () => {
     // Unlike checkout, a query on an empty cart is fine (total 0).
     const empty = await t.http.get('/carts/grace/total').expect(200);
     expect(empty.body).toEqual({total: 0});
+  });
+
+  it('event sourcing: checkout appends a CheckedOut fact subscribers see', async () => {
+    await using t = await createTestApp(HelloActorsApplication);
+    const registry = await t.app.get<ActorRegistry>(ACTOR_REGISTRY);
+    const seen: string[] = [];
+    registry.subscribe(({event}) => seen.push(event.type));
+
+    await t.http.post('/carts/ada/items').send({sku: 'keyboard'}).expect(200);
+    await t.http
+      .post('/carts/ada/checkout')
+      .set('Idempotency-Key', 'order-7')
+      .send({})
+      .expect(200);
+
+    const log = await registry.events('cart', 'ada');
+    expect(log.map(e => e.event.type)).toEqual(['CheckedOut']);
+    expect(log[0]?.event.orderId).toBe('order-7');
+    expect(log[0]?.seq).toBe(0);
+    expect(seen).toEqual(['CheckedOut']); // the subscriber saw it too
   });
 
   it('checkout: an empty cart is a 400', async () => {

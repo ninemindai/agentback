@@ -11,6 +11,7 @@
 //   GET    /openapi.json       OpenAPI 3.1.1 derived from the Zod schemas
 
 import {isMain} from '@agentback/core';
+import {ACTOR_REGISTRY, type ActorRegistry} from '@agentback/actors';
 import {installExplorer} from '@agentback/rest-explorer';
 import {HelloActorsApplication} from './application.js';
 
@@ -18,6 +19,12 @@ async function main() {
   const app = new HelloActorsApplication();
   await installExplorer(app, {title: 'hello-actors API'});
   await app.start();
+
+  // Subscribe to the actor event log — every checkout emits a `CheckedOut` fact.
+  const registry = await app.get<ActorRegistry>(ACTOR_REGISTRY);
+  registry.subscribe(({actor, event}) =>
+    console.log(`  event: ${event.type} (cart/${actor.id})`, event),
+  );
 
   const server = await app.restServer;
   console.log(`hello-actors listening at ${server.url}`);

@@ -6,6 +6,7 @@ export * from './types.js';
 export * from './define-actor.js';
 export * from './keys.js';
 export * from './in-memory-runtime.js';
+export * from './event-sourced-runtime.js';
 export * from './component.js';
 export * from './decorators.js';
 export * from './registry.js';

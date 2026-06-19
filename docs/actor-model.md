@@ -148,6 +148,12 @@ Production actors should persist an outbox with state, call idempotent services 
 
 This mode persists completed turns but does not durably queue pending commands. Durable request/reply queuing remains separate because the current `JobQueue` port has no result channel.
 
+## Events (event log)
+
+A command turn may return `events` alongside `state` and `result` — domain facts (`{type, …}`) describing what happened. `EventSourcedActorsComponent` binds an `ActorRuntime` that **persists those events to a per-identity append-only log atomically with the state/dedup commit**, then delivers them to subscribers. Read a log with `registry.events(type, id)` or react with `registry.subscribe(handler)`; each `CommittedActorEvent` carries the `actor`, a 0-based `seq`, and the producing `requestId`. Events are not appended on a rolled-back or replayed turn.
+
+This is **state plus an event log**, not full event sourcing: state stays the stored, authoritative value (not a fold of events). It delivers the "Event = fact" persistence — projections, audit, and react-to-what-happened subscribers — without an event-sourced authoring model. Other runtimes ignore a turn's `events`; the in-memory `EventSourcedActorRuntime` is the reference, and a durable adapter must append events in the same transaction as state + dedup.
+
 ## Layer boundary
 
 Decorated services are the application authoring model. `ActorDefinition` remains the normalized runtime port so an in-memory, Durable Objects, Redis, or another adapter does not depend on decorators or DI metadata.

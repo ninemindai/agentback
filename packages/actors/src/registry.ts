@@ -27,6 +27,7 @@ import type {
   Actor,
   ActorCommandContext,
   ActorDefinition,
+  ActorEventStore,
   ActorInvokeOptions,
   ActorQueryContext,
   ActorRef,
@@ -34,6 +35,7 @@ import type {
   ActorServiceCommand,
   ActorServiceResult,
   ActorTurn,
+  CommittedActorEvent,
 } from './types.js';
 
 type ServiceActorDefinition = ActorDefinition<
@@ -177,6 +179,32 @@ export class ActorRegistry implements LifeCycleObserver {
   state(name: string, id: string): Promise<unknown> {
     if (!this.started) throw new Error('Actor registry has not started.');
     return this.runtime.state(this.definition(name), id);
+  }
+
+  /** The committed event log for one identity (requires an event-log runtime). */
+  events(name: string, id: string): Promise<readonly CommittedActorEvent[]> {
+    if (!this.started) throw new Error('Actor registry has not started.');
+    this.definition(name); // validate the actor type exists
+    return this.eventStore().events(name, id);
+  }
+
+  /** Observe every committed event (requires an event-log runtime). */
+  subscribe(handler: (event: CommittedActorEvent) => void): () => void {
+    if (!this.started) throw new Error('Actor registry has not started.');
+    return this.eventStore().subscribe(handler);
+  }
+
+  private eventStore(): ActorEventStore {
+    const runtime = this.runtime as Partial<ActorEventStore>;
+    if (
+      typeof runtime.events !== 'function' ||
+      typeof runtime.subscribe !== 'function'
+    ) {
+      throw new Error(
+        'The bound ActorRuntime does not persist events. Use EventSourcedActorsComponent.',
+      );
+    }
+    return runtime as ActorEventStore;
   }
 
   invoke(
@@ -403,6 +431,7 @@ export class ActorRegistry implements LifeCycleObserver {
         return {
           state: turn.state,
           result: {name: metadata.name, output},
+          events: turn.events, // passed through to an event-log runtime
         };
       },
     });

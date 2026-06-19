@@ -37,6 +37,9 @@ without running `add` twice.
   the `Idempotency-Key` makes the checkout safe to retry.
 - **Read-only queries** — `GET /carts/{id}/total` is an `@actorQuery`: it runs
   **lease-free** (no turn, concurrent with commands) against a state snapshot.
+- **Events are facts** — `checkout` emits a `CheckedOut` event; the event-log
+  runtime persists it atomically with state and delivers it to subscribers
+  (`registry.subscribe` / `registry.events`).
 - **One schema, many views** — `CartView` is the result of `add`/`clear` _and_
   the `view` query.
 - **Inject the actor, not a client** — the controller injects a typed accessor
@@ -81,12 +84,31 @@ and `@actorQuery` methods. Every call still routes through the runtime, so all
 its guarantees hold. Because `view` and `total` are queries on the actor, the
 accessor covers reads too — no `Carts` facade required.
 
-## In-memory by default
+## In-memory, with an event log
 
-This example uses `InMemoryActorsComponent`, so it runs with no external infra.
-The component binds `ACTOR_RUNTIME` (the single-process reference adapter) and
+This example uses `EventSourcedActorsComponent`, so it runs with no external
+infra. It binds `ACTOR_RUNTIME` (the event-logging single-process adapter) and
 the `ActorRegistry`, which at `app.start()` discovers every `@actor` service and
-compiles its `@actorCommand` methods into the runtime's transport-neutral port.
+compiles its commands/queries into the runtime's transport-neutral port. It is a
+**superset** of the plain `InMemoryActorsComponent`: same serialized turns and
+idempotency, plus a per-identity **event log**.
+
+`checkout` emits a `CheckedOut` domain event; the runtime persists it atomically
+with the state change, so you can read the log or subscribe to it:
+
+```ts
+const registry = await app.get(ACTOR_REGISTRY);
+
+registry.subscribe(({actor, event}) => {
+  if (event.type === 'CheckedOut') fulfil(event.orderId);
+});
+
+const log = await registry.events('cart', 'ada'); // ordered CommittedActorEvent[]
+```
+
+Events are facts persisted with state — the basis for projections, audit, and
+"react to what happened" subscribers. (Other runtimes ignore a turn's `events`;
+the log is this adapter's feature.)
 
 ## Run
 
@@ -143,8 +165,9 @@ import {installRedisActors} from '@agentback/actors-redis';
 installRedisActors(this, {connection: {url: process.env.REDIS_URL}});
 ```
 
-> The in-memory adapter is the single-process reference (tests and dev);
+> The in-memory adapters are the single-process reference (tests and dev);
 > `@agentback/actors-redis` adds cross-process serialization and persistence —
-> completed turns are durable, though pending commands aren't queued. See the
-> [programming-model guide](../../docs/actor-model.md) for the full semantics
-> and non-goals.
+> completed turns are durable, though pending commands aren't queued, and the
+> event log is the in-memory event-sourced adapter's feature (not Redis) in this
+> prototype. See the [programming-model guide](../../docs/actor-model.md) for the
+> full semantics and non-goals.

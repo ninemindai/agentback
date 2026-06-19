@@ -21,10 +21,43 @@ export interface ActorQueryContext {
   readonly actor: ActorId;
 }
 
+/** A domain fact emitted by a command turn. Must be JSON-serializable. */
+export interface ActorEvent {
+  readonly type: string;
+  readonly [key: string]: unknown;
+}
+
 /** State and reply produced by one successful actor turn. */
 export interface ActorTurn<S, R> {
   state: S;
   result: R;
+  /**
+   * Domain events produced by this turn. An event-log runtime
+   * (`EventSourcedActorRuntime`) appends them to the identity's append-only log
+   * atomically with the state/dedup commit; other runtimes ignore them.
+   */
+  events?: readonly ActorEvent[];
+}
+
+/** One committed event with its position in an identity's append-only log. */
+export interface CommittedActorEvent {
+  readonly actor: ActorId;
+  /** 0-based position in this identity's log. */
+  readonly seq: number;
+  /** The `requestId` of the turn that produced it. */
+  readonly requestId: string;
+  readonly event: ActorEvent;
+}
+
+/**
+ * Capability of a runtime that persists an append-only event log per identity
+ * (Event = fact). `ActorRegistry.events`/`.subscribe` delegate to it.
+ */
+export interface ActorEventStore {
+  /** The committed events for one identity, in order. */
+  events(type: string, id: string): Promise<readonly CommittedActorEvent[]>;
+  /** Observe every event as it commits. Returns an unsubscribe function. */
+  subscribe(handler: (event: CommittedActorEvent) => void): () => void;
 }
 
 /** Service-class contract used by the decorated actor authoring model. */

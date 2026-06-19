@@ -111,7 +111,15 @@ export class CartActor implements Actor<z.infer<typeof CartState>> {
       note: input.note,
     };
     state.items = {}; // the order is placed; the cart is emptied
-    return {state, result: order};
+    // Emit a domain fact. An event-log runtime persists it atomically with the
+    // state change and delivers it to subscribers; other runtimes ignore it.
+    return {
+      state,
+      result: order,
+      events: [
+        {type: 'CheckedOut', orderId: order.orderId, total: order.total},
+      ],
+    };
   }
 
   // Read-only queries: no turn, no lease — they run concurrently with commands
