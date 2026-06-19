@@ -176,6 +176,20 @@ When `ncu` produces a result that won't build, prefer pinning back the offender 
 - **`pnpm-workspace.yaml` `allowBuilds`**: pnpm 11 requires per-package opt-in for postinstall scripts. The first install on a fresh machine writes `allowBuilds: { '<pkg>': set this to true or false }` placeholders into `pnpm-workspace.yaml`; replace `set this to ...` with `true` or `false` and rerun. Don't commit placeholders.
 - **`verify-deps-before-run=false`** is set in `.npmrc` — pnpm 11 otherwise re-runs `pnpm install` before each `pnpm <script>`, which fails on the supply-chain check inside scripts that don't need re-resolution.
 
+## Documentation surfaces (keep in sync with features)
+
+When you add or materially change a **major feature** (a new package, decorator, port/adapter, or capability), update every surface it touches **in the same change** — doc drift is a recurring failure here. Run through this list:
+
+- **Package README** (`packages/<pkg>/README.md`) — exports, a usage snippet, and where it sits in the layering.
+- **`docs/packages.md`** — the catalog row (one line per package).
+- **The concept/guide doc** under `docs/` (e.g. `docs/actor-model.md`, a `docs/guides/*.md`, or `docs/concepts/*.md`) — the authoritative how-it-works.
+- **`docs/README.md`** — link the new doc/example from the learning-path tables.
+- **The agent skill** — `skills/agentback/SKILL.md` (routing question + the packages/capability table) and a `skills/agentback/references/*.md` page. This is the agent-facing manual; without it, coding agents won't discover the feature.
+- **`CLAUDE.md`** — the architecture "New capability packages" list and any rules the feature changes.
+- **An example** under `examples/hello-*` when the feature has a runnable shape.
+- **The blog** (`docs/blog/`) — only for narrative/thesis features; a draft post stays **unlinked** from `blog/index.html` until release.
+- **The website is derived, not hand-edited**: `website/build.mjs` copies `docs/README.md`, `docs/packages.md`, and `docs/blog/**`. Update those and the site follows — the only separate website action is linking a published blog post in `docs/blog/index.html`.
+
 ## Releasing
 
 Versioning is **lockstep**: every `@agentback/*` package + `create-agentback` shares one version and releases together. Internal deps use `workspace:~`, which pnpm rewrites to `~<version>` at publish time (so patches propagate to consumers; verify with `pnpm -F <pkg> pack` + inspect the packed `package.json`). To cut `X.Y.Z`:
