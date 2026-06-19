@@ -1,6 +1,6 @@
 {
   "name": "@agentback/files",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Transport-agnostic file storage port (FileStore) with an in-memory adapter",
   "type": "module",
   "main": "dist/index.js",

@@ -1,6 +1,6 @@
 {
   "name": "@agentback/authorization",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "@authorize decorator + voter pipeline (minimal port of @loopback/authorization)",
   "type": "module",
   "main": "dist/index.js",

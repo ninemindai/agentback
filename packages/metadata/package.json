@@ -1,6 +1,6 @@
 {
   "name": "@agentback/metadata",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Decorator metadata utilities (ported from @loopback/metadata)",
   "type": "module",
   "main": "dist/index.js",

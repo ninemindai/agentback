@@ -1,6 +1,6 @@
 {
   "name": "@agentback/testlab",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Test utilities (port of @loopback/testlab) — works under Vitest",
   "type": "module",
   "main": "dist/index.js",
