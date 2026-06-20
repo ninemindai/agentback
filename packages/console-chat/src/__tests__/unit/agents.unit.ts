@@ -114,4 +114,14 @@ describe('doctor', () => {
     expect(result.status).toBe('ok');
     expect(result.found).toBeUndefined();
   });
+
+  it('returns wrong-version when minVersion is set but version is not detectable', async () => {
+    const noVersionProbe: RunProbe = async () => ({present: true});
+    const result = await doctor(descriptor, noVersionProbe);
+    expect(result.status).toBe('wrong-version');
+    expect(result.found).toBeUndefined();
+    expect(result.need).toBe('1.0.0');
+    expect(result.fix).toBeTruthy();
+    expect(result.fix).toContain('claude-agent-acp');
+  });
 });
