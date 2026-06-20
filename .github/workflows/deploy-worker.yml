@@ -1,14 +1,16 @@
 name: Deploy Worker (Cloudflare)
 
 # Builds website/dist and deploys the agentback.dev Worker (Workers Static
-# Assets + markdown negotiation, see website/edge/).
-#
-# Manual-only for now (workflow_dispatch): merging this branch must NOT cut the
-# site over to Cloudflare-served by itself. Do the cutover deliberately —
-# trigger this workflow (or run `wrangler deploy` locally) once the
-# CLOUDFLARE_API_TOKEN secret is set. After the cutover is confirmed, switch the
-# trigger to `push` (paths: website/**) and retire .github/workflows/pages.yml.
+# Assets + markdown negotiation, see website/edge/). This is the site's deploy
+# pipeline — Cloudflare serves the uploaded assets; GitHub Pages is no longer
+# the origin (pages.yml retired). Auto-runs on content changes; also dispatchable
+# manually. Needs the CLOUDFLARE_API_TOKEN secret (account token agentback-ci).
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - 'docs/**'
   workflow_dispatch:
 
 permissions:
