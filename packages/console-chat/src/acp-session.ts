@@ -18,7 +18,6 @@ import {EventEmitter} from 'node:events';
 import {Readable, Writable} from 'node:stream';
 import {
   client as acpClient,
-  type AgentApp,
   type ClientApp,
   type ClientConnection,
   type ClientContext,
