@@ -20,6 +20,12 @@ import type {RestApplication, RestServer} from '@agentback/rest';
 import {serveStaticDir} from '@agentback/rest';
 import {ContextModel, buildModel} from './model.js';
 
+// Re-export the read-only model builder + its types so other packages (e.g.
+// @agentback/introspection) can project the container metadata without a deep
+// import. Mirrors how schema-explorer re-exports its inventory/okf builders.
+// Metadata-only: never resolves a binding value.
+export * from './model.js';
+
 /** Fixed base path of the JSON API exposed by {@link ContextExplorerController}. */
 const API_BASE = '/context-explorer/api';
 
