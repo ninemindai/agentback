@@ -2,27 +2,41 @@
 // Node module: @agentback/console
 // This file is licensed under the MIT License.
 
+import type {ComponentType} from 'react';
 import {useEffect, useMemo, useState} from 'react';
-import type {ConsoleClientConfig, ConsolePage} from './types';
+import type {ConsoleClientConfig, ConsolePage} from './types.js';
+
+/** Props forwarded to the dock component (mirrors `ConsoleClientConfig.chat`). */
+export type ChatConfig = NonNullable<ConsoleClientConfig['chat']>;
 
 /**
  * Console shell: a left sidebar (nav derived from the registered pages, sorted
- * by `order`) + a content pane rendering the active panel. Routing is
- * hash-based (`#/context`) — dependency-free and deep-linkable, no server
- * routes needed beyond the static shell.
+ * by `order`) + a content pane rendering the active panel.  When
+ * `config.chat?.enabled` is true a third dock column is added on the right.
+ * Routing is hash-based (`#/context`) — dependency-free and deep-linkable, no
+ * server routes needed beyond the static shell.
+ *
+ * The `DockComponent` prop lets the SPA entry point (`main.tsx`) inject the
+ * real `Dock` from `@agentback/console-chat/console` without this file taking
+ * a compile-time dependency on that package (avoids a circular dep).
  */
 export function App({
   config,
   pages,
+  DockComponent,
 }: {
   config: ConsoleClientConfig;
   pages: ConsolePage[];
+  DockComponent?: ComponentType<{chat: ChatConfig}>;
 }) {
   const nav = useMemo(
     () => [...pages].sort((a, b) => a.order - b.order),
     [pages],
   );
-  const routeOf = () => window.location.hash.replace(/^#/, '') || nav[0]?.route;
+  const routeOf = () =>
+    (typeof window !== 'undefined'
+      ? window.location.hash.replace(/^#/, '')
+      : '') || nav[0]?.route;
   const [route, setRoute] = useState(routeOf);
 
   useEffect(() => {
@@ -34,9 +48,10 @@ export function App({
   }, []);
 
   const active = nav.find(p => p.route === route) ?? nav[0];
+  const chatEnabled = config.chat?.enabled === true;
 
   return (
-    <div className="console">
+    <div className={chatEnabled ? 'console console--chat' : 'console'}>
       <aside className="sidebar">
         <div className="brand">{config.title}</div>
         <nav>
@@ -63,6 +78,11 @@ export function App({
           </p>
         )}
       </main>
+      {chatEnabled && config.chat && (
+        <section className="dock" data-dock>
+          {DockComponent && <DockComponent chat={config.chat} />}
+        </section>
+      )}
     </div>
   );
 }

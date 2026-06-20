@@ -46,6 +46,57 @@ button.ghost { background:var(--card); border:1px solid var(--line-2); color:var
 button.ghost:hover { border-color:var(--accent); color:var(--accent); }
 .badge { display:inline-block; background:var(--badge); color:var(--badge-ink); padding:.05rem .4rem; border-radius:3px; font-size:10.5px; font-family:var(--mono); letter-spacing:.01em; }
 .empty { color:var(--muted); font-style:italic; }
+
+/* ── Agent chat dock ────────────────────────────────────────────────────────── */
+/* Layout: console grid gains a third 380px column when .console--chat is set.  */
+/* Below ~1100px the dock collapses to a right-edge tab that overlays the panel. */
+.console--chat { grid-template-columns:170px 1fr 380px; }
+.dock { display:flex; flex-direction:column; background:var(--card); min-width:0; border-left:1px solid var(--line-2); }
+.dock-head { padding:12px 14px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.picker { display:flex; align-items:center; gap:8px; min-width:0; }
+.dot { width:7px; height:7px; border-radius:50%; background:var(--ok); flex:none; }
+.dot.warn { background:var(--accent-soft); }
+.dot.err  { background:var(--err); }
+.dot.off  { background:var(--faint); }
+.dock-name { font-weight:600; font-size:13px; }
+.dock-adapter { font-family:var(--mono); font-size:10.5px; color:var(--faint); }
+.dock-head .ghost { background:var(--card); border:1px solid var(--line-2); color:var(--muted); padding:.18rem .5rem; border-radius:5px; font:inherit; font-size:11.5px; cursor:pointer; }
+.stream { flex:1; overflow:auto; padding:14px; display:flex; flex-direction:column; gap:14px; }
+.msg .who { font-family:var(--mono); font-size:10px; color:var(--faint); text-transform:uppercase; letter-spacing:.08em; margin-bottom:3px; }
+.msg.user .bubble { background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:.5rem .65rem; font-size:13px; }
+.msg.assistant .bubble { font-size:13.5px; }
+/* Tool-call activity block — mono, blue left border, mirrors mcp-inspector. */
+.tool { font-family:var(--mono); font-size:11.5px; background:var(--paper); border:1px solid var(--line); border-left:2px solid var(--blue); border-radius:4px; padding:.4rem .55rem; margin:.5rem 0; color:var(--muted); }
+.tool b { color:var(--ink); font-weight:500; }
+/* Permission prompt — the trust moment: inline card, rust left border, never auto-dismisses. */
+.perm { background:#fbf3ee; border:1px solid var(--line-2); border-left:3px solid var(--accent); border-radius:5px; padding:.65rem .7rem; }
+.perm .q { font-weight:600; font-size:13px; margin-bottom:2px; }
+.perm .detail { font-family:var(--mono); font-size:11px; color:var(--muted); margin-bottom:.55rem; }
+.perm .acts { display:flex; gap:8px; }
+.perm .acts button { min-height:44px; padding:.32rem .8rem; }
+.perm .scope { margin-top:.5rem; font-size:11px; color:var(--faint); }
+.perm .scope label { cursor:pointer; }
+/* Composer */
+.composer { border-top:1px solid var(--line); padding:10px 12px; }
+.chip { display:inline-flex; align-items:center; gap:6px; background:var(--badge); color:var(--badge-ink); font-family:var(--mono); font-size:10.5px; padding:.12rem .45rem; border-radius:3px; margin-bottom:8px; }
+.chip .x { cursor:pointer; color:var(--faint); font-weight:700; }
+.inputrow { display:flex; gap:8px; align-items:center; }
+.inputrow input { flex:1; font:inherit; font-size:13px; padding:.45rem .6rem; border:1px solid var(--line-2); border-radius:5px; background:var(--paper); color:var(--ink); }
+.inputrow .send { background:var(--accent); color:#fdf8ef; border:0; border-radius:5px; padding:.45rem .7rem; cursor:pointer; font-size:12.5px; min-height:44px; }
+/* Empty / no-agent state */
+.dock-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; text-align:center; padding:24px 16px; color:var(--muted); font-size:12.5px; flex:1; }
+.dock-empty-title { font-family:var(--serif); font-size:15px; color:var(--ink); }
+.dock-install-hint { font-family:var(--mono); font-size:11px; display:block; }
+/* Responsive: below ~1100px dock becomes a right-edge overlay tab. */
+@media (max-width:1100px) {
+  .console--chat { grid-template-columns:170px 1fr; }
+  .dock { position:fixed; top:0; right:0; height:100vh; width:380px; z-index:50; transform:translateX(100%); transition:transform .2s ease; border-left:1px solid var(--line-2); box-shadow:-4px 0 24px rgba(34,29,22,.1); }
+  .dock.dock--open { transform:none; }
+  .dock-tab { display:flex; align-items:center; justify-content:center; position:fixed; right:0; top:50%; transform:translateY(-50%); width:28px; height:72px; background:var(--card); border:1px solid var(--line-2); border-right:0; border-radius:6px 0 0 6px; cursor:pointer; z-index:51; font-size:11px; writing-mode:vertical-rl; color:var(--muted); gap:4px; padding:8px 4px; }
+}
+@media (min-width:1101px) {
+  .dock-tab { display:none; }
+}
 `;
 
 /** The Google Fonts stylesheet href both shells preconnect to + load. */
