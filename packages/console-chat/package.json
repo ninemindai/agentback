@@ -35,6 +35,7 @@
   },
   "devDependencies": {
     "@agentback/testing": "workspace:~",
+    "@agentclientprotocol/sdk": "^0.28",
     "@types/react": "~19.2.17",
     "@types/react-dom": "~19.2.3",
     "esbuild": "~0.28.1",
