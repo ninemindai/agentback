@@ -26,13 +26,19 @@ type View = 'browse' | 'graph' | 'hierarchy' | 'raw';
  * the panes are pure functions of this state. No router, no global store.
  * `apiBase` is supplied by the standalone shell or the console, so the panel
  * is reusable under any mount path.
+ *
+ * `onFocusChange` — optional callback fired when the selected binding changes
+ * (null on deselect). Used by the console shell's focus bus.
  */
 export function App({
   apiBase,
   title = 'Context Explorer',
+  onFocusChange,
 }: {
   apiBase: string;
   title?: string;
+  /** Called with the selected binding key, or null when nothing is selected. */
+  onFocusChange?: (key: string | null) => void;
 }) {
   const api = useMemo(() => makeApi(apiBase), [apiBase]);
   const [model, setModel] = useState<ContextModel | null>(null);
@@ -54,6 +60,11 @@ export function App({
   useEffect(() => {
     api.fetchModel().then(setModel, e => setError(String(e)));
   }, [api]);
+
+  useEffect(() => {
+    onFocusChange?.(selectedKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedKey]);
 
   const bindings: BindingNode[] = model?.bindings ?? [];
 
