@@ -24,6 +24,7 @@ import {
   type ClientContext,
   type ActiveSession,
   type ActiveSessionMessage,
+  type SessionModeState,
   ndJsonStream,
   type Stream,
 } from '@agentclientprotocol/sdk';
@@ -293,11 +294,17 @@ export class AcpSession extends EventEmitter {
    *
    * @param mcpServers - MCP server descriptors to pass to `session/new`.
    * @param cwd - Working directory for the session (default: `process.cwd()`).
+   * @param permissionMode - Target permission mode to enforce after session
+   *   creation.  Defaults to `'default'` which makes the adapter route
+   *   `session/request_permission` to our client handler so the dock's inline
+   *   permission card gates every file edit.  Pass `'acceptEdits'` to bypass
+   *   (useful for fully-trusted, sandboxed environments) or `'plan'` for
+   *   plan-only mode.
    *
    * NEEDS LIVE VALIDATION (ACP-NOTES §9c): `cwd` requirement — whether the
    * field is truly required by `claude-agent-acp`.
    */
-  async open(mcpServers: unknown[] = [], cwd?: string): Promise<string> {
+  async open(mcpServers: unknown[] = [], cwd?: string, permissionMode = 'default'): Promise<string> {
     if (!this._ctx) throw new Error('AcpSession: not connected — call connect() first');
     if (this._disposed) throw new Error('AcpSession: already disposed');
 
@@ -312,6 +319,13 @@ export class AcpSession extends EventEmitter {
     const session = await builder.start();
     this._session = session;
     log.debug('ACP session opened sessionId=%s', session.sessionId);
+
+    // LIVE-VALIDATED (ACP-NOTES §10): forcing 'default' mode so the adapter routes
+    // session/request_permission to us — without this, claude-agent-acp defaults to
+    // 'acceptEdits' which auto-accepts file edits without ever calling our
+    // session/request_permission handler, bypassing the dock's permission card.
+    await this._enforcePermissionMode(session.sessionId as string, session.modes, permissionMode);
+
     return session.sessionId as string;
   }
 
@@ -432,6 +446,72 @@ export class AcpSession extends EventEmitter {
   // --------------------------------------------------------------------------
   // Private helpers
   // --------------------------------------------------------------------------
+
+  /**
+   * Enforces the target permission mode on a freshly-opened session.
+   *
+   * If the agent advertised modes and the current mode is not the requested
+   * `targetMode`, sends `session/set_mode` to switch to it.  Best-effort: a
+   * failure is logged prominently (it means file edits may not be gated by the
+   * dock's permission card) but never throws so the caller's `open()` flow is
+   * not interrupted.
+   *
+   * If the agent did not advertise any modes (modes is null/undefined), a
+   * warning is logged and we proceed — the permission gating is best-effort
+   * when the adapter does not expose session mode state.
+   */
+  private async _enforcePermissionMode(
+    sessionId: string,
+    modes: SessionModeState | null | undefined,
+    targetMode: string,
+  ): Promise<void> {
+    if (!modes) {
+      log.warn(
+        'AcpSession: agent did not advertise session modes — cannot enforce ' +
+        'permission mode %s; file edits may be auto-accepted without prompting',
+        targetMode,
+      );
+      return;
+    }
+
+    const {currentModeId, availableModes} = modes;
+
+    if (currentModeId === targetMode) {
+      log.debug('AcpSession: permission mode already %s — no set_mode needed', targetMode);
+      return;
+    }
+
+    const hasTarget = availableModes.some(m => m.id === targetMode);
+    if (!hasTarget) {
+      log.warn(
+        'AcpSession: target permission mode %s is not in advertised availableModes %o; ' +
+        'cannot enforce prompting — file edits may be auto-accepted',
+        targetMode,
+        availableModes.map(m => m.id),
+      );
+      return;
+    }
+
+    try {
+      log.debug(
+        'AcpSession: switching permission mode from %s → %s (sessionId=%s)',
+        currentModeId,
+        targetMode,
+        sessionId,
+      );
+      // ClientContext.request() is the typed gateway for all agent-side methods;
+      // 'session/set_mode' is a recognised AgentRequestMethod so params and
+      // response are fully typed.
+      await this._ctx!.request('session/set_mode', {sessionId, modeId: targetMode});
+      log.debug('AcpSession: permission mode set to %s', targetMode);
+    } catch (err) {
+      log.warn(
+        'AcpSession: failed to set permission mode to %s — file edits may be auto-accepted without prompting. Error: %o',
+        targetMode,
+        err,
+      );
+    }
+  }
 
   /**
    * Sends the prompt and drains `nextUpdate()` until stop or error, emitting
