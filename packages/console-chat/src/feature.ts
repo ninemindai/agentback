@@ -3,13 +3,10 @@
 // License text available at https://opensource.org/license/mit/
 
 import type {RestApplication} from '@agentback/rest';
-import {RestBindings} from '@agentback/rest';
-import {SecurityBindings, securityId} from '@agentback/security';
-import type {UserProfile} from '@agentback/security';
 import type {ConsoleFeature} from '@agentback/console';
 import type {Request, Response} from 'express';
 import type {ChatConsoleConfig} from './types.js';
-import {ChatBridgeController, handleSseRequest} from './bridge.controller.js';
+import {ChatBridgeController, handleSseRequest, principalFromRequest} from './bridge.controller.js';
 import {discoverAgents, BUILTIN_AGENTS} from './agents.js';
 
 /**
@@ -63,22 +60,14 @@ export function chatConsoleFeature(
           return;
         }
 
-        // Derive the principal from the authenticated security context.
-        // SecurityBindings.USER is bound per-request by auth middleware.
-        // We resolve it from the request-scoped context if available;
-        // otherwise fall through to requirePrincipal's 401 rejection.
-        let user: UserProfile | undefined;
+        // Derive the principal from req.auth — set by the console `auth` guard
+        // middleware (same source as the @api bridge endpoints).  Uses the same
+        // `principalFromRequest` helper so both paths are guaranteed to produce
+        // the same principal id and the same 401 behaviour.
+        let principal: string;
         try {
-          // The RestServer binds SecurityBindings.USER into a per-request Context.
-          // For the raw expressApp handler we read it from the request's auth
-          // attachment set by framework auth middleware (same path as mcp-http).
-          // If no auth middleware is installed, req.auth is undefined → 401.
-          user = (req as Request & {auth?: UserProfile}).auth;
+          principal = principalFromRequest(req);
         } catch {
-          // No auth context — 401 below.
-        }
-
-        if (!user) {
           res.status(401).json({error: 'unauthenticated', message: 'Authentication required'});
           return;
         }
@@ -89,7 +78,7 @@ export function chatConsoleFeature(
           return;
         }
 
-        handleSseRequest(controller.sessions, user[securityId], sessionId, req, res);
+        handleSseRequest(controller.sessions, principal, sessionId, req, res);
       });
 
       // Eagerly run discovery and update the agents list so the console shell

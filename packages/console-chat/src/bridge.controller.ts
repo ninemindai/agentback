@@ -16,8 +16,9 @@
  *   DELETE /session           — terminate a session
  *
  * Session map key: `${principal}:${sessionId}`.
- * Principal: derived from the authenticated `SecurityBindings.USER` (securityId).
- * Unauthenticated requests to process-spawning endpoints are rejected (401).
+ * Principal: derived from `req.auth` (set by the console `auth` guard middleware).
+ * Both the @api endpoints and the SSE stream use the same `principalFromRequest`
+ * helper — one canonical source of truth. Unauthenticated requests are rejected (401).
  */
 
 import {z} from 'zod';
@@ -37,7 +38,9 @@ import {
 } from '@agentback/core';
 import {RestBindings} from '@agentback/rest';
 import type {RestServer} from '@agentback/rest';
-import {SecurityBindings, securityId, type UserProfile} from '@agentback/security';
+import {securityId} from '@agentback/security';
+import type {UserProfile} from '@agentback/security';
+import type {AuthInfo} from '@agentback/mcp-http';
 import {loggers} from '@agentback/common';
 import type {Application} from '@agentback/core';
 import {buildOkfBundle, type OkfBundle} from '@agentback/schema-explorer';
@@ -221,9 +224,9 @@ export class ChatBridgeController {
   @post('/session', {body: SessionRequest, response: SessionResponse})
   async createSession(
     input: {body: {agentId: string; cwd?: string; mcpServers?: unknown[]}},
-    @inject(SecurityBindings.USER, {optional: true}) user?: UserProfile,
+    @inject(RestBindings.HTTP_REQUEST, {optional: true}) req?: Request,
   ): Promise<{sessionId: string}> {
-    const principal = requirePrincipal(user);
+    const principal = principalFromRequest(req);
     const {agentId, cwd, mcpServers = []} = input.body;
 
     // Find agent descriptor.
@@ -318,7 +321,6 @@ export class ChatBridgeController {
     input: {query: {sessionId: string}},
     @inject(RestBindings.HTTP_RESPONSE, {optional: true}) res?: Response,
     @inject(RestBindings.HTTP_REQUEST, {optional: true}) req?: Request,
-    @inject(SecurityBindings.USER, {optional: true}) user?: UserProfile,
   ): Promise<void> {
     // This method should only be reached if the expressApp handler in feature.ts
     // is not mounted (e.g. in tests that do not call install()).  Serve a
@@ -326,7 +328,7 @@ export class ChatBridgeController {
     if (!res || !req) {
       throw new AgentError('SSE requires an HTTP server context', {status: 500, code: 'internal_error'});
     }
-    const principal = requirePrincipal(user);
+    const principal = principalFromRequest(req);
     const {sessionId} = input.query;
     handleSseRequest(this.sessions, principal, sessionId, req, res);
   }
@@ -338,9 +340,9 @@ export class ChatBridgeController {
   @post('/message', {body: MessageRequest, response: MessageResponse})
   async message(
     input: {body: {sessionId: string; text: string; focus?: {kind: string; id: string; label?: string}}},
-    @inject(SecurityBindings.USER, {optional: true}) user?: UserProfile,
+    @inject(RestBindings.HTTP_REQUEST, {optional: true}) req?: Request,
   ): Promise<{ok: boolean}> {
-    const principal = requirePrincipal(user);
+    const principal = principalFromRequest(req);
     const {sessionId, text} = input.body;
     const entry = this.sessions.get(sessionKey(principal, sessionId));
 
@@ -362,9 +364,9 @@ export class ChatBridgeController {
   @post('/permission', {body: PermissionRequest, response: PermissionResponse})
   async permission(
     input: {body: {sessionId: string; requestId: string; optionId: string | null}},
-    @inject(SecurityBindings.USER, {optional: true}) user?: UserProfile,
+    @inject(RestBindings.HTTP_REQUEST, {optional: true}) req?: Request,
   ): Promise<{ok: boolean}> {
-    const principal = requirePrincipal(user);
+    const principal = principalFromRequest(req);
     const {sessionId, requestId, optionId} = input.body;
     const entry = this.sessions.get(sessionKey(principal, sessionId));
 
@@ -386,9 +388,9 @@ export class ChatBridgeController {
   @del('/session', {body: DeleteSessionRequest})
   async deleteSession(
     input: {body: {sessionId: string}},
-    @inject(SecurityBindings.USER, {optional: true}) user?: UserProfile,
+    @inject(RestBindings.HTTP_REQUEST, {optional: true}) req?: Request,
   ): Promise<void> {
-    const principal = requirePrincipal(user);
+    const principal = principalFromRequest(req);
     const {sessionId} = input.body;
     const key = sessionKey(principal, sessionId);
     const entry = this.sessions.get(key);
@@ -482,15 +484,37 @@ export function handleSseRequest(
 // ---------------------------------------------------------------------------
 
 /**
- * Returns the principal id from an authenticated `UserProfile`.
- * Throws 401 if no authenticated user is present — do NOT fall back to
- * 'anonymous' for process-spawning endpoints.
+ * Derives the stable principal id from the request's `req.auth` field.
+ *
+ * The console `auth` guard middleware MUST set `req.auth` before any bridge
+ * endpoint is reached. Two shapes are supported:
+ * - `AuthInfo` (set by `frameworkAuthGuard` / `requireBearerAuth`): uses
+ *   `authInfo.clientId`.
+ * - `UserProfile` (legacy / custom middleware): uses `profile[securityId]`.
+ *
+ * Throws `401 unauthenticated` if `req.auth` is absent or yields no id.
+ * Export so `feature.ts` can use the same logic for the SSE handler.
  */
-function requirePrincipal(user: UserProfile | undefined): string {
-  if (!user) {
+export function principalFromRequest(req: Request | undefined): string {
+  if (!req) {
     throw new AgentError('Authentication required', {status: 401, code: 'unauthenticated'});
   }
-  return user[securityId];
+  const auth = (req as Request & {auth?: AuthInfo | UserProfile}).auth;
+  if (!auth) {
+    throw new AgentError('Authentication required', {status: 401, code: 'unauthenticated'});
+  }
+  // AuthInfo shape (from mcp-http frameworkAuthGuard or SDK requireBearerAuth).
+  const asAuthInfo = auth as AuthInfo;
+  if (typeof asAuthInfo.clientId === 'string' && asAuthInfo.clientId) {
+    return asAuthInfo.clientId;
+  }
+  // UserProfile shape (custom middleware setting req.auth to a UserProfile).
+  const asUserProfile = auth as UserProfile;
+  const id = asUserProfile[securityId];
+  if (typeof id === 'string' && id) {
+    return id;
+  }
+  throw new AgentError('Authentication required', {status: 401, code: 'unauthenticated'});
 }
 
 function sessionKey(principal: string, sessionId: string): string {
