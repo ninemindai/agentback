@@ -6,13 +6,13 @@ typed client, and your runtime validation — served from a single process with 
 real dependency-injection container. If you're arriving from one of the
 frameworks below, here's what carries over and what you gain.
 
-| Coming from    | What carries over                                                                            | What you gain                                                                                                                |
-| -------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| **LoopBack 4** | DI instincts — `@inject`, `@injectable`, `Context`, binding scopes, extension points map 1:1 | Zod-first schemas, MCP tools, OpenAPI 3.1 emitted from the same Zod, ESM/Node 22, no `@loopback/repository` baggage          |
-| **NestJS**     | Decorated classes and a DI container                                                         | One Zod-on-decorator source instead of `nestjs-zod` + `@nestjs/swagger` + a community MCP bridge across two metadata systems |
-| **tRPC**       | A no-codegen, end-to-end-typed client                                                        | Your API is _also_ a public OpenAPI 3.1 document and MCP tools — first-class outputs, not a bolt-on — plus a DI container    |
-| **ts-rest**    | Contract-first discipline                                                                    | The same contract becomes MCP tools an agent can call, under one `@authorize` policy, plus a DI container                    |
-| **Hono**       | —                                                                                            | `@hono/zod-openapi` + `@hono/mcp` + hand-written SDK tools collapse to one schema, one process                               |
+| Coming from                            | What carries over                                                                            | What you gain                                                                                                                |
+| -------------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| [**LoopBack 4**](https://loopback.io/) | DI instincts — `@inject`, `@injectable`, `Context`, binding scopes, extension points map 1:1 | Zod-first schemas, MCP tools, OpenAPI 3.1 emitted from the same Zod, ESM/Node 22, no `@loopback/repository` baggage          |
+| [**NestJS**](https://nestjs.com/)      | Decorated classes and a DI container                                                         | One Zod-on-decorator source instead of `nestjs-zod` + `@nestjs/swagger` + a community MCP bridge across two metadata systems |
+| [**tRPC**](https://trpc.io/)           | A no-codegen, end-to-end-typed client                                                        | Your API is _also_ a public OpenAPI 3.1 document and MCP tools — first-class outputs, not a bolt-on — plus a DI container    |
+| [**ts-rest**](https://ts-rest.com/)    | Contract-first discipline                                                                    | The same contract becomes MCP tools an agent can call, under one `@authorize` policy, plus a DI container                    |
+| [**Hono**](https://hono.dev/)          | —                                                                                            | `@hono/zod-openapi` + `@hono/mcp` + hand-written SDK tools collapse to one schema, one process                               |
 
 ## From LoopBack 4
 
