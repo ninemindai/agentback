@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "./tsconfig.tsbuildinfo"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["dist", "node_modules"],
+  "references": [
+    {"path": "../../packages/core"},
+    {"path": "../../packages/introspection"},
+    {"path": "../../packages/mcp"},
+    {"path": "../../packages/mcp-http"},
+    {"path": "../../packages/openapi"},
+    {"path": "../../packages/rest"}
+  ]
+}

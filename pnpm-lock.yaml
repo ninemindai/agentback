@@ -67,6 +67,33 @@ importers:
         specifier: ~4.1.9
         version: 4.1.9(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@24.12.4)(vite@8.0.13(@types/node@24.12.4)(esbuild@0.28.1)(tsx@4.21.0)(yaml@2.9.0))
 
+  examples/hello-agent-console:
+    dependencies:
+      '@agentback/core':
+        specifier: workspace:~
+        version: link:../../packages/core
+      '@agentback/introspection':
+        specifier: workspace:~
+        version: link:../../packages/introspection
+      '@agentback/mcp':
+        specifier: workspace:~
+        version: link:../../packages/mcp
+      '@agentback/mcp-http':
+        specifier: workspace:~
+        version: link:../../packages/mcp-http
+      '@agentback/openapi':
+        specifier: workspace:~
+        version: link:../../packages/openapi
+      '@agentback/rest':
+        specifier: workspace:~
+        version: link:../../packages/rest
+      tslib:
+        specifier: ^2.8.1
+        version: 2.8.1
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+
   examples/hello-chat:
     dependencies:
       '@agentback/chat':
