@@ -13,3 +13,29 @@
 **Effort:** S
 **Priority:** P3
 **Depends on:** Satisfied — `AgentError` is published in `@agentback/*` 0.2.0.
+
+## Introspection (Phase 1 follow-ups)
+
+### OKF summary + on-demand fetch in `@agentback/introspection`
+
+**What:** `get_okf_bundle` returns the full OKF bundle on every call. Add a summarized inventory (paths + titles) plus a full-fetch-by-path path so an agent pulls only what it needs.
+
+**Why:** For large apps the full bundle is a heavy agent-token payload on every call. A summary keeps the agent's context cheap and lets it drill in selectively.
+
+**Context:** Phase 1 ships the full bundle deliberately (the target app is the dev's own, usually small). The tool description carries a size caveat. Revisit once there's real usage to size against. `buildOkfBundle(ctx)` already returns `{files: {path, content}[]}` — a summary is `files.map(f => f.path)` plus a `get_okf_file(path)` accessor.
+
+**Effort:** S
+**Priority:** P2
+**Depends on:** Phase 1 (`@agentback/introspection`) shipped.
+
+### Session caching of introspection builders
+
+**What:** Memoize `buildModel`/`buildSchemaInventory`/`buildOkfBundle` per session/process with invalidation when the container's bindings change.
+
+**Why:** Each `inventory`/`get`/`get_okf_bundle` call re-walks the DI container. Fine at dev scale; wasteful for a chatty agent on a large app.
+
+**Context:** Builders are side-effect-free and deterministic for a stable container, so caching is safe as long as it invalidates on binding mutation. Don't build until a perf problem is measured — invalidation correctness is the only real complexity.
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** Phase 1 (`@agentback/introspection`) shipped.
