@@ -30,18 +30,24 @@ export function chatConsoleFeature(
 ): ConsoleFeature & {
   chatConfig: {enabled: boolean; apiBase: string; agents: {id: string; name: string}[]};
 } {
-  const enabled = config.enabled ?? false;
+  const featureEnabled = config.enabled ?? false;
   const apiBase = '/console/chat';
-  // agents list starts empty; it is populated lazily on first /agents call.
+  // agents list starts empty; it is populated by eager discovery in install().
   const agents: {id: string; name: string}[] = [];
+  // The shell renders the dock only when `chatConfig.enabled` is true. Per spec
+  // Decision #2 ("when no agent is discovered or configured, the dock does NOT
+  // render"), this reflects BOTH the feature gate AND a non-empty discovered
+  // agent set — computed after eager discovery below. A single mutable object is
+  // shared with `extra.chat` so the shell sees the post-discovery value.
+  const chatConfig = {enabled: false, apiBase, agents};
 
   return {
     id: 'chat',
     apiBase,
-    extra: {chat: {enabled, apiBase, agents}},
+    extra: {chat: chatConfig},
 
     async install(app: RestApplication): Promise<void> {
-      if (!enabled) return;
+      if (!featureEnabled) return;
 
       // I-2: Edge / native-listener guard.
       // `chatConsoleFeature` requires the Express host (child_process + SSE).
@@ -125,9 +131,14 @@ export function chatConsoleFeature(
       ]).catch(() => []);
 
       agents.splice(0, agents.length, ...found);
+
+      // Option B / spec Decision #2: the dock renders only when an agent was
+      // actually discovered. With zero agents, hide the dock entirely rather
+      // than showing a no-agent state.
+      chatConfig.enabled = featureEnabled && agents.length > 0;
     },
 
     // Expose the typed chat config for window.__CONSOLE__.chat injection.
-    chatConfig: {enabled, apiBase, agents},
+    chatConfig,
   };
 }
