@@ -33,6 +33,16 @@ routes = [
 
 # Upload website/dist as the static asset set. The Worker reads from this
 # binding (env.ASSETS) for both normal asset serving and markdown twins.
+#
+# run_worker_first = true is REQUIRED for negotiation: by default Cloudflare
+# serves a matching static asset directly and never invokes the Worker, so the
+# Accept: text/markdown branch would be dead code. With it true the Worker runs
+# first on every request, then serves the asset via env.ASSETS for the normal
+# case. (Could be scoped to ["/", "/docs/*"] to keep asset requests off the
+# Worker, but only after verifying that pattern still matches the scanner's
+# cache-busted `/?…` homepage — route/path matching here is the same hazard
+# that bit the zone-route version.)
 [assets]
 directory = "../dist"
 binding = "ASSETS"
+run_worker_first = true
