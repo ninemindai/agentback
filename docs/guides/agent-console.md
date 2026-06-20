@@ -64,9 +64,18 @@ passed to `installConsole`. Unauthenticated sessions are rejected with `401`
 at two layers:
 
 1. **Express middleware** — the `auth` handler runs before any route handler.
-2. **Per-request principal check** — the SSE stream (`GET /console/chat/stream`)
-   and all POST endpoints resolve `SecurityBindings.USER` from the authenticated
-   request; missing principal → `401 unauthenticated`.
+2. **Per-request principal check** — the `auth` middleware **MUST** set
+   `req.auth` to an object with a stable principal id before calling `next()`.
+   Both the SSE stream (`GET /console/chat/stream`) and all `@api` POST/DELETE
+   endpoints derive the principal from `req.auth` via the same
+   `principalFromRequest` helper. Missing or empty `req.auth` → `401
+   unauthenticated`.
+
+The `principalFromRequest` helper accepts two `req.auth` shapes:
+- **`AuthInfo`** (from `@modelcontextprotocol/sdk`): reads `clientId`. This is
+  what `frameworkAuthGuard` (from `@agentback/mcp-http`) produces.
+- **`UserProfile`** (from `@agentback/security`): reads `[securityId]`. Custom
+  middleware may set this shape.
 
 Sessions are **bound to the authenticated principal**. A session started by
 principal A cannot be accessed by principal B.
@@ -75,11 +84,30 @@ principal A cannot be accessed by principal B.
 
 ## Loopback-only without real auth
 
-`unsafeAllowUnauthenticated: true` is the local-development escape hatch. It
-disables the auth middleware entirely. This is safe only when the server is
-bound to `127.0.0.1` (the default for `RestApplication`).
+`unsafeAllowUnauthenticated: true` is a legacy escape hatch that disables the
+outer `auth` middleware gate entirely. It does **not** set `req.auth`, so the
+bridge's per-request principal check still fires — every bridge endpoint still
+returns `401` because `req.auth` is absent. **It is effectively useless for the
+bridge** without a companion middleware that sets `req.auth`.
 
-**Never set `unsafeAllowUnauthenticated: true` with a non-loopback bind.**
+For local development, provide a loopback-only `auth` middleware that both gates
+the console and sets `req.auth` to a fixed local principal. The
+`hello-agent-console` example ships a minimal `devLoopbackAuth` middleware that
+does exactly this (see `examples/hello-agent-console/src/index.ts`):
+
+```ts
+function devLoopbackAuth(req, _res, next) {
+  req.auth = {token: 'dev-loopback', clientId: 'local-dev', scopes: []};
+  next();
+}
+
+await installConsole(app, {
+  features: [...defaultFeatures(), chat],
+  auth: devLoopbackAuth, // DEV ONLY — replace with real auth for non-loopback
+});
+```
+
+**Never use a loopback-only auth middleware with a non-loopback bind.**
 
 The consequence: a process-spawning HTTP endpoint is exposed to any machine
 that can reach your server with no authentication. That is a remote code
@@ -87,7 +115,8 @@ execution vector.
 
 For any deployment beyond loopback:
 
-1. Provide a real `auth` middleware that authenticates the user.
+1. Provide a real `auth` middleware that validates credentials (JWT, session
+   cookie, API key, etc.) and sets `req.auth` with a stable principal id.
 2. Leave `unsafeAllowUnauthenticated` unset (or `false`).
 3. Consider running the server on a non-routable interface (VPN, localhost
    tunnel) rather than a public address.
@@ -170,9 +199,10 @@ surface. The read-only invariant is enforced in `IntrospectionTools` (see
 |-----------|-------------|
 | Off by default | `chatConsoleFeature({enabled: false})` (default) |
 | Dock hidden until agent discovered | Discovery probe in `feature.ts` |
-| All endpoints require auth | `auth` middleware + per-request principal check |
-| No anonymous sessions | `401` when `SecurityBindings.USER` absent |
-| Loopback-only without real auth | Operator configuration (`unsafeAllowUnauthenticated` = local dev) |
+| All endpoints require auth | `auth` middleware + per-request `principalFromRequest` check |
+| No anonymous sessions | `401` when `req.auth` absent or yields no principal id |
+| `auth` middleware MUST set `req.auth` | `principalFromRequest` reads `AuthInfo.clientId` or `UserProfile[securityId]` |
+| Loopback-only without real auth | Operator configuration (dev loopback `auth` middleware) |
 | Permission prompts not bypassable | ACP protocol + dock UI (no config override) |
 | Permission scope is path + session only | Dock UI (no persistent grants) |
 | Node-host-only | `install()` no-ops on Edge hosts |
