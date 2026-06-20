@@ -13,9 +13,6 @@ import http from 'node:http';
 import {describe, it, expect} from 'vitest';
 import {createTestApp} from '@agentback/testing';
 import {RestApplication} from '@agentback/rest';
-import {SecurityBindings} from '@agentback/security';
-import {securityId} from '@agentback/security';
-import type {UserProfile} from '@agentback/security';
 import {
   agent as acpAgent,
   type AgentApp,
@@ -105,22 +102,32 @@ function makeFakeAgent(opts: {
  * Build a minimal test application with the ChatBridgeController and the
  * injected connect function.
  *
- * `user` is bound at app-level so it is visible in the request context chain.
- * All tests that exercise authenticated endpoints must pass a user.
+ * When `principalId` is provided, a middleware is installed that sets
+ * `req.auth` to `{token: 'test', clientId: principalId, scopes: []}` on
+ * every request — matching the AuthInfo shape that `principalFromRequest`
+ * reads. Passing `undefined` leaves `req.auth` unset, so bridge endpoints
+ * return 401 (tests the unauthenticated path).
  */
-function makeApp(connectFn: AcpConnectFn, user?: UserProfile): RestApplication {
+function makeApp(connectFn: AcpConnectFn, principalId?: string): RestApplication {
   const app = new RestApplication({rest: {port: 0}});
   app.restController(ChatBridgeController);
   app.bind(CHAT_CONNECT_FN.key).to(connectFn);
-  if (user) {
-    app.bind(SecurityBindings.USER.key).to(user);
+  if (principalId) {
+    // Install a test auth middleware that sets req.auth to the given principal.
+    // Uses the key+handler overload of expressMiddleware.
+    app.expressMiddleware(
+      'middleware.test.auth',
+      (req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) => {
+        (req as import('express').Request & {auth?: {token: string; clientId: string; scopes: string[]}}).auth = {
+          token: 'test',
+          clientId: principalId,
+          scopes: [],
+        };
+        next();
+      },
+    );
   }
   return app;
-}
-
-/** A reusable test user. */
-function makeUser(id: string): UserProfile {
-  return {[securityId]: id, name: `User ${id}`};
 }
 
 // ---------------------------------------------------------------------------
@@ -443,9 +450,8 @@ describe('AcpSession lifecycle', () => {
 
 describe('DELETE /console/chat/session', () => {
   it('returns 200 for an unknown session (idempotent)', async () => {
-    const user = makeUser('user1');
     const connectFn = inProcessConnectFn(makeFakeAgent());
-    await using t = await createTestApp(makeApp.bind(null, connectFn, user));
+    await using t = await createTestApp(makeApp.bind(null, connectFn, 'user1'));
 
     const res = await t.http
       .delete('/console/chat/session')
@@ -490,15 +496,13 @@ describe('Security: authentication required', () => {
 
 describe('Two-principal session isolation', () => {
   it('principal B cannot read/drive/delete principal A session', async () => {
-    const userA = makeUser('alice');
-    const userB = makeUser('bob');
     const fakeAgent = makeFakeAgent();
 
-    // Build an app bound as user A to create the session.
+    // Build an app authenticated as alice to create the session.
     const connectFn = inProcessConnectFn(fakeAgent);
-    await using tA = await createTestApp(makeApp.bind(null, connectFn, userA));
+    await using tA = await createTestApp(makeApp.bind(null, connectFn, 'alice'));
 
-    // Create a session as user A.  Use claude-code which is in BUILTIN_AGENTS.
+    // Create a session as alice. Use claude-code which is in BUILTIN_AGENTS.
     const createRes = await tA.http
       .post('/console/chat/session')
       .send({agentId: 'claude-code', cwd: process.cwd()});
@@ -506,26 +510,26 @@ describe('Two-principal session isolation', () => {
     const sessionId = (createRes.body as {sessionId: string}).sessionId;
     expect(typeof sessionId).toBe('string');
 
-    // Build a second app bound as user B.  It has its own separate sessions map
-    // (separate controller instance), so user A's session does not exist there.
-    await using tB = await createTestApp(makeApp.bind(null, connectFn, userB));
+    // Build a second app authenticated as bob. It has its own separate sessions
+    // map (separate controller instance), so alice's session does not exist there.
+    await using tB = await createTestApp(makeApp.bind(null, connectFn, 'bob'));
 
-    // user B tries to send a message to user A's session → 404 (not found for B's principal).
+    // bob tries to send a message to alice's session → 404 (not found for bob's principal).
     const msgRes = await tB.http
       .post('/console/chat/message')
       .send({sessionId, text: 'attack'});
     expect(msgRes.status).toBe(404);
 
-    // user B tries to delete user A's session → 200 (idempotent; nothing to delete for B).
+    // bob tries to delete alice's session → 200 (idempotent; nothing to delete for bob).
     const delRes = await tB.http
       .delete('/console/chat/session')
       .send({sessionId});
     expect(delRes.status).toBe(200);
 
-    // user A can still send a message (session is intact in A's controller).
+    // alice can still send a message (session is intact in alice's controller).
     const aMsg = await tA.http
       .post('/console/chat/message')
-      .send({sessionId, text: 'hello from A'});
+      .send({sessionId, text: 'hello from alice'});
     expect(aMsg.status).toBe(200);
   });
 });
@@ -769,9 +773,8 @@ describe('Grounding: session/new receives mcpServers for the app mcp-http', () =
       _meta: null,
     }));
 
-    const user = makeUser('ground-user');
     const connectFn = inProcessConnectFn(groundingAgent);
-    await using t = await createTestApp(makeApp.bind(null, connectFn, user));
+    await using t = await createTestApp(makeApp.bind(null, connectFn, 'ground-user'));
 
     // POST /session — no mcpServers in body → grounding should inject the app's URL.
     const res = await t.http
