@@ -9,8 +9,11 @@ compatibility_date = "2026-06-20"
 # No *.workers.dev URL — this Worker only ever runs on the custom domain route.
 workers_dev = false
 
-# Run in front of the whole site. The zone must already exist in the Cloudflare
-# account (agentback.dev is proxied there today).
+# Scope to negotiable HTML documents only — the homepage and docs pages. Asset
+# requests (CSS, fonts, images, blog) skip the Worker entirely, so invocations
+# track pageviews (well within the free 100k/day) instead of total requests.
+# The zone must already exist in the Cloudflare account.
 routes = [
-  {pattern = "agentback.dev/*", zone_name = "agentback.dev"},
+  {pattern = "agentback.dev/", zone_name = "agentback.dev"},
+  {pattern = "agentback.dev/docs/*", zone_name = "agentback.dev"},
 ]

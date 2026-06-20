@@ -32,7 +32,7 @@ First Worker for this domain. From this directory:
 
 ```bash
 npx wrangler login           # once, into the account that owns the agentback.dev zone
-npx wrangler deploy          # publishes the Worker + the agentback.dev/* route
+npx wrangler deploy          # publishes the Worker + its doc routes
 ```
 
 Validate the bundle without publishing:
@@ -52,7 +52,9 @@ curl -s -o /dev/null -w '%{content_type}\n' https://agentback.dev/
 
 ## Notes
 
-- The route `agentback.dev/*` requires the zone to be active in the same
-  Cloudflare account. It already is (the site is proxied there).
+- The routes (`agentback.dev/` and `agentback.dev/docs/*`) require the zone to
+  be active and **proxied (orange-cloud)** in the same Cloudflare account — a
+  Worker only runs on traffic that flows through Cloudflare's proxy. A DNS-only
+  (grey-cloud) record bypasses the edge and the Worker never executes.
 - This is also the natural home for the other edge-only agent-readiness
   signals (Link headers, Web Bot Auth) if those get added later.
