@@ -18,7 +18,7 @@ import {EventEmitter} from 'node:events';
 import {Readable, Writable} from 'node:stream';
 import {
   client as acpClient,
-  AgentApp,
+  type AgentApp,
   type ClientApp,
   type ClientConnection,
   type ClientContext,
@@ -111,12 +111,14 @@ export class PartialTurnError extends Error {
  * The default implementation spawns a subprocess and bridges Node stdio →
  * Web Streams.  Tests inject an in-process `AgentApp` via this seam.
  *
- * @returns A `ClientConnection` and the `ClientContext` obtained from it.
+ * @returns A `ClientConnection`, the `ClientContext` obtained from it, and a
+ *   `kill` function that terminates the underlying transport (e.g. the child
+ *   process).  For in-process connections `kill` is a no-op.
  */
 export type AcpConnectFn = (
   descriptor: AgentDescriptor,
   clientApp: ClientApp,
-) => Promise<{connection: ClientConnection; ctx: ClientContext}>;
+) => Promise<{connection: ClientConnection; ctx: ClientContext; kill: () => void}>;
 
 /**
  * Default connect function: spawns the subprocess indicated by
@@ -169,7 +171,17 @@ export const defaultConnectFn: AcpConnectFn = async (descriptor, clientApp) => {
     }
   });
 
-  return {connection, ctx};
+  // kill() terminates the subprocess regardless of how the connection was
+  // closed (SIGTERM → child process GC).
+  const kill = () => {
+    try {
+      child.kill();
+    } catch {
+      // Already exited — ignore.
+    }
+  };
+
+  return {connection, ctx, kill};
 };
 
 // ---------------------------------------------------------------------------
@@ -191,6 +203,8 @@ export class AcpSession extends EventEmitter {
   private _ctx: ClientContext | null = null;
   private _session: ActiveSession | null = null;
   private _disposed = false;
+  /** Kills the underlying subprocess (no-op for in-process connections). */
+  private _kill: (() => void) | null = null;
 
   // Pending permission requests keyed by a stable requestId (we generate a
   // UUID per request so the client can correlate).
@@ -233,6 +247,7 @@ export class AcpSession extends EventEmitter {
           options: (params.options ?? []).map(o => ({
             optionId: o.optionId,
             kind: o.kind,
+            label: o.name,
           })),
         } satisfies PermissionRequestEvent);
       });
@@ -248,10 +263,11 @@ export class AcpSession extends EventEmitter {
       } as const;
     });
 
-    const {connection, ctx} = await this.connectFn(this.descriptor, app);
+    const {connection, ctx, kill} = await this.connectFn(this.descriptor, app);
     this._clientApp = app;
     this._connection = connection;
     this._ctx = ctx;
+    this._kill = kill;
 
     // If the connection closes unexpectedly, emit an error.
     connection.closed.then(() => {
@@ -344,10 +360,14 @@ export class AcpSession extends EventEmitter {
 
     this._session?.dispose();
     this._connection?.close();
+    // Kill the subprocess AFTER closing the connection (stdin EOF first so the
+    // agent can flush, then SIGTERM ensures it actually exits).
+    this._kill?.();
     this._session = null;
     this._connection = null;
     this._ctx = null;
     this._clientApp = null;
+    this._kill = null;
   }
 
   // --------------------------------------------------------------------------
@@ -403,7 +423,7 @@ export class AcpSession extends EventEmitter {
     const u = update as Record<string, unknown>;
     const kind = u['sessionUpdate'] as string | undefined;
 
-    if (kind === 'agent_message_chunk' || kind === 'user_message_chunk') {
+    if (kind === 'agent_message_chunk') {
       // ContentChunk: content is a single ContentBlock (not array).
       const block = u['content'] as Record<string, unknown> | undefined;
       if (block && block['type'] === 'text' && typeof block['text'] === 'string') {
