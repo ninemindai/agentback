@@ -1,23 +1,38 @@
 #:schema node_modules/wrangler/config-schema.json
-# Cloudflare Worker that fronts the agentback.dev GitHub Pages origin to add
-# markdown content negotiation (Accept: text/markdown). See ./README.md.
+# Cloudflare Worker that SERVES agentback.dev from Workers Static Assets and
+# adds markdown content negotiation (Accept: text/markdown). See ./README.md.
+#
+# This replaces the GitHub-Pages-origin design: `website/dist` is uploaded as
+# the Worker's static asset set (the ASSETS binding) and served directly at the
+# edge — no GitHub origin, no second hop. Deploying this Worker on the existing
+# `agentback.dev/*` route swaps asset-serving in *without any DNS change* (the
+# Worker short-circuits before the proxied origin is ever reached), so the
+# cutover is a single `wrangler deploy` and is instantly reversible by
+# redeploying the previous proxy Worker.
 
 name = "agentback-web"
 main = "src/markdown-negotiation.js"
 compatibility_date = "2026-06-20"
+account_id = "8c60d6f6b0408a55768ec315042db967"
 
-# No *.workers.dev URL — this Worker only ever runs on the custom domain route.
+# No *.workers.dev URL — this Worker only runs on the agentback.dev route.
 workers_dev = false
 
-# Full-site route. A path-scoped route can't reliably cover the homepage:
-# Cloudflare route matching is query-sensitive, so an exact `agentback.dev/`
-# misses cache-busted requests (e.g. the isitagentready scanner's `/?…`), and
-# only a `*` wildcard matches a URL with a query string. The Worker stays cheap
-# on the asset hot path — non-markdown requests hit one header check and return
-# the origin immediately, and the whole handler is fail-safe (errors fall
-# through to origin). Invocations track total requests but sit well inside the
-# free 100k/day for this site; bump to Workers Paid ($5/mo) if traffic grows.
-# The zone must already exist and be proxied (orange-cloud) in the account.
+# Full-site route (kept from the proxy design). A path-scoped route can't
+# reliably cover the homepage: Cloudflare route matching is query-sensitive, so
+# an exact `agentback.dev/` misses cache-busted requests (the isitagentready
+# scanner's `/?…`) — only a `*` wildcard matches a URL with a query string. The
+# Worker stays cheap: non-markdown GETs hit one header check then serve the
+# asset; the whole handler is fail-safe. Invocations track total requests but
+# sit well inside the free 100k/day; bump to Workers Paid ($5/mo) if traffic
+# grows. The zone must be active and proxied (orange-cloud) in the account.
+# (Top-level key — must precede the [assets] table in TOML.)
 routes = [
   {pattern = "agentback.dev/*", zone_name = "agentback.dev"},
 ]
+
+# Upload website/dist as the static asset set. The Worker reads from this
+# binding (env.ASSETS) for both normal asset serving and markdown twins.
+[assets]
+directory = "../dist"
+binding = "ASSETS"
