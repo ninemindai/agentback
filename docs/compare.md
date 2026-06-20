@@ -14,133 +14,217 @@ frameworks below, here's what carries over and what you gain.
 | [**ts-rest**](https://ts-rest.com/)    | Contract-first discipline                                                                    | The same contract becomes MCP tools an agent can call, under one `@authorize` policy, plus a DI container                    |
 | [**Hono**](https://hono.dev/)          | —                                                                                            | `@hono/zod-openapi` + `@hono/mcp` + hand-written SDK tools collapse to one schema, one process                               |
 
-## One schema, every boundary
+Each section below shows the same forecast endpoint — a REST route _and_ an
+agent-callable tool — first in that framework, then in AgentBack.
 
-The whole pitch in one screen — the same forecast endpoint as a typical
-multi-library setup, then as one AgentBack class. On the left the validation
-schema, the OpenAPI registration, and the MCP tool are three declarations that
-drift apart; on the right they are one.
+## From LoopBack 4
+
+The DI core is identical; what changes is the schema layer. LB4's `@model` /
+`@property` + `getModelSchemaRef` become one Zod object on the decorator — which
+also defines an MCP tool, something LB4 has no answer for.
 
 <!-- prettier-ignore -->
 <div class="code-compare">
 <figure>
-<figcaption>A typical TS stack — schema, OpenAPI, and MCP declared separately</figcaption>
-<pre><code>// 1 — the validation schema
-const Forecast = z.object({city: z.string(), tempC: z.number()});
-// 2 — register it again for OpenAPI (a separate lib)
-registry.registerPath({
-  method: 'get',
-  path: '/forecast/{city}',
-  responses: {200: {content: {'application/json': {schema: Forecast}}}},
-});
-// 3 — declare it a third time as an MCP tool
-server.tool('forecast', {city: z.string()}, async ({city}) =&gt; ({
-  content: [{type: 'text', text: await lookup(city)}],
-}));
-// 4 — and the route handler itself
-app.get('/forecast/:city', c =&gt; c.json(lookup(c.req.param('city'))));</code></pre>
+<figcaption>LoopBack 4</figcaption>
+<pre><code>// model + JSON-schema decorators
+@model()
+class Forecast {
+  @property() city: string;
+  @property() tempC: number;
+}
+class WeatherController {
+  @get('/forecast/{city}')
+  @response(200, {content: {'application/json':
+    {schema: getModelSchemaRef(Forecast)}}})
+  forecast(@param.path.string('city') city: string) {
+    return lookup(city);
+  }
+}
+// MCP is not built in.</code></pre>
 </figure>
 <figure>
-<figcaption>AgentBack — one schema on the decorators, one class</figcaption>
-<pre><code>const Params = z.object({city: z.string()});
-const Forecast = z.object({city: z.string(), tempC: z.number()});
-@api()
-@mcpServer()
+<figcaption>AgentBack</figcaption>
+<pre><code>const City = z.object({city: z.string()});
+const Out = z.object({tempC: z.number()});
+@api() @mcpServer()
 class Weather {
-  // one schema → REST validator + OpenAPI 3.1 + response check
-  @get('/forecast/{city}', {path: Params, response: Forecast})
-  async getForecast(input: {path: z.infer&lt;typeof Params&gt;}) {
-    return lookup(input.path.city);
+  @get('/forecast/{city}', {path: City, response: Out})
+  route(i: {path: {city: string}}) {
+    return lookup(i.path.city);
   }
-  // …and the same schema → an MCP tool's input/output contract
-  @tool('forecast', {input: Params, output: Forecast})
-  async forecastTool(input: z.infer&lt;typeof Params&gt;) {
-    return lookup(input.city);
+  @tool('forecast', {input: City, output: Out})
+  tool(i: {city: string}) {
+    return lookup(i.city);
   }
 }</code></pre>
 </figure>
 </div>
 
-## From LoopBack 4
-
-AgentBack is an ESM port of LoopBack 4's dependency-injection core, so
-`@inject`, `@injectable`, `Context`, binding scopes, and extension points behave
-exactly as you remember — and the `@authenticate` / `@authorize` stack is ported
-too. If you know LB4 DI, you already know this half of the framework.
-
-What changes is everything above the container. Schemas are Zod instead of the
-`@loopback/repository-json-schema` pipeline, and that schema lives on the route
-decorator — there's no `@param` / `@requestBody` / `@response`; the handler's
-input is `z.infer` of the schema you declared. The same Zod emits OpenAPI 3.1
-and, with `@tool`, an MCP tool contract. Upstream's ~10k-line sequence/action
-pipeline (`findRoute → parseParams → invoke → send → reject`) becomes one fixed
-dispatch you tune on decorators or by subclassing, and `@loopback/repository`
-with its `Filter` / `Where` helpers is intentionally gone — bring your own data
-layer (Drizzle is the blessed recipe). You keep the architecture and the DI
-muscle memory, and gain an MCP surface, a no-codegen typed client, and ESM /
-Node 22.
-
 ## From NestJS
 
-Keep the mental model you like — decorated classes and constructor injection —
-but collapse the metadata sprawl. A typical Nest endpoint carries a DTO with
-`class-validator` decorators, a separate `@nestjs/swagger` decorator for the
-OpenAPI shape, and — to reach agents — a third tool definition through a
-community bridge like MCP-Nest: three declarations across two metadata systems
-that can fall out of sync.
+Decorated classes and constructor injection carry over. The `class-validator`
+DTO, the `@nestjs/swagger` decorator, and a community MCP-Nest tool — three
+declarations across two metadata systems — collapse into one Zod object.
 
-AgentBack replaces all of that with one `z.object()` on the decorator. It is the
-validator, the TypeScript type (via `z.infer`), the OpenAPI 3.1 schema, and the
-MCP `inputSchema` at once. `@injectable` / `@inject` and a `Context` container
-stand in for `@Injectable` / providers, so the wiring feels familiar — and a
-single `@authorize` policy governs both the HTTP route and the MCP tool's
-visibility and dispatch, instead of a route guard plus a separate agent layer.
-One source of truth instead of four.
+<!-- prettier-ignore -->
+<div class="code-compare">
+<figure>
+<figcaption>NestJS</figcaption>
+<pre><code>// DTO: class-validator + swagger
+class ForecastDto {
+  @ApiProperty() @IsString() city: string;
+  @ApiProperty() @IsNumber() tempC: number;
+}
+@Controller()
+class WeatherController {
+  @Get('forecast/:city')
+  @ApiOkResponse({type: ForecastDto})
+  forecast(@Param('city') city: string) {
+    return lookup(city);
+  }
+}
+// + a separate MCP-Nest @Tool method</code></pre>
+</figure>
+<figure>
+<figcaption>AgentBack</figcaption>
+<pre><code>const City = z.object({city: z.string()});
+const Out = z.object({tempC: z.number()});
+@api() @mcpServer()
+class Weather {
+  @get('/forecast/{city}', {path: City, response: Out})
+  route(i: {path: {city: string}}) {
+    return lookup(i.path.city);
+  }
+  @tool('forecast', {input: City, output: Out})
+  tool(i: {city: string}) {
+    return lookup(i.city);
+  }
+}</code></pre>
+</figure>
+</div>
 
 ## From tRPC
 
-Your no-codegen, end-to-end-typed client carries straight over: AgentBack's
-client imports the very same Zod schemas the server validates against —
-`safeCall`, typed `responses[status]`, no generation step and no router-type
-import gymnastics.
+The typed client is what carries over. In tRPC the contract is the exported
+router _type_ (TypeScript-only); in AgentBack it's the Zod schema — so the same
+procedure is also real REST, an OpenAPI 3.1 document, and an MCP tool.
 
-The difference is reach. tRPC is RPC-first and its types live inside your
-TypeScript monorepo, so a public API or a non-TS consumer needs `trpc-openapi`,
-a separate and lossy layer; AgentBack's routes are real REST with a first-class
-OpenAPI 3.1 document at `/openapi.json`. tRPC also has no DI container — auth
-rides on `context` and middleware — where AgentBack gives you one for services,
-auth, and multi-tenancy. And where tRPC and oRPC lean toward Vercel AI SDK
-tools, AgentBack emits MCP tools from the same procedures, under the same
-`@authorize` policy that guards the HTTP side.
+<!-- prettier-ignore -->
+<div class="code-compare">
+<figure>
+<figcaption>tRPC</figcaption>
+<pre><code>// RPC router + zod input
+const appRouter = router({
+  forecast: publicProcedure
+    .input(z.object({city: z.string()}))
+    .query(({input}) =&gt; lookup(input.city)),
+});
+export type AppRouter = typeof appRouter;
+// typed client call
+trpc.forecast.query({city: 'sf'});
+// REST / OpenAPI / MCP: add-ons only</code></pre>
+</figure>
+<figure>
+<figcaption>AgentBack</figcaption>
+<pre><code>const City = z.object({city: z.string()});
+const Out = z.object({tempC: z.number()});
+@api() @mcpServer()
+class Weather {
+  @get('/forecast/{city}', {path: City, response: Out})
+  route(i: {path: {city: string}}) {
+    return lookup(i.path.city);
+  }
+  @tool('forecast', {input: City, output: Out})
+  tool(i: {city: string}) {
+    return lookup(i.city);
+  }
+}</code></pre>
+</figure>
+</div>
 
 ## From ts-rest
 
-The contract-first discipline is the same idea: define the shape once, share it
-across client and server. The difference is where the contract lives. In ts-rest
-it's a standalone contract object you define and then implement separately — two
-artifacts to keep aligned. In AgentBack the Zod schema on the decorator _is_ the
-contract: the handler's slot-0 input is `z.infer` of it, checked at compile
-time, so there's no second declaration to drift.
+Contract-first carries over. ts-rest keeps the contract as a standalone object
+you implement separately — two artifacts to align. In AgentBack the decorator's
+Zod schema _is_ the contract, and it also yields MCP tools and OpenAPI.
 
-That same schema also emits an OpenAPI 3.1 document and becomes MCP tools an
-agent can call, governed by the `@authorize` policy that guards your HTTP routes.
-And you get a real DI container to wire services and auth, which ts-rest leaves
-to you.
+<!-- prettier-ignore -->
+<div class="code-compare">
+<figure>
+<figcaption>ts-rest</figcaption>
+<pre><code>// 1. contract — a separate artifact
+const contract = c.router({
+  forecast: {
+    method: 'GET',
+    path: '/forecast/:city',
+    responses: {200: z.object({tempC: z.number()})},
+  },
+});
+// 2. implement it separately
+const router = s.router(contract, {
+  forecast: async ({params}) =&gt;
+    ({status: 200, body: await lookup(params.city)}),
+});</code></pre>
+</figure>
+<figure>
+<figcaption>AgentBack</figcaption>
+<pre><code>const City = z.object({city: z.string()});
+const Out = z.object({tempC: z.number()});
+@api() @mcpServer()
+class Weather {
+  @get('/forecast/{city}', {path: City, response: Out})
+  route(i: {path: {city: string}}) {
+    return lookup(i.path.city);
+  }
+  @tool('forecast', {input: City, output: Out})
+  tool(i: {city: string}) {
+    return lookup(i.city);
+  }
+}</code></pre>
+</figure>
+</div>
 
 ## From Hono
 
-To reach REST + OpenAPI 3.1 + MCP + a typed client on Hono you assemble several
-libraries — `@hono/zod-openapi`, `@hono/mcp`, and hand-written SDK tools — each
-with its own schema declaration to keep aligned. In AgentBack a single
-controller class delivers all of it from one schema: routing, Zod validation,
-the OpenAPI document, the MCP tools, and the schema-shared client, in one
-process.
+Hono reaches this with `@hono/zod-openapi` + `@hono/mcp` + hand-written SDK
+tools, each with its own schema to keep aligned. AgentBack does routing,
+validation, OpenAPI, and MCP from one class. (Hono is an excellent edge router;
+if raw routing speed is your priority it belongs on your list — the pitch here
+is consolidation, not benchmarks.)
 
-The trade-off is honest. Hono is a minimal, functional, edge-first router;
-AgentBack is a decorator- and DI-based framework built around classes — though
-an `EdgeRestApplication` host runs the same app on fetch / Workers / Bun / Deno
-when you need it. If raw routing speed is your priority, Hono belongs on your
-list — AgentBack's pitch is consolidation, not benchmarks.
+<!-- prettier-ignore -->
+<div class="code-compare">
+<figure>
+<figcaption>Hono</figcaption>
+<pre><code>// @hono/zod-openapi route
+const route = createRoute({
+  method: 'get', path: '/forecast/{city}',
+  responses: {200: {content: {'application/json':
+    {schema: Out}}}},
+});
+app.openapi(route, c =&gt;
+  c.json(lookup(c.req.param('city'))));
+// separate @hono/mcp tool
+mcp.tool('forecast', {city: z.string()}, handler);</code></pre>
+</figure>
+<figure>
+<figcaption>AgentBack</figcaption>
+<pre><code>const City = z.object({city: z.string()});
+const Out = z.object({tempC: z.number()});
+@api() @mcpServer()
+class Weather {
+  @get('/forecast/{city}', {path: City, response: Out})
+  route(i: {path: {city: string}}) {
+    return lookup(i.path.city);
+  }
+  @tool('forecast', {input: City, output: Out})
+  tool(i: {city: string}) {
+    return lookup(i.city);
+  }
+}</code></pre>
+</figure>
+</div>
 
 ## Get started
 
