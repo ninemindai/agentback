@@ -47,6 +47,9 @@ ESM-only, Node 22.13+, TypeScript 6, pnpm workspaces. **Relative imports use
    Composition & operations ([composition-and-operations.md](references/composition-and-operations.md))
 7. **Stateful entity behind a stable address — one writer at a time (cart,
    conversation, counter, room)?** → Actors ([actors.md](references/actors.md))
+8. **Let an agent see/understand the live running app (bindings, schema,
+   routes, tools) read-only?** → Introspection
+   ([introspection.md](references/introspection.md))
 
 ## Getting Started: scaffold a new app
 
@@ -229,3 +232,7 @@ vercel|cloudflare` (`@agentback/cli`). The schema-typed `client` depends on
   commands + lease-free `@actorQuery`, the typed `ref(Class, id)` proxy /
   `@injectActor`, per-identity serialization + `requestId` idempotency, the event
   log, and the in-memory / event-sourced / Redis runtimes.
+- **Introspection**: [references/introspection.md](references/introspection.md) —
+  `@agentback/introspection`, the read-only MCP server that exposes the live app
+  (bindings/schema/routes/tools + OKF) to any agent via `inventory`/`get`/
+  `get_okf_bundle`.
