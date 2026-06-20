@@ -31,6 +31,17 @@ export interface ConsoleFeature {
   install(app: RestApplication): Promise<void> | void;
 }
 
+/**
+ * Chat dock config forwarded to `window.__CONSOLE__.chat`.
+ * Populated by {@link installConsole} from the `chatConsoleFeature()` in
+ * `features` — callers do not set this directly; it is extracted automatically.
+ */
+export interface ConsoleChatConfig {
+  enabled: boolean;
+  apiBase: string;
+  agents: {id: string; name: string}[];
+}
+
 export interface ConsoleOptions {
   /** Base path the console UI is mounted at. Default `/console`. */
   basePath?: string;
@@ -108,7 +119,16 @@ export async function installConsole(
 
   for (const feature of features) await feature.install(app);
 
-  mountConsole(server, {basePath, title, features, assets: options.assets});
+  // Extract chat config from the chat feature, if present. We use duck-typing
+  // to avoid a static import of @agentback/console-chat (which depends on
+  // @agentback/console — importing it here would be a circular dep).
+  const chatFeature = features.find(
+    (f): f is ConsoleFeature & {chatConfig: ConsoleChatConfig} =>
+      'chatConfig' in f,
+  );
+  const chat = chatFeature?.chatConfig;
+
+  mountConsole(server, {basePath, title, features, assets: options.assets, chat});
   return {basePath, features};
 }
 
@@ -118,7 +138,14 @@ export async function installConsole(
  */
 export function mountConsole(
   server: RestServer,
-  options: {basePath: string; title: string; features: ConsoleFeature[]; assets?: AssetSource},
+  options: {
+    basePath: string;
+    title: string;
+    features: ConsoleFeature[];
+    assets?: AssetSource;
+    /** When the chat dock is enabled, inject its config into window.__CONSOLE__. */
+    chat?: ConsoleChatConfig;
+  },
 ): void {
   const {basePath, title, features} = options;
   const app = server.expressApp;
@@ -134,7 +161,7 @@ export function mountConsole(
 
   app.use(basePath + '/assets', express.static(clientDir, {index: false}));
   const hasCss = existsSync(clientDir + 'main.css');
-  const html = indexHtml(basePath, title, features, hasCss);
+  const html = indexHtml(basePath, title, features, hasCss, options.chat);
   app.get([basePath, basePath + '/'], (_req, res) => {
     res.type('html').send(html);
   });
@@ -155,6 +182,7 @@ function indexHtml(
   title: string,
   features: ConsoleFeature[],
   hasCss: boolean,
+  chat?: ConsoleChatConfig,
 ): string {
   const panels = Object.fromEntries(
     features.map(f => [
@@ -162,10 +190,9 @@ function indexHtml(
       {apiBase: f.apiBase, ...(f.extra ? {extra: f.extra} : {})},
     ]),
   );
-  const cfg = JSON.stringify({basePath, title, panels}).replace(
-    /</g,
-    '\\u003c',
-  );
+  const cfgObj: Record<string, unknown> = {basePath, title, panels};
+  if (chat) cfgObj['chat'] = chat;
+  const cfg = JSON.stringify(cfgObj).replace(/</g, '\\u003c');
   const cssLink = hasCss
     ? `<link rel="stylesheet" href="${escapeAttr(basePath)}/assets/main.css">`
     : '';

@@ -137,4 +137,60 @@ describe('mcp/rest/context unified console', () => {
       );
     });
   });
+
+  describe('chat config injection', () => {
+    it('omits config.chat when no chat feature is present', async () => {
+      const r = await client.get('/console').expect(200);
+      const cfg = JSON.parse(
+        r.text.match(/window\.__CONSOLE__=(\{.*?\})<\/script>/)![1],
+      );
+      expect(cfg.chat).toBeUndefined();
+    });
+
+    it('emits config.chat when a feature exposes chatConfig', async () => {
+      // Build a minimal fake chat feature (no real ACP logic — just the
+      // duck-typed chatConfig property that installConsole reads).
+      const fakeChatFeature = {
+        id: 'chat',
+        apiBase: '/console/chat',
+        extra: {},
+        chatConfig: {
+          enabled: true,
+          apiBase: '/console/chat',
+          agents: [{id: 'cc', name: 'Claude Code'}],
+        },
+        install: async () => {},
+      };
+
+      const chatApp = new RestApplication({});
+      chatApp.configure('servers.RestServer').to({port: 0, host: '127.0.0.1'});
+      chatApp.component(MCPComponent);
+      chatApp.configure('servers.MCPServer').to({
+        name: 'chat-test',
+        version: '1.0.0',
+        transports: {stdio: false},
+      });
+      chatApp.service(Tools);
+      await chatApp.get<MCPServer>('servers.MCPServer');
+      await installConsole(chatApp, {
+        features: [fakeChatFeature],
+        unsafeAllowUnauthenticated: true,
+      });
+      await chatApp.start();
+
+      try {
+        const chatClient = supertest((await chatApp.restServer).url);
+        const r = await chatClient.get('/console').expect(200);
+        const cfg = JSON.parse(
+          r.text.match(/window\.__CONSOLE__=(\{.*?\})<\/script>/)![1],
+        );
+        expect(cfg.chat).toBeDefined();
+        expect(cfg.chat.enabled).toBe(true);
+        expect(cfg.chat.apiBase).toBe('/console/chat');
+        expect(cfg.chat.agents).toEqual([{id: 'cc', name: 'Claude Code'}]);
+      } finally {
+        await chatApp.stop();
+      }
+    });
+  });
 });
