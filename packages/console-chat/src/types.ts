@@ -10,7 +10,7 @@ export interface AgentDescriptor {
   id: string;
   name: string;
   /** Read-only probe to check whether the agent is available on this machine. */
-  detect: {bin: string; args?: string[]};
+  detect: {bin: string; args?: string[]; minVersion?: string};
   /** ACP launch command (the adapter, not the underlying model CLI). */
   command: string[];
 }

@@ -23,3 +23,10 @@
 
 export type {ChatConsoleConfig} from './types.js';
 export {chatConsoleFeature} from './feature.js';
+export {
+  BUILTIN_AGENTS,
+  discoverAgents,
+  doctor,
+  defaultProbe,
+} from './agents.js';
+export type {AgentDescriptor, RunProbe, ProbeResult, DoctorResult} from './agents.js';
