@@ -41,6 +41,7 @@ export function App({
   const [route, setRoute] = useState(routeOf);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     const onHash = () => setRoute(routeOf());
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
