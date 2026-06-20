@@ -1,60 +1,72 @@
 # agentback.dev edge Worker
 
-A single Cloudflare Worker that fronts the GitHub Pages origin for
-`agentback.dev` and adds **markdown content negotiation**.
+A Cloudflare Worker that **serves agentback.dev from Workers Static Assets** and
+adds **markdown content negotiation**.
 
 ## What it does
 
-GitHub Pages serves files by path and can't vary a response on the request's
-`Accept` header. The site build (`website/build.mjs`) already emits an authored
+`website/build.mjs` builds the site into `website/dist` and emits an authored
 markdown twin next to every page:
 
 - every docs page → `…/<page>.md`
 - the homepage → `/index.md`
 - plus `/llms.txt` and `/llms-full.txt`
 
-This Worker turns those twins into real negotiation. On a request with
-`Accept: text/markdown` it serves the twin with `Content-Type: text/markdown`;
-everything else falls through to the origin untouched.
+`wrangler deploy` uploads `dist` as this Worker's static asset set (the `ASSETS`
+binding). The Worker serves those assets directly at the edge and, on a request
+with `Accept: text/markdown`, returns the authored twin instead of the HTML — a
+local asset lookup, no origin, no second hop.
 
 ```
-GET /docs/guides/build-a-rest-api    Accept: text/html       → HTML (origin)
-GET /docs/guides/build-a-rest-api    Accept: text/markdown   → .md  (negotiated)
+GET /docs/guides/build-a-rest-api    Accept: text/html       → HTML  (asset)
+GET /docs/guides/build-a-rest-api    Accept: text/markdown   → .md   (negotiated)
 GET /                                 Accept: text/markdown   → /index.md
 ```
 
-It is fail-safe: any error, or any path without a twin, returns the origin
-response. The Worker fronts the whole site, so it must never break it.
+Fail-safe: any error, or any path without a twin, serves the normal asset.
 
-## Deploy
+## Why this replaced the GitHub-Pages proxy
 
-First Worker for this domain. From this directory:
+The prior design kept GitHub Pages as the origin and put a Worker in front to
+proxy + negotiate. That meant two cert systems, a CF→GitHub second hop, and a
+cross-origin fetch back to GitHub on every markdown request. Serving from
+`ASSETS` collapses all of that into one platform: one cert, one hop, twins read
+locally. It's also the natural home for the remaining edge-only agent-readiness
+signals (Link headers, Web Bot Auth).
 
-```bash
-npx wrangler login           # once, into the account that owns the agentback.dev zone
-npx wrangler deploy          # publishes the Worker + its doc routes
-```
+## Cutover (deliberate, reversible, no DNS change)
 
-Validate the bundle without publishing:
+The Worker keeps the existing `agentback.dev/*` route. Deploying the
+assets-based Worker on that route makes it serve `dist` and short-circuit before
+the proxied GitHub origin is ever reached — so **no DNS record changes**, and a
+rollback is just redeploying the previous proxy Worker.
 
-```bash
-npx wrangler deploy --dry-run
-```
-
-After deploy, verify negotiation against the live site:
-
-```bash
-curl -s -H 'Accept: text/markdown' -o /dev/null -w '%{content_type}\n' https://agentback.dev/
-# → text/markdown; charset=utf-8
-curl -s -o /dev/null -w '%{content_type}\n' https://agentback.dev/
-# → text/html; charset=utf-8   (browsers/default are unaffected)
-```
+1. Create a Cloudflare API token (My Profile → API Tokens) with **Account →
+   Workers Scripts → Edit** (and Workers R2/KV as needed). Add it to the repo as
+   the **`CLOUDFLARE_API_TOKEN`** secret.
+2. Deploy — either locally from this directory:
+   ```bash
+   npx wrangler deploy           # uploads dist + the Worker on agentback.dev/*
+   npx wrangler deploy --dry-run # validate config + bundle without publishing
+   ```
+   …or trigger the **Deploy Worker (Cloudflare)** GitHub Action
+   (`workflow_dispatch`).
+3. Verify:
+   ```bash
+   curl -s -H 'Accept: text/markdown' "https://agentback.dev/" \
+     -o /dev/null -w '%{content_type}\n'      # → text/markdown; charset=utf-8
+   curl -s "https://agentback.dev/" -o /dev/null -w '%{content_type}\n'  # → text/html
+   curl -sI "https://agentback.dev/" | grep -i cf-ray   # still proxied
+   ```
+4. Once confirmed: switch `.github/workflows/deploy-worker.yml` to `on: push`
+   (paths: `website/**`) and **retire `.github/workflows/pages.yml`** — GitHub
+   Pages is no longer the origin (assets are uploaded to Cloudflare on deploy).
 
 ## Notes
 
-- The routes (`agentback.dev/` and `agentback.dev/docs/*`) require the zone to
-  be active and **proxied (orange-cloud)** in the same Cloudflare account — a
-  Worker only runs on traffic that flows through Cloudflare's proxy. A DNS-only
-  (grey-cloud) record bypasses the edge and the Worker never executes.
-- This is also the natural home for the other edge-only agent-readiness
-  signals (Link headers, Web Bot Auth) if those get added later.
+- The zone must be active and **proxied (orange-cloud)** in the account — a
+  Worker only runs on traffic through Cloudflare's proxy. (Already the case.)
+- `account_id` is in `wrangler.toml`; it is not a secret.
+- The route stays `agentback.dev/*` (full-site). A path-scoped route can't
+  reliably cover the homepage because Cloudflare route matching is
+  query-sensitive — only a `*` wildcard matches a cache-busted `/?…` URL.
