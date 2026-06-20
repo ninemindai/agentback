@@ -262,6 +262,91 @@ describe('I2: user_message_chunk not echoed as assistant_delta', () => {
 });
 
 // ---------------------------------------------------------------------------
+// 1c. I-3: orientation/grounding turn is drained quietly — its reply does NOT
+//     bleed into the first user turn, and no spurious early stop is emitted.
+// ---------------------------------------------------------------------------
+
+describe('I-3: grounding turn drained quietly, first user turn streams clean', () => {
+  it('does not leak the orientation reply or a spurious stop into the user turn', async () => {
+    // The fake agent REPLIES to the orientation prompt (assistant chunk + stop)
+    // and replies differently to the user prompt.  It distinguishes the two by
+    // the `<system-context>` marker injectContext() wraps the brief in.
+    const fakeAgent = makeFakeAgent({
+      onPrompt: async (sessionId, text, ctx) => {
+        const isOrientation = text.includes('<system-context>');
+        if (isOrientation) {
+          // Orientation turn: emit chunks the user turn must NOT see.
+          await ctx.notify('session/update', {
+            sessionId,
+            update: {
+              sessionUpdate: 'agent_message_chunk',
+              content: {type: 'text', text: 'ORIENTATION_REPLY: got it, understood the schema.'},
+            } as unknown as import('@agentclientprotocol/sdk').SessionUpdate,
+          });
+          return 'end_turn';
+        }
+        // User turn: distinct content.
+        await ctx.notify('session/update', {
+          sessionId,
+          update: {
+            sessionUpdate: 'agent_message_chunk',
+            content: {type: 'text', text: 'USER_REPLY: hello there'},
+          } as unknown as import('@agentclientprotocol/sdk').SessionUpdate,
+        });
+        return 'end_turn';
+      },
+    });
+
+    const connectFn = inProcessConnectFn(fakeAgent);
+    const descriptor: AgentDescriptor = {id: 'test', name: 'Test', detect: {bin: 'test'}, command: ['test']};
+
+    const {AcpSession} = await import('../../acp-session.js');
+    const session = new AcpSession(descriptor, connectFn);
+    await session.connect();
+    await session.open([], process.cwd());
+
+    // Inject the orientation brief — this fires the quiet grounding drain.
+    await session.injectContext('REST routes / MCP tools / domain entities go here.');
+
+    // Only collect events AFTER the user prompt begins.  Any orientation chunk
+    // or a premature stop reaching this collector would prove the bug.
+    const userEvents: import('../../acp-session.js').AcpEvent[] = [];
+    session.on('event', ev => userEvents.push(ev));
+
+    const stopPromise = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('timeout waiting for user turn stop')), 3000);
+      session.on('event', ev => {
+        if (ev.type === 'stop') { clearTimeout(timer); resolve(); }
+        if (ev.type === 'error') { clearTimeout(timer); reject((ev as {error: unknown}).error as Error); }
+      });
+    });
+
+    await session.prompt('Hi there');
+    await stopPromise;
+
+    const deltas = userEvents.filter(e => e.type === 'assistant_delta');
+    const texts = deltas.map(e => (e as import('../../acp-session.js').AssistantDeltaEvent).text);
+
+    // The orientation reply must NOT appear in the user turn's stream.
+    expect(texts.join('')).not.toContain('ORIENTATION_REPLY');
+    // The user turn's own content streams cleanly.
+    expect(texts.join('')).toBe('USER_REPLY: hello there');
+
+    // Exactly ONE stop event — the user turn's own.  A leaked orientation
+    // `stop` (the bug) would surface a second, premature stop here.
+    const stops = userEvents.filter(e => e.type === 'stop');
+    expect(stops.length).toBe(1);
+
+    // And the very first delta must be the user reply, not the orientation
+    // leftover — i.e. nothing bled in ahead of the user turn's content.
+    expect(deltas.length).toBe(1);
+    expect((deltas[0] as import('../../acp-session.js').AssistantDeltaEvent).text).toBe('USER_REPLY: hello there');
+
+    session.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 2. Permission request flow
 // ---------------------------------------------------------------------------
 
