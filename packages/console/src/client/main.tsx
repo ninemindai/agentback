@@ -18,7 +18,7 @@ const cfg: ConsoleClientConfig = (
 // build-time-only dynamic import in the esbuild bundle; `@agentback/console`
 // does NOT list console-chat as a runtime dep (only as a devDep for the SPA
 // bundle, which avoids a pnpm circular-dep at the server level).
-let DockComponent: ComponentType<{chat: ChatConfig}> | undefined;
+let DockComponent: ComponentType<{chat: ChatConfig; dockOpen: boolean; onToggleDock: () => void}> | undefined;
 if (cfg.chat?.enabled) {
   try {
     // esbuild statically inlines this into main.js at bundle time — the Dock

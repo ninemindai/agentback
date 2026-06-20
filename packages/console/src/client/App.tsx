@@ -6,6 +6,7 @@ import type {ComponentType} from 'react';
 import {useEffect, useMemo, useState} from 'react';
 import type {ConsoleClientConfig, ConsolePage} from './types.js';
 
+
 /** Props forwarded to the dock component (mirrors `ConsoleClientConfig.chat`). */
 export type ChatConfig = NonNullable<ConsoleClientConfig['chat']>;
 
@@ -27,7 +28,7 @@ export function App({
 }: {
   config: ConsoleClientConfig;
   pages: ConsolePage[];
-  DockComponent?: ComponentType<{chat: ChatConfig}>;
+  DockComponent?: ComponentType<{chat: ChatConfig; dockOpen: boolean; onToggleDock: () => void}>;
 }) {
   const nav = useMemo(
     () => [...pages].sort((a, b) => a.order - b.order),
@@ -49,6 +50,8 @@ export function App({
 
   const active = nav.find(p => p.route === route) ?? nav[0];
   const chatEnabled = config.chat?.enabled === true;
+  const [dockOpen, setDockOpen] = useState(false);
+  const onToggleDock = () => setDockOpen(o => !o);
 
   return (
     <div className={chatEnabled ? 'console console--chat' : 'console'}>
@@ -79,8 +82,17 @@ export function App({
         )}
       </main>
       {chatEnabled && config.chat && (
-        <section className="dock" data-dock>
-          {DockComponent && <DockComponent chat={config.chat} />}
+        <section
+          className={dockOpen ? 'dock dock--open' : 'dock'}
+          data-dock
+        >
+          {DockComponent && (
+            <DockComponent
+              chat={config.chat}
+              dockOpen={dockOpen}
+              onToggleDock={onToggleDock}
+            />
+          )}
         </section>
       )}
     </div>
