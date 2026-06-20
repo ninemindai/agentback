@@ -185,12 +185,13 @@ Endpoints (all behind the console's existing `auth` middleware):
 1. On session start, resolve `agentId` to its catalog descriptor and **spawn** its
    `command` as a subprocess with `cwd` = project root (where source lives), then
    run the ACP `initialize` handshake.
-2. Register **two MCP servers** with the session:
-   - the app's own **`mcp-http`** URL (business tools — what "talk to the running
-     app" means), and
-   - the console-owned **introspection MCP** (below), kept **separate** so
-     dev-introspection tools never leak into the app's production tool surface or
-     OKF bundle.
+2. Register **one MCP server** with the session: the app's own **`mcp-http`**
+   URL. This single endpoint carries both the app's business tools **and** the
+   `IntrospectionTools` surface (`inventory`/`get`/`get_okf_bundle`), because
+   `IntrospectionTools` is mounted on the app's MCP surface via
+   `app.service(IntrospectionTools)` — it is not a separate server.
+   *(Spec originally said "two MCP servers"; corrected to reflect what shipped
+   in Phase 1: one app mcp-http entry that carries both.)*
 3. Inject the **OKF brief** (`GET /schema-explorer/api/okf`) as standing session
    context.
 4. Relay `session/prompt` → stream `session/update` back over SSE.

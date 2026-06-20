@@ -54,6 +54,7 @@ Read top-to-bottom the first time; jump around afterwards.
 | [Composition & extensibility](guides/composition-and-extensibility.md) | The modular toolkit: components, middleware, interceptors, extension points, and subclassing the dispatcher. |
 | [Testing](guides/testing.md)                                           | `createTestApp` and the four client surfaces: typed calls, supertest, in-memory MCP, DI assertions.          |
 | [Secure MCP over HTTP](guides/secure-mcp-over-http.md)                 | Auth modes (strategies vs OAuth 2.1 resource server), scope-gated tools, DNS-rebinding, rate limits.         |
+| [Agent console security](guides/agent-console.md)                      | Security model for the ACP agent dock: off by default, loopback-only, auth requirements, permission scoping. |
 | [HTTP hosts](guides/deploy-to-edge.md)                                 | Run REST + MCP on Node, Fastify, Hono, Bun, Deno, or Workers from one `fetchHandler()`. The native listener. |
 | [Deploy to production](guides/deploy-to-production.md)                 | Containers, validated config, K8s probes, metrics/tracing, graceful shutdown, multi-instance checklist.      |
 
@@ -131,7 +132,8 @@ pnpm -F hello-client start       # the typed client calling hello-rest's schemas
 | `examples/hello-hybrid`   | REST + MCP in one process                  | [Hybrid](guides/build-a-hybrid-app.md)                                    |
 | `examples/hello-client`   | Schema-shared typed client                 | [Hybrid](guides/build-a-hybrid-app.md#a-type-safe-client-with-no-codegen) |
 | `examples/hello-mcp-apps` | MCP Apps `ui://` widget rendered by a host | [MCP Apps](guides/mcp-apps-widgets.md)                                    |
-| `examples/hello-actors`   | Addressable, serialized actors over REST   | [Actor model](actor-model.md)                                             |
+| `examples/hello-actors`         | Addressable, serialized actors over REST                      | [Actor model](actor-model.md)                                             |
+| `examples/hello-agent-console`  | Introspection MCP + agent console dock (see + evolve)         | [Agent console security](guides/agent-console.md)                         |
 
 ## Conventions in these docs
 
