@@ -205,6 +205,13 @@ export class AcpSession extends EventEmitter {
   private _disposed = false;
   /** Kills the underlying subprocess (no-op for in-process connections). */
   private _kill: (() => void) | null = null;
+  /**
+   * Tracks the in-flight quiet drain of the orientation/grounding turn (see
+   * `injectContext`).  The first user `prompt()` awaits this so the shared
+   * `nextUpdate()` queue is clean — no orientation chunks or `stop` bleed into
+   * the user turn — before the user turn's own drain begins.
+   */
+  private _groundingDrain: Promise<void> | null = null;
 
   // Pending permission requests keyed by a stable requestId (we generate a
   // UUID per request so the client can correlate).
@@ -326,15 +333,24 @@ export class AcpSession extends EventEmitter {
 
     // NEEDS LIVE VALIDATION (ACP-NOTES §5): We use prompt() because no
     // session/setContext method is visible in the SDK types.  The agent may
-    // or may not send a response; we call prompt() but do NOT drain updates
-    // here — the caller (bridge) is not listening to the event stream yet.
-    // This is best-effort standing context; failures are logged, not thrown.
-    void session.prompt(
+    // or may not respond to this orientation turn.
+    //
+    // ACP exposes ONE shared `nextUpdate()` queue per session, so we MUST
+    // drain this orientation turn quietly here — consuming its chunks + `stop`
+    // WITHOUT emitting on the public emitter — otherwise the first user turn's
+    // `_drainUpdates` would dequeue the orientation turn's leftovers first,
+    // bleeding the brief's reply into the user message and/or emitting a
+    // spurious early `stop`.  The drain promise is stored in `_groundingDrain`
+    // so the first `prompt()` awaits it before starting the user turn's drain
+    // (the two drains never run concurrently on the shared queue).  This is
+    // best-effort standing context; failures are logged, never thrown.
+    this._groundingDrain = this._drainQuietly(
+      session,
       `<system-context>\n${contextText}\n</system-context>\n\n` +
         'You are an AI coding agent integrated with an AgentBack application. ' +
         'The schema above describes the running app\'s REST routes, MCP tools, ' +
         'and domain entities. Use it to understand the application before making changes.',
-    ).catch(err => log.debug('injectContext: prompt failed (non-fatal): %o', err));
+    );
   }
 
   /**
@@ -352,6 +368,20 @@ export class AcpSession extends EventEmitter {
 
     const session = this._session;
     log.debug('sending prompt (length=%d)', text.length);
+
+    // If an orientation/grounding turn is still draining on the shared
+    // `nextUpdate()` queue, wait for it to fully drain BEFORE starting the
+    // user turn's drain — otherwise the two loops race over one queue and the
+    // orientation leftovers bleed into the user turn.  Best-effort: swallow
+    // its errors (already logged inside `_drainQuietly`).  Cleared after the
+    // await so it's only awaited once.
+    const grounding = this._groundingDrain;
+    if (grounding) {
+      this._groundingDrain = null;
+      await grounding.catch(() => {
+        /* grounding drain errors are non-fatal and already logged */
+      });
+    }
 
     // Fire-and-forget the update loop; the bridge controller reads from the
     // event emitter over SSE.
@@ -436,6 +466,41 @@ export class AcpSession extends EventEmitter {
       if (!this._disposed) {
         this.emit('event', {type: 'error', error: err} satisfies ErrorEvent);
       }
+    }
+  }
+
+  /**
+   * Sends a prompt and drains its turn QUIETLY — mirrors `_drainUpdates`'s
+   * loop and stop-detection, but emits NOTHING on the public emitter (chunks
+   * and the `stop` are swallowed, logged at debug only).
+   *
+   * Used for the orientation/grounding turn (`injectContext`): the ACP
+   * `nextUpdate()` queue is shared per session, so the orientation turn must
+   * be fully consumed off the queue before the first user turn's drain runs,
+   * otherwise its leftovers bleed into the user turn.  Best-effort and
+   * non-fatal — never throws (so `prompt()` can `await` it without a guard
+   * beyond the `.catch()` it already has, and `dispose()` never hangs on it).
+   */
+  private async _drainQuietly(
+    session: ActiveSession,
+    text: string,
+  ): Promise<void> {
+    try {
+      void session.prompt(text);
+
+      let done = false;
+      while (!done && !this._disposed) {
+        const msg: ActiveSessionMessage = await session.nextUpdate();
+        if (msg.kind === 'stop') {
+          log.debug('grounding turn drained quietly (stopReason=%s)', msg.stopReason);
+          done = true;
+        }
+        // session_update chunks (if any) are intentionally swallowed — the
+        // orientation reply is background context, not user-visible output.
+      }
+    } catch (err) {
+      // Non-fatal: the orientation turn is best-effort standing context.
+      log.debug('grounding quiet-drain error (non-fatal): %o', err);
     }
   }
 
