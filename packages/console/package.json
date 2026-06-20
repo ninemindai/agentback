@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./focus.js": {
+      "types": "./src/client/focus.ts",
+      "import": "./src/client/focus.ts"
     }
   },
   "files": [
