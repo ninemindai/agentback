@@ -322,6 +322,9 @@ interface MinimalEventSource {
   close(): void;
 }
 
+/** Factory that creates a `MinimalEventSource` for a given URL. */
+export type EventSourceFactory = (url: string) => MinimalEventSource;
+
 /**
  * Opens an SSE stream against `url` and calls `onEvent` for each parsed
  * data frame.  Returns a cleanup function that closes the connection.
@@ -336,22 +339,27 @@ interface MinimalEventSource {
  * so the dock can show the "Rebuild & reconnect" affordance.
  *
  * This function must only be called in a browser context (requires
- * `globalThis.EventSource`).
+ * `globalThis.EventSource`) unless an `eventSourceFactory` is provided.
  */
 export function openSseStream(
   url: string,
   onEvent: (ev: SseClientEvent) => void,
   onError?: (err: unknown) => void,
-  options?: {reconnectDelayMs?: number; maxReconnects?: number; restartWindowMs?: number},
+  options?: {
+    reconnectDelayMs?: number;
+    maxReconnects?: number;
+    restartWindowMs?: number;
+    /** Injectable EventSource factory for testing. Defaults to `globalThis.EventSource`. */
+    eventSourceFactory?: EventSourceFactory;
+  },
 ): () => void {
   const reconnectDelayMs = options?.reconnectDelayMs ?? 2000;
   const maxReconnects = options?.maxReconnects ?? 3;
   const restartWindowMs = options?.restartWindowMs ?? 5000;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const EventSourceCtor = (globalThis as any).EventSource as new(
-    url: string,
-  ) => MinimalEventSource;
+  const defaultFactory: EventSourceFactory = (u: string) => new ((globalThis as any).EventSource as new(url: string) => MinimalEventSource)(u);
+  const makeEs = options?.eventSourceFactory ?? defaultFactory;
 
   let cancelled = false;
   let reconnectCount = 0;
@@ -361,7 +369,7 @@ export function openSseStream(
   function connect(): void {
     if (cancelled) return;
     connectTime = Date.now();
-    const es = new EventSourceCtor(url);
+    const es = makeEs(url);
     currentEs = es;
 
     es.onmessage = (ev: {data: unknown}) => {
