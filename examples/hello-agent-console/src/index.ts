@@ -25,6 +25,28 @@ class HelloController {
   }
 }
 
+/**
+ * DEV ONLY — loopback auth middleware.
+ *
+ * Sets `req.auth` to a fixed local principal so the agent dock is fully
+ * functional when running on 127.0.0.1 (the default bind). This simulates
+ * what a real auth middleware (JWT, session cookie, API key, etc.) would do
+ * in production.
+ *
+ * REPLACE WITH REAL AUTH BEFORE ANY NON-LOOPBACK DEPLOY.
+ * Never expose a process-spawning endpoint to any network beyond loopback
+ * without proper authentication.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function devLoopbackAuth(req: any, _res: unknown, next: () => void): void {
+  (req as {auth: {token: string; clientId: string; scopes: string[]}}).auth = {
+    token: 'dev-loopback',
+    clientId: 'local-dev',
+    scopes: [],
+  };
+  next();
+}
+
 async function main(): Promise<void> {
   const app = new RestApplication();
   app.component(MCPComponent);
@@ -49,8 +71,10 @@ async function main(): Promise<void> {
 
   await installConsole(app, {
     features: [...defaultFeatures(), chat],
-    // For local development; replace with real auth for any non-loopback deploy.
-    unsafeAllowUnauthenticated: true,
+    // DEV ONLY: devLoopbackAuth sets req.auth to a fixed local-dev principal so
+    // the bridge endpoints work. The server is bound to 127.0.0.1 by default —
+    // replace with real auth before any non-loopback deploy.
+    auth: devLoopbackAuth,
   });
 
   await app.start();
