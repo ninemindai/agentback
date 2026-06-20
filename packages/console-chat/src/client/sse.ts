@@ -69,6 +69,13 @@ export interface SseHeartbeat {
   type: 'heartbeat';
 }
 
+/** Server restart signal — triggers the rebuild affordance in the dock. */
+export interface SseServerRestart {
+  type: 'server_restart';
+  /** Optional message describing why the server restarted. */
+  reason?: string;
+}
+
 export type SseClientEvent =
   | SseAssistantDelta
   | SseToolCall
@@ -77,7 +84,8 @@ export type SseClientEvent =
   | SseStop
   | SseError
   | SseUserMessage
-  | SseHeartbeat;
+  | SseHeartbeat
+  | SseServerRestart;
 
 // ---------------------------------------------------------------------------
 // Conversation state
@@ -155,6 +163,9 @@ export function turnReducer(
 ): ConversationState {
   switch (event.type) {
     case 'heartbeat':
+      return state;
+
+    case 'server_restart':
       return state;
 
     case 'user_message': {
@@ -315,8 +326,14 @@ interface MinimalEventSource {
  * Opens an SSE stream against `url` and calls `onEvent` for each parsed
  * data frame.  Returns a cleanup function that closes the connection.
  *
- * The caller is responsible for reconnecting on connection loss; this
- * function focuses on the framing + error signal only.
+ * On connection drop: waits `reconnectDelayMs` (default 2000) and retries
+ * up to `maxReconnects` times (default 3).  On the final reconnect failure
+ * or after `onRestart` signals a rebuild, `onError` is called.
+ *
+ * If the connection drops immediately after being established (within
+ * `restartWindowMs` of connect), it is treated as a server restart and
+ * `onEvent({type:'server_restart'})` is emitted before reconnecting —
+ * so the dock can show the "Rebuild & reconnect" affordance.
  *
  * This function must only be called in a browser context (requires
  * `globalThis.EventSource`).
@@ -325,25 +342,66 @@ export function openSseStream(
   url: string,
   onEvent: (ev: SseClientEvent) => void,
   onError?: (err: unknown) => void,
+  options?: {reconnectDelayMs?: number; maxReconnects?: number; restartWindowMs?: number},
 ): () => void {
+  const reconnectDelayMs = options?.reconnectDelayMs ?? 2000;
+  const maxReconnects = options?.maxReconnects ?? 3;
+  const restartWindowMs = options?.restartWindowMs ?? 5000;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const EventSourceCtor = (globalThis as any).EventSource as new(
     url: string,
   ) => MinimalEventSource;
-  const es = new EventSourceCtor(url);
 
-  es.onmessage = (ev: {data: unknown}) => {
-    try {
-      const parsed = JSON.parse(ev.data as string) as SseClientEvent;
-      onEvent(parsed);
-    } catch {
-      // Malformed frame — ignore.
-    }
-  };
+  let cancelled = false;
+  let reconnectCount = 0;
+  let connectTime = 0;
+  let currentEs: MinimalEventSource | null = null;
 
-  if (onError) {
-    es.onerror = onError;
+  function connect(): void {
+    if (cancelled) return;
+    connectTime = Date.now();
+    const es = new EventSourceCtor(url);
+    currentEs = es;
+
+    es.onmessage = (ev: {data: unknown}) => {
+      try {
+        const parsed = JSON.parse(ev.data as string) as SseClientEvent;
+        onEvent(parsed);
+      } catch {
+        // Malformed frame — ignore.
+      }
+    };
+
+    es.onerror = () => {
+      es.close();
+      currentEs = null;
+      if (cancelled) return;
+
+      const connectedMs = Date.now() - connectTime;
+      const isEarlyDrop = connectedMs < restartWindowMs;
+
+      if (isEarlyDrop && reconnectCount === 0) {
+        // Treat first early drop as a potential server restart.
+        onEvent({type: 'server_restart'});
+      }
+
+      if (reconnectCount >= maxReconnects) {
+        onError?.(new Error('SSE connection failed after retries'));
+        return;
+      }
+
+      reconnectCount++;
+      // eslint-disable-next-line @typescript-eslint/no-implied-eval
+      globalThis.setTimeout(connect, reconnectDelayMs);
+    };
   }
 
-  return () => es.close();
+  connect();
+
+  return () => {
+    cancelled = true;
+    currentEs?.close();
+    currentEs = null;
+  };
 }

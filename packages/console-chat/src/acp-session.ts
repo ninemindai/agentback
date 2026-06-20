@@ -309,6 +309,39 @@ export class AcpSession extends EventEmitter {
   }
 
   /**
+   * Injects standing context into the newly-opened session by sending a
+   * silent orientation prompt.  The agent consumes it as background context.
+   *
+   * NEEDS LIVE VALIDATION (ACP-NOTES §5): `session.prompt()` is the only
+   * context-injection mechanism visible in the ACP SDK types.  A separate
+   * `session/setContext` endpoint does not appear in the 0.28.x types.
+   * If the real agent ignores zero-reply prompts this should be a no-op.
+   */
+  async injectContext(contextText: string): Promise<void> {
+    if (this._disposed) throw new Error('AcpSession: already disposed');
+    if (!this._session) throw new Error('AcpSession: no open session — call open() first');
+
+    const session = this._session;
+    log.debug('injecting standing context (length=%d)', contextText.length);
+
+    // NEEDS LIVE VALIDATION (ACP-NOTES §5): We use prompt() because no
+    // session/setContext method is visible in the SDK types.  The agent may
+    // or may not send a response; we call prompt() but do NOT drain updates
+    // here — the caller (bridge) is not listening to the event stream yet.
+    // This is best-effort standing context; failures are logged, not thrown.
+    try {
+      void session.prompt(
+        `<system-context>\n${contextText}\n</system-context>\n\n` +
+          'You are an AI coding agent integrated with an AgentBack application. ' +
+          'The schema above describes the running app\'s REST routes, MCP tools, ' +
+          'and domain entities. Use it to understand the application before making changes.',
+      );
+    } catch (err) {
+      log.debug('injectContext: prompt failed (non-fatal): %o', err);
+    }
+  }
+
+  /**
    * Sends a prompt to the open session and starts streaming update events.
    * Returns as soon as the message is queued; events flow asynchronously on
    * the emitter until a `stop` or `error` event.
