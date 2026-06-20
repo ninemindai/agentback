@@ -572,5 +572,116 @@ pnpm -F hello-hybrid start</code></pre>
         </p>
       </div>
     </footer>
+
+    <!--
+      WebMCP (navigator.modelContext): expose the docs as a callable tool so an
+      in-browser agent can search AgentBack's documentation without scraping the
+      page. Backed by /llms-full.txt — the same corpus, fetched once and cached.
+      Progressive enhancement: a no-op where the API is absent.
+    -->
+    <script>
+      (function () {
+        var ctx = navigator.modelContext;
+        if (!ctx || typeof ctx.provideContext !== 'function') return;
+
+        var corpus = null;
+        function loadCorpus() {
+          if (corpus) return corpus;
+          corpus = fetch('/llms-full.txt')
+            .then(function (r) {
+              if (!r.ok) throw new Error('llms-full.txt ' + r.status);
+              return r.text();
+            })
+            .then(function (text) {
+              // Sections are delimited by `<!-- ===== <url> ===== -->` markers
+              // emitted by website/build.mjs.
+              var re = /<!--\s*=+\s*(\S+)\s*=+\s*-->/g;
+              var parts = [];
+              var m,
+                last = null;
+              while ((m = re.exec(text))) {
+                if (last) {
+                  last.body = text.slice(last.start, m.index).trim();
+                  parts.push(last);
+                }
+                last = {url: m[1], start: re.lastIndex};
+              }
+              if (last) {
+                last.body = text.slice(last.start).trim();
+                parts.push(last);
+              }
+              return parts;
+            })
+            .catch(function (e) {
+              corpus = null; // allow a later retry
+              throw e;
+            });
+          return corpus;
+        }
+
+        ctx.provideContext({
+          tools: [
+            {
+              name: 'search_agentback_docs',
+              description:
+                "Search AgentBack's documentation corpus and return the most " +
+                'relevant sections with their source URLs. Use for questions ' +
+                'about the framework: decorators, REST/MCP, dependency ' +
+                'injection, auth, deployment, packages, or the typed client.',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  query: {
+                    type: 'string',
+                    description: 'Keywords or a natural-language question.',
+                  },
+                  limit: {
+                    type: 'integer',
+                    description: 'Max sections to return (default 3).',
+                    minimum: 1,
+                    maximum: 8,
+                  },
+                },
+                required: ['query'],
+              },
+              execute: function (args) {
+                var query = ((args && args.query) || '').toLowerCase();
+                var limit = Math.min(Math.max((args && args.limit) || 3, 1), 8);
+                var terms = query.split(/\s+/).filter(Boolean);
+                return loadCorpus().then(function (parts) {
+                  var scored = parts
+                    .map(function (p) {
+                      var hay = p.body.toLowerCase();
+                      var score = terms.reduce(function (s, t) {
+                        return s + (hay.split(t).length - 1);
+                      }, 0);
+                      return {p: p, score: score};
+                    })
+                    .filter(function (x) {
+                      return x.score > 0;
+                    })
+                    .sort(function (a, b) {
+                      return b.score - a.score;
+                    })
+                    .slice(0, limit);
+
+                  var text = scored.length
+                    ? scored
+                        .map(function (x) {
+                          var body = x.p.body.slice(0, 2000);
+                          return '## ' + x.p.url + '\n\n' + body;
+                        })
+                        .join('\n\n---\n\n')
+                    : 'No matching documentation. Try broader keywords, or ' +
+                      'fetch https://agentback.dev/llms.txt for the full index.';
+
+                  return {content: [{type: 'text', text: text}]};
+                });
+              },
+            },
+          ],
+        });
+      })();
+    </script>
   </body>
 </html>

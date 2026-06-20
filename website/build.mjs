@@ -386,6 +386,146 @@ copyDir(
   path.join(out, 'skills', 'agentback'),
 );
 
+// 2c. Agent-readiness discovery artifacts. Every file here describes a
+// resource that actually exists on this static site — we deliberately do NOT
+// emit an MCP Server Card or OAuth metadata, because agentback.dev hosts no
+// live MCP/auth endpoint and a card pointing at nothing is worse than none.
+//   /robots.txt                            crawl rules + AI-bot rules + Content Signals
+//   /sitemap.xml                           canonical HTML URLs
+//   /.well-known/api-catalog               RFC 9727 linkset → docs + llms.txt
+//   /.well-known/agent-skills/index.json   Agent Skills Discovery v0.2.0 index
+
+// robots.txt — public docs, training welcomed for an MIT project, but spelled
+// out so the policy is legible to AI crawlers. Content-Signal per
+// contentsignals.org; Sitemap per sitemaps.org.
+const AI_CRAWLERS = [
+  'GPTBot',
+  'OAI-SearchBot',
+  'ChatGPT-User',
+  'ClaudeBot',
+  'Claude-Web',
+  'Google-Extended',
+  'PerplexityBot',
+  'CCBot',
+];
+write(
+  'robots.txt',
+  [
+    `# AgentBack — ${SITE}`,
+    '# Static documentation site (GitHub Pages behind Cloudflare).',
+    '',
+    'User-agent: *',
+    'Allow: /',
+    '# Content Signals (contentsignals.org): docs are open for search, agent',
+    '# input, and training — this is an MIT-licensed open-source project.',
+    'Content-Signal: search=yes, ai-input=yes, ai-train=yes',
+    '',
+    '# Explicit AI-crawler rules so the policy is unambiguous.',
+    ...AI_CRAWLERS.flatMap(bot => [`User-agent: ${bot}`, 'Allow: /', '']),
+    `Sitemap: ${SITE}/sitemap.xml`,
+    '',
+  ].join('\n'),
+);
+
+// sitemap.xml — homepage, every rendered docs page, and the blog index. lastmod
+// comes from each markdown source's mtime so it tracks real edits.
+const sitemapUrls = [
+  {loc: `${SITE}/`, lastmod: null},
+  ...DOC_PAGES.map(src => ({
+    loc: `${SITE}/${mapTarget(src)}`,
+    lastmod: fs.statSync(path.join(root, src)).mtime.toISOString().slice(0, 10),
+  })),
+  {loc: `${SITE}/blog/index.html`, lastmod: null},
+];
+write(
+  'sitemap.xml',
+  '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+    sitemapUrls
+      .map(
+        ({loc, lastmod}) =>
+          '  <url>\n' +
+          `    <loc>${loc}</loc>\n` +
+          (lastmod ? `    <lastmod>${lastmod}</lastmod>\n` : '') +
+          '  </url>',
+      )
+      .join('\n') +
+    '\n</urlset>\n',
+);
+
+// /.well-known/api-catalog — RFC 9727 linkset. No service-desc (there is no
+// OpenAPI spec for this docs site); service-doc points at the human + agent
+// documentation surfaces that do exist. Note: GitHub Pages serves this as
+// application/json, not the spec's application/linkset+json — a Cloudflare
+// Transform Rule can correct the content-type at the edge if needed.
+write(
+  '.well-known/api-catalog',
+  JSON.stringify(
+    {
+      linkset: [
+        {
+          anchor: `${SITE}/.well-known/api-catalog`,
+          'service-doc': [
+            {
+              href: `${SITE}/docs/`,
+              type: 'text/html',
+              title: 'AgentBack documentation',
+            },
+            {
+              href: `${SITE}/llms.txt`,
+              type: 'text/plain',
+              title: 'llms.txt — agent-readable site map',
+            },
+            {
+              href: `${SITE}/llms-full.txt`,
+              type: 'text/plain',
+              title: 'Full documentation corpus in one file',
+            },
+          ],
+          item: [
+            {
+              href: GITHUB,
+              title: 'Source repository (ninemindai/agentback)',
+            },
+          ],
+        },
+      ],
+    },
+    null,
+    2,
+  ) + '\n',
+);
+
+// /.well-known/agent-skills/index.json — Agent Skills Discovery v0.2.0. Indexes
+// the real coding-agent skill already served at /skills/agentback/SKILL.md.
+const skillFile = path.join(root, 'skills', 'agentback', 'SKILL.md');
+const skillDigest = crypto
+  .createHash('sha256')
+  .update(fs.readFileSync(skillFile))
+  .digest('hex');
+write(
+  '.well-known/agent-skills/index.json',
+  JSON.stringify(
+    {
+      $schema: 'https://schemas.agentskills.io/discovery/0.2.0/schema.json',
+      skills: [
+        {
+          name: 'agentback',
+          type: 'skill-md',
+          description:
+            'Build REST + MCP services with AgentBack: schema-first ' +
+            'decorators, the slot-0 input bundle, dependency injection, auth, ' +
+            'and the schema-shared typed client.',
+          url: `${SITE}/skills/agentback/SKILL.md`,
+          digest: `sha256:${skillDigest}`,
+        },
+      ],
+    },
+    null,
+    2,
+  ) + '\n',
+);
+
 // 2b. Doc diagram SVGs.
 fs.mkdirSync(path.join(out, 'diagrams'), {recursive: true});
 for (const f of fs.readdirSync(DIAGRAM_DIR)) {
