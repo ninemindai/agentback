@@ -2,8 +2,6 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {useState} from 'react';
-
 /** Chat config shape — mirrors `ConsoleClientConfig['chat']` in the console shell. */
 export interface ChatConfig {
   enabled: boolean;
@@ -20,7 +18,6 @@ export interface ChatConfig {
  * dock-wireframe.html).  No live SSE/ACP wiring yet — that is Tasks 5/6.
  */
 export function Dock({chat}: {chat: ChatConfig}) {
-  const [, setFocusChip] = useState<string | null>(null);
   const firstAgent = chat.agents[0];
 
   return (
@@ -51,7 +48,6 @@ export function Dock({chat}: {chat: ChatConfig}) {
             <button
               className="ghost"
               style={{marginTop: '8px'}}
-              onClick={() => setFocusChip(null)}
             >
               Re-check
             </button>

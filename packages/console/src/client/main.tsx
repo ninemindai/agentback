@@ -4,11 +4,11 @@
 
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
-import {App} from './App';
-import {pages} from './pages';
-import type {ConsoleClientConfig} from './types';
+import {App} from './App.js';
+import {pages} from './pages.js';
+import type {ConsoleClientConfig} from './types.js';
 import type {ComponentType} from 'react';
-import type {ChatConfig} from './App';
+import type {ChatConfig} from './App.js';
 
 const cfg: ConsoleClientConfig = (
   globalThis as unknown as {__CONSOLE__?: ConsoleClientConfig}
@@ -21,6 +21,8 @@ const cfg: ConsoleClientConfig = (
 let DockComponent: ComponentType<{chat: ChatConfig}> | undefined;
 if (cfg.chat?.enabled) {
   try {
+    // esbuild statically inlines this into main.js at bundle time — the Dock
+    // code is present in the bundle; it simply isn't rendered unless `config.chat?.enabled`.
     const mod = await import('@agentback/console-chat/console');
     DockComponent = mod.Dock;
   } catch {

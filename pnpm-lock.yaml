@@ -904,21 +904,9 @@ importers:
       '@agentback/core':
         specifier: workspace:~
         version: link:../core
-      '@agentback/introspection':
-        specifier: workspace:~
-        version: link:../introspection
-      '@agentback/mcp-http':
-        specifier: workspace:~
-        version: link:../mcp-http
       '@agentback/rest':
         specifier: workspace:~
         version: link:../rest
-      '@zed-industries/agent-client-protocol':
-        specifier: ^0.4.5
-        version: 0.4.5
-      react:
-        specifier: ~19.2.7
-        version: 19.2.7
       tslib:
         specifier: ^2.8.1
         version: 2.8.1
@@ -938,6 +926,9 @@ importers:
       esbuild:
         specifier: ~0.28.1
         version: 0.28.1
+      react:
+        specifier: ~19.2.7
+        version: 19.2.7
       react-dom:
         specifier: ~19.2.7
         version: 19.2.7(react@19.2.7)
@@ -3594,10 +3585,6 @@ packages:
   '@xyflow/system@0.0.77':
     resolution: {integrity: sha512-qCDCMCQAAgUu8yHnhloHG9F5mwPX5E+Wl8McpYIOPSSXfzFJJoZcwOcsDiAjitVKIg2de1WmJbCHfpcvxprsgg==}
 
-  '@zed-industries/agent-client-protocol@0.4.5':
-    resolution: {integrity: sha512-OwHKfu5AiKul/GSJilHg36+kOSV9eOl2eYnjR6tenAQDdraSnt22WFk0SDFTeuAANz1Gxkv+DTf7Hq32rvX7FQ==}
-    deprecated: This package has been renamed to @agentclientprotocol/sdk. Please migrate to continue receiving updates.
-
   abstract-logging@2.0.1:
     resolution: {integrity: sha512-2BjRTZxTPvheOvGbBslFSYOUkr+SjPtOnrLP33f+VIWLzezQpZcqVg7ja3L4dBXmzzgwT+a029jRx5PCi3JuiA==}
 
@@ -5523,9 +5510,6 @@ packages:
     peerDependencies:
       zod: ^3.25.28 || ^4
 
-  zod@3.25.76:
-    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
-
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
@@ -6870,10 +6854,6 @@ snapshots:
       d3-interpolate: 3.0.1
       d3-selection: 3.0.0
       d3-zoom: 3.0.0
-
-  '@zed-industries/agent-client-protocol@0.4.5':
-    dependencies:
-      zod: 3.25.76
 
   abstract-logging@2.0.1: {}
 
@@ -8943,8 +8923,6 @@ snapshots:
   zod-to-json-schema@3.25.2(zod@4.4.3):
     dependencies:
       zod: 4.4.3
-
-  zod@3.25.76: {}
 
   zod@4.4.3: {}
 
