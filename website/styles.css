@@ -928,6 +928,36 @@ section.hero {
   padding: 0;
 }
 
+.doc-content .code-compare {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1fr 1fr;
+  margin: 22px 0;
+}
+
+.doc-content .code-compare figure {
+  margin: 0;
+  min-width: 0;
+}
+
+.doc-content .code-compare figcaption {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 550;
+  margin-bottom: 8px;
+}
+
+.doc-content .code-compare pre {
+  height: 100%;
+  margin: 0;
+}
+
+@media (max-width: 880px) {
+  .doc-content .code-compare {
+    grid-template-columns: 1fr;
+  }
+}
+
 .doc-content table {
   display: block;
   max-width: 100%;
