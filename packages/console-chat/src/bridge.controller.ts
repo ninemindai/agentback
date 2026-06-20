@@ -19,6 +19,14 @@
  * Principal: derived from `req.auth` (set by the console `auth` guard middleware).
  * Both the @api endpoints and the SSE stream use the same `principalFromRequest`
  * helper — one canonical source of truth. Unauthenticated requests are rejected (401).
+ *
+ * Lifecycle notes:
+ *   - A session created via POST /session starts a creation-TTL timer (TTL =
+ *     SSE_RECONNECT_LEASE_MS). If the SSE stream has not subscribed by the time
+ *     the timer fires, the session is disposed (prevents a never-subscribed leak).
+ *   - When the SSE stream connects, the creation-TTL timer is cancelled.
+ *   - On app.stop(), disposeAll() is called to drain all live sessions and kill
+ *     any subprocesses (wired by chatConsoleFeature.install).
  */
 
 import {z} from 'zod';
@@ -179,10 +187,17 @@ interface SessionEntry {
   acpSessionId: string;
   /** Epoch ms when the last SSE client disconnected (null = client is connected). */
   sseDisconnectedAt: number | null;
+  /**
+   * Timer that fires if the session is never SSE-subscribed within the
+   * creation TTL window. Cleared when the SSE stream connects.
+   */
+  creationTtlTimer: ReturnType<typeof setTimeout> | null;
 }
 
 // Lease window (ms) before a disconnected session is garbage-collected.
-const SSE_RECONNECT_LEASE_MS = 30_000;
+// Also used as the creation-TTL window: a session never subscribed via SSE
+// is disposed after this many ms to prevent unbounded session accumulation.
+export const SSE_RECONNECT_LEASE_MS = 30_000;
 
 // SSE heartbeat interval (ms).
 export const SSE_HEARTBEAT_MS = 15_000;
@@ -280,10 +295,25 @@ export class ChatBridgeController {
       }
 
       const key = sessionKey(principal, acpSessionId);
+
+      // Creation-time TTL: if no SSE client subscribes within the lease window,
+      // dispose the session to prevent unbounded accumulation of never-connected
+      // sessions.  The timer is cleared by handleSseRequest when a client
+      // connects (see the `creationTtlTimer` field on SessionEntry).
+      const creationTtlTimer = setTimeout(() => {
+        const current = this.sessions.get(key);
+        if (current && current.sseDisconnectedAt === null && current.creationTtlTimer !== null) {
+          log.debug('creation TTL expired for never-subscribed session sessionId=%s', acpSessionId);
+          current.session.dispose();
+          this.sessions.delete(key);
+        }
+      }, SSE_RECONNECT_LEASE_MS);
+
       this.sessions.set(key, {
         session: acpSession,
         acpSessionId,
         sseDisconnectedAt: null,
+        creationTtlTimer,
       });
 
       return {sessionId: acpSessionId};
@@ -401,8 +431,33 @@ export class ChatBridgeController {
     }
 
     log.debug('deleteSession principal=%s sessionId=%s', principal, sessionId);
+    if (entry.creationTtlTimer !== null) {
+      clearTimeout(entry.creationTtlTimer);
+    }
     entry.session.dispose();
     this.sessions.delete(key);
+  }
+
+  // --------------------------------------------------------------------------
+  // Shutdown / cleanup
+  // --------------------------------------------------------------------------
+
+  /**
+   * Disposes every live session and clears the session map.
+   *
+   * Called by `chatConsoleFeature().install()` via `app.onStop()` so that all
+   * ACP subprocesses are killed when the app shuts down — no orphaned processes.
+   * Also cancels any pending creation-TTL timers.
+   */
+  disposeAll(): void {
+    log.debug('disposeAll: draining %d sessions', this.sessions.size);
+    for (const [, entry] of this.sessions) {
+      if (entry.creationTtlTimer !== null) {
+        clearTimeout(entry.creationTtlTimer);
+      }
+      entry.session.dispose();
+    }
+    this.sessions.clear();
   }
 }
 
@@ -433,6 +488,13 @@ export function handleSseRequest(
 
   // Mark the session as having an active SSE client.
   entry.sseDisconnectedAt = null;
+
+  // Cancel the creation-TTL timer — the client has connected, so the
+  // "never-subscribed" leak path is closed.
+  if (entry.creationTtlTimer !== null) {
+    clearTimeout(entry.creationTtlTimer);
+    entry.creationTtlTimer = null;
+  }
 
   // SSE headers.
   res.setHeader('Content-Type', 'text/event-stream');
