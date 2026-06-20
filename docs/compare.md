@@ -15,7 +15,9 @@ frameworks below, here's what carries over and what you gain.
 | [**Hono**](https://hono.dev/)          | —                                                                                            | `@hono/zod-openapi` + `@hono/mcp` + hand-written SDK tools collapse to one schema, one process                               |
 
 Each section below shows the same forecast endpoint — a REST route _and_ an
-agent-callable tool — first in that framework, then in AgentBack.
+agent-callable tool — first in that framework, then in AgentBack. The AgentBack
+class is identical every time; it's spelled out in full under **From LoopBack
+4** and abbreviated after that.
 
 ## From LoopBack 4
 
@@ -87,19 +89,15 @@ class WeatherController {
 // + a separate MCP-Nest @Tool method</code></pre>
 </figure>
 <figure>
-<figcaption>AgentBack</figcaption>
-<pre><code>const City = z.object({city: z.string()});
-const Out = z.object({tempC: z.number()});
+<figcaption>AgentBack — same class</figcaption>
+<pre><code>// the Weather class from the LoopBack section:
+// one Zod schema → a @get route and a @tool
 @api() @mcpServer()
 class Weather {
   @get('/forecast/{city}', {path: City, response: Out})
-  route(i: {path: {city: string}}) {
-    return lookup(i.path.city);
-  }
+  route(i) { ... }
   @tool('forecast', {input: City, output: Out})
-  tool(i: {city: string}) {
-    return lookup(i.city);
-  }
+  tool(i) { ... }
 }</code></pre>
 </figure>
 </div>
@@ -126,19 +124,15 @@ trpc.forecast.query({city: 'sf'});
 // REST / OpenAPI / MCP: add-ons only</code></pre>
 </figure>
 <figure>
-<figcaption>AgentBack</figcaption>
-<pre><code>const City = z.object({city: z.string()});
-const Out = z.object({tempC: z.number()});
+<figcaption>AgentBack — same class</figcaption>
+<pre><code>// the Weather class from the LoopBack section:
+// one Zod schema → a @get route and a @tool
 @api() @mcpServer()
 class Weather {
   @get('/forecast/{city}', {path: City, response: Out})
-  route(i: {path: {city: string}}) {
-    return lookup(i.path.city);
-  }
+  route(i) { ... }
   @tool('forecast', {input: City, output: Out})
-  tool(i: {city: string}) {
-    return lookup(i.city);
-  }
+  tool(i) { ... }
 }</code></pre>
 </figure>
 </div>
@@ -168,19 +162,15 @@ const router = s.router(contract, {
 });</code></pre>
 </figure>
 <figure>
-<figcaption>AgentBack</figcaption>
-<pre><code>const City = z.object({city: z.string()});
-const Out = z.object({tempC: z.number()});
+<figcaption>AgentBack — same class</figcaption>
+<pre><code>// the Weather class from the LoopBack section:
+// one Zod schema → a @get route and a @tool
 @api() @mcpServer()
 class Weather {
   @get('/forecast/{city}', {path: City, response: Out})
-  route(i: {path: {city: string}}) {
-    return lookup(i.path.city);
-  }
+  route(i) { ... }
   @tool('forecast', {input: City, output: Out})
-  tool(i: {city: string}) {
-    return lookup(i.city);
-  }
+  tool(i) { ... }
 }</code></pre>
 </figure>
 </div>
@@ -210,19 +200,15 @@ mcp.registerTool('forecast',
   {inputSchema: z.object({city: z.string()})}, handler);</code></pre>
 </figure>
 <figure>
-<figcaption>AgentBack</figcaption>
-<pre><code>const City = z.object({city: z.string()});
-const Out = z.object({tempC: z.number()});
+<figcaption>AgentBack — same class</figcaption>
+<pre><code>// the Weather class from the LoopBack section:
+// one Zod schema → a @get route and a @tool
 @api() @mcpServer()
 class Weather {
   @get('/forecast/{city}', {path: City, response: Out})
-  route(i: {path: {city: string}}) {
-    return lookup(i.path.city);
-  }
+  route(i) { ... }
   @tool('forecast', {input: City, output: Out})
-  tool(i: {city: string}) {
-    return lookup(i.city);
-  }
+  tool(i) { ... }
 }</code></pre>
 </figure>
 </div>
