@@ -205,8 +205,9 @@ const route = createRoute({
 });
 app.openapi(route, c =&gt;
   c.json(lookup(c.req.param('city'))));
-// separate @hono/mcp tool
-mcp.tool('forecast', {city: z.string()}, handler);</code></pre>
+// separate MCP SDK tool, mounted via @hono/mcp
+mcp.registerTool('forecast',
+  {inputSchema: z.object({city: z.string()})}, handler);</code></pre>
 </figure>
 <figure>
 <figcaption>AgentBack</figcaption>
