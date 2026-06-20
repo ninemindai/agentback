@@ -342,14 +342,18 @@ const llmsSections = NAV_SECTIONS.map(section => {
   });
   return `## ${section.title}\n\n${lines.join('\n')}`;
 });
+const TAGLINE = [
+  'AgentBack is an AI-native API/MCP framework for TypeScript: REST endpoints,',
+  'MCP tools, OpenAPI 3.1 docs, typed clients, tests, and runtime validation',
+  "all share one Zod contract, on an ESM port of LoopBack 4's DI core.",
+  `Alpha. MIT. Source: ${GITHUB}`,
+];
+const taglineQuote = TAGLINE.map(l => `> ${l}`).join('\n');
 write(
   'llms.txt',
   `# AgentBack
 
-> AgentBack is an AI-native API/MCP framework for TypeScript: REST endpoints,
-> MCP tools, OpenAPI 3.1 docs, typed clients, tests, and runtime validation
-> all share one Zod contract, on an ESM port of LoopBack 4's DI core.
-> Alpha. MIT. Source: ${GITHUB}
+${taglineQuote}
 
 Every page below is the raw markdown the HTML docs are built from.
 The full corpus in one file: ${SITE}/llms-full.txt
@@ -379,6 +383,28 @@ write(
           `\n\n<!-- ===== ${SITE}/${d.mdPage} ===== -->\n\n${fs.readFileSync(path.join(root, d.src), 'utf8')}`,
       )
       .join(''),
+);
+
+// Homepage as markdown — the one page with no .md twin (index.html is
+// hand-written). Lets the markdown-negotiation Worker (website/edge) answer
+// `GET / Accept: text/markdown`. Reuses the tagline + the docs intro, so no
+// new prose and no second source of truth.
+const readmeMeta = docMeta.find(d => d.src === 'docs/README.md');
+write(
+  'index.md',
+  `# AgentBack
+
+${taglineQuote}
+
+${readmeMeta.firstPara}
+
+## Start here
+
+- [Documentation](${SITE}/docs/index.md)
+- [llms.txt — agent-readable site index](${SITE}/llms.txt)
+- [Full documentation corpus](${SITE}/llms-full.txt)
+- [Source on GitHub](${GITHUB})
+`,
 );
 
 copyDir(

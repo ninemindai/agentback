@@ -1,0 +1,16 @@
+#:schema node_modules/wrangler/config-schema.json
+# Cloudflare Worker that fronts the agentback.dev GitHub Pages origin to add
+# markdown content negotiation (Accept: text/markdown). See ./README.md.
+
+name = "agentback-web"
+main = "src/markdown-negotiation.js"
+compatibility_date = "2026-06-20"
+
+# No *.workers.dev URL — this Worker only ever runs on the custom domain route.
+workers_dev = false
+
+# Run in front of the whole site. The zone must already exist in the Cloudflare
+# account (agentback.dev is proxied there today).
+routes = [
+  {pattern = "agentback.dev/*", zone_name = "agentback.dev"},
+]
