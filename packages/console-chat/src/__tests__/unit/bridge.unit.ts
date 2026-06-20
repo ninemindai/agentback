@@ -204,7 +204,100 @@ describe('AcpSession connect + prompt flow', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 1b. I2: user_message_chunk must NOT be echoed as assistant_delta
+// 1b. Permission-mode enforcement: open() sets 'default' mode when the agent
+//     advertises modes with currentModeId !== 'default'
+// ---------------------------------------------------------------------------
+
+describe('Permission-mode enforcement: open() forces prompting mode', () => {
+  it('sends session/set_mode with default when agent advertises acceptEdits', async () => {
+    const setModeCalls: Array<{sessionId: string; modeId: string}> = [];
+
+    const modeAgent = acpAgent({name: 'mode-agent'});
+    modeAgent.onRequest('initialize', async () => ({
+      protocolVersion: 1 as const,
+      agentCapabilities: {},
+    }));
+    modeAgent.onRequest('session/new', async () => ({
+      sessionId: `mode-session-${Date.now()}`,
+      modes: {
+        currentModeId: 'acceptEdits',
+        availableModes: [
+          {id: 'default', name: 'Default (prompting)'},
+          {id: 'acceptEdits', name: 'Accept Edits'},
+        ],
+      },
+      _meta: null,
+    }));
+    // Record set_mode calls from the client.
+    modeAgent.onRequest('session/set_mode', async ({params}) => {
+      setModeCalls.push({sessionId: params.sessionId, modeId: params.modeId});
+      return {_meta: null};
+    });
+    modeAgent.onRequest('session/prompt', async () => ({
+      stopReason: 'end_turn' as const,
+      _meta: null,
+    }));
+
+    const connectFn = inProcessConnectFn(modeAgent);
+    const descriptor: AgentDescriptor = {id: 'test', name: 'Test', detect: {bin: 'test'}, command: ['test']};
+
+    const {AcpSession} = await import('../../acp-session.js');
+    const session = new AcpSession(descriptor, connectFn);
+    await session.connect();
+    const sessionId = await session.open([], process.cwd());
+
+    expect(typeof sessionId).toBe('string');
+    // The fake agent should have received exactly one set_mode call.
+    expect(setModeCalls.length).toBe(1);
+    expect(setModeCalls[0].modeId).toBe('default');
+    expect(setModeCalls[0].sessionId).toBe(sessionId);
+
+    session.dispose();
+  });
+
+  it('does not send session/set_mode when agent advertises no modes (no throw)', async () => {
+    const setModeCalls: Array<unknown> = [];
+
+    const noModeAgent = acpAgent({name: 'no-mode-agent'});
+    noModeAgent.onRequest('initialize', async () => ({
+      protocolVersion: 1 as const,
+      agentCapabilities: {},
+    }));
+    noModeAgent.onRequest('session/new', async () => ({
+      // No modes field — simulates an agent that does not advertise session modes.
+      sessionId: `no-mode-session-${Date.now()}`,
+      _meta: null,
+    }));
+    noModeAgent.onRequest('session/set_mode', async ({params}) => {
+      setModeCalls.push(params);
+      return {_meta: null};
+    });
+    noModeAgent.onRequest('session/prompt', async () => ({
+      stopReason: 'end_turn' as const,
+      _meta: null,
+    }));
+
+    const connectFn = inProcessConnectFn(noModeAgent);
+    const descriptor: AgentDescriptor = {id: 'test', name: 'Test', detect: {bin: 'test'}, command: ['test']};
+
+    const {AcpSession} = await import('../../acp-session.js');
+    const session = new AcpSession(descriptor, connectFn);
+    await session.connect();
+
+    // open() must succeed even when no modes are advertised — it logs a warning
+    // and proceeds without throwing.
+    const sessionId = await session.open([], process.cwd());
+    expect(typeof sessionId).toBe('string');
+
+    // No set_mode should have been sent.
+    expect(setModeCalls.length).toBe(0);
+
+    session.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 1c. I2: user_message_chunk must NOT be echoed as assistant_delta
 // ---------------------------------------------------------------------------
 
 describe('I2: user_message_chunk not echoed as assistant_delta', () => {
