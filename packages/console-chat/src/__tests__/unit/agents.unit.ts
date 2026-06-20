@@ -40,6 +40,14 @@ describe('BUILTIN_AGENTS', () => {
     expect(cc).toBeDefined();
     expect(cc!.detect.bin).toBe('claude-agent-acp');
     expect(cc!.command).toContain('claude-agent-acp');
+    // The bin ships in @agentclientprotocol/claude-agent-acp (confirmed live 2026-06-20)
+    expect(cc!.installPackage).toBe('@agentclientprotocol/claude-agent-acp');
+  });
+
+  it('doctor on the claude-code entry produces the correct npm install command', async () => {
+    const cc = BUILTIN_AGENTS.find(a => a.id === 'claude-code')!;
+    const result = await doctor(cc, missingProbe);
+    expect(result.fix).toBe('npm install -g @agentclientprotocol/claude-agent-acp');
   });
 });
 
@@ -90,7 +98,7 @@ describe('doctor', () => {
     expect(result.found).toBeUndefined();
     expect(result.need).toBeUndefined();
     expect(result.fix).toBeTruthy();
-    // fix must be a copy-pasteable install command
+    // fix must be a copy-pasteable install command using the npm package name
     expect(result.fix).toContain('claude-agent-acp');
   });
 

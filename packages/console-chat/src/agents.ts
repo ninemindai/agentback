@@ -70,7 +70,8 @@ export const defaultProbe: RunProbe = async (
  * The built-in agent catalog.  Seeded with the pinned `claude-agent-acp`
  * reference adapter (the ACP CLI wrapper for Claude Code).
  *
- * TODO(Task 1 spike): confirm exact launch flags for `claude-agent-acp`.
+ * Confirmed live 2026-06-20: bin is `claude-agent-acp` (no extra flags needed);
+ * the npm package providing the bin is `@agentclientprotocol/claude-agent-acp`.
  */
 export const BUILTIN_AGENTS: AgentDescriptor[] = [
   {
@@ -78,6 +79,7 @@ export const BUILTIN_AGENTS: AgentDescriptor[] = [
     name: 'Claude Code',
     detect: {bin: 'claude-agent-acp'},
     command: ['claude-agent-acp'],
+    installPackage: '@agentclientprotocol/claude-agent-acp',
   },
 ];
 
@@ -194,8 +196,9 @@ export async function doctor(
   const min = detect.minVersion;
 
   // F1 fix line — a stable npm global install command.
-  // TODO(Task 1 spike): confirm exact npm package name for claude-agent-acp.
-  const fix = `npm install -g ${bin}`;
+  // Confirmed live 2026-06-20: the bin `claude-agent-acp` ships in the npm
+  // package `@agentclientprotocol/claude-agent-acp` (not a same-name package).
+  const fix = `npm install -g ${descriptor.installPackage ?? bin}`;
 
   const probe = await runProbe(bin);
 

@@ -26,8 +26,9 @@ It **cannot** (framework invariants):
 
 - Call routes or tools via the introspection surface — the introspection MCP
   is read-only and contains no invocation tools.
-- Bypass the permission prompt — file edits and shell commands always surface
-  `session/request_permission` to the user.
+- Bypass the permission prompt — the bridge forces `default` permission mode
+  (`session/set_mode`), so file edits and shell commands always route
+  `session/request_permission` to the user's dock card (live-validated).
 
 ---
 
@@ -123,29 +124,36 @@ For any deployment beyond loopback:
 
 ---
 
-## Permission prompts are not bypassable from config
+## Permission prompts gate all file edits and shell commands
 
-When the ACP agent wants to write a file or run a shell command, it emits
-`session/request_permission`. The bridge:
+The bridge sets the ACP session to the `default` permission mode (via
+`session/set_mode` immediately after `session/new`). In `default` mode,
+`claude-agent-acp` routes every file write and shell command through
+`session/request_permission` — live-validated against
+`@agentclientprotocol/claude-agent-acp` 0.48 with real Claude auth.
 
-1. Forwards the request as an SSE event to the browser dock.
-2. The dock renders an **inline approval card** (never auto-dismissed).
-3. The developer clicks **Approve** or **Deny**.
-4. The decision is sent back via `POST /console/chat/permission`.
+The flow:
 
-There is **no config flag** that bypasses this prompt. The ACP protocol's
-`PermissionOptionKind` values (`allow_once`, `allow_always`, `reject_once`,
-`reject_always`) are decision types, not bypasses — the user still makes each
-decision by clicking a button.
+1. The agent emits `session/request_permission` to the bridge with the tool
+   call and a list of permission options.
+2. The bridge forwards the request as an SSE event to the browser dock.
+3. The dock renders an **inline approval card** (never auto-dismissed).
+4. The developer clicks one of the presented options (e.g. **Allow once**,
+   **Allow always**, **Reject**).
+5. The decision is sent back via `POST /console/chat/permission`.
+6. A **deny** (`reject_once`) response blocks the write — the file is NOT
+   created, and any follow-up bash workaround the agent attempts is itself gated
+   by the same permission flow (live-validated: both the initial write and the
+   bash workaround were blocked in sequence).
 
-The dock exposes a **path + session scoped** "Allow edits in `src/` for this
-session" checkbox. Its scope is:
+Permission option kinds observed in live validation: `allow_always`,
+`allow_once`, `reject_once`. The `allow_always` option is **path + session
+scoped** — the agent tracks it for the duration of the current session only;
+there is no blanket persistent grant that survives a page reload or session end.
 
-- **Path-scoped**: only covers files under the given prefix.
-- **Session-scoped**: expires when the session ends or the page reloads.
-
-There is no "always allow globally" affordance. The framework does not persist
-any permission grants across sessions.
+There is **no config flag** that bypasses this prompt. The `PermissionOptionKind`
+values are decision types, not bypasses — the user makes each decision by
+clicking a button on the dock's card.
 
 ---
 
@@ -225,7 +233,7 @@ surface. The read-only invariant is enforced in `IntrospectionTools` (see
 | No anonymous sessions | `401` when `req.auth` absent or yields no principal id |
 | `auth` middleware MUST set `req.auth` | `principalFromRequest` reads `AuthInfo.clientId` or `UserProfile[securityId]` |
 | Loopback-only without real auth | Operator configuration (dev loopback `auth` middleware) |
-| Permission prompts not bypassable | ACP protocol + dock UI (no config override) |
+| Permission prompts not bypassable | Bridge forces `default` mode via `session/set_mode`; dock UI (no config override) |
 | Permission scope is path + session only | Dock UI (no persistent grants) |
 | Node-host-only | `install()` no-ops (warning + return) on `listener:'native'` Edge hosts |
 | No orphaned subprocesses | `disposeAll()` on `app.onStop()` + creation-TTL + SSE-disconnect lease GC |
@@ -241,6 +249,8 @@ The pinned SDK version and all ACP-specific code live in `acp-session.ts`;
 protocol churn touches one file. The `ACP-NOTES.md` in `packages/console-chat`
 documents the pinned API surface and known validation gaps.
 
-`claude-agent-acp` is the blessed reference adapter. Other agents can be
+`claude-agent-acp` (from the npm package `@agentclientprotocol/claude-agent-acp`)
+is the blessed reference adapter. Install with:
+`npm install -g @agentclientprotocol/claude-agent-acp`. Other agents can be
 configured via `chatConsoleFeature({agents: [...]})` but are "advanced/custom"
 — the built-in doctor only knows the reference adapter's install path.

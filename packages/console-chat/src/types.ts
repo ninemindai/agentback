@@ -13,6 +13,13 @@ export interface AgentDescriptor {
   detect: {bin: string; args?: string[]; minVersion?: string};
   /** ACP launch command (the adapter, not the underlying model CLI). */
   command: string[];
+  /**
+   * npm package to install when the binary is absent or out-of-date.
+   * Defaults to the binary name (`detect.bin`) when omitted.
+   * Use when the published package name differs from the bin name
+   * (e.g. bin `claude-agent-acp` ships in `@agentclientprotocol/claude-agent-acp`).
+   */
+  installPackage?: string;
 }
 
 /**
