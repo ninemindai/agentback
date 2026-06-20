@@ -30,6 +30,7 @@ const CF_WEB_ANALYTICS_TOKEN =
 // Markdown sources, repo-relative. Each becomes docs/<path>.html.
 const DOC_PAGES = [
   'docs/README.md',
+  'docs/compare.md',
   'docs/concepts/dependency-injection.md',
   'docs/concepts/schema-first-decorators.md',
   'docs/concepts/components-servers-lifecycle.md',
@@ -51,7 +52,10 @@ const DOC_PAGES = [
 const NAV_SECTIONS = [
   {
     title: 'Start',
-    items: [['docs/README.md', 'Documentation index']],
+    items: [
+      ['docs/README.md', 'Documentation index'],
+      ['docs/compare.md', 'Coming from another framework?'],
+    ],
   },
   {
     title: 'Concepts',
