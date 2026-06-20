@@ -6,7 +6,7 @@
 
 **Architecture:** A new Node-host-only package `@agentback/console-chat`. Server side: a `chatConsoleFeature()` that registers an `@api` bridge controller (agent discovery + doctor, an SSE stream, and POST message/permission/session) and spawns the selected ACP adapter as a subprocess, relaying `session/update` over SSE and `session/request_permission` to the dock. Client side: a dock region added to the console shell, rendering the conversation, tool-activity, the inline permission card, and the composer with a nav-focus chip. The ACP protocol glue is isolated behind one `AcpSession` module, pinned by a spike (Task 1) because the SDK is 0.x and volatile.
 
-**Tech Stack:** TypeScript 6, ESM, `@zed-industries/agent-client-protocol@~0.4.5` (client side) + the `claude-agent-acp` adapter (the agent), Express SSE on the REST host, React for the dock, Zod.
+**Tech Stack:** TypeScript 6, ESM, `@agentclientprotocol/sdk@^0.28` (client side; the renamed successor to the deprecated `@zed-industries/agent-client-protocol`) + the `claude-agent-acp` adapter (the agent), Express SSE on the REST host, React for the dock, Zod.
 
 ## Global Constraints
 
@@ -31,7 +31,7 @@
 
 - [ ] **Step 1: Install the SDK in a scratch and read its types**
 
-Run: `npm view @zed-industries/agent-client-protocol version` (confirm ~0.4.x), then in the package (created in Task 2) inspect `node_modules/@zed-industries/agent-client-protocol/dist/*.d.ts`.
+Run: `npm view @agentclientprotocol/sdk version` (confirm `^0.28`; the old `@zed-industries/agent-client-protocol` is deprecated), then inspect `node_modules/@agentclientprotocol/sdk/dist/*.d.ts`. This SDK is added in **Task 5** (the first task that imports it), not the Task 2 scaffold.
 
 Answer and record in `ACP-NOTES.md`:
 - The current client entrypoint (the non-deprecated replacement for `ClientSideConnection`).
@@ -74,7 +74,7 @@ git commit -m "spike(console-chat): pin the ACP SDK client API against claude-ag
 **Interfaces:**
 - Produces: `ConsoleClientConfig.chat?: {enabled: boolean; agents: {id: string; name: string}[]; apiBase: string}`; a `<Dock>` region in the shell that renders only when `config.chat?.enabled`.
 
-- [ ] **Step 1: `package.json`** (deps: `@agentback/common`, `@agentback/core`, `@agentback/rest`, `@agentback/console`, `@agentback/console-theme`, `@agentback/introspection`, `@agentback/mcp-http`, `@zed-industries/agent-client-protocol`, `react`, `zod`, `tslib`; devDeps: `@agentback/testing`, `vitest`). Mirror `packages/mcp-http/package.json` shape, `version` `0.6.0`, add `build:client` if it ships TSX (it does — the dock). Model the client build on `packages/console/build-client.mjs`.
+- [ ] **Step 1: `package.json`** (deps: `@agentback/common`, `@agentback/core`, `@agentback/rest`, `@agentback/console`, `@agentback/console-theme`, `zod`, `tslib`; devDeps: `@agentback/testing`, `react`, `vitest`). **Do NOT add `@agentback/introspection`, `@agentback/mcp-http`, or the ACP SDK here — they're added in Tasks 5/7 when first imported (YAGNI; avoids unused deps + a workspace cycle in the scaffold).** Mirror `packages/mcp-http/package.json` shape, `version` `0.6.0`, add `build:client` if it ships TSX (it does — the dock). Model the client build on `packages/console/build-client.mjs`.
 
 - [ ] **Step 2: Extend `ConsoleClientConfig`** in `packages/console/src/client/types.ts`:
 
