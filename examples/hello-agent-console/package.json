@@ -9,6 +9,8 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@agentback/console": "workspace:~",
+    "@agentback/console-chat": "workspace:~",
     "@agentback/core": "workspace:~",
     "@agentback/introspection": "workspace:~",
     "@agentback/mcp": "workspace:~",

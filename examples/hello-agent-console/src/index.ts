@@ -9,6 +9,8 @@ import {RestApplication} from '@agentback/rest';
 import {MCPComponent} from '@agentback/mcp';
 import {installMcpHttp} from '@agentback/mcp-http';
 import {IntrospectionTools} from '@agentback/introspection';
+import {installConsole, defaultFeatures} from '@agentback/console';
+import {chatConsoleFeature} from '@agentback/console-chat';
 
 const Greeting = z.object({message: z.string()});
 const HelloPath = z.object({name: z.string().min(1).max(64)});
@@ -27,12 +29,34 @@ async function main(): Promise<void> {
   const app = new RestApplication();
   app.component(MCPComponent);
   app.restController(HelloController);
+
+  // Phase 1: introspection tools — any agent can call inventory/get/get_okf_bundle
+  // on this app's MCP surface at /mcp.
   app.service(IntrospectionTools);
   await installMcpHttp(app);
+
+  // Phase 2: developer console at /console — context, schema, REST, MCP explorers
+  // plus the agent chat dock (hidden until >=1 ACP agent is discovered).
+  //
+  // SECURITY: chat is off-by-default and gated behind the console auth middleware.
+  // The dock only renders when >=1 agent is discovered (PATH probe); it does not
+  // expose the bridge endpoints at all when chat.enabled is false.
+  // For local development only — never expose beyond loopback without real auth.
+  const chat = chatConsoleFeature({
+    enabled: true,
+    introspection: true, // ground the agent in the live app via IntrospectionTools
+  });
+
+  await installConsole(app, {
+    features: [...defaultFeatures(), chat],
+    // For local development; replace with real auth for any non-loopback deploy.
+    unsafeAllowUnauthenticated: true,
+  });
+
   await app.start();
-  // The app's MCP surface (including introspection) is now at /mcp.
-  // Point your agent's MCP client at http://localhost:3000/mcp to let it
-  // `inventory`, `get`, and `get_okf_bundle` against this live app.
+  // REST: GET /hello/{name}, /openapi.json
+  // MCP (incl. introspection): /mcp
+  // Console: /console  (agent dock: /console/chat/agents, /console/chat/stream, …)
 }
 
 if (isMain(import.meta)) {
