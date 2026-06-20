@@ -23,8 +23,6 @@ is everything above the container: schemas are Zod, the same Zod emits OpenAPI
 3.1 and an MCP tool contract, and the whole thing runs on ESM / Node 22. You
 keep the architecture and shed the `@loopback/repository` weight.
 
-`npm create agentback`
-
 ## From NestJS
 
 Keep the mental model you like — decorated classes and a DI container — but
@@ -32,8 +30,6 @@ collapse the metadata sprawl. Where a Nest stack reaches for `nestjs-zod`,
 `@nestjs/swagger`, and a community MCP bridge across two metadata systems,
 AgentBack puts one Zod schema on the decorator and derives the validator, the
 OpenAPI document, and the MCP tool from it. One source of truth instead of four.
-
-`npm create agentback`
 
 ## From tRPC
 
@@ -43,8 +39,6 @@ generation step. The difference is reach — your API is also a public OpenAPI 3
 document and a set of MCP tools, as first-class outputs rather than an add-on —
 and you get a DI container for auth and multi-tenancy.
 
-`npm create agentback`
-
 ## From ts-rest
 
 The contract-first discipline is the same idea: define the shape once, share it
@@ -52,8 +46,6 @@ across client and server. AgentBack extends that contract past REST — the same
 schema becomes MCP tools an agent can call, governed by the same `@authorize`
 policy that guards your HTTP routes — and gives you a DI container to wire
 services and auth.
-
-`npm create agentback`
 
 ## From Hono
 
@@ -63,5 +55,9 @@ with its own schema declaration. AgentBack delivers the same surface from one
 schema in one process. (Hono is an excellent edge router; if raw routing speed
 is your priority it belongs on your list — AgentBack's pitch is consolidation,
 not benchmarks.)
+
+## Get started
+
+Whatever you're coming from, the first step is the same:
 
 `npm create agentback`
