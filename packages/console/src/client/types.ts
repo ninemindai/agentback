@@ -38,4 +38,10 @@ export interface ConsoleClientConfig {
   basePath: string;
   title: string;
   panels: Record<string, {apiBase: string; extra?: Record<string, unknown>}>;
+  /** Present only when the chat dock is enabled (≥1 agent discovered). */
+  chat?: {
+    enabled: boolean;
+    apiBase: string; // e.g. /console/chat
+    agents: {id: string; name: string}[];
+  };
 }

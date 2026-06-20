@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "./tsconfig.tsbuildinfo"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["dist", "node_modules", "src/client"],
+  "references": [
+    {"path": "../common"},
+    {"path": "../console"},
+    {"path": "../console-theme"},
+    {"path": "../core"},
+    {"path": "../introspection"},
+    {"path": "../mcp-http"},
+    {"path": "../rest"}
+  ]
+}

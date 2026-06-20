@@ -22,6 +22,7 @@
     {"path": "packages/mcp-host"},
     {"path": "packages/mcp-connect"},
     {"path": "packages/console"},
+    {"path": "packages/console-chat"},
     {"path": "packages/security"},
     {"path": "packages/authentication"},
     {"path": "packages/authentication-jwt"},

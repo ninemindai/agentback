@@ -11,7 +11,7 @@ import {pages as contextPages} from '@agentback/context-explorer/console';
 import {pages as schemaPages} from '@agentback/schema-explorer/console';
 import {pages as apiPages} from '@agentback/rest-explorer/console';
 import {pages as mcpPages} from '@agentback/mcp-inspector/console';
-import type {ConsolePage} from './types';
+import type {ConsolePage} from './types.js';
 
 export const pages: ConsolePage[] = [
   ...contextPages,

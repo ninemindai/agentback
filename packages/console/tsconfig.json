@@ -3,10 +3,19 @@
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "dist",
-    "tsBuildInfoFile": "./tsconfig.tsbuildinfo"
+    "tsBuildInfoFile": "./tsconfig.tsbuildinfo",
+    "jsx": "react-jsx",
+    "lib": ["es2022", "esnext.disposable", "dom"],
+    "types": ["node", "react", "react-dom"]
   },
   "include": ["src/**/*"],
-  "exclude": ["dist", "node_modules", "src/client"],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "src/client/main.tsx",
+    "src/client/pages.ts",
+    "src/client/css.d.ts"
+  ],
   "references": [
     {"path": "../console-theme"},
     {"path": "../rest"},
