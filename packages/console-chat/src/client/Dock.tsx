@@ -90,7 +90,13 @@ function dockReducer(state: DockState, action: DockAction): DockState {
         ...state,
         availableAgents: action.agents,
         agentsLoaded: true,
-        status: action.agents.length === 0 ? 'no-agent' : state.status,
+        // If agents are available and we are in no-agent state, auto-connect.
+        status:
+          action.agents.length === 0
+            ? 'no-agent'
+            : state.status === 'no-agent'
+              ? 'connecting'
+              : state.status,
         selectedAgentId:
           state.selectedAgentId ??
           (action.agents[0]?.id ?? null),
@@ -316,6 +322,15 @@ export function Dock({chat}: {chat: ChatConfig}) {
 
   // ── Responsive: is dock open on narrow viewports ──────────────────────────
   const [dockOpen, setDockOpen] = useState(false);
+  const dockRootRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    // Find the parent `.dock` section rendered by the console shell and toggle
+    // the `dock--open` class so the CSS overlay animation works.
+    const el = dockRootRef.current?.closest('[data-dock]') as HTMLElement | null;
+    if (el) {
+      el.classList.toggle('dock--open', dockOpen);
+    }
+  }, [dockOpen]);
 
   // ── Focus chip ────────────────────────────────────────────────────────────
   const [focus, setFocus] = useState<FocusDescriptor | null>(() => getFocus());
@@ -542,22 +557,18 @@ export function Dock({chat}: {chat: ChatConfig}) {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* Narrow-viewport tab */}
+      {/* Narrow-viewport tab (position:fixed via CSS; outside the dock flow) */}
       <button
         className="dock-tab"
+        ref={el => { dockRootRef.current = el; }}
         onClick={() => setDockOpen(o => !o)}
         aria-label="Toggle chat dock"
       >
         ▭ Chat
       </button>
 
-      {/* Dock shell: add dock--open class when overlay is active */}
-      <div
-        className={dockOpen ? 'dock dock--open' : undefined}
-        style={{display: 'contents'}}
-      >
-        {/* Header */}
-        <div className="dock-head">
+      {/* Header */}
+      <div className="dock-head">
           {dock.availableAgents.length > 1 ? (
             <div className="picker">
               <span className={dotClass} />
@@ -766,7 +777,6 @@ export function Dock({chat}: {chat: ChatConfig}) {
             </button>
           </div>
         </div>
-      </div>
 
       {/* Spin keyframe (injected once) */}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
