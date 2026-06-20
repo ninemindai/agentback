@@ -14,11 +14,6 @@
  * 2026-06-19-console-chat-acp-design.md).  This module exports the server-
  * side `chatConsoleFeature()` factory that registers the bridge controller
  * and advertises `window.__CONSOLE__.chat` to the shell.
- *
- * Implementation of the bridge endpoints (SSE stream, POST message/
- * permission, agent discovery, session lifecycle) is Task 5/6.  This
- * scaffold exports the config type and a stub factory so the package builds
- * and the console shell can gate the dock region.
  */
 
 export type {ChatConsoleConfig} from './types.js';
@@ -30,3 +25,24 @@ export {
   defaultProbe,
 } from './agents.js';
 export type {AgentDescriptor, RunProbe, ProbeResult, DoctorResult} from './agents.js';
+
+// ACP session
+export {
+  AcpSession,
+  SpawnError,
+  AcpHandshakeError,
+  PartialTurnError,
+  defaultConnectFn,
+} from './acp-session.js';
+export type {
+  AcpEvent,
+  AssistantDeltaEvent,
+  ToolCallEvent,
+  PermissionRequestEvent,
+  StopEvent,
+  ErrorEvent,
+  AcpConnectFn,
+} from './acp-session.js';
+
+// Bridge controller
+export {ChatBridgeController, CHAT_CONNECT_FN} from './bridge.controller.js';

@@ -5,24 +5,25 @@
 import type {RestApplication} from '@agentback/rest';
 import type {ConsoleFeature} from '@agentback/console';
 import type {ChatConsoleConfig} from './types.js';
+import {ChatBridgeController} from './bridge.controller.js';
+import {discoverAgents, BUILTIN_AGENTS} from './agents.js';
 
 /**
- * Stub server-side feature for the chat dock.
+ * Server-side feature for the chat dock.
  *
- * Phase 2 (Tasks 5/6) will fill in agent discovery, the ACP bridge
- * controller, and session lifecycle.  This scaffold:
- * - Satisfies the {@link ConsoleFeature} interface so the console shell can
- *   include the dock configuration.
- * - Returns an empty `chat` config block (no agents discovered yet) — the
- *   dock renders only when `chat.enabled && agents.length > 0`.
+ * Registers the `ChatBridgeController` REST endpoints and advertises the
+ * `window.__CONSOLE__.chat` config block to the browser shell.
  *
  * @param config - Chat dock configuration (all fields optional).
  */
 export function chatConsoleFeature(
   config: ChatConsoleConfig = {},
-): ConsoleFeature & {chatConfig: {enabled: boolean; apiBase: string; agents: {id: string; name: string}[]}} {
+): ConsoleFeature & {
+  chatConfig: {enabled: boolean; apiBase: string; agents: {id: string; name: string}[]};
+} {
   const enabled = config.enabled ?? false;
   const apiBase = '/console/chat';
+  // agents list starts empty; it is populated lazily on first /agents call.
   const agents: {id: string; name: string}[] = [];
 
   return {
@@ -30,13 +31,23 @@ export function chatConsoleFeature(
     apiBase,
     extra: {chat: {enabled, apiBase, agents}},
 
-    install(_app: RestApplication): void {
-      // Bridge endpoints (GET /agents, GET /stream, POST /message,
-      // POST /permission, POST /session, DELETE /session) registered in Task 5.
+    async install(app: RestApplication): Promise<void> {
+      if (!enabled) return;
+
+      // Register the bridge controller.
+      app.restController(ChatBridgeController);
+
+      // Eagerly run discovery and update the agents list so the console shell
+      // gets an accurate initial set without a round-trip.
+      const found = await discoverAgents([
+        ...BUILTIN_AGENTS,
+        ...(config.agents ?? []),
+      ]).catch(() => []);
+
+      agents.splice(0, agents.length, ...found);
     },
 
-    // Expose the typed chat config for the console's window.__CONSOLE__.chat
-    // injection (Tasks 3/4 will wire this into installConsole).
+    // Expose the typed chat config for window.__CONSOLE__.chat injection.
     chatConfig: {enabled, apiBase, agents},
   };
 }
