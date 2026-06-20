@@ -221,7 +221,28 @@ describe('turnReducer: multi-turn', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5. initialConversationState shape
+// 5. tool_call upsert: same toolCallId → one entry updated, not two
+// ---------------------------------------------------------------------------
+
+describe('turnReducer: tool_call upsert', () => {
+  it('two tool_call events with the same toolCallId produce one entry (updated)', () => {
+    const events: SseClientEvent[] = [
+      {type: 'assistant_delta', text: 'Working…'},
+      {type: 'tool_call', toolCallId: 'tc-dup', title: 'write_file', status: 'running'},
+      {type: 'tool_call', toolCallId: 'tc-dup', title: 'write_file', status: 'done'},
+    ];
+    const state = applyAll(events);
+
+    expect(state.messages.length).toBe(1);
+    const msg = state.messages[0];
+    expect(msg.toolCalls.length).toBe(1);
+    expect(msg.toolCalls[0].toolCallId).toBe('tc-dup');
+    expect(msg.toolCalls[0].status).toBe('done');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6. initialConversationState shape
 // ---------------------------------------------------------------------------
 
 describe('initialConversationState', () => {
