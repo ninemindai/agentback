@@ -63,3 +63,4 @@ Each package also ships its own `README.md` under [`packages/`](../packages/).
 | `@agentback/cli`                   | `agentback`/`abc` CLI — `deploy` to Vercel and Cloudflare Workers (bundle doctor + wrangler)                                       |
 | `@agentback/console`               | Combined context, schema, REST/OpenAPI, and MCP admin console                                                                      |
 | `@agentback/console-theme`         | Shared styling for console and explorer UIs                                                                                        |
+| `@agentback/console-chat`          | ACP agent dock for the console: see the live app + evolve source via a grounded coding-agent session (Node-host-only; off by default) |

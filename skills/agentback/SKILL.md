@@ -50,6 +50,9 @@ ESM-only, Node 22.13+, TypeScript 6, pnpm workspaces. **Relative imports use
 8. **Let an agent see/understand the live running app (bindings, schema,
    routes, tools) read-only?** → Introspection
    ([introspection.md](references/introspection.md))
+9. **Add an agent chat dock to the developer console so a coding agent can see
+   AND evolve the app (source edits + permission prompts)?** → Agent console
+   ([agent-console.md](references/agent-console.md))
 
 ## Getting Started: scaffold a new app
 
