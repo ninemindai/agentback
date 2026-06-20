@@ -778,19 +778,24 @@ describe('Grounding: session/new receives mcpServers for the app mcp-http', () =
       .post('/console/chat/session')
       .send({agentId: 'claude-code', cwd: process.cwd()});
 
-    // The session should be created (200).  If mcp-http is not installed in the
-    // test app, capturedMcpServers will be [] (no grounding available) — that's
-    // acceptable; the code logs and skips.  We assert the shape when non-empty.
+    // The session should be created (200).
     expect(res.status).toBe(200);
 
-    if (capturedMcpServers && capturedMcpServers.length > 0) {
-      const srv = capturedMcpServers[0] as {type: string; name: string; url: string};
-      expect(srv.type).toBe('http');
-      expect(srv.name).toBe('agentback-app');
-      expect(typeof srv.url).toBe('string');
-      expect(srv.url).toMatch(/\/mcp$/);
-    }
-    // If capturedMcpServers is empty ([]), mcp-http is not installed in the test
-    // app — that's the graceful-fallback path; no assertion needed.
+    // resolveOwnMcpUrl resolves via app.get(RestBindings.SERVER) which always
+    // succeeds in a started test app, so grounding must always fire — the
+    // mcpServers array must be non-empty with a correctly shaped entry.
+    expect(capturedMcpServers).toBeDefined();
+    expect(capturedMcpServers!.length).toBeGreaterThan(0);
+
+    const srv = capturedMcpServers![0] as {type: string; name: string; url: string};
+    expect(srv.type).toBe('http');
+    expect(srv.name).toBe('agentback-app');
+    expect(typeof srv.url).toBe('string');
+    // URL must end with the default mcp-http path.
+    expect(srv.url).toMatch(/\/mcp$/);
+    // URL must include the running server's base (http://127.0.0.1:<port>).
+    expect(srv.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
+    // The grounded URL must match the test server's own URL.
+    expect(srv.url).toBe(`${t.url}/mcp`);
   });
 });

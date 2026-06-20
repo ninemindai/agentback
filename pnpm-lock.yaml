@@ -916,6 +916,9 @@ importers:
       '@agentback/rest':
         specifier: workspace:~
         version: link:../rest
+      '@agentback/schema-explorer':
+        specifier: workspace:~
+        version: link:../schema-explorer
       '@agentback/security':
         specifier: workspace:~
         version: link:../security

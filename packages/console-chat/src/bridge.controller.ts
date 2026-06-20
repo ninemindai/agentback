@@ -64,7 +64,7 @@ const DEFAULT_MCP_PATH = '/mcp';
  */
 async function resolveOwnMcpUrl(app: Application): Promise<string | null> {
   try {
-    const server = await (app as unknown as {restServer: Promise<RestServer>}).restServer;
+    const server = await app.get<RestServer>(RestBindings.SERVER);
     if (!server || typeof server.url !== 'string') return null;
     return `${server.url}${DEFAULT_MCP_PATH}`;
   } catch {
