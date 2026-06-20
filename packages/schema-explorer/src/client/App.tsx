@@ -46,6 +46,7 @@ export function App({
     if (!onFocusChange) return;
     const node = nodes.find(n => n.id === selectedId);
     onFocusChange(selectedId, node?.name);
+    return () => onFocusChange(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 

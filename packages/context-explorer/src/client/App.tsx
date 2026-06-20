@@ -63,6 +63,7 @@ export function App({
 
   useEffect(() => {
     onFocusChange?.(selectedKey);
+    return () => onFocusChange?.(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedKey]);
 
