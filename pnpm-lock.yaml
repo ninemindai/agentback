@@ -904,9 +904,21 @@ importers:
       '@agentback/core':
         specifier: workspace:~
         version: link:../core
+      '@agentback/introspection':
+        specifier: workspace:~
+        version: link:../introspection
+      '@agentback/mcp-http':
+        specifier: workspace:~
+        version: link:../mcp-http
+      '@agentback/openapi':
+        specifier: workspace:~
+        version: link:../openapi
       '@agentback/rest':
         specifier: workspace:~
         version: link:../rest
+      '@agentclientprotocol/sdk':
+        specifier: ^0.28
+        version: 0.28.1(zod@4.4.3)
       tslib:
         specifier: ^2.8.1
         version: 2.8.1
@@ -917,9 +929,9 @@ importers:
       '@agentback/testing':
         specifier: workspace:~
         version: link:../testing
-      '@agentclientprotocol/sdk':
-        specifier: ^0.28
-        version: 0.28.1(zod@4.4.3)
+      '@types/express':
+        specifier: ^5.0.6
+        version: 5.0.6
       '@types/react':
         specifier: ~19.2.17
         version: 19.2.17

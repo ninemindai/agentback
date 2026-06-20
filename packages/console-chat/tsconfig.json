@@ -12,6 +12,9 @@
     {"path": "../console"},
     {"path": "../console-theme"},
     {"path": "../core"},
+    {"path": "../introspection"},
+    {"path": "../mcp-http"},
+    {"path": "../openapi"},
     {"path": "../rest"}
   ]
 }
