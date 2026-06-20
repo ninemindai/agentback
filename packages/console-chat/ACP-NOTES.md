@@ -506,3 +506,13 @@ import type {
 // HTTP transport (experimental subpath)
 import { createHttpStream } from '@agentclientprotocol/sdk/experimental/http-client';
 ```
+
+## 10. LIVE VALIDATION RESULTS (2026-06-20, claude-agent-acp 0.48, real Claude auth)
+
+Drove the BUILT `AcpSession` against the installed `@agentclientprotocol/claude-agent-acp@0.48.0` + a running `hello-agent-console` `/mcp`.
+
+- **§9a stdio bridging — VALIDATED.** `connect()` (spawn + `ndJsonStream` + `initialize`) works against the real adapter.
+- **§9b http MCP transport — VALIDATED.** `session/new` accepted `{type:'http', url:.../mcp}`; the agent actually called `mcp__agentback-app__inventory` and read the live 29 schema entities. Grounding works end-to-end.
+- **§9c cwd — VALIDATED.** `process.cwd()`/explicit cwd accepted.
+- **§5 OKF-as-first-prompt — works** (no spurious early stop observed; the grounding-drain gate holds).
+- **§9e permission flow — FINDING (must-fix for the security model).** With NO permission mode set on the session, claude-agent-acp's DEFAULT mode AUTO-ACCEPTS file edits: a `Write` executed and the file was created WITHOUT any `session/request_permission` reaching our client handler. So the dock's "inline permission card gates edits" is BYPASSED by default. The adapter DOES support prompting — it exposes `permissionMode` / `SessionModeState` / `setSessionMode` / `resolvePermissionMode` (acp-agent.d.ts:162-163, 322). FIX: the bridge must set a prompting permission mode on `session/new` (or via `setSessionMode`) so `session/request_permission` is routed to us; otherwise document honestly that edits are NOT gated by the dock and rely on a trusted/sandboxed workspace + the agent's own permission policy. Until fixed, the security guide's "permission prompts are user-decided / not bypassable" is FALSE for this adapter's default mode.
