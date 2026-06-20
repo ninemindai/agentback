@@ -303,7 +303,14 @@ function Spin({size = 14}: {size?: number}) {
 // Main Dock component
 // ---------------------------------------------------------------------------
 
-export function Dock({chat}: {chat: ChatConfig}) {
+export function Dock({
+  chat,
+  onToggleDock,
+}: {
+  chat: ChatConfig;
+  dockOpen: boolean;
+  onToggleDock: () => void;
+}) {
   const {apiBase} = chat;
 
   // ── Dock-level state machine ──────────────────────────────────────────────
@@ -319,18 +326,6 @@ export function Dock({chat}: {chat: ChatConfig}) {
     undefined,
     initialConversationState,
   );
-
-  // ── Responsive: is dock open on narrow viewports ──────────────────────────
-  const [dockOpen, setDockOpen] = useState(false);
-  const dockRootRef = useRef<HTMLElement | null>(null);
-  useEffect(() => {
-    // Find the parent `.dock` section rendered by the console shell and toggle
-    // the `dock--open` class so the CSS overlay animation works.
-    const el = dockRootRef.current?.closest('[data-dock]') as HTMLElement | null;
-    if (el) {
-      el.classList.toggle('dock--open', dockOpen);
-    }
-  }, [dockOpen]);
 
   // ── Focus chip ────────────────────────────────────────────────────────────
   const [focus, setFocus] = useState<FocusDescriptor | null>(() => getFocus());
@@ -350,12 +345,6 @@ export function Dock({chat}: {chat: ChatConfig}) {
   const handleScopeChange = useCallback(
     (checked: boolean) => {
       if (!conv.pendingPermission) return;
-      // Update scopeSession in the pending permission via a synthetic event.
-      // We fire a synthetic permission_resolved-like local state update instead.
-      // Since the reducer only tracks the perm state, we use a local override.
-      // The simplest approach: re-dispatch a no-op to force re-render.
-      // Actually we need to mutate scopeSession — the reducer doesn't handle this.
-      // We'll manage scopeSession as a separate local state piece.
       setScopeSession(checked);
     },
     [conv.pendingPermission],
@@ -480,11 +469,9 @@ export function Dock({chat}: {chat: ChatConfig}) {
   const sendMessage = useCallback(async () => {
     const text = inputText.trim();
     if (!text || !dock.sessionId) return;
-    const focusPayload = focus
-      ? JSON.stringify(focus)
-      : undefined;
     setInputText('');
     dispatchConv({type: 'user_message', text});
+    const focusSnapshot = focus;
     setFocus(null); // consume the focus chip
     try {
       await fetch(`${apiBase}/message`, {
@@ -493,7 +480,7 @@ export function Dock({chat}: {chat: ChatConfig}) {
         body: JSON.stringify({
           sessionId: dock.sessionId,
           text,
-          ...(focusPayload ? {focus: focusPayload} : {}),
+          ...(focusSnapshot ? {focus: focusSnapshot} : {}),
         }),
       });
     } catch {
@@ -560,8 +547,7 @@ export function Dock({chat}: {chat: ChatConfig}) {
       {/* Narrow-viewport tab (position:fixed via CSS; outside the dock flow) */}
       <button
         className="dock-tab"
-        ref={el => { dockRootRef.current = el; }}
-        onClick={() => setDockOpen(o => !o)}
+        onClick={onToggleDock}
         aria-label="Toggle chat dock"
       >
         ▭ Chat
