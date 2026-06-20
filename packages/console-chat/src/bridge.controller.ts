@@ -78,11 +78,17 @@ const StreamQuery = z.object({
   sessionId: z.string(),
 });
 
+const FocusDescriptorSchema = z.object({
+  kind: z.string(),
+  id: z.string(),
+  label: z.string().optional(),
+});
+
 const MessageRequest = z.object({
   sessionId: z.string(),
   text: z.string().min(1),
   /** Optional focus context forwarded to the agent (reserved for Task 7). */
-  focus: z.string().optional(),
+  focus: FocusDescriptorSchema.optional(),
 });
 
 const MessageResponse = z.object({
@@ -242,7 +248,7 @@ export class ChatBridgeController {
 
   @post('/message', {body: MessageRequest, response: MessageResponse})
   async message(
-    input: {body: {sessionId: string; text: string; focus?: string}},
+    input: {body: {sessionId: string; text: string; focus?: {kind: string; id: string; label?: string}}},
     @inject(SecurityBindings.USER, {optional: true}) user?: UserProfile,
   ): Promise<{ok: boolean}> {
     const principal = requirePrincipal(user);
