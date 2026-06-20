@@ -329,16 +329,12 @@ export class AcpSession extends EventEmitter {
     // or may not send a response; we call prompt() but do NOT drain updates
     // here — the caller (bridge) is not listening to the event stream yet.
     // This is best-effort standing context; failures are logged, not thrown.
-    try {
-      void session.prompt(
-        `<system-context>\n${contextText}\n</system-context>\n\n` +
-          'You are an AI coding agent integrated with an AgentBack application. ' +
-          'The schema above describes the running app\'s REST routes, MCP tools, ' +
-          'and domain entities. Use it to understand the application before making changes.',
-      );
-    } catch (err) {
-      log.debug('injectContext: prompt failed (non-fatal): %o', err);
-    }
+    void session.prompt(
+      `<system-context>\n${contextText}\n</system-context>\n\n` +
+        'You are an AI coding agent integrated with an AgentBack application. ' +
+        'The schema above describes the running app\'s REST routes, MCP tools, ' +
+        'and domain entities. Use it to understand the application before making changes.',
+    ).catch(err => log.debug('injectContext: prompt failed (non-fatal): %o', err));
   }
 
   /**
