@@ -16,6 +16,7 @@
     {"path": "packages/mcp"},
     {"path": "packages/mcp-inspector"},
     {"path": "packages/schema-explorer"},
+    {"path": "packages/introspection"},
     {"path": "packages/mcp-http"},
     {"path": "packages/mcp-client"},
     {"path": "packages/mcp-host"},
