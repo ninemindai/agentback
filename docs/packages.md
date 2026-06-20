@@ -24,6 +24,7 @@ Each package also ships its own `README.md` under [`packages/`](../packages/).
 | `@agentback/rest-explorer`    | Mounts Swagger UI 5.x at `/explorer`                                                                                                             |
 | `@agentback/context-explorer` | Mounts a context/binding explorer UI                                                                                                             |
 | `@agentback/schema-explorer`  | Mounts a schema/entity provenance explorer UI (REST + MCP + Drizzle); exports the graph as an OKF knowledge bundle (`buildOkfBundle`, Knowledge tab) |
+| `@agentback/introspection`    | Read-only MCP server exposing the live app (bindings/schema/routes/tools + OKF) to any agent via a selector surface (`inventory`/`get`/`get_okf_bundle`) |
 | `@agentback/mcp`              | Decorator-driven MCP server (`@mcpServer`, `@tool` w/ Zod input/output)                                                                          |
 | `@agentback/mcp-inspector`    | Mounts an MCP inspector UI at `/mcp-inspector`                                                                                                   |
 | `@agentback/mcp-http`         | Exposes the MCP server over Streamable HTTP at `/mcp` (+ OAuth, scopes)                                                                          |
