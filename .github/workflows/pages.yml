@@ -33,6 +33,9 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: website/dist
+          # Without this the action runs `tar --exclude=.[^/]*`, which strips
+          # the /.well-known/ discovery docs (and .nojekyll) from the artifact.
+          include-hidden-files: true
 
   deploy:
     needs: build
