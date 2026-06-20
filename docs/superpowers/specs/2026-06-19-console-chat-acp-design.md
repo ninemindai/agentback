@@ -325,6 +325,37 @@ bridge endpoints.
 - Agent-driven console navigation (agent focuses a panel for you).
 - Multi-session / session history.
 
+## Phase 2 dock design (design review, 2026-06-20)
+
+Calibrated against `console-theme`'s "newspaper" tokens (paper `#f3efe4`, card
+`#fcfaf3`, ink `#221d16`, accent rust `#9a3324`, blue `#2c4a6e`, ok `#4f6b39`;
+Fraunces serif / Hanken Grotesk sans / JetBrains Mono). Approved wireframe:
+`~/.gstack/projects/ninemindai-agentback/designs/agent-dock-20260620/dock-wireframe.html`.
+
+- **Layout.** The dock is a **third shell column** (`170px / 1fr / 380px`),
+  separated by a 1px `--line-2` hairline. Top-to-bottom: agent picker → scrollable
+  conversation → composer. Below ~1100px it **collapses to a right-edge `▭ Chat`
+  tab** and **overlays** the panel when opened (never squeeze three columns).
+- **Permission prompt = inline card, not a modal/toast.** It renders **in the
+  conversation where the edit happens**, with a rust `#9a3324` left border, a mono
+  `path · +N −M` detail line, filled **Approve** / ghost **Deny** (≥44px targets),
+  and **never auto-dismisses** (the trust moment must be deliberate). The only
+  "remember" affordance is a **path + session scoped** checkbox ("Allow edits in
+  `src/` for this session") — never a blanket "always allow" (that's the dangerous
+  bypass the eng review's codex pass flagged).
+- **Tool activity** renders as a mono block with a blue `--blue` left border
+  (`▸ inventory(schema-entity) → 12 nodes`), reusing mcp-inspector's shape.
+- **Focus chip** is a `--badge` mono pill above the composer with a dismiss `×`.
+- **Interaction states (all designed):** empty/no-agent (install hint + Re-check),
+  connecting (handshake spinner), **doctor/wrong-version** (F1 — found vs needed +
+  install line), streaming (inline spinner + tool blocks), agent-crashed (Restart /
+  View log), and **rebuild affordance** (F5 — "Rebuild & reconnect", detects a
+  watch build). Accessibility: ≥44px action targets, permission as a persistent
+  card, explicit scope checkbox.
+
+Design review: 3/10 → 8/10. The wireframe is the visual contract for Phase 2
+implementation; run a live `/design-review` once the dock is built.
+
 ## Developer experience (DX review, 2026-06-20)
 
 Persona: the **AgentBack app author** building their own service, using the
