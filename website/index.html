@@ -43,6 +43,7 @@
         <div class="nav-links">
           <a href="docs/index.html">Docs</a>
           <a href="docs/guides/build-a-rest-api.html">Guides</a>
+          <a href="docs/compare.html">Compare</a>
           <a href="blog/index.html">Blog</a>
           <a href="https://github.com/ninemindai/agentback" class="nav-gh"
             >GitHub</a
@@ -57,8 +58,7 @@
         <div class="hero-copy">
           <p class="eyebrow reveal">Agent-native, end to end</p>
           <h1 class="reveal d1">
-            Interfaces agents <em>use</em>.<br />Backends agents
-            <em>build</em>.
+            Interfaces agents <em>use</em>.<br />Backends agents <em>build</em>.
           </h1>
           <p class="lede reveal d2">
             AgentBack gives your REST endpoints, MCP tools, OpenAPI docs, typed
@@ -79,6 +79,10 @@
               ninemindai/agentback
             </a>
           </div>
+          <p class="hero-switch reveal d3">
+            Coming from LoopBack, NestJS, tRPC, ts-rest, or Hono?
+            <a href="docs/compare.html">See what carries over →</a>
+          </p>
           <p class="hero-status reveal d3">
             <span class="status-dot"></span> alpha · ESM-only · Node 22.13+ ·
             TypeScript 6
@@ -457,10 +461,10 @@
             <a href="skills/agentback/SKILL.md">agent skill</a> that teaches
             Claude Code, Codex, Cursor, and 20+ other agents the conventions
             that aren't guessable from type signatures — schema-on-decorator,
-            the slot-0 input bundle, the DI container. One Zod schema is the only
-            source of truth, so an agent adds a route, its MCP tool, and its docs
-            in a single edit without drift. The docs are agent-readable too —
-            <a href="llms.txt">/llms.txt</a>,
+            the slot-0 input bundle, the DI container. One Zod schema is the
+            only source of truth, so an agent adds a route, its MCP tool, and
+            its docs in a single edit without drift. The docs are agent-readable
+            too — <a href="llms.txt">/llms.txt</a>,
             <a href="llms-full.txt">/llms-full.txt</a>, and a markdown mirror of
             every page — so the agent reads the framework the way it reads your
             API.
@@ -512,7 +516,9 @@ curl -s https://agentback.dev/llms.txt</code></pre>
           </p>
           <ul class="proof-list">
             <li>one schema → REST + MCP + typed client + docs</li>
-            <li><code>AgentError</code>, <code>/llms.txt</code>, tool-cost report</li>
+            <li>
+              <code>AgentError</code>, <code>/llms.txt</code>, tool-cost report
+            </li>
             <li>the canonical agent-plus-skill build</li>
           </ul>
           <span class="proof-link">github.com/ninemindai/agentback-demo →</span>

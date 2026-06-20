@@ -266,6 +266,12 @@ section.hero {
   margin: 26px 0 0;
 }
 
+.hero-switch {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 18px 0 0;
+}
+
 .status-dot {
   animation: pulse 2.4s ease-in-out infinite;
   background: var(--green);
