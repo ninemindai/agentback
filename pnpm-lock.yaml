@@ -916,6 +916,9 @@ importers:
       '@agentback/rest':
         specifier: workspace:~
         version: link:../rest
+      '@agentback/security':
+        specifier: workspace:~
+        version: link:../security
       '@agentclientprotocol/sdk':
         specifier: ^0.28
         version: 0.28.1(zod@4.4.3)
