@@ -29,6 +29,9 @@ workers_dev = false
 # (Top-level key — must precede the [assets] table in TOML.)
 routes = [
   {pattern = "agentback.dev/*", zone_name = "agentback.dev"},
+  # www is handled by the Worker (301 → apex) so it no longer depends on the
+  # GitHub Pages origin for that redirect.
+  {pattern = "www.agentback.dev/*", zone_name = "agentback.dev"},
 ]
 
 # Upload website/dist as the static asset set. The Worker reads from this

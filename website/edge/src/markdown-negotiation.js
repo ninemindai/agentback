@@ -58,6 +58,13 @@ async function serveMarkdown(request, env) {
 
 export default {
   async fetch(request, env) {
+    // Canonicalize www → apex (preserves path + query). Keeps the redirect off
+    // the GitHub Pages origin so Pages can be fully disabled.
+    const reqUrl = new URL(request.url);
+    if (reqUrl.hostname === 'www.agentback.dev') {
+      reqUrl.hostname = 'agentback.dev';
+      return Response.redirect(reqUrl.toString(), 301);
+    }
     try {
       if (request.method === 'GET') {
         const accept = (request.headers.get('Accept') || '').toLowerCase();
