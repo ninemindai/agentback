@@ -422,6 +422,11 @@ export function Dock({
     const cleanup = openSseStream(
       url,
       (ev: SseClientEvent) => {
+        if (ev.type === 'server_restart') {
+          // Server restarted (build:watch rebuild detected) — show rebuild affordance.
+          dispatchDock({type: 'rebuild'});
+          return;
+        }
         if (ev.type === 'error') {
           dispatchDock({
             type: 'crashed',
@@ -434,7 +439,7 @@ export function Dock({
         dispatchConv(ev);
       },
       () => {
-        // SSE error (connection dropped) — treat as crash.
+        // SSE error (connection dropped after all retries) — treat as crash.
         dispatchDock({
           type: 'crashed',
           message: 'Connection to agent lost',

@@ -255,3 +255,21 @@ describe('initialConversationState', () => {
     expect(s.stopReason).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// 7. server_restart event is a no-op in the turn reducer
+// ---------------------------------------------------------------------------
+
+describe('turnReducer: server_restart (F5)', () => {
+  it('server_restart event does not change conversation state', () => {
+    const initial = applyAll([
+      {type: 'assistant_delta', text: 'Working on it...'},
+    ]);
+    const after = turnReducer(initial, {type: 'server_restart'});
+
+    // State must be unchanged.
+    expect(after).toBe(initial);
+    expect(after.messages[0].text).toBe('Working on it...');
+    expect(after.status).toBe('streaming');
+  });
+});

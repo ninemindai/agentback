@@ -36,15 +36,72 @@ import {
   injectable,
 } from '@agentback/core';
 import {RestBindings} from '@agentback/rest';
+import type {RestServer} from '@agentback/rest';
 import {SecurityBindings, securityId, type UserProfile} from '@agentback/security';
 import {loggers} from '@agentback/common';
 import type {Application} from '@agentback/core';
+import {buildOkfBundle, type OkfBundle} from '@agentback/schema-explorer';
 import type {Request, Response} from 'express';
 import {BUILTIN_AGENTS, discoverAgents} from './agents.js';
 import {AcpSession, SpawnError, AcpHandshakeError, type AcpConnectFn, type AcpEvent} from './acp-session.js';
 import type {AgentDescriptor} from './types.js';
 
 const log = loggers('agentback:console-chat:bridge');
+
+// ---------------------------------------------------------------------------
+// Grounding helpers
+// ---------------------------------------------------------------------------
+
+/** Default mcp-http path. */
+const DEFAULT_MCP_PATH = '/mcp';
+
+/**
+ * Resolve the app's own mcp-http base URL.
+ *
+ * Returns `<serverUrl><mcpPath>` if the RestServer is available, else `null`.
+ * The mcp-http path defaults to {@link DEFAULT_MCP_PATH} — there is no
+ * binding for it; we use the default.
+ */
+async function resolveOwnMcpUrl(app: Application): Promise<string | null> {
+  try {
+    const server = await (app as unknown as {restServer: Promise<RestServer>}).restServer;
+    if (!server || typeof server.url !== 'string') return null;
+    return `${server.url}${DEFAULT_MCP_PATH}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build an OKF brief for standing context.
+ *
+ * Size guard: if the serialized bundle exceeds 8 KB, only include the index
+ * file (progressive-disclosure: the agent can call `get_okf_bundle` for the
+ * full schema).  Returns `null` if the bundle is empty or building fails.
+ */
+function buildOkfBrief(app: Application): string | null {
+  const SIZE_LIMIT = 8192; // 8 KB
+  try {
+    const bundle: OkfBundle = buildOkfBundle(app as unknown as import('@agentback/core').Context);
+    if (!bundle.files.length) return null;
+
+    // Try to fit the full bundle.
+    const full = bundle.files.map(f => `--- ${f.path} ---\n${f.content}`).join('\n\n');
+    if (full.length <= SIZE_LIMIT) return full;
+
+    // Fallback: index only.
+    const indexFile = bundle.files.find(f => f.path === 'index.md');
+    if (indexFile) {
+      return (
+        indexFile.content +
+        '\n\n*(Bundle too large to inline. Call the `get_okf_bundle` tool for the full schema.)*'
+      );
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Binding key for the factory seam (injectable in tests)
@@ -185,7 +242,39 @@ export class ChatBridgeController {
 
     try {
       await acpSession.connect();
-      const acpSessionId = await acpSession.open(mcpServers, cwd);
+
+      // --- Grounding: register app's own mcp-http if caller didn't supply servers ---
+      let groundedServers: unknown[] = mcpServers;
+      if (!groundedServers.length) {
+        const mcpUrl = await resolveOwnMcpUrl(this.app);
+        if (mcpUrl) {
+          log.debug('grounding session with app mcp-http url=%s', mcpUrl);
+          // NEEDS LIVE VALIDATION (ACP-NOTES §9b): transport type for mcp-http.
+          // Using 'http' transport per ACP-NOTES §4 McpServerHttp shape.
+          groundedServers = [
+            {
+              type: 'http' as const,
+              name: 'agentback-app',
+              url: mcpUrl,
+              headers: [],
+            },
+          ];
+        } else {
+          log.debug('mcp-http not available; opening session without MCP grounding');
+        }
+      }
+
+      const acpSessionId = await acpSession.open(groundedServers, cwd);
+
+      // --- Standing context: OKF brief ---
+      // NEEDS LIVE VALIDATION (ACP-NOTES §5): whether session.prompt() is the
+      // correct mechanism for injecting standing context (no separate
+      // session/setContext endpoint visible in the ACP SDK types).
+      const brief = buildOkfBrief(this.app);
+      if (brief) {
+        log.debug('injecting OKF brief as standing context (length=%d)', brief.length);
+        await acpSession.injectContext(brief);
+      }
 
       const key = sessionKey(principal, acpSessionId);
       this.sessions.set(key, {
