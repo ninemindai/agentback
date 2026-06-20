@@ -10,7 +10,7 @@
  */
 
 import http from 'node:http';
-import {describe, it, expect} from 'vitest';
+import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import {createTestApp} from '@agentback/testing';
 import {RestApplication} from '@agentback/rest';
 import {
@@ -800,5 +800,212 @@ describe('Grounding: session/new receives mcpServers for the app mcp-http', () =
     expect(srv.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
     // The grounded URL must match the test server's own URL.
     expect(srv.url).toBe(`${t.url}/mcp`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// I-1a. disposeAll() drains all sessions and invokes kill on each subprocess
+// ---------------------------------------------------------------------------
+
+describe('I-1a: disposeAll() drains sessions and kills subprocesses', () => {
+  it('disposeAll invokes dispose on every session and clears the map', async () => {
+    // Track kill calls via the kill seam.
+    const killCalls: string[] = [];
+
+    // Build a connect function that records kill invocations.
+    function trackingConnectFn(sessionLabel: string): AcpConnectFn {
+      return async (
+        _descriptor: AgentDescriptor,
+        clientApp: ClientApp,
+      ): Promise<{connection: ClientConnection; ctx: ClientContext; kill: () => void}> => {
+        const fakeAgent = makeFakeAgent();
+        const connection = clientApp.connect(fakeAgent);
+        const ctx = connection.agent;
+        const kill = () => { killCalls.push(sessionLabel); };
+        return {connection, ctx, kill};
+      };
+    }
+
+    const {AcpSession} = await import('../../acp-session.js');
+    const {ChatBridgeController: Ctrl} = await import('../../bridge.controller.js');
+
+    // Build a minimal app just to satisfy the DI constructor.
+    const app = new RestApplication({rest: {port: 0}});
+    const ctrl = new Ctrl(app as unknown as import('@agentback/core').Application, undefined);
+
+    const descriptor: AgentDescriptor = {id: 'test', name: 'Test', detect: {bin: 'test'}, command: ['test']};
+
+    // Manually create two sessions and insert them into the controller map.
+    const session1 = new AcpSession(descriptor, trackingConnectFn('s1'));
+    await session1.connect();
+    const sid1 = await session1.open([], process.cwd());
+
+    const session2 = new AcpSession(descriptor, trackingConnectFn('s2'));
+    await session2.connect();
+    const sid2 = await session2.open([], process.cwd());
+
+    // Insert directly (bypassing POST /session to avoid TTL timers).
+    (ctrl.sessions as Map<string, {
+      session: typeof session1;
+      acpSessionId: string;
+      sseDisconnectedAt: number | null;
+      creationTtlTimer: ReturnType<typeof setTimeout> | null;
+    }>).set(`p:${sid1}`, {session: session1, acpSessionId: sid1, sseDisconnectedAt: null, creationTtlTimer: null});
+    (ctrl.sessions as Map<string, {
+      session: typeof session2;
+      acpSessionId: string;
+      sseDisconnectedAt: number | null;
+      creationTtlTimer: ReturnType<typeof setTimeout> | null;
+    }>).set(`p:${sid2}`, {session: session2, acpSessionId: sid2, sseDisconnectedAt: null, creationTtlTimer: null});
+
+    expect(ctrl.sessions.size).toBe(2);
+
+    ctrl.disposeAll();
+
+    // Map must be empty.
+    expect(ctrl.sessions.size).toBe(0);
+    // kill must have been called for each session (kill is called from dispose()).
+    expect(killCalls).toContain('s1');
+    expect(killCalls).toContain('s2');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// I-1b. Creation-time TTL: never-subscribed session is disposed after TTL
+// ---------------------------------------------------------------------------
+
+describe('I-1b: creation TTL disposes a never-subscribed session', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('session is disposed when TTL fires before SSE subscribe', async () => {
+    // Track kill calls.
+    const killed: string[] = [];
+    const killTrackingConnectFn: AcpConnectFn = async (
+      _descriptor: AgentDescriptor,
+      clientApp: ClientApp,
+    ): Promise<{connection: ClientConnection; ctx: ClientContext; kill: () => void}> => {
+      const fakeAgent = makeFakeAgent();
+      const connection = clientApp.connect(fakeAgent);
+      const ctx = connection.agent;
+      const kill = () => { killed.push('killed'); };
+      return {connection, ctx, kill};
+    };
+
+    const connectFn = killTrackingConnectFn;
+    await using t = await createTestApp(makeApp.bind(null, connectFn, 'ttl-user'));
+
+    // Create a session but do NOT subscribe to SSE.
+    const res = await t.http
+      .post('/console/chat/session')
+      .send({agentId: 'claude-code', cwd: process.cwd()});
+    expect(res.status).toBe(200);
+    const sessionId = (res.body as {sessionId: string}).sessionId;
+
+    // Resolve the controller and verify the session is in the map.
+    const ctrl = await t.app.get<ChatBridgeController>('controllers.ChatBridgeController');
+    // The session should exist initially.
+    const anyEntry = [...ctrl.sessions.values()].find(e => e.acpSessionId === sessionId);
+    expect(anyEntry).toBeDefined();
+
+    // Advance fake time past the TTL (SSE_RECONNECT_LEASE_MS = 30_000).
+    vi.advanceTimersByTime(31_000);
+
+    // After TTL fires, session must be removed from the map.
+    const afterEntry = [...ctrl.sessions.values()].find(e => e.acpSessionId === sessionId);
+    expect(afterEntry).toBeUndefined();
+    // kill must have been invoked.
+    expect(killed.length).toBeGreaterThan(0);
+  });
+
+  it('subscribing to SSE cancels the creation TTL so the session survives', async () => {
+    // This test verifies that after SSE subscribes the session is NOT disposed
+    // when the TTL would have fired.  We use handleSseRequest directly.
+    const {AcpSession} = await import('../../acp-session.js');
+    const {ChatBridgeController: Ctrl, SSE_RECONNECT_LEASE_MS: LEASE_MS} = await import('../../bridge.controller.js');
+
+    const descriptor: AgentDescriptor = {id: 'test', name: 'Test', detect: {bin: 'test'}, command: ['test']};
+    const session = new AcpSession(descriptor, inProcessConnectFn(makeFakeAgent()));
+    await session.connect();
+    const acpSessionId = await session.open([], process.cwd());
+
+    // Build a minimal controller and manually inject the session with a live TTL.
+    const app = new RestApplication({rest: {port: 0}});
+    const ctrl = new Ctrl(app as unknown as import('@agentback/core').Application, undefined);
+
+    const key = `p:${acpSessionId}`;
+    let timerFired = false;
+    const ttlTimer = setTimeout(() => { timerFired = true; }, LEASE_MS);
+
+    (ctrl.sessions as Map<string, {
+      session: typeof session;
+      acpSessionId: string;
+      sseDisconnectedAt: number | null;
+      creationTtlTimer: ReturnType<typeof setTimeout> | null;
+    }>).set(key, {session, acpSessionId, sseDisconnectedAt: null, creationTtlTimer: ttlTimer});
+
+    // Simulate SSE subscribe by calling handleSseRequest with a minimal mock.
+    const {handleSseRequest} = await import('../../bridge.controller.js');
+    const mockRes = {
+      setHeader: () => {},
+      flushHeaders: () => {},
+      writableEnded: false,
+      write: () => {},
+    };
+    const mockReq = {on: () => {}};
+    handleSseRequest(
+      ctrl.sessions as Parameters<typeof handleSseRequest>[0],
+      'p',
+      acpSessionId,
+      mockReq as unknown as import('express').Request,
+      mockRes as unknown as import('express').Response,
+    );
+
+    // After SSE connects, the creationTtlTimer in the entry should be null.
+    const entry = ctrl.sessions.get(key);
+    expect(entry?.creationTtlTimer).toBeNull();
+
+    // Advance time past TTL — the session must still be in the map.
+    vi.advanceTimersByTime(LEASE_MS + 1000);
+    // The raw ttlTimer would have "fired" but the session wasn't disposed because
+    // clearTimeout was called on it.  The session stays in the map (the only
+    // removal path post-subscribe is the reconnect-lease GC, which requires a
+    // disconnect first).
+    expect(ctrl.sessions.has(key)).toBe(true);
+
+    // Sanity: our sentinel flag is false (the timer we made was cleared).
+    expect(timerFired).toBe(false);
+
+    clearTimeout(ttlTimer); // cleanup (already cleared, but harmless)
+    session.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// I-2. Native-listener guard: install() is a no-op on native/edge host
+// ---------------------------------------------------------------------------
+
+describe('I-2: chatConsoleFeature install() no-ops on native-listener host', () => {
+  it('does not throw and mounts nothing when the REST server uses native listener', async () => {
+    // Build an app with listener:'native'.
+    // We don't call app.start() — we just install the feature and verify it
+    // returns without mounting a controller.
+    const {chatConsoleFeature} = await import('../../feature.js');
+
+    // A RestApplication with listener:'native' is an EdgeRestApplication
+    // equivalent.  We use RestApplication with the native listener config.
+    const app = new RestApplication({rest: {port: 0, listener: 'native'}});
+
+    const feature = chatConsoleFeature({enabled: true});
+
+    // install() must not throw.
+    await expect(
+      feature.install(app as unknown as import('@agentback/rest').RestApplication),
+    ).resolves.toBeUndefined();
+
+    // The bridge controller must NOT have been registered — the controllers
+    // binding key should be absent.
+    const isBound = app.isBound('controllers.ChatBridgeController');
+    expect(isBound).toBe(false);
   });
 });
