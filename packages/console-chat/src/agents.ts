@@ -45,7 +45,9 @@ export type RunProbe = (bin: string) => Promise<ProbeResult>;
  * Real probe: runs `<bin> --version`, extracts the first `X.Y.Z` token.
  * Returns `{present: false}` when the binary is not found.
  */
-export const defaultProbe: RunProbe = async (bin: string): Promise<ProbeResult> => {
+export const defaultProbe: RunProbe = async (
+  bin: string,
+): Promise<ProbeResult> => {
   try {
     const {stdout, stderr} = await execFileAsync(bin, ['--version'], {
       timeout: 5000,
@@ -139,7 +141,11 @@ export async function discoverAgents(
         }
       } else if (min && !probe.version) {
         // Cannot determine version — treat as unsatisfied
-        log.debug('agent %s: version required (%s) but not detectable', desc.id, min);
+        log.debug(
+          'agent %s: version required (%s) but not detectable',
+          desc.id,
+          min,
+        );
         return;
       }
       results.push({id: desc.id, name: desc.name});
@@ -198,8 +204,18 @@ export async function doctor(
     return {status: 'missing', fix};
   }
 
+  if (min && !probe.version) {
+    log.debug('doctor(%s): wrong-version found=undefined need=%s', id, min);
+    return {status: 'wrong-version', found: undefined, need: min, fix};
+  }
+
   if (min && probe.version && !meetsMinVersion(probe.version, min)) {
-    log.debug('doctor(%s): wrong-version found=%s need=%s', id, probe.version, min);
+    log.debug(
+      'doctor(%s): wrong-version found=%s need=%s',
+      id,
+      probe.version,
+      min,
+    );
     return {status: 'wrong-version', found: probe.version, need: min, fix};
   }
 
