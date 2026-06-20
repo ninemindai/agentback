@@ -45,8 +45,9 @@ export function publishFocus(descriptor: FocusDescriptor | null): void {
 }
 
 /**
- * Subscribe to focus changes.
- * Returns an unsubscribe function — call it to stop receiving events.
+ * Subscribe to focus changes. Returns an unsubscribe fn.
+ * Does NOT fire immediately on subscribe — call getFocus() on mount for the
+ * current value, then subscribeFocus for updates.
  */
 export function subscribeFocus(fn: FocusListener): () => void {
   _listeners.add(fn);
