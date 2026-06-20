@@ -25,7 +25,12 @@ jobs:
           node-version: 22.13.0
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: node website/build.mjs
-      - uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          workingDirectory: website/edge
+      # Run wrangler via npx (isolated install) rather than
+      # cloudflare/wrangler-action: the action does `npm i wrangler` which walks
+      # up to the pnpm-workspace root package.json and fails ERESOLVE. npx
+      # installs in its own cache, independent of the repo's deps.
+      - name: Deploy Worker
+        working-directory: website/edge
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4.103.0 deploy
