@@ -6,8 +6,11 @@ import type {RestApplication} from '@agentback/rest';
 import type {ConsoleFeature} from '@agentback/console';
 import type {Request, Response} from 'express';
 import type {ChatConsoleConfig} from './types.js';
+import {loggers} from '@agentback/common';
 import {ChatBridgeController, handleSseRequest, principalFromRequest} from './bridge.controller.js';
 import {discoverAgents, BUILTIN_AGENTS} from './agents.js';
+
+const log = loggers('agentback:console-chat:feature');
 
 /**
  * Server-side feature for the chat dock.
@@ -40,13 +43,46 @@ export function chatConsoleFeature(
     async install(app: RestApplication): Promise<void> {
       if (!enabled) return;
 
+      // I-2: Edge / native-listener guard.
+      // `chatConsoleFeature` requires the Express host (child_process + SSE).
+      // On an EdgeRestApplication (listener === 'native') there is no Express
+      // app and no child_process available — log a warning and no-op instead of
+      // throwing.  Mirrors the detection used by installMcpHttp
+      // (packages/mcp-http/src/index.ts:232).
+      const server = await app.restServer;
+      if (server.listener === 'native') {
+        log.warn(
+          'chatConsoleFeature: skipping install — the REST server uses ' +
+          "listener:'native' (EdgeRestApplication). The chat dock requires " +
+          "the Express host (listener:'express' / RestApplication). No " +
+          'bridge endpoints will be registered.',
+        );
+        return;
+      }
+
       // Register the bridge controller (all non-SSE endpoints).
       app.restController(ChatBridgeController);
+
+      // I-1: Wire disposeAll on app shutdown so ACP subprocesses are killed
+      // and never orphaned.  The controller singleton is resolved lazily on the
+      // first shutdown (it may not exist if start() was never called), so we
+      // use app.get() inside the callback.  Mirrors installMcpHttp's pattern:
+      //   app.onStop(() => handle.closeAll())
+      app.onStop(async () => {
+        try {
+          const controller = await app.get<ChatBridgeController>(
+            'controllers.ChatBridgeController',
+          );
+          controller.disposeAll();
+        } catch {
+          // Controller was never bound (e.g. start() was skipped) — nothing
+          // to drain; swallow silently.
+        }
+      });
 
       // C2: Mount the SSE endpoint directly on expressApp BEFORE app.start(),
       // matching the mcp-http pattern.  Express matches this route before the
       // framework's route table, so RestServer.sendResult never runs for it.
-      const server = await app.restServer;
       const expressApp = server.expressApp;
 
       expressApp.get('/console/chat/stream', async (req: Request, res: Response) => {
