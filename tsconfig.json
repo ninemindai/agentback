@@ -50,6 +50,7 @@
     {"path": "packages/cli"},
     {"path": "packages/cli/fixtures/cf-app"},
     {"path": "examples/hello-rest"},
+    {"path": "examples/hello-agent-console"},
     {"path": "examples/hello-hosts"},
     {"path": "examples/hello-mcp"},
     {"path": "examples/hello-hybrid"},
