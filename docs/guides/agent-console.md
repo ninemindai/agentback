@@ -153,8 +153,10 @@ any permission grants across sessions.
 
 Spawning a subprocess requires `node:child_process`, which is unavailable on
 `EdgeRestApplication` (Workers/Bun/Deno environments). If `chatConsoleFeature`
-is installed on an Edge app, the `install()` call no-ops and the feature is
-absent. The bridge endpoints do not register.
+is installed on an Edge app, `install()` detects `server.listener === 'native'`,
+logs a warning via `loggers`, and **returns without mounting anything** — a
+genuine no-op. The bridge endpoints and controller do not register. No error is
+thrown.
 
 ---
 
@@ -163,14 +165,34 @@ absent. The bridge endpoints do not register.
 Each ACP session owns a subprocess. When a session ends — by:
 
 - `DELETE /console/chat/session` (explicit stop),
-- SSE client disconnect,
-- Agent EOF, or
-- Server shutdown —
+- SSE client disconnect (after the 30 s reconnect lease expires),
+- Never-subscribed TTL (see below), or
+- Server shutdown (`app.stop()`) —
 
 the bridge kills the subprocess and removes the session from the map. **No
 orphaned processes.** The bridge uses `SpawnError`, `AcpHandshakeError`, and
 `PartialTurnError` for named error states; there is no silent catch-all that
 could leave a subprocess running.
+
+### Server shutdown → kills the subprocess / no orphaned processes
+
+`chatConsoleFeature().install()` wires `app.onStop(() => controller.disposeAll())`
+before `app.start()`. When the application stops, `disposeAll()` iterates the
+full session map, calls `dispose()` on every `AcpSession` (which kills the
+subprocess), and clears the map. All pending creation-TTL timers are also
+cancelled at that point.
+
+### Creation-time TTL: never-subscribed sessions
+
+A session created via `POST /session` but never connected via
+`GET /stream?sessionId=…` would otherwise leak indefinitely — the
+SSE-disconnect handler never arms if the client never subscribes.
+
+To close this gap, `createSession` starts a timer (30 s, the same window as
+the SSE reconnect lease). If no SSE stream subscribes within that window, the
+session is automatically disposed and removed from the map. When an SSE client
+does subscribe, `handleSseRequest` cancels the timer immediately — normal
+sessions are unaffected.
 
 ---
 
@@ -205,8 +227,8 @@ surface. The read-only invariant is enforced in `IntrospectionTools` (see
 | Loopback-only without real auth | Operator configuration (dev loopback `auth` middleware) |
 | Permission prompts not bypassable | ACP protocol + dock UI (no config override) |
 | Permission scope is path + session only | Dock UI (no persistent grants) |
-| Node-host-only | `install()` no-ops on Edge hosts |
-| No orphaned subprocesses | Session lifecycle in `bridge.controller.ts` |
+| Node-host-only | `install()` no-ops (warning + return) on `listener:'native'` Edge hosts |
+| No orphaned subprocesses | `disposeAll()` on `app.onStop()` + creation-TTL + SSE-disconnect lease GC |
 | Introspection is read-only | `IntrospectionTools` (no invocation tools) |
 | ACP adapter-isolated | All ACP glue in `acp-session.ts` |
 
