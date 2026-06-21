@@ -201,6 +201,67 @@ describe('AcpSession connect + prompt flow', () => {
 
     session.dispose();
   });
+
+  it('forwards tool_call_update so a tool call resolves out of pending', async () => {
+    // ACP emits `tool_call` (pending) then `tool_call_update` (completed) on the
+    // same toolCallId. The bridge must forward BOTH or the tool block stays
+    // "pending" at the bottom forever.
+    const fakeAgent = makeFakeAgent({
+      onPrompt: async (sessionId, _text, ctx) => {
+        // ACP `tool_call` is FLAT (ToolCall fields directly on the update),
+        // not nested under a `toolCall` key.
+        await ctx.notify('session/update', {
+          sessionId,
+          update: {
+            sessionUpdate: 'tool_call',
+            toolCallId: 'tc1',
+            title: 'inventory',
+            status: 'pending',
+          } as unknown as import('@agentclientprotocol/sdk').SessionUpdate,
+        });
+        await ctx.notify('session/update', {
+          sessionId,
+          update: {
+            sessionUpdate: 'tool_call_update',
+            toolCallId: 'tc1',
+            status: 'completed',
+          } as unknown as import('@agentclientprotocol/sdk').SessionUpdate,
+        });
+        return 'end_turn';
+      },
+    });
+
+    const {AcpSession} = await import('../../acp-session.js');
+    const session = new AcpSession(
+      {id: 'test', name: 'Test', detect: {bin: 'test'}, command: ['test']},
+      inProcessConnectFn(fakeAgent),
+    );
+    await session.connect();
+    await session.open([], process.cwd());
+
+    const tools: import('../../acp-session.js').ToolCallEvent[] = [];
+    const done = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('timeout')), 3000);
+      session.on('event', ev => {
+        if (ev.type === 'tool_call') {
+          tools.push(ev as import('../../acp-session.js').ToolCallEvent);
+        } else if (ev.type === 'stop' || ev.type === 'error') {
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+    });
+    await session.prompt('go');
+    await done;
+
+    // Both the initial call and the update were forwarded for the same id,
+    // and the final status is 'completed' (not stuck at 'pending').
+    const tc1 = tools.filter(t => t.toolCallId === 'tc1');
+    expect(tc1.length).toBe(2);
+    expect(tc1[tc1.length - 1]!.status).toBe('completed');
+
+    session.dispose();
+  });
 });
 
 // ---------------------------------------------------------------------------

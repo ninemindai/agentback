@@ -648,10 +648,18 @@ export class AcpSession extends EventEmitter {
           text: block['text'],
         } satisfies AssistantDeltaEvent);
       }
-    } else if (kind === 'tool_call') {
-      // ToolCall shape: the `toolCall` nested object has toolCallId/title/status.
+    } else if (kind === 'tool_call' || kind === 'tool_call_update') {
+      // ACP sends a `tool_call` (new, status pending/in_progress) and then one
+      // or more `tool_call_update`s (status completed/failed) on the SAME
+      // toolCallId. We MUST forward both, or a tool call never leaves its
+      // initial "pending" status — it stays displayed at the bottom forever.
+      // BOTH variants are FLAT: per the SDK, `tool_call` is `(ToolCall & …)`
+      // and `tool_call_update` is `(ToolCallUpdate & …)`, so `toolCallId`,
+      // `title`, `status` sit directly on `u`. (The `u['toolCall']` fallback is
+      // defensive for any agent that nests them.) The reducer upserts by
+      // toolCallId, so the update resolves the existing entry's status.
       const toolCall = u['toolCallId']
-        ? u // ToolCallUpdate shape is flat (fields directly on u)
+        ? u // flat shape (the real ACP shape for both variants)
         : (u['toolCall'] as Record<string, unknown> | undefined);
       if (toolCall) {
         this.emit('event', {
