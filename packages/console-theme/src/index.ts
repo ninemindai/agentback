@@ -113,6 +113,32 @@ button.ghost:hover { border-color:var(--accent); color:var(--accent); }
   .dock { width:100vw; }
   .dock-toggle--open { right:100vw; }
 }
+
+/* ── Markdown renderer (assistant bubbles in the dock) ──────────────────────
+   .md-chat is the root container; all selectors are scoped to it so they
+   don't leak into the rest of the console UI. Font/size inherit from the
+   parent .msg.assistant .bubble (13.5 px sans). */
+.md-chat { display:flex; flex-direction:column; gap:6px; }
+.md-chat .md-p { margin:0; line-height:1.55; white-space:pre-wrap; }
+/* Headings — serif, modest sizes, no top margin inside the bubble. */
+.md-chat .md-h { font-family:var(--serif); font-weight:600; color:var(--ink); margin:0; line-height:1.3; }
+.md-chat h1.md-h { font-size:15px; }
+.md-chat h2.md-h { font-size:14px; }
+.md-chat h3.md-h { font-size:13.5px; }
+/* Fenced code block — mirrors the .tool mono look (blue left-border, paper bg). */
+.md-chat .md-pre { margin:0; padding:.45rem .55rem; background:var(--paper); border:1px solid var(--line); border-left:2px solid var(--blue); border-radius:4px; overflow-x:auto; }
+.md-chat .md-pre code { font-family:var(--mono); font-size:11.5px; color:var(--ink); background:none; border:none; padding:0; white-space:pre; }
+/* Inline code. */
+.md-chat code { font-family:var(--mono); font-size:11.5px; background:var(--paper); border:1px solid var(--line); border-radius:3px; padding:.05rem .3rem; color:var(--ink); }
+/* Lists — compact, chat-sized. */
+.md-chat .md-ul, .md-chat .md-ol { margin:0; padding-left:1.4em; }
+.md-chat .md-ul li, .md-chat .md-ol li { line-height:1.5; }
+/* Links — accent colour, no underline by default. */
+.md-chat a { color:var(--accent); text-decoration:none; }
+.md-chat a:hover { text-decoration:underline; }
+/* strong / em */
+.md-chat strong { font-weight:600; color:var(--ink); }
+.md-chat em { font-style:italic; }
 `;
 
 /** The Google Fonts stylesheet href both shells preconnect to + load. */

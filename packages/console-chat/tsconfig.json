@@ -6,7 +6,7 @@
     "tsBuildInfoFile": "./tsconfig.tsbuildinfo"
   },
   "include": ["src/**/*"],
-  "exclude": ["dist", "node_modules", "src/client/Dock.tsx", "src/client/main.ts"],
+  "exclude": ["dist", "node_modules", "src/client/Dock.tsx", "src/client/main.ts", "src/client/markdown.tsx"],
   "references": [
     {"path": "../common"},
     {"path": "../console"},
