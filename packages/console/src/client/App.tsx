@@ -83,18 +83,34 @@ export function App({
         )}
       </main>
       {chatEnabled && config.chat && (
-        <section
-          className={dockOpen ? 'dock dock--open' : 'dock'}
-          data-dock
-        >
-          {DockComponent && (
-            <DockComponent
-              chat={config.chat}
-              dockOpen={dockOpen}
-              onToggleDock={onToggleDock}
-            />
-          )}
-        </section>
+        <>
+          {/* Toggle tab — a SIBLING of `.dock`, never inside it: a position:fixed
+              control inside the transformed `.dock` would slide off-screen with
+              it. Pinned to the right edge; shifts to the panel's left edge when
+              open (doubling as the close affordance). */}
+          <button
+            type="button"
+            className={dockOpen ? 'dock-toggle dock-toggle--open' : 'dock-toggle'}
+            onClick={onToggleDock}
+            aria-label={dockOpen ? 'Close agent chat' : 'Open agent chat'}
+            aria-expanded={dockOpen}
+          >
+            {dockOpen ? '› close' : '‹ Chat'}
+          </button>
+          <section
+            className={dockOpen ? 'dock dock--open' : 'dock'}
+            data-dock
+            aria-hidden={!dockOpen}
+          >
+            {DockComponent && (
+              <DockComponent
+                chat={config.chat}
+                dockOpen={dockOpen}
+                onToggleDock={onToggleDock}
+              />
+            )}
+          </section>
+        </>
       )}
     </div>
   );

@@ -48,10 +48,31 @@ button.ghost:hover { border-color:var(--accent); color:var(--accent); }
 .empty { color:var(--muted); font-style:italic; }
 
 /* ── Agent chat dock ────────────────────────────────────────────────────────── */
-/* Layout: console grid gains a third 380px column when .console--chat is set.  */
-/* Below ~1100px the dock collapses to a right-edge tab that overlays the panel. */
-.console--chat { grid-template-columns:170px 1fr 380px; }
-.dock { display:flex; flex-direction:column; background:var(--card); min-width:0; border-left:1px solid var(--line-2); }
+/* Layout: the dock is a fixed right-side slide-over panel (overlay) at ALL
+   widths. It does NOT participate in the console grid -- that avoids the
+   conflict with the shell's base 2-column console template (which wrapped a
+   3rd grid child to the bottom-left). It overlays the panel and is toggled by
+   the dock-toggle tab, which is a SIBLING of the dock (a position:fixed child
+   of a transformed dock would be trapped in the transform and slide off
+   screen with it). */
+.dock {
+  position:fixed; top:0; right:0; height:100vh; width:min(400px,94vw);
+  display:flex; flex-direction:column; background:var(--card); min-width:0;
+  border-left:1px solid var(--line-2); box-shadow:-6px 0 24px rgba(34,29,22,.12);
+  transform:translateX(100%); transition:transform .2s ease; z-index:50;
+}
+.dock.dock--open { transform:none; }
+/* Always-visible toggle tab pinned to the right edge; slides to the panel's
+   left edge when open (so it doubles as the close affordance). */
+.dock-toggle {
+  position:fixed; right:0; top:50%; transform:translateY(-50%);
+  display:flex; align-items:center; justify-content:center; gap:4px;
+  background:var(--accent); color:#fdf8ef; border:0; cursor:pointer;
+  border-radius:6px 0 0 6px; padding:10px 6px; font:inherit; font-size:11.5px;
+  font-weight:500; writing-mode:vertical-rl; z-index:51;
+  box-shadow:-2px 0 10px rgba(34,29,22,.14); transition:right .2s ease;
+}
+.dock-toggle--open { right:min(400px,94vw); }
 .dock-head { padding:12px 14px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .picker { display:flex; align-items:center; gap:8px; min-width:0; }
 .dot { width:7px; height:7px; border-radius:50%; background:var(--ok); flex:none; }
@@ -87,15 +108,10 @@ button.ghost:hover { border-color:var(--accent); color:var(--accent); }
 .dock-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; text-align:center; padding:24px 16px; color:var(--muted); font-size:12.5px; flex:1; }
 .dock-empty-title { font-family:var(--serif); font-size:15px; color:var(--ink); }
 .dock-install-hint { font-family:var(--mono); font-size:11px; display:block; }
-/* Responsive: below ~1100px dock becomes a right-edge overlay tab. */
-@media (max-width:1100px) {
-  .console--chat { grid-template-columns:170px 1fr; }
-  .dock { position:fixed; top:0; right:0; height:100vh; width:380px; z-index:50; transform:translateX(100%); transition:transform .2s ease; border-left:1px solid var(--line-2); box-shadow:-4px 0 24px rgba(34,29,22,.1); }
-  .dock.dock--open { transform:none; }
-  .dock-tab { display:flex; align-items:center; justify-content:center; position:fixed; right:0; top:50%; transform:translateY(-50%); width:28px; height:72px; background:var(--card); border:1px solid var(--line-2); border-right:0; border-radius:6px 0 0 6px; cursor:pointer; z-index:51; font-size:11px; writing-mode:vertical-rl; color:var(--muted); gap:4px; padding:8px 4px; }
-}
-@media (min-width:1101px) {
-  .dock-tab { display:none; }
+/* Narrow viewports: let the panel use the full width. */
+@media (max-width:520px) {
+  .dock { width:100vw; }
+  .dock-toggle--open { right:100vw; }
 }
 `;
 
