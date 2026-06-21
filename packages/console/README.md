@@ -118,3 +118,18 @@ await installConsole(app, {
   unsafeAllowUnauthenticated: true,
 });
 ```
+
+## Live reflection
+
+When your app restarts — e.g. the agent (or you) edits source and `build:watch`
+rebuilds — the open console panels refresh automatically to show the new
+structure. No configuration: it is on whenever the console is mounted.
+
+How it works: the console serves a per-process boot id over a `GET
+<basePath>/live` SSE stream. The client keeps that stream open; when a
+reconnect returns a *new* boot id (the process restarted), the native explorers
+(`context-explorer`, `schema-explorer`) refetch in place — your current
+selection and filters are preserved — and the embedded panels (`rest-explorer`,
+`mcp-inspector`) remount with fresh data. A transient network blip reconnects to
+the *same* boot id and is ignored. A small "offline" indicator appears in the
+sidebar while the stream is down. Node-host-only; SSE (no WebSocket).
