@@ -144,6 +144,17 @@ export const CHAT_DISCOVER = BindingKey.create<DiscoverFn>(
   'console-chat.discoverFn',
 );
 
+/**
+ * Binding key for the configured working directory.
+ *
+ * Bound by `chatConsoleFeature().install()` to the feature's `config.cwd`. Used
+ * as the default base dir for spawning the agent (PATH augmentation) when a
+ * `POST /session` request doesn't carry its own `cwd` — which the browser dock
+ * never does. Without this, the spawn falls back to `process.cwd()` and can't
+ * find a workspace devDependency adapter under the app's `node_modules/.bin`.
+ */
+export const CHAT_CWD = BindingKey.create<string>('console-chat.cwd');
+
 // ---------------------------------------------------------------------------
 // Zod schemas
 // ---------------------------------------------------------------------------
@@ -242,6 +253,8 @@ export class ChatBridgeController {
     private readonly connectFn?: AcpConnectFn,
     @inject(CHAT_DISCOVER, {optional: true})
     private readonly discoverFn?: DiscoverFn,
+    @inject(CHAT_CWD, {optional: true})
+    private readonly configuredCwd?: string,
   ) {}
 
   // --------------------------------------------------------------------------
@@ -286,10 +299,13 @@ export class ChatBridgeController {
 
     log.debug('createSession principal=%s agentId=%s', principal, agentId);
 
-    // Pass cwd (from the POST body) as the baseDir for PATH augmentation so that
-    // a workspace devDependency adapter (isolated under the app's node_modules/.bin)
-    // is found during spawn — matching what feature.ts does for discovery.
-    const acpSession = new AcpSession(descriptor, this.connectFn, cwd);
+    // Base dir for PATH augmentation during spawn so a workspace devDependency
+    // adapter (isolated under the app's node_modules/.bin) is found — matching
+    // what feature.ts does for discovery. Prefer the request's cwd, else the
+    // feature's configured cwd (CHAT_CWD); the browser dock sends no cwd, so the
+    // configured default is what makes the dock actually spawn the adapter.
+    const spawnBase = cwd ?? this.configuredCwd;
+    const acpSession = new AcpSession(descriptor, this.connectFn, spawnBase);
 
     try {
       await acpSession.connect();
