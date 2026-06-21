@@ -13,6 +13,7 @@ import {describe, it, expect} from 'vitest';
 import {
   turnReducer,
   initialConversationState,
+  summarizeToolCalls,
   type ConversationState,
   type SseClientEvent,
 } from '../../client/sse.js';
@@ -98,6 +99,45 @@ describe('turnReducer: happy-path sequence', () => {
       'inventory:completed',
       'get:completed',
     ]);
+  });
+});
+
+describe('summarizeToolCalls', () => {
+  it('collapses same-title calls into one row with a count', () => {
+    const rows = summarizeToolCalls([
+      {toolCallId: '1', title: 'get', status: 'completed'},
+      {toolCallId: '2', title: 'get', status: 'completed'},
+      {toolCallId: '3', title: 'get', status: 'completed'},
+      {toolCallId: '4', title: 'inventory', status: 'completed'},
+    ]);
+    expect(rows).toEqual([
+      {title: 'get', count: 3, status: 'completed'},
+      {title: 'inventory', count: 1, status: 'completed'},
+    ]);
+  });
+
+  it('aggregates status: running if any pending, failed if any failed', () => {
+    expect(
+      summarizeToolCalls([
+        {toolCallId: '1', title: 'get', status: 'completed'},
+        {toolCallId: '2', title: 'get', status: 'in_progress'},
+      ])[0]!.status,
+    ).toBe('running');
+    expect(
+      summarizeToolCalls([
+        {toolCallId: '1', title: 'get', status: 'completed'},
+        {toolCallId: '2', title: 'get', status: 'failed'},
+      ])[0]!.status,
+    ).toBe('failed');
+  });
+
+  it('preserves first-seen order of distinct titles', () => {
+    const rows = summarizeToolCalls([
+      {toolCallId: '1', title: 'b', status: 'completed'},
+      {toolCallId: '2', title: 'a', status: 'completed'},
+      {toolCallId: '3', title: 'b', status: 'completed'},
+    ]);
+    expect(rows.map(r => r.title)).toEqual(['b', 'a']);
   });
 
   it('surfaces a permission_request as pendingPermission', () => {

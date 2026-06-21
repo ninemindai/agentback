@@ -33,6 +33,7 @@ import {
   openSseStream,
   turnReducer,
   initialConversationState,
+  summarizeToolCalls,
 } from './sse.js';
 import type {
   ConversationMessage,
@@ -182,12 +183,21 @@ function permDetailLine(toolCall: unknown): string {
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function ToolCallBlock({title, status}: {title: string | null; status: string | null}) {
+function ToolCallBlock({
+  title,
+  status,
+  count = 1,
+}: {
+  title: string | null;
+  status: string | null;
+  count?: number;
+}) {
   const label = title ?? 'tool';
+  const countStr = count > 1 ? ` ×${count}` : '';
   const statusStr = status ? ` (${status})` : '';
   return (
     <div className="tool">
-      {'▸ '}<b>{label}</b>{statusStr}
+      {'▸ '}<b>{label}</b>{countStr}{statusStr}
     </div>
   );
 }
@@ -260,11 +270,12 @@ function MessageBubble({
       <div className="who">agent</div>
       <div className="bubble">
         {msg.text && <Markdown source={msg.text} />}
-        {msg.toolCalls.map(tc => (
+        {summarizeToolCalls(msg.toolCalls).map((g, i) => (
           <ToolCallBlock
-            key={tc.toolCallId}
-            title={tc.title}
-            status={tc.status}
+            key={`${g.title ?? 'tool'}-${i}`}
+            title={g.title}
+            status={g.status}
+            count={g.count}
           />
         ))}
       </div>
