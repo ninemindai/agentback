@@ -2,7 +2,7 @@
 // Node module: @agentback/schema-explorer
 // This file is licensed under the MIT License.
 
-import {useEffect, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useState} from 'react';
 import {makeApi, type SchemaNode} from './api';
 import {ApiProvider} from './ApiContext';
 import {SchemaList} from './components/SchemaList';
@@ -24,10 +24,13 @@ type View = 'browse' | 'graph' | 'okf';
 export function App({
   apiBase,
   title = 'Schema Explorer',
+  reloadNonce = 0,
   onFocusChange,
 }: {
   apiBase: string;
   title?: string;
+  /** Bumped by the console shell when the app restarts; refetch on change. */
+  reloadNonce?: number;
   /** Called with the selected schema id, or null when nothing is selected. */
   onFocusChange?: (id: string | null, label?: string) => void;
 }) {
@@ -37,10 +40,33 @@ export function App({
   const [filter, setFilter] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<View>('browse');
+  // Non-fatal: a refetch after a restart failed (app mid-restart). Keep stale
+  // data visible rather than blanking the panel.
+  const [reloadError, setReloadError] = useState(false);
 
+  const load = useCallback(
+    () =>
+      api.fetchSchemas().then(
+        n => {
+          setNodes(n);
+          setReloadError(false);
+        },
+        e => setError(String(e)),
+      ),
+    [api],
+  );
+
+  // Initial load (and on apiBase change).
   useEffect(() => {
-    api.fetchSchemas().then(setNodes, e => setError(String(e)));
-  }, [api]);
+    load();
+  }, [load]);
+
+  // Live reflection: refetch on restart; keep stale data on failure.
+  useEffect(() => {
+    if (reloadNonce === 0) return;
+    api.fetchSchemas().then(setNodes, () => setReloadError(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadNonce]);
 
   useEffect(() => {
     if (!onFocusChange) return;
@@ -86,6 +112,11 @@ export function App({
         <header>
           <h1>{title}</h1>
           <span className="count">{nodes.length} schemas</span>
+          {reloadError && (
+            <span className="count" title="Could not refresh after restart">
+              ⚠ stale
+            </span>
+          )}
           <div className="views">
             <button
               className={'btn' + (view === 'browse' ? '' : ' ghost')}
