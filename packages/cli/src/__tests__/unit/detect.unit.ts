@@ -43,6 +43,20 @@ describe('resolveBuilder', () => {
     });
   });
 
+  it('detects dist/index.js → buildApp', () => {
+    writeFileSync(path.join(cwd, 'dist', 'index.js'), '');
+    expect(resolveBuilder({cwd})).toEqual({
+      entry: './dist/index.js',
+      exportName: 'buildApp',
+    });
+  });
+
+  it('prefers dist/main.js over dist/index.js when both exist', () => {
+    writeFileSync(path.join(cwd, 'dist', 'main.js'), '');
+    writeFileSync(path.join(cwd, 'dist', 'index.js'), '');
+    expect(resolveBuilder({cwd}).entry).toBe('./dist/main.js');
+  });
+
   it('throws an actionable error when nothing resolves', () => {
     expect(() => resolveBuilder({cwd})).toThrow(/--entry/);
   });

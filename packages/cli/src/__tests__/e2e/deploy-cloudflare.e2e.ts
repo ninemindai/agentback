@@ -32,18 +32,9 @@ describe.skipIf(!RUN_TEMP)(
   'deploy cloudflare --temporary (e2e, secretless)',
   () => {
     it('deploys to a throwaway account and serves /openapi.json', async () => {
-      // cwd must be the cf-app fixture; its builder is dist/index.js#buildApp
-      // (auto-detect only probes dist/main.js, so pass --entry explicitly).
-      const code = await main([
-        'deploy',
-        'cloudflare',
-        '--temporary',
-        '--yes',
-        '--entry',
-        './dist/index.js',
-        '--export',
-        'buildApp',
-      ]);
+      // cwd must be the cf-app fixture; its builder (dist/index.js#buildApp) is
+      // found by auto-detect, so no --entry needed.
+      const code = await main(['deploy', 'cloudflare', '--temporary', '--yes']);
       expect(code).toBe(0);
     }, 180_000);
   },

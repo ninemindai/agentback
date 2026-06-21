@@ -21,6 +21,8 @@ export function resolveBuilder(opts: {
       exportName: 'buildConsoleApp',
     },
     {file: 'dist/main.js', entry: './dist/main.js', exportName: 'buildApp'},
+    // Node's default entry — probed after main.js so an explicit main wins.
+    {file: 'dist/index.js', entry: './dist/index.js', exportName: 'buildApp'},
   ];
   for (const probe of probes) {
     if (existsSync(path.join(opts.cwd, probe.file))) {
