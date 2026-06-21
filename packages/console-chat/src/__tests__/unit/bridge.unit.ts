@@ -21,7 +21,7 @@ import {
   type ClientContext,
   type AgentContext,
 } from '@agentclientprotocol/sdk';
-import {ChatBridgeController, CHAT_CONNECT_FN} from '../../bridge.controller.js';
+import {ChatBridgeController, CHAT_CONNECT_FN, CHAT_DISCOVER} from '../../bridge.controller.js';
 import type {AcpConnectFn} from '../../acp-session.js';
 import type {AgentDescriptor} from '../../types.js';
 
@@ -1185,5 +1185,175 @@ describe('I-2: chatConsoleFeature install() no-ops on native-listener host', () 
     // binding key should be absent.
     const isBound = app.isBound('controllers.ChatBridgeController');
     expect(isBound).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// I-4. GET /agents uses injected CHAT_DISCOVER fn (cwd-aware discover seam)
+// ---------------------------------------------------------------------------
+
+describe('GET /agents: uses injected CHAT_DISCOVER when bound', () => {
+  it('returns the agents supplied by the injected discover function', async () => {
+    const connectFn = inProcessConnectFn(makeFakeAgent());
+    const app = new RestApplication({rest: {port: 0}});
+    app.restController(ChatBridgeController);
+    app.bind(CHAT_CONNECT_FN.key).to(connectFn);
+    // Bind a stub discover function that always returns a fixed set.
+    const stubAgents = [{id: 'my-agent', name: 'My Agent'}];
+    app.bind(CHAT_DISCOVER.key).to(() => Promise.resolve(stubAgents));
+
+    await using t = await createTestApp(() => app);
+
+    const res = await t.http.get('/console/chat/agents');
+    expect(res.status).toBe(200);
+    const body = res.body as {agents: {id: string; name: string}[]};
+    expect(body.agents).toEqual(stubAgents);
+  });
+
+  it('falls back to a default probe when CHAT_DISCOVER is not bound', async () => {
+    // Without a CHAT_DISCOVER binding, GET /agents uses discoverAgents() with
+    // makeProbe() (no baseDir). This test just verifies the fallback path does
+    // not throw and returns an array (content depends on what is installed).
+    const connectFn = inProcessConnectFn(makeFakeAgent());
+    const app = new RestApplication({rest: {port: 0}});
+    app.restController(ChatBridgeController);
+    app.bind(CHAT_CONNECT_FN.key).to(connectFn);
+    // No CHAT_DISCOVER binding.
+
+    await using t = await createTestApp(() => app);
+
+    const res = await t.http.get('/console/chat/agents');
+    expect(res.status).toBe(200);
+    const body = res.body as {agents: unknown[]};
+    expect(Array.isArray(body.agents)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// I-5. AcpSession.baseDir: defaultConnectFn receives baseDir via options
+// ---------------------------------------------------------------------------
+
+describe('AcpSession.baseDir: spawn uses buildAugmentedPath(baseDir)', () => {
+  it('AcpSession passes baseDir to connectFn as options.baseDir', async () => {
+    // Capture options passed to the connect function.
+    let capturedBaseDir: string | undefined;
+    const descriptor: AgentDescriptor = {
+      id: 'test',
+      name: 'Test',
+      detect: {bin: 'test'},
+      command: ['test'],
+    };
+
+    const fakeAgent = makeFakeAgent();
+    const capturingConnectFn: import('../../acp-session.js').AcpConnectFn = async (
+      _desc,
+      clientApp,
+      options,
+    ) => {
+      capturedBaseDir = options?.baseDir;
+      const connection = clientApp.connect(fakeAgent);
+      const ctx = connection.agent;
+      return {connection, ctx, kill: () => {}};
+    };
+
+    const {AcpSession} = await import('../../acp-session.js');
+    const expectedBaseDir = '/some/project/dir';
+    const session = new AcpSession(descriptor, capturingConnectFn, expectedBaseDir);
+    await session.connect();
+
+    expect(capturedBaseDir).toBe(expectedBaseDir);
+
+    session.dispose();
+  });
+
+  it('AcpSession with no baseDir passes undefined options.baseDir', async () => {
+    let capturedBaseDir: string | undefined = 'NOT_SET';
+    const descriptor: AgentDescriptor = {
+      id: 'test',
+      name: 'Test',
+      detect: {bin: 'test'},
+      command: ['test'],
+    };
+
+    const fakeAgent = makeFakeAgent();
+    const capturingConnectFn: import('../../acp-session.js').AcpConnectFn = async (
+      _desc,
+      clientApp,
+      options,
+    ) => {
+      capturedBaseDir = options?.baseDir;
+      const connection = clientApp.connect(fakeAgent);
+      const ctx = connection.agent;
+      return {connection, ctx, kill: () => {}};
+    };
+
+    const {AcpSession} = await import('../../acp-session.js');
+    // No baseDir provided.
+    const session = new AcpSession(descriptor, capturingConnectFn);
+    await session.connect();
+
+    expect(capturedBaseDir).toBeUndefined();
+
+    session.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// I-6. createSession passes cwd to AcpSession as baseDir
+// ---------------------------------------------------------------------------
+
+describe('createSession: cwd from POST body reaches AcpSession as baseDir', () => {
+  it('cwd in POST body is forwarded to the AcpSession connectFn as baseDir', async () => {
+    let capturedBaseDir: string | undefined = 'NOT_SET';
+    const fakeAgent = makeFakeAgent();
+
+    // A connect function that captures the baseDir option.
+    const capturingConnectFn: import('../../acp-session.js').AcpConnectFn = async (
+      _desc,
+      clientApp,
+      options,
+    ) => {
+      capturedBaseDir = options?.baseDir;
+      const connection = clientApp.connect(fakeAgent);
+      const ctx = connection.agent;
+      return {connection, ctx, kill: () => {}};
+    };
+
+    const connectFn = capturingConnectFn;
+    await using t = await createTestApp(makeApp.bind(null, connectFn, 'cwd-user'));
+
+    const expectedCwd = '/path/to/my/project';
+    const res = await t.http
+      .post('/console/chat/session')
+      .send({agentId: 'claude-code', cwd: expectedCwd});
+
+    expect(res.status).toBe(200);
+    expect(capturedBaseDir).toBe(expectedCwd);
+  });
+
+  it('cwd omitted from POST body → baseDir is undefined', async () => {
+    let capturedBaseDir: string | undefined = 'NOT_SET';
+    const fakeAgent = makeFakeAgent();
+
+    const capturingConnectFn: import('../../acp-session.js').AcpConnectFn = async (
+      _desc,
+      clientApp,
+      options,
+    ) => {
+      capturedBaseDir = options?.baseDir;
+      const connection = clientApp.connect(fakeAgent);
+      const ctx = connection.agent;
+      return {connection, ctx, kill: () => {}};
+    };
+
+    await using t = await createTestApp(makeApp.bind(null, capturingConnectFn, 'cwd-user2'));
+
+    // No cwd in body → undefined baseDir.
+    const res = await t.http
+      .post('/console/chat/session')
+      .send({agentId: 'claude-code'});
+
+    expect(res.status).toBe(200);
+    expect(capturedBaseDir).toBeUndefined();
   });
 });

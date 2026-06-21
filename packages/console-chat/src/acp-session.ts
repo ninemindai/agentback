@@ -107,6 +107,21 @@ export class PartialTurnError extends Error {
 // ---------------------------------------------------------------------------
 
 /**
+ * Options passed to an `AcpConnectFn`.
+ */
+export interface AcpConnectOptions {
+  /**
+   * Base directory for PATH augmentation.
+   *
+   * When set, `buildAugmentedPath(baseDir)` is used for the spawned subprocess's
+   * `PATH`, which causes workspace devDependency adapters (whose bin lives under
+   * the consumer package's `node_modules/.bin`) to be discoverable without a
+   * global install.  Defaults to `undefined` (only `process.cwd()` is walked).
+   */
+  baseDir?: string;
+}
+
+/**
  * Factory for an ACP connection.
  *
  * The default implementation spawns a subprocess and bridges Node stdio →
@@ -119,6 +134,7 @@ export class PartialTurnError extends Error {
 export type AcpConnectFn = (
   descriptor: AgentDescriptor,
   clientApp: ClientApp,
+  options?: AcpConnectOptions,
 ) => Promise<{connection: ClientConnection; ctx: ClientContext; kill: () => void}>;
 
 /**
@@ -135,15 +151,18 @@ export type AcpConnectFn = (
  * claude-agent-acp.  The binary may prefer HTTP/SSE rather than stdio; update
  * this function once the real adapter is available.
  */
-export const defaultConnectFn: AcpConnectFn = async (descriptor, clientApp) => {
+export const defaultConnectFn: AcpConnectFn = async (descriptor, clientApp, options) => {
   const [bin, ...args] = descriptor.command;
   log.debug('spawning ACP subprocess: %s %o', bin, args);
 
   // Augment PATH with local node_modules/.bin so a workspace-installed adapter
   // (e.g. a devDependency in the example) is found without a global install.
+  // When options.baseDir is provided, walk up from that directory too — this
+  // ensures a workspace devDependency adapter isolated under the consumer
+  // package's node_modules/.bin (not under process.cwd()) is on PATH.
   const child = spawn(bin, args, {
     stdio: ['pipe', 'pipe', 'inherit'],
-    env: {...process.env, PATH: buildAugmentedPath()},
+    env: {...process.env, PATH: buildAugmentedPath(options?.baseDir)},
   });
 
   if (!child.stdout || !child.stdin) {
@@ -229,6 +248,18 @@ export class AcpSession extends EventEmitter {
   constructor(
     private readonly descriptor: AgentDescriptor,
     private readonly connectFn: AcpConnectFn = defaultConnectFn,
+    /**
+     * Base directory for PATH augmentation on spawn.
+     *
+     * Forwarded to `connectFn` as `options.baseDir` so that
+     * `defaultConnectFn` uses `buildAugmentedPath(baseDir)` when spawning the
+     * adapter subprocess.  This allows a workspace devDependency adapter (whose
+     * bin pnpm isolates under the consumer package's `node_modules/.bin`, not
+     * under `process.cwd()`) to be found without a global install.
+     *
+     * Corresponds to `ChatConsoleConfig.cwd` (the app's own directory).
+     */
+    private readonly baseDir?: string,
   ) {
     super();
   }
@@ -276,7 +307,9 @@ export class AcpSession extends EventEmitter {
       } as const;
     });
 
-    const {connection, ctx, kill} = await this.connectFn(this.descriptor, app);
+    const {connection, ctx, kill} = await this.connectFn(this.descriptor, app, {
+      baseDir: this.baseDir,
+    });
     this._clientApp = app;
     this._connection = connection;
     this._ctx = ctx;

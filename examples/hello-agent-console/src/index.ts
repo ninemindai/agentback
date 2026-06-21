@@ -67,6 +67,10 @@ async function main(): Promise<void> {
   const chat = chatConsoleFeature({
     enabled: true,
     introspection: true, // ground the agent in the live app via IntrospectionTools
+    // Discover the ACP adapter from THIS package's node_modules/.bin (it's a
+    // devDependency of this example), so `pnpm install` is enough — no global
+    // install. Discovery walks up from here collecting node_modules/.bin dirs.
+    cwd: import.meta.dirname,
   });
 
   await installConsole(app, {

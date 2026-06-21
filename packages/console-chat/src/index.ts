@@ -42,7 +42,9 @@ export type {
   StopEvent,
   ErrorEvent,
   AcpConnectFn,
+  AcpConnectOptions,
 } from './acp-session.js';
 
 // Bridge controller
-export {ChatBridgeController, CHAT_CONNECT_FN} from './bridge.controller.js';
+export {ChatBridgeController, CHAT_CONNECT_FN, CHAT_DISCOVER} from './bridge.controller.js';
+export type {DiscoverFn} from './bridge.controller.js';
