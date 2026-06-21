@@ -331,7 +331,11 @@ export class AcpSession extends EventEmitter {
    * Creates a new ACP protocol session.  Returns the ACP `sessionId`.
    *
    * @param mcpServers - MCP server descriptors to pass to `session/new`.
-   * @param cwd - Working directory for the session (default: `process.cwd()`).
+   * @param cwd - The coding agent's working/editing root (`workspaceRoot`).
+   *   This is the server-supplied directory where the agent reads and edits
+   *   source files — the ACP `session/new` cwd.  Defaults to `process.cwd()`.
+   *   Callers must pass the value of `CHAT_WORKSPACE_ROOT` (server-controlled),
+   *   NOT the POST-body `cwd` (which is the adapter-discovery spawn base only).
    * @param permissionMode - Target permission mode to enforce after session
    *   creation.  Defaults to `'default'` which makes the adapter route
    *   `session/request_permission` to our client handler so the dock's inline

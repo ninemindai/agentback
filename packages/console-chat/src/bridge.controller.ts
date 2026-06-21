@@ -145,15 +145,34 @@ export const CHAT_DISCOVER = BindingKey.create<DiscoverFn>(
 );
 
 /**
- * Binding key for the configured working directory.
+ * Binding key for the adapter-discovery base directory.
  *
  * Bound by `chatConsoleFeature().install()` to the feature's `config.cwd`. Used
  * as the default base dir for spawning the agent (PATH augmentation) when a
  * `POST /session` request doesn't carry its own `cwd` — which the browser dock
  * never does. Without this, the spawn falls back to `process.cwd()` and can't
  * find a workspace devDependency adapter under the app's `node_modules/.bin`.
+ *
+ * This is the adapter-discovery dir only, NOT the agent's editing root.
+ * For the agent's editing root, see {@link CHAT_WORKSPACE_ROOT}.
  */
 export const CHAT_CWD = BindingKey.create<string>('console-chat.cwd');
+
+/**
+ * Binding key for the server-controlled agent editing root.
+ *
+ * Bound by `chatConsoleFeature().install()` to `config.workspaceRoot` when set.
+ * Passed to `acpSession.open()` as the ACP `session/new` cwd — the directory
+ * where the coding agent reads and edits source files.
+ *
+ * This is a security containment boundary: the agent operates within this tree.
+ * It is server-controlled and cannot be overridden by the client (browser dock
+ * POST body). Defaults to `process.cwd()` when unbound.
+ *
+ * Distinct from {@link CHAT_CWD} (the adapter-discovery base dir for PATH
+ * augmentation during spawn).
+ */
+export const CHAT_WORKSPACE_ROOT = BindingKey.create<string>('console-chat.workspaceRoot');
 
 // ---------------------------------------------------------------------------
 // Zod schemas
@@ -255,6 +274,8 @@ export class ChatBridgeController {
     private readonly discoverFn?: DiscoverFn,
     @inject(CHAT_CWD, {optional: true})
     private readonly configuredCwd?: string,
+    @inject(CHAT_WORKSPACE_ROOT, {optional: true})
+    private readonly workspaceRoot?: string,
   ) {}
 
   // --------------------------------------------------------------------------
@@ -304,6 +325,7 @@ export class ChatBridgeController {
     // what feature.ts does for discovery. Prefer the request's cwd, else the
     // feature's configured cwd (CHAT_CWD); the browser dock sends no cwd, so the
     // configured default is what makes the dock actually spawn the adapter.
+    // NOTE: this is the adapter-discovery base only, NOT the agent's editing root.
     const spawnBase = cwd ?? this.configuredCwd;
     const acpSession = new AcpSession(descriptor, this.connectFn, spawnBase);
 
@@ -331,7 +353,11 @@ export class ChatBridgeController {
         }
       }
 
-      const acpSessionId = await acpSession.open(groundedServers, cwd);
+      // Agent editing root: server-controlled via CHAT_WORKSPACE_ROOT (config.workspaceRoot).
+      // Defaults to process.cwd() when unbound. The POST-body `cwd` is for the
+      // adapter-discovery spawn base only — the client cannot choose the agent root.
+      const agentRoot = this.workspaceRoot;
+      const acpSessionId = await acpSession.open(groundedServers, agentRoot);
 
       // --- Standing context: OKF brief ---
       // NEEDS LIVE VALIDATION (ACP-NOTES §5): whether session.prompt() is the
