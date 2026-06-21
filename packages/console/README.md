@@ -47,6 +47,34 @@ export const pages = [
 ];
 ```
 
+## Build ordering (editing another package's panel/dock)
+
+The console's `esbuild` step bundles **one SPA** (`dist/client/main.js`) by
+following each tool's `./console` export to its client **source** (e.g.
+`@agentback/console-chat`'s `Dock.tsx`). So a panel or dock authored in another
+package is compiled *into the console's bundle*, not served from its own `dist/`.
+
+Consequence: **after editing another package's client code (a `ConsolePage`
+component, the chat `Dock`, etc.), you must rebuild `@agentback/console`** — not
+just the package you edited — for the served `/console` page to change. Rebuilding
+only the owning package updates its own `dist/` but leaves the console's `main.js`
+stale, and restarting the host app won't help (it serves the prebuilt bundle).
+
+```bash
+pnpm -F @agentback/console-chat build   # the package you edited (types/tests)
+pnpm -F @agentback/console build         # REQUIRED: re-bundles the SPA with your change
+```
+
+Two related gotchas when verifying a change landed:
+
+- The React/JSX (aria-labels, button text) lives in the separate
+  `/console/assets/main.js` bundle — **not** in the HTML returned by
+  `curl /console`. Grep the bundle, not the shell HTML.
+- Component **CSS** and the `window.__CONSOLE__` config *are* inlined in the
+  shell HTML (the theme CSS is server-injected via `THEME_CSS`), so those reflect
+  a server restart without a console rebuild — which is why CSS-only and
+  config-only changes can appear to work while a JSX edit silently doesn't.
+
 ## Options
 
 ```ts
