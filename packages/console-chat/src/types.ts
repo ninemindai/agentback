@@ -32,10 +32,32 @@ export interface ChatConsoleConfig {
   /** Gate the chat dock (default: false). */
   enabled?: boolean;
   /**
-   * Working directory for the spawned agent subprocess.
-   * Defaults to `process.cwd()` (the project root).
+   * Adapter-discovery base directory.
+   *
+   * Used as the base dir for PATH augmentation during agent discovery and
+   * spawn, so that a workspace devDependency adapter (whose bin pnpm isolates
+   * under the consumer package's `node_modules/.bin`) is found without a
+   * global install.  Defaults to `process.cwd()`.
+   *
+   * This is NOT the agent's editing root — for that, see `workspaceRoot`.
    */
   cwd?: string;
+  /**
+   * The coding agent's working/editing root, passed as the ACP `session/new`
+   * cwd — where the agent reads and edits source.
+   *
+   * This is the source tree backing the running app and acts as a security
+   * containment boundary: the agent operates within this tree.
+   * Server-controlled; defaults to `process.cwd()`.
+   *
+   * For a standalone AgentBack service set this to its own repo root.  In a
+   * monorepo, set it to the repo root (so the agent can evolve both the app
+   * AND the framework packages it depends on), NOT a narrow subdir.
+   *
+   * The client (browser dock) cannot choose the agent root — only the server
+   * configuration sets it.
+   */
+  workspaceRoot?: string;
   /**
    * Mount the in-process introspection MCP as a grounding server for the
    * agent session (default: true).
