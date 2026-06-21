@@ -549,14 +549,9 @@ export function Dock({
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* Narrow-viewport tab (position:fixed via CSS; outside the dock flow) */}
-      <button
-        className="dock-tab"
-        onClick={onToggleDock}
-        aria-label="Toggle chat dock"
-      >
-        ▭ Chat
-      </button>
+      {/* The open/close toggle tab lives in the console shell (a sibling of the
+          dock section), not here — a position:fixed control inside the
+          transformed .dock would slide off-screen with it. */}
 
       {/* Header */}
       <div className="dock-head">
@@ -594,10 +589,11 @@ export function Dock({
           )}
           <button
             className="ghost"
-            aria-label="Agent options"
-            title="Options"
+            aria-label="Close agent chat"
+            title="Close"
+            onClick={onToggleDock}
           >
-            ⋯
+            ✕
           </button>
         </div>
 
