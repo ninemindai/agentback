@@ -7,7 +7,6 @@ import {useEffect, useMemo, useState} from 'react';
 import type {ConsoleClientConfig, ConsolePage} from './types.js';
 import {startLiveBus, subscribeReload, subscribeStatus} from './live.js';
 
-
 /** Props forwarded to the dock component (mirrors `ConsoleClientConfig.chat`). */
 export type ChatConfig = NonNullable<ConsoleClientConfig['chat']>;
 

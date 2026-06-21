@@ -84,7 +84,13 @@ export function App({
   // may be mid-restart) — surface a non-fatal notice instead of blanking.
   useEffect(() => {
     if (reloadNonce === 0) return;
-    api.fetchModel().then(setModel, () => setReloadError(true));
+    api.fetchModel().then(
+      m => {
+        setModel(m);
+        setReloadError(false);
+      },
+      () => setReloadError(true),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reloadNonce]);
 

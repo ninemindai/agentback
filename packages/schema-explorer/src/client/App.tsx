@@ -64,7 +64,13 @@ export function App({
   // Live reflection: refetch on restart; keep stale data on failure.
   useEffect(() => {
     if (reloadNonce === 0) return;
-    api.fetchSchemas().then(setNodes, () => setReloadError(true));
+    api.fetchSchemas().then(
+      n => {
+        setNodes(n);
+        setReloadError(false);
+      },
+      () => setReloadError(true),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reloadNonce]);
 

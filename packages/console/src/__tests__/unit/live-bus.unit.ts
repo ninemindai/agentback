@@ -38,7 +38,11 @@ function harness() {
 
 describe('liveBus', () => {
   let stop: (() => void) | undefined;
+  // Drained in afterEach so a failing assertion can't leak a listener into the
+  // module-level (singleton) bus and perturb a later test.
+  const unsubs: Array<() => void> = [];
   afterEach(() => {
+    for (const un of unsubs.splice(0)) un();
     stop?.();
     stop = undefined;
     vi.useRealTimers();
@@ -47,18 +51,17 @@ describe('liveBus', () => {
   it('does NOT fire reload on the first hello (records baseline)', () => {
     const {created, factory} = harness();
     const reloads: number[] = [];
-    const un = subscribeReload(() => reloads.push(1));
+    unsubs.push(subscribeReload(() => reloads.push(1)));
     stop = startLiveBus('/console/live', {eventSourceFactory: factory});
     created[0].hello('boot-A');
     expect(reloads.length).toBe(0);
-    un();
   });
 
   it('fires reload when a reconnect returns a DIFFERENT boot id', () => {
     vi.useFakeTimers();
     const {created, factory} = harness();
     const reloads: number[] = [];
-    const un = subscribeReload(() => reloads.push(1));
+    unsubs.push(subscribeReload(() => reloads.push(1)));
     stop = startLiveBus('/console/live', {
       reconnectDelayMs: 10,
       eventSourceFactory: factory,
@@ -68,14 +71,13 @@ describe('liveBus', () => {
     vi.advanceTimersByTime(10); // reconnect → created[1]
     created[1].hello('boot-B'); // new process
     expect(reloads.length).toBe(1);
-    un();
   });
 
   it('does NOT fire reload when a reconnect returns the SAME boot id (blip)', () => {
     vi.useFakeTimers();
     const {created, factory} = harness();
     const reloads: number[] = [];
-    const un = subscribeReload(() => reloads.push(1));
+    unsubs.push(subscribeReload(() => reloads.push(1)));
     stop = startLiveBus('/console/live', {
       reconnectDelayMs: 10,
       eventSourceFactory: factory,
@@ -85,14 +87,13 @@ describe('liveBus', () => {
     vi.advanceTimersByTime(10);
     created[1].hello('boot-A'); // same process — transient blip
     expect(reloads.length).toBe(0);
-    un();
   });
 
   it('reports disconnected on drop and connected on (re)hello', () => {
     vi.useFakeTimers();
     const {created, factory} = harness();
     const status: boolean[] = [];
-    const un = subscribeStatus(s => status.push(s));
+    unsubs.push(subscribeStatus(s => status.push(s)));
     stop = startLiveBus('/console/live', {
       reconnectDelayMs: 10,
       eventSourceFactory: factory,
@@ -102,6 +103,5 @@ describe('liveBus', () => {
     vi.advanceTimersByTime(10);
     created[1].hello('boot-A'); // → true
     expect(status).toEqual([true, false, true]);
-    un();
   });
 });
