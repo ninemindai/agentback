@@ -12,6 +12,7 @@ import {mcpConsoleFeature} from '@agentback/mcp-inspector';
 import {schemaConsoleFeature} from '@agentback/schema-explorer';
 import type {RestApplication, RestServer} from '@agentback/rest';
 import {AssetSource, fromDisk} from '@agentback/rest';
+import {liveHandler} from './live.js';
 
 /**
  * A server-side panel contribution: registers the panel's JSON API (no
@@ -149,6 +150,12 @@ export function mountConsole(
 ): void {
   const {basePath, title, features} = options;
   const app = server.expressApp;
+  // Live-reflection channel: a per-process boot id over SSE. The client's
+  // liveBus refetches the explorer panels when a reconnect returns a NEW boot
+  // id (i.e. the app restarted). Mounted on expressApp like the chat stream so
+  // RestServer.sendResult never ends it. Under basePath → covered by the auth
+  // gate installed in installConsole.
+  app.get(basePath + '/live', liveHandler);
   const clientDir = fileURLToPath(new URL('./client/', import.meta.url));
 
   if (!existsSync(clientDir + 'main.js')) {
