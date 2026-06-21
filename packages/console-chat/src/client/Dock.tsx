@@ -39,6 +39,7 @@ import type {
   PendingPermission,
   SseClientEvent,
 } from './sse.js';
+import {Markdown} from './markdown.js';
 
 // ---------------------------------------------------------------------------
 // Config shape (mirrors ConsoleClientConfig['chat'])
@@ -258,7 +259,7 @@ function MessageBubble({
     <div className="msg assistant">
       <div className="who">agent</div>
       <div className="bubble">
-        {msg.text && <span>{msg.text}</span>}
+        {msg.text && <Markdown source={msg.text} />}
         {msg.toolCalls.map(tc => (
           <ToolCallBlock
             key={tc.toolCallId}
