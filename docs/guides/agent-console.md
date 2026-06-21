@@ -242,15 +242,50 @@ surface. The read-only invariant is enforced in `IntrospectionTools` (see
 
 ---
 
+## Installing the ACP adapter
+
+`claude-agent-acp` (from `@agentclientprotocol/claude-agent-acp`) is the
+blessed reference adapter.  You can install it in two ways:
+
+**Option A — Global install** (available to all projects on the machine):
+
+```bash
+npm install -g @agentclientprotocol/claude-agent-acp
+```
+
+**Option B — Project devDependency** (no global install required):
+
+Add it to your app's `package.json` `devDependencies`:
+
+```json
+{
+  "devDependencies": {
+    "@agentclientprotocol/claude-agent-acp": "^0.48.0"
+  }
+}
+```
+
+Then `pnpm install` (or `npm install`).  The discovery probe and the spawn
+both augment `PATH` with the local `node_modules/.bin` directories walked up
+from `process.cwd()`, so `claude-agent-acp` is found without a global install.
+pnpm may hoist the binary to the workspace root's `node_modules/.bin` or keep
+it under the package's own `node_modules/.bin` — both are covered.
+
+**Doctor fix hint:** when the `GET /console/chat/agents` probe returns `{status:
+'missing'}`, the `fix` field contains `npm install -g
+@agentclientprotocol/claude-agent-acp`.  You can use the global form **or**
+add the package as a devDependency in your project (Option B) — either makes
+the adapter discoverable at startup.
+
+Other agents can be configured via `chatConsoleFeature({agents: [...]})` but
+are "advanced/custom" — the built-in doctor only knows the reference adapter's
+install path.
+
+---
+
 ## ACP experimental status
 
 The ACP protocol (`@agentclientprotocol/sdk`) is experimental and evolving.
 The pinned SDK version and all ACP-specific code live in `acp-session.ts`;
 protocol churn touches one file. The `ACP-NOTES.md` in `packages/console-chat`
 documents the pinned API surface and known validation gaps.
-
-`claude-agent-acp` (from the npm package `@agentclientprotocol/claude-agent-acp`)
-is the blessed reference adapter. Install with:
-`npm install -g @agentclientprotocol/claude-agent-acp`. Other agents can be
-configured via `chatConsoleFeature({agents: [...]})` but are "advanced/custom"
-— the built-in doctor only knows the reference adapter's install path.

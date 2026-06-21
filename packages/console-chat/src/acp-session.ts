@@ -28,6 +28,7 @@ import {
   type Stream,
 } from '@agentclientprotocol/sdk';
 import {loggers} from '@agentback/common';
+import {buildAugmentedPath} from './agents.js';
 import type {AgentDescriptor} from './types.js';
 
 const log = loggers('agentback:console-chat:acp-session');
@@ -138,7 +139,12 @@ export const defaultConnectFn: AcpConnectFn = async (descriptor, clientApp) => {
   const [bin, ...args] = descriptor.command;
   log.debug('spawning ACP subprocess: %s %o', bin, args);
 
-  const child = spawn(bin, args, {stdio: ['pipe', 'pipe', 'inherit']});
+  // Augment PATH with local node_modules/.bin so a workspace-installed adapter
+  // (e.g. a devDependency in the example) is found without a global install.
+  const child = spawn(bin, args, {
+    stdio: ['pipe', 'pipe', 'inherit'],
+    env: {...process.env, PATH: buildAugmentedPath()},
+  });
 
   if (!child.stdout || !child.stdin) {
     throw new SpawnError(`Failed to obtain stdio handles for ${bin}`);

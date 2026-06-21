@@ -9,9 +9,16 @@
  * (default = a real `execFile`-based PATH probe) so tests can stub it
  * without requiring any real binary to be installed.  This matches the
  * framework's injectable-`fetch` DIP pattern (`CoreBindings.FETCH`).
+ *
+ * `buildAugmentedPath` constructs a PATH string that PREPENDS the
+ * `node_modules/.bin` directories walked up from a base directory
+ * (and `process.cwd()`) to `process.env.PATH`.  This makes workspace-
+ * installed adapters (devDependencies) discoverable and spawnable without
+ * requiring a global install.
  */
 
 import {execFile} from 'node:child_process';
+import * as nodePath from 'node:path';
 import {promisify} from 'node:util';
 import {loggers} from '@agentback/common';
 import type {AgentDescriptor} from './types.js';
@@ -21,6 +28,47 @@ export type {AgentDescriptor} from './types.js';
 const log = loggers('agentback:console-chat:agents');
 
 const execFileAsync = promisify(execFile);
+
+// ---------------------------------------------------------------------------
+// Augmented PATH helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds an augmented PATH string by PREPENDING every `node_modules/.bin`
+ * directory found along the walk from `baseDir` up to the filesystem root,
+ * as well as from `process.cwd()` up, to `process.env.PATH`.
+ *
+ * This allows workspace-installed adapters (e.g. a devDependency in
+ * `examples/hello-agent-console`) to be discovered and spawned without a
+ * global install.  pnpm may hoist the bin under the workspace root's
+ * `node_modules/.bin` and/or keep it under the example's own
+ * `node_modules/.bin`; walking up from both `baseDir` and `cwd` handles both.
+ *
+ * @param baseDir - Root of the caller's package tree (e.g. the example root).
+ *   Defaults to `process.cwd()` when omitted.
+ * @returns A PATH string (OS separator) with local `.bin` dirs prepended.
+ */
+export function buildAugmentedPath(baseDir?: string): string {
+  const globalPath = process.env['PATH'] ?? '';
+  const dirs = new Set<string>();
+
+  // Walk from both baseDir and process.cwd(), deduplicating entries.
+  const roots = new Set<string>([process.cwd()]);
+  if (baseDir) roots.add(baseDir);
+
+  for (const root of roots) {
+    let dir = root;
+    while (true) {
+      dirs.add(nodePath.join(dir, 'node_modules', '.bin'));
+      const parent = nodePath.dirname(dir);
+      if (parent === dir) break; // reached filesystem root
+      dir = parent;
+    }
+  }
+
+  const extra = [...dirs].join(nodePath.delimiter);
+  return extra ? `${extra}${nodePath.delimiter}${globalPath}` : globalPath;
+}
 
 // ---------------------------------------------------------------------------
 // Probe seam
@@ -44,6 +92,10 @@ export type RunProbe = (bin: string) => Promise<ProbeResult>;
 /**
  * Real probe: runs `<bin> --version`, extracts the first `X.Y.Z` token.
  * Returns `{present: false}` when the binary is not found.
+ *
+ * Augments PATH with local `node_modules/.bin` directories so workspace-
+ * installed adapters (devDependencies) are discoverable without a global
+ * install.  Uses {@link buildAugmentedPath} with `process.cwd()` as the base.
  */
 export const defaultProbe: RunProbe = async (
   bin: string,
@@ -52,6 +104,7 @@ export const defaultProbe: RunProbe = async (
     const {stdout, stderr} = await execFileAsync(bin, ['--version'], {
       timeout: 5000,
       windowsHide: true,
+      env: {...process.env, PATH: buildAugmentedPath()},
     });
     const output = stdout || stderr || '';
     // Extract the first semver-like token (X.Y.Z or X.Y.Z-pre)
