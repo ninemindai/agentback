@@ -10,6 +10,8 @@ export interface ConsolePanelProps {
   apiBase: string;
   /** Optional per-panel config (e.g. the inspector's connect, Swagger's url). */
   extra?: Record<string, unknown>;
+  /** Bumped by the shell when the app restarts; panels refetch on change. */
+  reloadNonce?: number;
 }
 
 /**
@@ -26,6 +28,12 @@ export interface ConsolePage {
   /** Client route under the console base, e.g. `/context`. */
   route: string;
   component: ComponentType<ConsolePanelProps>;
+  /**
+   * How this panel reacts to a live-reflection reload. `'prop'` panels accept
+   * `reloadNonce` and refetch in place (selection preserved). Any other value
+   * (default) is remounted via React `key` on reload. Default: `'remount'`.
+   */
+  liveRefresh?: 'prop' | 'remount';
 }
 
 /** Identity helper for authoring a page with inferred types. */

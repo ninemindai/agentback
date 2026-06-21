@@ -234,6 +234,7 @@ const CONSOLE_CSS = `
 .sidebar nav a.active { background:var(--paper); box-shadow:inset 3px 0 0 var(--accent); color:var(--accent); }
 .sidebar nav a .icon { color:var(--accent); width:1.1em; text-align:center; font-size:.95em; }
 .panel { position:relative; height:100vh; overflow:auto; }
+.live-offline { font-size:11px; color:var(--accent); margin:0 0 .75rem; padding:0 .4rem; letter-spacing:.02em; }
 `;
 
 function escapeHtml(s: string): string {

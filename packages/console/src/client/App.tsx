@@ -5,6 +5,7 @@
 import type {ComponentType} from 'react';
 import {useEffect, useMemo, useState} from 'react';
 import type {ConsoleClientConfig, ConsolePage} from './types.js';
+import {startLiveBus, subscribeReload, subscribeStatus} from './live.js';
 
 
 /** Props forwarded to the dock component (mirrors `ConsoleClientConfig.chat`). */
@@ -54,10 +55,29 @@ export function App({
   const [dockOpen, setDockOpen] = useState(false);
   const onToggleDock = () => setDockOpen(o => !o);
 
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const [live, setLive] = useState(true);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stop = startLiveBus(config.basePath + '/live');
+    const offReload = subscribeReload(() => setReloadNonce(n => n + 1));
+    const offStatus = subscribeStatus(setLive);
+    return () => {
+      offReload();
+      offStatus();
+      stop();
+    };
+  }, [config.basePath]);
+
   return (
     <div className={chatEnabled ? 'console console--chat' : 'console'}>
       <aside className="sidebar">
         <div className="brand">{config.title}</div>
+        {!live && (
+          <div className="live-offline" title="Disconnected from the app">
+            ● offline
+          </div>
+        )}
         <nav>
           {nav
             .filter(p => p.icon)
@@ -75,7 +95,7 @@ export function App({
       </aside>
       <main className="panel">
         {active ? (
-          <Panel key={active.id} page={active} config={config} />
+          <Panel page={active} config={config} reloadNonce={reloadNonce} />
         ) : (
           <p className="empty" style={{padding: '2rem'}}>
             No panels registered.
@@ -119,11 +139,30 @@ export function App({
 function Panel({
   page,
   config,
+  reloadNonce,
 }: {
   page: ConsolePage;
   config: ConsoleClientConfig;
+  reloadNonce: number;
 }) {
   const panel = config.panels[page.id] ?? {apiBase: ''};
   const Component = page.component;
-  return <Component apiBase={panel.apiBase} extra={panel.extra} />;
+  // 'prop' panels refetch in place (selection preserved); all others remount
+  // via key so a reload gives them a fresh fetch.
+  if (page.liveRefresh === 'prop') {
+    return (
+      <Component
+        apiBase={panel.apiBase}
+        extra={panel.extra}
+        reloadNonce={reloadNonce}
+      />
+    );
+  }
+  return (
+    <Component
+      key={page.id + ':' + reloadNonce}
+      apiBase={panel.apiBase}
+      extra={panel.extra}
+    />
+  );
 }

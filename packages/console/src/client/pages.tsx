@@ -21,14 +21,14 @@ const contextPages: ConsolePage[] = [
     icon: '◧',
     order: 10,
     route: '/context',
-    component: ({apiBase}: {apiBase: string}) => (
+    liveRefresh: 'prop',
+    component: ({apiBase, reloadNonce}: {apiBase: string; reloadNonce?: number}) => (
       <ContextApp
         apiBase={apiBase}
         title="Context Explorer"
+        reloadNonce={reloadNonce}
         onFocusChange={key =>
-          publishFocus(
-            key ? {kind: 'binding', id: key} : null,
-          )
+          publishFocus(key ? {kind: 'binding', id: key} : null)
         }
       />
     ),
@@ -42,14 +42,14 @@ const schemaPages: ConsolePage[] = [
     icon: '◆',
     order: 40,
     route: '/schema',
-    component: ({apiBase}: {apiBase: string}) => (
+    liveRefresh: 'prop',
+    component: ({apiBase, reloadNonce}: {apiBase: string; reloadNonce?: number}) => (
       <SchemaApp
         apiBase={apiBase}
         title="Schema Explorer"
+        reloadNonce={reloadNonce}
         onFocusChange={(id, label) =>
-          publishFocus(
-            id ? {kind: 'schema-entity', id, label} : null,
-          )
+          publishFocus(id ? {kind: 'schema-entity', id, label} : null)
         }
       />
     ),
