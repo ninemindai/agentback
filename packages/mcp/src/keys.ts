@@ -7,6 +7,9 @@ import type {ConfirmationStore} from '@agentback/common';
 import {MetadataAccessor} from '@agentback/metadata';
 import type {SchemaLike} from '@agentback/openapi';
 import type {AuthInfo} from '@modelcontextprotocol/sdk/server/auth/types.js';
+// Re-exported so tool handlers can type the injected `MCPBindings.REQUEST_AUTH`
+// principal (`auth?: AuthInfo`) without reaching into the MCP SDK internals.
+export type {AuthInfo} from '@modelcontextprotocol/sdk/server/auth/types.js';
 import type {RequestHandlerExtra} from '@modelcontextprotocol/sdk/shared/protocol.js';
 import type {
   RequestInfo,
