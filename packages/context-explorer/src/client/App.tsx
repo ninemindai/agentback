@@ -2,7 +2,7 @@
 // Node module: @agentback/context-explorer
 // This file is licensed under the MIT License.
 
-import {useEffect, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useState} from 'react';
 import {makeApi, type BindingNode, type ContextModel} from './api';
 import {
   facets,
@@ -33,10 +33,13 @@ type View = 'browse' | 'graph' | 'hierarchy' | 'raw';
 export function App({
   apiBase,
   title = 'Context Explorer',
+  reloadNonce = 0,
   onFocusChange,
 }: {
   apiBase: string;
   title?: string;
+  /** Bumped by the console shell when the app restarts; refetch on change. */
+  reloadNonce?: number;
   /** Called with the selected binding key, or null when nothing is selected. */
   onFocusChange?: (key: string | null) => void;
 }) {
@@ -48,6 +51,9 @@ export function App({
   const [choice, setChoice] = useState<FacetChoice>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [view, setView] = useState<View>('browse');
+  // Non-fatal: a refetch after a restart failed (app mid-restart). Keep stale
+  // data visible rather than blanking the panel.
+  const [reloadError, setReloadError] = useState(false);
 
   // Pick a facet value; picking the active one again clears the filter.
   const pick = (facet: NonNullable<FacetChoice>['facet'], value: string) =>
@@ -57,9 +63,30 @@ export function App({
         : {facet, value},
     );
 
+  const load = useCallback(
+    () =>
+      api.fetchModel().then(
+        m => {
+          setModel(m);
+          setReloadError(false);
+        },
+        e => setError(String(e)),
+      ),
+    [api],
+  );
+
+  // Initial load (and on apiBase change).
   useEffect(() => {
-    api.fetchModel().then(setModel, e => setError(String(e)));
-  }, [api]);
+    load();
+  }, [load]);
+
+  // Live reflection: refetch on restart. Keep stale data on failure (the app
+  // may be mid-restart) — surface a non-fatal notice instead of blanking.
+  useEffect(() => {
+    if (reloadNonce === 0) return;
+    api.fetchModel().then(setModel, () => setReloadError(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadNonce]);
 
   useEffect(() => {
     onFocusChange?.(selectedKey);
@@ -155,6 +182,11 @@ export function App({
         <span className="count">
           {visible.length} / {bindings.length} bindings
         </span>
+        {reloadError && (
+          <span className="count" title="Could not refresh after restart">
+            ⚠ stale
+          </span>
+        )}
         <div className="views">
           {views.map(v => (
             <button
