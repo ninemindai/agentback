@@ -214,25 +214,37 @@ export function turnReducer(
     case 'tool_call': {
       const msgs = state.messages;
       const last = msgs[msgs.length - 1];
-      const entry: ToolCallEntry = {
-        toolCallId: event.toolCallId,
-        title: event.title ?? null,
-        status: event.status ?? null,
-      };
       if (last && last.role === 'assistant') {
-        // Check if we're updating an existing tool call entry.
+        // Upsert by toolCallId. ACP emits the initial `tool_call` with the
+        // title, then `tool_call_update`s that carry only the changed fields
+        // (status), with title/status often undefined. MERGE — never overwrite
+        // an existing title/status with undefined, or every row collapses to
+        // the fallback "tool" label once a completion update lands.
         const existingIdx = last.toolCalls.findIndex(
           tc => tc.toolCallId === event.toolCallId,
         );
         let toolCalls: ToolCallEntry[];
         if (existingIdx >= 0) {
+          const prev = last.toolCalls[existingIdx]!;
+          const merged: ToolCallEntry = {
+            toolCallId: event.toolCallId,
+            title: event.title ?? prev.title,
+            status: event.status ?? prev.status,
+          };
           toolCalls = [
             ...last.toolCalls.slice(0, existingIdx),
-            entry,
+            merged,
             ...last.toolCalls.slice(existingIdx + 1),
           ];
         } else {
-          toolCalls = [...last.toolCalls, entry];
+          toolCalls = [
+            ...last.toolCalls,
+            {
+              toolCallId: event.toolCallId,
+              title: event.title ?? null,
+              status: event.status ?? null,
+            },
+          ];
         }
         const updated: ConversationMessage = {...last, toolCalls};
         return {
@@ -245,7 +257,13 @@ export function turnReducer(
       const newMsg: ConversationMessage = {
         role: 'assistant',
         text: '',
-        toolCalls: [entry],
+        toolCalls: [
+          {
+            toolCallId: event.toolCallId,
+            title: event.title ?? null,
+            status: event.status ?? null,
+          },
+        ],
       };
       return {
         ...state,

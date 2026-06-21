@@ -71,6 +71,35 @@ describe('turnReducer: happy-path sequence', () => {
     expect(msg.toolCalls[0].title).toBe('inventory');
   });
 
+  it('merges tool_call updates: one row, title preserved when update omits it', () => {
+    // ACP sends the title on the initial tool_call and omits it on the
+    // completion update. The reducer must keep ONE row and NOT wipe the title
+    // to null (else every row renders as the fallback "tool").
+    const events: SseClientEvent[] = [
+      {type: 'tool_call', toolCallId: 'tc-1', title: 'inventory', status: 'pending'},
+      {type: 'tool_call', toolCallId: 'tc-1', title: undefined, status: undefined},
+      {type: 'tool_call', toolCallId: 'tc-1', title: undefined, status: 'completed'},
+    ];
+    const msg = applyAll(events).messages.at(-1)!;
+    expect(msg.toolCalls.length).toBe(1); // upsert, not append
+    expect(msg.toolCalls[0].title).toBe('inventory'); // preserved
+    expect(msg.toolCalls[0].status).toBe('completed'); // resolved
+  });
+
+  it('keeps distinct tool calls as distinct rows', () => {
+    const events: SseClientEvent[] = [
+      {type: 'tool_call', toolCallId: 'a', title: 'inventory', status: 'pending'},
+      {type: 'tool_call', toolCallId: 'b', title: 'get', status: 'pending'},
+      {type: 'tool_call', toolCallId: 'a', title: undefined, status: 'completed'},
+      {type: 'tool_call', toolCallId: 'b', title: undefined, status: 'completed'},
+    ];
+    const rows = applyAll(events).messages.at(-1)!.toolCalls;
+    expect(rows.map(r => `${r.title}:${r.status}`)).toEqual([
+      'inventory:completed',
+      'get:completed',
+    ]);
+  });
+
   it('surfaces a permission_request as pendingPermission', () => {
     const events: SseClientEvent[] = [
       {type: 'assistant_delta', text: 'About to edit.'},
