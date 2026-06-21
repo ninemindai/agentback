@@ -7,7 +7,7 @@ import type {ConsoleFeature} from '@agentback/console';
 import type {Request, Response} from 'express';
 import type {ChatConsoleConfig} from './types.js';
 import {loggers} from '@agentback/common';
-import {ChatBridgeController, CHAT_DISCOVER, handleSseRequest, principalFromRequest} from './bridge.controller.js';
+import {ChatBridgeController, CHAT_DISCOVER, CHAT_CWD, handleSseRequest, principalFromRequest} from './bridge.controller.js';
 import {discoverAgents, makeProbe, BUILTIN_AGENTS} from './agents.js';
 
 const log = loggers('agentback:console-chat:feature');
@@ -79,6 +79,10 @@ export function chatConsoleFeature(
       app.bind(CHAT_DISCOVER.key).to(
         () => discoverAgents(catalog, probe),
       );
+      // Bind the configured cwd so createSession defaults the spawn base dir to
+      // it (the browser dock sends no cwd in POST /session). Without this the
+      // spawn can't find a workspace devDependency adapter and 503s.
+      if (config.cwd !== undefined) app.bind(CHAT_CWD.key).to(config.cwd);
 
       // I-1: Wire disposeAll on app shutdown so ACP subprocesses are killed
       // and never orphaned.  The controller singleton is resolved lazily on the
