@@ -67,10 +67,17 @@ async function main(): Promise<void> {
   const chat = chatConsoleFeature({
     enabled: true,
     introspection: true, // ground the agent in the live app via IntrospectionTools
-    // Discover the ACP adapter from THIS package's node_modules/.bin (it's a
+    // `cwd` is the adapter-discovery base: where node_modules/.bin is searched to
+    // find the claude-agent-acp bin.  Set to THIS package's dir (it's a
     // devDependency of this example), so `pnpm install` is enough — no global
     // install. Discovery walks up from here collecting node_modules/.bin dirs.
     cwd: import.meta.dirname,
+    // `workspaceRoot` is intentionally NOT set here.  The agent's editing root
+    // defaults to process.cwd() — the launch directory.  When this example is
+    // started from the monorepo root (`pnpm -F hello-agent-console start`),
+    // process.cwd() is the repo root, which lets the agent evolve both this
+    // example AND the framework packages it depends on.  A standalone app would
+    // set workspaceRoot to its own repo root explicitly.
   });
 
   await installConsole(app, {
