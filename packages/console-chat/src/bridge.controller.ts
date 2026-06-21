@@ -53,11 +53,18 @@ import {loggers} from '@agentback/common';
 import type {Application} from '@agentback/core';
 import {buildOkfBundle, type OkfBundle} from '@agentback/schema-explorer';
 import type {Request, Response} from 'express';
-import {BUILTIN_AGENTS, discoverAgents} from './agents.js';
+import {BUILTIN_AGENTS, discoverAgents, makeProbe} from './agents.js';
 import {AcpSession, SpawnError, AcpHandshakeError, type AcpConnectFn, type AcpEvent} from './acp-session.js';
 import type {AgentDescriptor} from './types.js';
 
 const log = loggers('agentback:console-chat:bridge');
+
+// ---------------------------------------------------------------------------
+// Type alias for the discover function seam
+// ---------------------------------------------------------------------------
+
+/** The discover function type: returns available agents for the given catalog. */
+export type DiscoverFn = () => Promise<{id: string; name: string}[]>;
 
 // ---------------------------------------------------------------------------
 // Grounding helpers
@@ -121,6 +128,20 @@ function buildOkfBrief(app: Application): string | null {
 /** Binding key for the `AcpConnectFn` factory (injectable for testing). */
 export const CHAT_CONNECT_FN = BindingKey.create<AcpConnectFn>(
   'console-chat.connectFn',
+);
+
+/**
+ * Binding key for the discover function.
+ *
+ * When bound (e.g. by `chatConsoleFeature().install()`), `GET /agents` uses
+ * this function instead of the static default so discovery is cwd-aware
+ * (workspace devDependency adapters under the consumer package's
+ * `node_modules/.bin` are found without a global install).
+ *
+ * Tests can also bind a stub here to control which agents are returned.
+ */
+export const CHAT_DISCOVER = BindingKey.create<DiscoverFn>(
+  'console-chat.discoverFn',
 );
 
 // ---------------------------------------------------------------------------
@@ -219,6 +240,8 @@ export class ChatBridgeController {
     @inject(CoreBindings.APPLICATION_INSTANCE) private readonly app: Application,
     @inject(CHAT_CONNECT_FN, {optional: true})
     private readonly connectFn?: AcpConnectFn,
+    @inject(CHAT_DISCOVER, {optional: true})
+    private readonly discoverFn?: DiscoverFn,
   ) {}
 
   // --------------------------------------------------------------------------
@@ -227,8 +250,15 @@ export class ChatBridgeController {
 
   @get('/agents', {response: AgentsResponse})
   async agents(): Promise<{agents: {id: string; name: string}[]}> {
-    const catalog: AgentDescriptor[] = [...BUILTIN_AGENTS];
-    const found = await discoverAgents(catalog);
+    // When a CHAT_DISCOVER fn is bound (installed by chatConsoleFeature), use it
+    // so discovery is cwd-aware (workspace devDependency adapters are found via
+    // buildAugmentedPath(cwd)). Fall back to a static probe with no baseDir when
+    // running outside the feature install path (e.g. tests that bind the
+    // controller directly without calling install).
+    const discover =
+      this.discoverFn ??
+      (() => discoverAgents([...BUILTIN_AGENTS], makeProbe()));
+    const found = await discover();
     return {agents: found};
   }
 
@@ -256,7 +286,10 @@ export class ChatBridgeController {
 
     log.debug('createSession principal=%s agentId=%s', principal, agentId);
 
-    const acpSession = new AcpSession(descriptor, this.connectFn);
+    // Pass cwd (from the POST body) as the baseDir for PATH augmentation so that
+    // a workspace devDependency adapter (isolated under the app's node_modules/.bin)
+    // is found during spawn — matching what feature.ts does for discovery.
+    const acpSession = new AcpSession(descriptor, this.connectFn, cwd);
 
     try {
       await acpSession.connect();

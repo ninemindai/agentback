@@ -7,8 +7,8 @@ import type {ConsoleFeature} from '@agentback/console';
 import type {Request, Response} from 'express';
 import type {ChatConsoleConfig} from './types.js';
 import {loggers} from '@agentback/common';
-import {ChatBridgeController, handleSseRequest, principalFromRequest} from './bridge.controller.js';
-import {discoverAgents, BUILTIN_AGENTS} from './agents.js';
+import {ChatBridgeController, CHAT_DISCOVER, handleSseRequest, principalFromRequest} from './bridge.controller.js';
+import {discoverAgents, makeProbe, BUILTIN_AGENTS} from './agents.js';
 
 const log = loggers('agentback:console-chat:feature');
 
@@ -69,6 +69,17 @@ export function chatConsoleFeature(
       // Register the bridge controller (all non-SSE endpoints).
       app.restController(ChatBridgeController);
 
+      // Bind a cwd-aware discover function so GET /agents uses buildAugmentedPath(cwd)
+      // instead of the static defaultProbe. This ensures workspace devDependency
+      // adapters (under the consumer package's node_modules/.bin) are found without
+      // a global install. The binding must be done before start() so the singleton
+      // ChatBridgeController resolves it from its @inject(CHAT_DISCOVER) constructor param.
+      const catalog = [...BUILTIN_AGENTS, ...(config.agents ?? [])];
+      const probe = makeProbe(config.cwd);
+      app.bind(CHAT_DISCOVER.key).to(
+        () => discoverAgents(catalog, probe),
+      );
+
       // I-1: Wire disposeAll on app shutdown so ACP subprocesses are killed
       // and never orphaned.  The controller singleton is resolved lazily on the
       // first shutdown (it may not exist if start() was never called), so we
@@ -124,11 +135,14 @@ export function chatConsoleFeature(
       });
 
       // Eagerly run discovery and update the agents list so the console shell
-      // gets an accurate initial set without a round-trip.
-      const found = await discoverAgents([
-        ...BUILTIN_AGENTS,
-        ...(config.agents ?? []),
-      ]).catch(() => []);
+      // gets an accurate initial set without a round-trip. Probe from
+      // `config.cwd` (the app's own dir) so a workspace devDependency adapter —
+      // whose bin pnpm isolates under the consuming package's node_modules/.bin,
+      // NOT process.cwd() — is discoverable without a global install.
+      const found = await discoverAgents(
+        [...BUILTIN_AGENTS, ...(config.agents ?? [])],
+        makeProbe(config.cwd),
+      ).catch(() => []);
 
       agents.splice(0, agents.length, ...found);
 

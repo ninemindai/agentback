@@ -97,23 +97,32 @@ export type RunProbe = (bin: string) => Promise<ProbeResult>;
  * installed adapters (devDependencies) are discoverable without a global
  * install.  Uses {@link buildAugmentedPath} with `process.cwd()` as the base.
  */
-export const defaultProbe: RunProbe = async (
-  bin: string,
-): Promise<ProbeResult> => {
-  try {
-    const {stdout, stderr} = await execFileAsync(bin, ['--version'], {
-      timeout: 5000,
-      windowsHide: true,
-      env: {...process.env, PATH: buildAugmentedPath()},
-    });
-    const output = stdout || stderr || '';
-    // Extract the first semver-like token (X.Y.Z or X.Y.Z-pre)
-    const match = output.match(/(\d+\.\d+\.\d+[^\s]*)/);
-    return {present: true, version: match?.[1]};
-  } catch {
-    return {present: false};
-  }
-};
+export function makeProbe(baseDir?: string): RunProbe {
+  const PATH = buildAugmentedPath(baseDir);
+  return async (bin: string): Promise<ProbeResult> => {
+    try {
+      const {stdout, stderr} = await execFileAsync(bin, ['--version'], {
+        timeout: 5000,
+        windowsHide: true,
+        env: {...process.env, PATH},
+      });
+      const output = stdout || stderr || '';
+      // Extract the first semver-like token (X.Y.Z or X.Y.Z-pre)
+      const match = output.match(/(\d+\.\d+\.\d+[^\s]*)/);
+      return {present: true, version: match?.[1]};
+    } catch {
+      return {present: false};
+    }
+  };
+}
+
+/**
+ * Default probe — resolves the bin from the global PATH plus `node_modules/.bin`
+ * dirs walked up from `process.cwd()`. For a workspace-installed (devDependency)
+ * adapter whose bin is NOT under cwd (pnpm isolates it under the consuming
+ * package), pass a `baseDir` via {@link makeProbe} (e.g. the app's own dir).
+ */
+export const defaultProbe: RunProbe = makeProbe();
 
 // ---------------------------------------------------------------------------
 // Built-in catalog
