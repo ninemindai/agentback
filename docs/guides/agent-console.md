@@ -239,6 +239,60 @@ surface. The read-only invariant is enforced in `IntrospectionTools` (see
 | No orphaned subprocesses | `disposeAll()` on `app.onStop()` + creation-TTL + SSE-disconnect lease GC |
 | Introspection is read-only | `IntrospectionTools` (no invocation tools) |
 | ACP adapter-isolated | All ACP glue in `acp-session.ts` |
+| Agent editing root is server-controlled | `CHAT_WORKSPACE_ROOT` (config.workspaceRoot); client POST body cannot override it |
+
+---
+
+## workspaceRoot vs cwd
+
+`chatConsoleFeature` accepts two distinct directory fields that are easy to
+conflate:
+
+| Field | Purpose | Who controls it |
+|-------|---------|----------------|
+| `cwd` | Adapter-discovery base dir — where `node_modules/.bin` is searched to find the `claude-agent-acp` bin at startup and at spawn | Server config |
+| `workspaceRoot` | The coding agent's working/editing root — the ACP `session/new` cwd, where the agent reads and edits source files | Server config |
+
+### `workspaceRoot` — agent editing root (security boundary)
+
+`workspaceRoot` is passed directly to `AcpSession.open()` as the ACP
+`session/new` cwd.  It is the tree the agent can edit and is therefore a
+**security containment boundary**.  It is **server-controlled only** — the
+client (browser dock's `POST /session` body) cannot set or override it.
+
+- **Default**: `process.cwd()` — the directory the server process was launched
+  from.  When launched from a monorepo root, this gives the agent visibility
+  into the full repo (app + framework packages it depends on).
+- **Standalone app**: set `workspaceRoot` to the app's own repo root so the
+  agent is contained to the service's codebase.
+- **Monorepo**: leave unset (or set to the repo root) so the agent can evolve
+  both the app's code and the framework packages in a single session.
+
+```ts
+chatConsoleFeature({
+  enabled: true,
+  cwd: import.meta.dirname,       // adapter-discovery: this example's dir
+  workspaceRoot: '/my/project',   // agent edits files here (server-controlled)
+})
+```
+
+### `cwd` — adapter-discovery base (spawn PATH)
+
+`cwd` is only used to augment `PATH` when probing for and spawning the ACP
+adapter binary.  When the adapter is a `devDependency` of your app package,
+set `cwd` to `import.meta.dirname` (the app's source dir) so pnpm's isolated
+`node_modules/.bin` is walked.  This has no effect on where the agent edits
+files.
+
+When both are needed, set them independently:
+
+```ts
+chatConsoleFeature({
+  enabled: true,
+  cwd: import.meta.dirname,         // adapter-discovery: finds the bin here
+  workspaceRoot: repoRoot,          // agent editing root: broader or narrower
+})
+```
 
 ---
 
