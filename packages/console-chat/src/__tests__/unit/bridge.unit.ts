@@ -21,7 +21,7 @@ import {
   type ClientContext,
   type AgentContext,
 } from '@agentclientprotocol/sdk';
-import {ChatBridgeController, CHAT_CONNECT_FN, CHAT_DISCOVER} from '../../bridge.controller.js';
+import {ChatBridgeController, CHAT_CONNECT_FN, CHAT_DISCOVER, CHAT_WORKSPACE_ROOT} from '../../bridge.controller.js';
 import type {AcpConnectFn} from '../../acp-session.js';
 import type {AgentDescriptor} from '../../types.js';
 
@@ -1355,5 +1355,147 @@ describe('createSession: cwd from POST body reaches AcpSession as baseDir', () =
 
     expect(res.status).toBe(200);
     expect(capturedBaseDir).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// W-1. workspaceRoot: createSession passes CHAT_WORKSPACE_ROOT to open()
+// ---------------------------------------------------------------------------
+
+describe('workspaceRoot: CHAT_WORKSPACE_ROOT is used as agent editing root', () => {
+  it('open() receives the server-configured workspaceRoot, not the POST body cwd', async () => {
+    // Capture the cwd passed to session/new via the fake agent.
+    let capturedSessionCwd: string | undefined;
+
+    const workspaceAgent = acpAgent({name: 'workspace-agent'});
+    workspaceAgent.onRequest('initialize', async () => ({
+      protocolVersion: 1 as const,
+      agentCapabilities: {},
+    }));
+    workspaceAgent.onRequest('session/new', async ({params}) => {
+      capturedSessionCwd = (params as {cwd?: string}).cwd;
+      return {
+        sessionId: `workspace-session-${Date.now()}`,
+        _meta: null,
+      };
+    });
+    workspaceAgent.onRequest('session/prompt', async () => ({
+      stopReason: 'end_turn' as const,
+      _meta: null,
+    }));
+
+    const connectFn = inProcessConnectFn(workspaceAgent);
+
+    // Build app with CHAT_WORKSPACE_ROOT bound to a known path.
+    const expectedWorkspaceRoot = '/server/controlled/root';
+    const app = new RestApplication({rest: {port: 0}});
+    app.restController(ChatBridgeController);
+    app.bind(CHAT_CONNECT_FN.key).to(connectFn);
+    app.bind(CHAT_WORKSPACE_ROOT.key).to(expectedWorkspaceRoot);
+    app.expressMiddleware(
+      'middleware.test.auth',
+      (req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) => {
+        (req as import('express').Request & {auth?: {token: string; clientId: string; scopes: string[]}}).auth = {
+          token: 'test',
+          clientId: 'ws-user',
+          scopes: [],
+        };
+        next();
+      },
+    );
+
+    await using t = await createTestApp(() => app);
+
+    // POST body sends a DIFFERENT cwd — must NOT reach AcpSession.open() as the root.
+    const clientBodyCwd = '/client/attempted/override';
+    const res = await t.http
+      .post('/console/chat/session')
+      .send({agentId: 'claude-code', cwd: clientBodyCwd});
+
+    expect(res.status).toBe(200);
+
+    // The session/new cwd must be the server-configured workspaceRoot.
+    expect(capturedSessionCwd).toBe(expectedWorkspaceRoot);
+    // The client body cwd must NOT have been used as the agent root.
+    expect(capturedSessionCwd).not.toBe(clientBodyCwd);
+  });
+
+  it('open() defaults to process.cwd() when CHAT_WORKSPACE_ROOT is not bound', async () => {
+    let capturedSessionCwd: string | undefined;
+
+    const noRootAgent = acpAgent({name: 'no-root-agent'});
+    noRootAgent.onRequest('initialize', async () => ({
+      protocolVersion: 1 as const,
+      agentCapabilities: {},
+    }));
+    noRootAgent.onRequest('session/new', async ({params}) => {
+      capturedSessionCwd = (params as {cwd?: string}).cwd;
+      return {sessionId: `no-root-session-${Date.now()}`, _meta: null};
+    });
+    noRootAgent.onRequest('session/prompt', async () => ({
+      stopReason: 'end_turn' as const,
+      _meta: null,
+    }));
+
+    const connectFn = inProcessConnectFn(noRootAgent);
+    await using t = await createTestApp(makeApp.bind(null, connectFn, 'noroot-user'));
+
+    // No CHAT_WORKSPACE_ROOT binding — should default to process.cwd().
+    const res = await t.http
+      .post('/console/chat/session')
+      .send({agentId: 'claude-code'});
+
+    expect(res.status).toBe(200);
+    // AcpSession.open() defaults to process.cwd() when cwd is undefined.
+    expect(capturedSessionCwd).toBe(process.cwd());
+  });
+
+  it('POST body cwd still reaches AcpSession as the spawn baseDir (spawnBase)', async () => {
+    // The POST body cwd is used for spawn PATH augmentation (the adapter-discovery
+    // base), NOT for the agent editing root.  Verify it still reaches connectFn
+    // as options.baseDir.
+    let capturedBaseDir: string | undefined = 'NOT_SET';
+    const fakeAgent = makeFakeAgent();
+
+    const capturingConnectFn: import('../../acp-session.js').AcpConnectFn = async (
+      _desc,
+      clientApp,
+      options,
+    ) => {
+      capturedBaseDir = options?.baseDir;
+      const connection = clientApp.connect(fakeAgent);
+      const ctx = connection.agent;
+      return {connection, ctx, kill: () => {}};
+    };
+
+    // Bind workspaceRoot to something different from the POST body cwd.
+    const serverRoot = '/server/workspace';
+    const app = new RestApplication({rest: {port: 0}});
+    app.restController(ChatBridgeController);
+    app.bind(CHAT_CONNECT_FN.key).to(capturingConnectFn);
+    app.bind(CHAT_WORKSPACE_ROOT.key).to(serverRoot);
+    app.expressMiddleware(
+      'middleware.test.auth',
+      (req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) => {
+        (req as import('express').Request & {auth?: {token: string; clientId: string; scopes: string[]}}).auth = {
+          token: 'test',
+          clientId: 'spawn-user',
+          scopes: [],
+        };
+        next();
+      },
+    );
+
+    await using t = await createTestApp(() => app);
+
+    const spawnCwd = '/adapter/discovery/base';
+    const res = await t.http
+      .post('/console/chat/session')
+      .send({agentId: 'claude-code', cwd: spawnCwd});
+
+    expect(res.status).toBe(200);
+    // The POST body cwd reaches connectFn as options.baseDir (spawn PATH base).
+    expect(capturedBaseDir).toBe(spawnCwd);
+    // But it is NOT the agent root — that comes from workspaceRoot (asserted above).
   });
 });
