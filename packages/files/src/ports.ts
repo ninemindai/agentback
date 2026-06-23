@@ -4,6 +4,31 @@
 
 import type {Readable} from 'node:stream';
 
+/**
+ * A contiguous byte range to read, mirroring the HTTP `Range` header
+ * (`bytes=start-end`). Both bounds are **0-based** and `end` is **inclusive** —
+ * `{start: 0, end: 99}` is the first 100 bytes (not slice() semantics). Omit
+ * `end` to read from `start` to the end of the object (`bytes=start-`).
+ */
+export interface ByteRange {
+  /** First byte to return, 0-based and inclusive. */
+  start: number;
+  /** Last byte to return, 0-based and inclusive. Omit to read to EOF. */
+  end?: number;
+}
+
+/** Options accepted when reading a file. */
+export interface GetOptions {
+  /**
+   * Return only this contiguous slice instead of the whole object — the
+   * building block for video seeking and resumable downloads. The returned
+   * {@link RetrievedFile}'s `size` is the slice length, and `stream` carries
+   * only those bytes. An adapter whose backend has no range primitive throws
+   * rather than silently returning the whole object.
+   */
+  range?: ByteRange;
+}
+
 /** Options accepted when storing a file. */
 export interface PutOptions {
   /** MIME type recorded alongside the bytes (echoed on `get`). */
@@ -104,7 +129,7 @@ export interface FileStore {
     body: Readable | Buffer,
     opts?: PutOptions,
   ): Promise<StoredFile>;
-  get(key: string): Promise<RetrievedFile>;
+  get(key: string, opts?: GetOptions): Promise<RetrievedFile>;
   /**
    * Metadata for `key` without transferring the body — a HEAD, not a GET.
    * Throws {@link FileNotFoundError} for a missing key. Prefer it over

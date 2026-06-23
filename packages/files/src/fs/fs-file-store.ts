@@ -18,6 +18,7 @@ import {
   FileNotFoundError,
   type FileMetadata,
   type FileStore,
+  type GetOptions,
   type PutOptions,
   type RetrievedFile,
   type StoredFile,
@@ -84,7 +85,7 @@ export class FsFileStore implements FileStore {
     return {key, size, contentType: opts.contentType};
   }
 
-  async get(key: string): Promise<RetrievedFile> {
+  async get(key: string, opts: GetOptions = {}): Promise<RetrievedFile> {
     const p = this.pathFor(key);
     let size: number;
     try {
@@ -96,6 +97,21 @@ export class FsFileStore implements FileStore {
       throw err;
     }
     const sidecar = await this.readSidecar(p);
+    if (opts.range) {
+      // `createReadStream` takes a 0-based, inclusive `end` — the same shape as
+      // a {@link ByteRange} — so it maps over directly.
+      const start = Math.max(0, opts.range.start);
+      const end =
+        opts.range.end != null ? Math.min(opts.range.end, size - 1) : size - 1;
+      return {
+        key,
+        stream: createReadStream(p, {start, end}),
+        size: Math.max(0, end - start + 1),
+        contentType: sidecar.contentType,
+        filename: sidecar.filename,
+        metadata: sidecar.metadata,
+      };
+    }
     return {
       key,
       stream: createReadStream(p),

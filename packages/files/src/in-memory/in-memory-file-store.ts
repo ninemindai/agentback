@@ -4,9 +4,11 @@
 
 import {Readable} from 'node:stream';
 import {
+  type ByteRange,
   FileNotFoundError,
   type FileMetadata,
   type FileStore,
+  type GetOptions,
   type PutOptions,
   type RetrievedFile,
   type StoredFile,
@@ -43,13 +45,14 @@ export class InMemoryFileStore implements FileStore {
     return {key, size: buffer.byteLength, contentType: opts.contentType};
   }
 
-  async get(key: string): Promise<RetrievedFile> {
+  async get(key: string, opts: GetOptions = {}): Promise<RetrievedFile> {
     const e = this.store.get(key);
     if (!e) throw new FileNotFoundError(key);
+    const buffer = opts.range ? sliceRange(e.buffer, opts.range) : e.buffer;
     return {
       key,
-      stream: Readable.from(e.buffer),
-      size: e.buffer.byteLength,
+      stream: Readable.from(buffer),
+      size: buffer.byteLength,
       contentType: e.contentType,
       filename: e.filename,
       metadata: e.metadata,
@@ -80,6 +83,13 @@ export class InMemoryFileStore implements FileStore {
   get count(): number {
     return this.store.size;
   }
+}
+
+/** Slice a buffer to a {@link ByteRange} (0-based, `end` inclusive), clamped to bounds. */
+function sliceRange(buf: Buffer, {start, end}: ByteRange): Buffer {
+  const from = Math.max(0, start);
+  const to = end != null ? Math.min(buf.byteLength, end + 1) : buf.byteLength;
+  return buf.subarray(from, Math.max(from, to));
 }
 
 /** Collect a Buffer or a Readable into a single Buffer. */

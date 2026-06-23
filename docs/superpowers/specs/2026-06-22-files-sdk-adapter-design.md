@@ -95,6 +95,21 @@ by a network-free `s3-presign.unit.ts` (local HMAC signing): PUT shape,
 size-enforced POST shape, and `keyPrefix`. Breaking for any `presignedPut`
 caller (none in-repo) — acceptable at alpha; migration is `result` → `result.url`.
 
+## Follow-up: byte-range reads on `get` (2026-06-22)
+
+Added optional `get(key, {range})` — a new capability (none existed): the
+foundation for HTTP `Range` downloads, video seeking, and resumable transfers.
+New `ByteRange` (`{start, end?}`, 0-based, `end` inclusive — HTTP semantics) +
+`GetOptions` on the port. The returned `RetrievedFile.size` is the slice length;
+`stream` carries only those bytes. Implemented on all four adapters: in-memory
+(`subarray`), fs (`createReadStream {start, end}` — already inclusive), S3
+(`Range: bytes=s-e` → 206), files-sdk (`download({range})`, gated on
+`capabilities.rangeRead` — throws on a backend without a range primitive).
+Additive (existing `get(key)` callers unchanged); new conformance case (slice +
+open-ended-to-EOF) runs against all adapters. **Not yet wired to REST** — making
+`fileResponse`/`sendResult` honor an incoming `Range:` header (206 +
+`Content-Range`, 416, `If-Range`) is the natural next step and is its own change.
+
 ## Validation
 
 `pnpm -F @agentback/files-sdk build` clean; the package's unit suite (4

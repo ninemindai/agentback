@@ -18,6 +18,7 @@ import {
   FileNotFoundError,
   type FileMetadata,
   type FileStore,
+  type GetOptions,
   type PresignOptions,
   type PresignPutOptions,
   type PutOptions,
@@ -90,10 +91,18 @@ export class S3FileStore implements FileStore {
     };
   }
 
-  async get(key: string): Promise<RetrievedFile> {
+  async get(key: string, opts: GetOptions = {}): Promise<RetrievedFile> {
     try {
       const res = await this.client.send(
-        new GetObjectCommand({Bucket: this.bucket, Key: this.k(key)}),
+        new GetObjectCommand({
+          Bucket: this.bucket,
+          Key: this.k(key),
+          // S3 honors the HTTP Range header and replies 206 with the slice;
+          // `ContentLength` then reflects the slice length, not the full object.
+          ...(opts.range
+            ? {Range: `bytes=${opts.range.start}-${opts.range.end ?? ''}`}
+            : {}),
+        }),
       );
       return {
         key,

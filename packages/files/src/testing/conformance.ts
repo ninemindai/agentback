@@ -58,6 +58,19 @@ export function runFileStoreConformance(
       await store.delete(key);
     });
 
+    it('get with a byte range returns only the slice', async () => {
+      const store = await makeStore();
+      const key = uniqueKey('range');
+      await store.put(key, Buffer.from('0123456789'));
+      const slice = await store.get(key, {range: {start: 2, end: 5}});
+      expect(slice.size).toBe(4);
+      expect((await drain(slice.stream)).toString()).toBe('2345');
+      // open-ended range reads to EOF
+      const tail = await store.get(key, {range: {start: 7}});
+      expect((await drain(tail.stream)).toString()).toBe('789');
+      await store.delete(key);
+    });
+
     it('exists reflects presence; delete removes', async () => {
       const store = await makeStore();
       const key = uniqueKey('lifecycle');

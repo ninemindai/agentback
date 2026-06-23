@@ -9,6 +9,7 @@ import {
   FileNotFoundError,
   type FileMetadata,
   type FileStore,
+  type GetOptions,
   type PresignOptions,
   type PresignPutOptions,
   type PutOptions,
@@ -108,9 +109,20 @@ export class FilesSdkFileStore implements FileStore {
     };
   }
 
-  async get(key: string): Promise<RetrievedFile> {
+  async get(key: string, opts: GetOptions = {}): Promise<RetrievedFile> {
+    if (opts.range && !this.files.capabilities.rangeRead) {
+      throw new Error(
+        'FilesSdkFileStore.get: the underlying files-sdk backend has no ' +
+          'byte-range primitive (capabilities.rangeRead is false).',
+      );
+    }
     try {
-      const sf = await this.files.download(key);
+      const sf = await this.files.download(
+        key,
+        opts.range
+          ? {range: {start: opts.range.start, end: opts.range.end}}
+          : {},
+      );
       return {
         key,
         stream: Readable.fromWeb(sf.stream()),

@@ -31,7 +31,7 @@ adapter needs nothing extra.
 | `FileStore` | delegates to | bridge detail |
 |---|---|---|
 | `put(key, body, opts)` | `files.upload` | `Buffer` is already a `Uint8Array` (passes through); `Readable` → `Readable.toWeb()`. `filename` rides in `metadata` (when the backend supports metadata). |
-| `get(key)` | `files.download` | body stream ← `Readable.fromWeb(sf.stream())`; `FilesError('NotFound')` → `FileNotFoundError`. |
+| `get(key, {range?})` | `files.download` | body stream ← `Readable.fromWeb(sf.stream())`; `FilesError('NotFound')` → `FileNotFoundError`. A `range` requires `capabilities.rangeRead` (throws otherwise). |
 | `stat(key)` | `files.head` | metadata only (no body transfer); maps `type`→`contentType`, epoch `lastModified`→`Date`; `NotFound` → `FileNotFoundError`. |
 | `exists` / `delete` | `files.exists` / `files.delete` | `delete` swallows `NotFound` to stay idempotent. |
 | `presignedGet` / `presignedPut` | `files.url` / `files.signedUploadUrl` | **present only when** `files.capabilities.signedUrl.supported` — so S3/R2 stores can presign and a filesystem store reports "unsupported" by omitting the methods. `presignedPut` returns a `SignedUpload` (PUT URL, or a size-enforced POST form when `opts.maxSize` is set). |
