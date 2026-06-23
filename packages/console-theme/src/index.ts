@@ -139,6 +139,11 @@ button.ghost:hover { border-color:var(--accent); color:var(--accent); }
 /* strong / em */
 .md-chat strong { font-weight:600; color:var(--ink); }
 .md-chat em { font-style:italic; }
+/* Tables — scrollable on the narrow dock, ruled cells, paper-tinted header. */
+.md-chat .md-table { display:block; overflow-x:auto; border-collapse:collapse; margin:2px 0; font-size:12px; }
+.md-chat .md-table th, .md-chat .md-table td { border:1px solid var(--line); padding:.28rem .5rem; text-align:left; vertical-align:top; }
+.md-chat .md-table th { background:var(--paper); font-weight:600; color:var(--ink); white-space:nowrap; }
+.md-chat .md-table code { font-size:11px; }
 `;
 
 /** The Google Fonts stylesheet href both shells preconnect to + load. */

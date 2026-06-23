@@ -31,7 +31,12 @@ function InlineSpans({spans}: {spans: MdInline[]}) {
             return <em key={i}>{s.text}</em>;
           case 'link':
             return (
-              <a key={i} href={s.href} target="_blank" rel="noopener noreferrer">
+              <a
+                key={i}
+                href={s.href}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 {s.text}
               </a>
             );
@@ -87,6 +92,31 @@ export function Markdown({source}: {source: string}) {
                   </li>
                 ))}
               </ol>
+            );
+          case 'table':
+            return (
+              <table key={i} className="md-table">
+                <thead>
+                  <tr>
+                    {b.headers.map((cell, j) => (
+                      <th key={j}>
+                        <InlineSpans spans={cell} />
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {b.rows.map((row, r) => (
+                    <tr key={r}>
+                      {row.map((cell, c) => (
+                        <td key={c}>
+                          <InlineSpans spans={cell} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             );
           case 'paragraph':
             return (
