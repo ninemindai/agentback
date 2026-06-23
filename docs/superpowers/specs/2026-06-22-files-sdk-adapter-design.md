@@ -126,6 +126,23 @@ Covered by `range-header.unit.ts` (6) + `files-range.integration.ts` (Express +
 edge, 8). **Out of scope:** `If-Range` conditional validation and multi-range
 (`multipart/byteranges`) responses.
 
+## Follow-up: review fixes + doc sweep + example (2026-06-22)
+
+Review found `serveFile` advertised `Accept-Ranges` unconditionally, so a
+`FilesSdkFileStore` over a non-rangeable backend would 500 on a real `Range`
+request. Added an optional `FileStore.supportsRange` (in-memory/fs/s3 = true,
+files-sdk = `capabilities.rangeRead`); `serveFile` now ignores the range and
+omits `Accept-Ranges` when the backend can't slice. Also hardened
+`parseRangeHeader` to RFC 7233 `1*DIGIT` (was `Number()`, which accepted hex /
+exponent / leading `+`).
+
+Doc-surface sweep: `docs/packages.md` row, `CLAUDE.md` capability list + the
+first-class uploads paragraph, and both agent-skill reference pages now cover
+`files-sdk`, `stat`, byte-range `get`, `serveFile`, and `SignedUpload`/`maxSize`.
+`examples/hello-uploads` now uses `serveFile` for its download route (Range →
+206, ownership still enforced in the handler) with a test asserting the 206
+slice.
+
 ## Validation
 
 `pnpm -F @agentback/files-sdk build` clean; the package's unit suite (4

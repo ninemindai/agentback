@@ -6,12 +6,17 @@ import {z} from 'zod';
 import {inject} from '@agentback/core';
 import {api, get, post, fileField, AgentError} from '@agentback/openapi';
 import {FILE_STORE, type FileStore} from '@agentback/files';
-import {fileDownload} from '@agentback/rest';
+import {serveFile} from '@agentback/rest';
 import {FileMetaStore, FILE_META} from './file-meta.store.js';
 
 // Caller identity. A real app injects an authenticated principal
 // (@authenticate + SecurityBindings.USER); a header keeps the example short.
 const Caller = z.object({'x-user-id': z.string().min(1)});
+
+// The download adds an optional Range header — `serveFile` turns it into a
+// 206/Content-Range slice (video seek, resumable downloads). Validated header
+// slots keep it host-neutral (works on RestApplication and EdgeRestApplication).
+const DownloadHeaders = Caller.extend({range: z.string().optional()});
 
 // One declaration → multipart parser + runtime validation + OpenAPI
 // (multipart/form-data, `file` as format:binary).
@@ -45,7 +50,12 @@ export class FilesController {
     @inject(FILE_META) private meta: FileMetaStore,
   ) {}
 
-  @post('/', {body: UploadBody, headers: Caller, response: FileInfo, status: 201})
+  @post('/', {
+    body: UploadBody,
+    headers: Caller,
+    response: FileInfo,
+    status: 201,
+  })
   async upload(input: {
     body: z.infer<typeof UploadBody>;
     headers: z.infer<typeof Caller>;
@@ -69,21 +79,27 @@ export class FilesController {
     return this.meta.byOwner(input.headers['x-user-id']).map(toInfo);
   }
 
-  @get('/{id}', {path: IdParam, headers: Caller})
+  @get('/{id}', {path: IdParam, headers: DownloadHeaders})
   async download(input: {
     path: z.infer<typeof IdParam>;
-    headers: z.infer<typeof Caller>;
+    headers: z.infer<typeof DownloadHeaders>;
   }) {
     const row = this.meta.get(input.path.id);
-    if (!row) throw new AgentError('No such file.', {status: 404, code: 'not_found'});
+    if (!row)
+      throw new AgentError('No such file.', {status: 404, code: 'not_found'});
     if (row.owner !== input.headers['x-user-id']) {
       throw new AgentError('You do not own this file.', {
         status: 403,
         code: 'forbidden',
       });
     }
-    const file = await this.store.get(row.key);
-    return fileDownload(file, {disposition: 'inline'});
+    // Ownership is enforced above; serveFile then handles Range → 206/416,
+    // Accept-Ranges, and Content-Length. Omit `range` and it's a plain 200.
+    return serveFile(this.store, row.key, {
+      range: input.headers.range,
+      filename: row.filename,
+      disposition: 'inline',
+    });
   }
 }
 

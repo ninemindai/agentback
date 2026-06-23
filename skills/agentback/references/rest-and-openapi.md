@@ -95,12 +95,17 @@ Only the keys you declare are present in the input bundle at runtime.
 
 **File uploads/downloads.** Put a `fileField()` (from `@agentback/openapi`) in
 the `body:` object schema: the route auto-mounts a multipart parser that streams
-each file to the bound `FileStore` (`@agentback/files` / `files-s3`) under a
-server UUID, the handler receives validated `UploadedFile` handles, and the body
-emits as `multipart/form-data` (`format: binary`). For downloads, `return
-fileResponse(stream, …)` / `fileDownload(retrieved)` — the server streams it
-instead of JSON-encoding. See
-[composition-and-operations](composition-and-operations.md) and
+each file to the bound `FileStore` (`@agentback/files` / `files-s3` /
+`files-sdk` — the last wraps [files-sdk](https://files-sdk.dev) for 40+
+backends) under a server UUID, the handler receives validated `UploadedFile`
+handles, and the body emits as `multipart/form-data` (`format: binary`). For
+downloads, `return fileResponse(stream, …)` / `fileDownload(retrieved)` — the
+server streams it instead of JSON-encoding. For media (video seek, resumable),
+`return serveFile(store, key, {range: input.headers.range})` runs the full HTTP
+`Range` → `206`/`416` protocol; declare a `headers: z.object({range:
+z.string().optional()})` slot to receive the header host-neutrally. The port
+also has `stat(key)` (metadata-only HEAD) and `get(key, {range})` (byte slice).
+See [composition-and-operations](composition-and-operations.md) and
 `examples/hello-uploads`.
 
 ## Slot-0: The Input Bundle

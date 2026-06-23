@@ -148,13 +148,18 @@ Because parsing runs in the chain ahead of the `middleware` group, both your
 **File uploads / downloads are first-class** — declare a `fileField()` (from
 `@agentback/openapi`) in a route's `body:` schema and the route auto-mounts a
 per-route multipart parser that streams each file to the bound `FileStore`
-(`@agentback/files`, or `S3FileStore` from `@agentback/files-s3`) under a
-server-generated UUID key; the handler receives validated `UploadedFile`
-handles, and the OpenAPI body becomes `multipart/form-data` (`format: binary`).
-Downloads `return fileResponse(...)` / `fileDownload(retrieved)`, which the
-server streams instead of JSON-encoding. `RestBindings.HTTP_REQUEST` /
-`.HTTP_RESPONSE` are bound per request for raw-stream escape hatches. See
-`examples/hello-uploads`.
+(`@agentback/files`, `S3FileStore` from `@agentback/files-s3`, or
+`FilesSdkFileStore` from `@agentback/files-sdk` for any of [files-sdk](https://files-sdk.dev)'s
+40+ backends) under a server-generated UUID key; the handler receives validated
+`UploadedFile` handles, and the OpenAPI body becomes `multipart/form-data`
+(`format: binary`). Downloads `return fileResponse(...)` /
+`fileDownload(retrieved)`, which the server streams instead of JSON-encoding;
+`serveFile(store, key, {range})` adds HTTP `Range` → `206`/`416` (video seek /
+resumable) on both hosts. The `FileStore` port also has `stat(key)`
+(metadata-only HEAD), `get(key, {range})` (byte slice), and `presignedPut`
+returning a `SignedUpload` (size-enforced `POST` when `maxSize` is set).
+`RestBindings.HTTP_REQUEST` / `.HTTP_RESPONSE` are bound per request for
+raw-stream escape hatches. See `examples/hello-uploads`.
 
 ## Subclassing the Dispatcher
 

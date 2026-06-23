@@ -56,6 +56,7 @@ Each package also ships its own `README.md` under [`packages/`](../packages/).
 | `@agentback/drizzle`               | Drizzle ORM binding and drizzle-zod recipe                                                                                         |
 | `@agentback/files`                 | `FileStore` port for uploads/downloads + in-memory adapter (the disk `FsFileStore` is the Node-only `@agentback/files/fs` subpath) |
 | `@agentback/files-s3`              | S3 `FileStore` adapter (streaming via AWS SDK v3)                                                                                  |
+| `@agentback/files-sdk`             | `FileStore` adapter over [files-sdk](https://files-sdk.dev) — one port, 40+ storage backends (S3, R2, GCS, Azure, fs, …)          |
 | `@agentback/plugin`                | Plugin discovery, gating, and component mounting                                                                                   |
 | `@agentback/testing`               | Test harness with typed REST client, supertest, and in-memory MCP                                                                  |
 | `@agentback/testlab`               | Lower-level test helpers used by the package test suites                                                                           |
