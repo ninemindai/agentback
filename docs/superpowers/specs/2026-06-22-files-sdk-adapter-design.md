@@ -69,6 +69,18 @@ until the prototype is accepted.
 own tests — mirroring how `files-s3` relates to the AWS SDK. Each `files-sdk`
 adapter pulls its own provider peer deps; the fs adapter needs none.
 
+## Follow-up: `stat()` adopted into the port (2026-06-22)
+
+Of the `files-sdk` surface, **`head` (metadata without body)** was the one real
+gap in the port — `fileDownload` previously called full `get()` even when a
+handler only needed size/contentType. Added `stat(key): Promise<FileMetadata>`
+to `FileStore` and a new `FileMetadata` interface (`RetrievedFile` now
+`extends FileMetadata`, adding optional `etag`/`lastModified`). Implemented on
+all four adapters — in-memory (map entry), fs (`fsStat` + sidecar), S3
+(`HeadObjectCommand`), files-sdk (`files.head`) — and gated by a new conformance
+case. `list`/`search`/`copy`/`move`/bulk/progress/plugins were declined (app-DB
+layering or framework features AgentBack already provides).
+
 ## Validation
 
 `pnpm -F @agentback/files-sdk build` clean; the package's unit suite (4

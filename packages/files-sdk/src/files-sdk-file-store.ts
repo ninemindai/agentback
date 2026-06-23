@@ -7,6 +7,7 @@ import {Files, FilesError} from 'files-sdk';
 import type {Adapter, Body} from 'files-sdk';
 import {
   FileNotFoundError,
+  type FileMetadata,
   type FileStore,
   type PresignOptions,
   type PutOptions,
@@ -119,6 +120,30 @@ export class FilesSdkFileStore implements FileStore {
         contentType: sf.type,
         ...(sf.metadata?.[FILENAME_META_KEY]
           ? {filename: sf.metadata[FILENAME_META_KEY]}
+          : {}),
+        ...(sf.metadata ? {metadata: sf.metadata} : {}),
+      };
+    } catch (err) {
+      if (isNotFound(err)) throw new FileNotFoundError(key);
+      throw err;
+    }
+  }
+
+  async stat(key: string): Promise<FileMetadata> {
+    try {
+      // `head` fetches metadata only — the returned StoredFile's body
+      // accessors would lazily GET, but we never touch them here.
+      const sf = await this.files.head(key);
+      return {
+        key,
+        size: sf.size,
+        contentType: sf.type,
+        ...(sf.metadata?.[FILENAME_META_KEY]
+          ? {filename: sf.metadata[FILENAME_META_KEY]}
+          : {}),
+        ...(sf.etag ? {etag: sf.etag} : {}),
+        ...(sf.lastModified != null
+          ? {lastModified: new Date(sf.lastModified)}
           : {}),
         ...(sf.metadata ? {metadata: sf.metadata} : {}),
       };

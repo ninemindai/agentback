@@ -8,7 +8,8 @@ import {FileNotFoundError, type FileStore} from '../ports.js';
 
 async function drain(stream: Readable): Promise<Buffer> {
   const chunks: Buffer[] = [];
-  for await (const c of stream) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+  for await (const c of stream)
+    chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
   return Buffer.concat(chunks);
 }
 
@@ -47,8 +48,13 @@ export function runFileStoreConformance(
     it('accepts a Readable body', async () => {
       const store = await makeStore();
       const key = uniqueKey('stream');
-      await store.put(key, Readable.from([Buffer.from('ab'), Buffer.from('c')]));
-      expect((await drain((await store.get(key)).stream)).toString()).toBe('abc');
+      await store.put(
+        key,
+        Readable.from([Buffer.from('ab'), Buffer.from('c')]),
+      );
+      expect((await drain((await store.get(key)).stream)).toString()).toBe(
+        'abc',
+      );
       await store.delete(key);
     });
 
@@ -67,6 +73,26 @@ export function runFileStoreConformance(
       await expect(store.get(uniqueKey('missing'))).rejects.toBeInstanceOf(
         FileNotFoundError,
       );
+    });
+
+    it('stat returns metadata (no body); missing throws FileNotFoundError', async () => {
+      const store = await makeStore();
+      const key = uniqueKey('stat');
+      await store.put(key, Buffer.from('1234'), {
+        contentType: 'text/plain',
+        filename: 's.txt',
+      });
+      const md = await store.stat(key);
+      expect(md.key).toBe(key);
+      expect(md.size).toBe(4);
+      expect(md.contentType).toBe('text/plain');
+      expect(md.filename).toBe('s.txt');
+      // stat is metadata-only — it must not carry a byte stream.
+      expect((md as {stream?: unknown}).stream).toBeUndefined();
+      await store.delete(key);
+      await expect(
+        store.stat(uniqueKey('stat-missing')),
+      ).rejects.toBeInstanceOf(FileNotFoundError);
     });
   });
 }

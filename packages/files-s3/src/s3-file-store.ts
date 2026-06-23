@@ -15,6 +15,7 @@ import {Upload} from '@aws-sdk/lib-storage';
 import {getSignedUrl} from '@aws-sdk/s3-request-presigner';
 import {
   FileNotFoundError,
+  type FileMetadata,
   type FileStore,
   type PresignOptions,
   type PutOptions,
@@ -105,6 +106,26 @@ export class S3FileStore implements FileStore {
     }
   }
 
+  async stat(key: string): Promise<FileMetadata> {
+    try {
+      const head = await this.client.send(
+        new HeadObjectCommand({Bucket: this.bucket, Key: this.k(key)}),
+      );
+      return {
+        key,
+        size: head.ContentLength ?? 0,
+        contentType: head.ContentType,
+        filename: head.Metadata?.filename,
+        etag: head.ETag,
+        lastModified: head.LastModified,
+        metadata: head.Metadata,
+      };
+    } catch (err) {
+      if (isNotFound(err)) throw new FileNotFoundError(key);
+      throw err;
+    }
+  }
+
   async exists(key: string): Promise<boolean> {
     try {
       await this.client.send(
@@ -138,10 +159,7 @@ export class S3FileStore implements FileStore {
     );
   }
 
-  async presignedGet(
-    key: string,
-    opts: PresignOptions = {},
-  ): Promise<string> {
+  async presignedGet(key: string, opts: PresignOptions = {}): Promise<string> {
     return getSignedUrl(
       this.client,
       new GetObjectCommand({Bucket: this.bucket, Key: this.k(key)}),

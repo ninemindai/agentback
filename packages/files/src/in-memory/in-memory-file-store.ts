@@ -5,6 +5,7 @@
 import {Readable} from 'node:stream';
 import {
   FileNotFoundError,
+  type FileMetadata,
   type FileStore,
   type PutOptions,
   type RetrievedFile,
@@ -55,6 +56,18 @@ export class InMemoryFileStore implements FileStore {
     };
   }
 
+  async stat(key: string): Promise<FileMetadata> {
+    const e = this.store.get(key);
+    if (!e) throw new FileNotFoundError(key);
+    return {
+      key,
+      size: e.buffer.byteLength,
+      contentType: e.contentType,
+      filename: e.filename,
+      metadata: e.metadata,
+    };
+  }
+
   async exists(key: string): Promise<boolean> {
     return this.store.has(key);
   }
@@ -74,7 +87,9 @@ async function toBuffer(body: Readable | Buffer): Promise<Buffer> {
   if (Buffer.isBuffer(body)) return body;
   const chunks: Buffer[] = [];
   for await (const chunk of body) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array));
+    chunks.push(
+      Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array),
+    );
   }
   return Buffer.concat(chunks);
 }

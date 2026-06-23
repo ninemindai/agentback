@@ -17,6 +17,7 @@ import {FILE_STORE, type FileStore} from '@agentback/files';
 interface FileStore {
   put(key, body: Readable | Buffer, opts?): Promise<StoredFile>;
   get(key): Promise<RetrievedFile>;       // throws FileNotFoundError if absent
+  stat(key): Promise<FileMetadata>;       // HEAD: metadata, no body; throws if absent
   exists(key): Promise<boolean>;
   delete(key): Promise<void>;
   presignedPut?(key, opts?): Promise<string>;  // optional (direct-to-storage)

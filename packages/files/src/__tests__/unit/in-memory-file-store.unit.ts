@@ -4,7 +4,11 @@
 
 import {Readable} from 'node:stream';
 import {describe, it, expect, beforeEach} from 'vitest';
-import {InMemoryFileStore, FileNotFoundError, type FileStore} from '../../index.js';
+import {
+  InMemoryFileStore,
+  FileNotFoundError,
+  type FileStore,
+} from '../../index.js';
 import {runFileStoreConformance} from '../../testing/conformance.js';
 
 runFileStoreConformance('InMemoryFileStore', () => new InMemoryFileStore());
@@ -12,7 +16,8 @@ runFileStoreConformance('InMemoryFileStore', () => new InMemoryFileStore());
 /** Drain a RetrievedFile's stream back to a Buffer for assertions. */
 async function drain(stream: Readable): Promise<Buffer> {
   const chunks: Buffer[] = [];
-  for await (const c of stream) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+  for await (const c of stream)
+    chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
   return Buffer.concat(chunks);
 }
 
@@ -42,7 +47,9 @@ describe('InMemoryFileStore', () => {
     const body = Readable.from([Buffer.from('ab'), Buffer.from('cde')]);
     const put = await store.put('k2', body);
     expect(put.size).toBe(5);
-    expect((await drain((await store.get('k2')).stream)).toString()).toBe('abcde');
+    expect((await drain((await store.get('k2')).stream)).toString()).toBe(
+      'abcde',
+    );
   });
 
   it('get() throws FileNotFoundError for a missing key', async () => {

@@ -23,14 +23,27 @@ export interface StoredFile {
   etag?: string;
 }
 
-/** A retrieved file: a readable byte stream plus the metadata stored with it. */
-export interface RetrievedFile {
+/**
+ * Metadata about a stored object, without its bytes — the result of a HEAD, not
+ * a GET. Returned by {@link FileStore.stat}.
+ */
+export interface FileMetadata {
   key: string;
-  stream: Readable;
   size: number;
   contentType?: string;
+  /** Original filename, when one was recorded on `put`. */
   filename?: string;
+  /** Backend entity tag (e.g. S3 ETag), when the adapter provides one. */
+  etag?: string;
+  /** Last-modified time, when the adapter tracks one. */
+  lastModified?: Date;
+  /** Arbitrary string metadata persisted with the object. */
   metadata?: Record<string, string>;
+}
+
+/** A retrieved file: a readable byte stream plus the metadata stored with it. */
+export interface RetrievedFile extends FileMetadata {
+  stream: Readable;
 }
 
 /** Options for the optional presigned-URL hooks. */
@@ -59,9 +72,20 @@ export interface FileStore {
     opts?: PutOptions,
   ): Promise<StoredFile>;
   get(key: string): Promise<RetrievedFile>;
+  /**
+   * Metadata for `key` without transferring the body — a HEAD, not a GET.
+   * Throws {@link FileNotFoundError} for a missing key. Prefer it over
+   * {@link get} when the caller only needs size/contentType/etag (a file-info
+   * endpoint, a conditional request, setting `Content-Length` before a
+   * redirect) — on a remote store this avoids fetching the bytes.
+   */
+  stat(key: string): Promise<FileMetadata>;
   exists(key: string): Promise<boolean>;
   delete(key: string): Promise<void>;
-  presignedPut?(key: string, opts?: PutOptions & PresignOptions): Promise<string>;
+  presignedPut?(
+    key: string,
+    opts?: PutOptions & PresignOptions,
+  ): Promise<string>;
   presignedGet?(key: string, opts?: PresignOptions): Promise<string>;
 }
 

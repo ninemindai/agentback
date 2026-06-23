@@ -3,12 +3,20 @@
 // License text available at https://opensource.org/license/mit/
 
 import {createReadStream, createWriteStream} from 'node:fs';
-import {access, mkdir, readFile, rm, stat, writeFile} from 'node:fs/promises';
+import {
+  access,
+  mkdir,
+  readFile,
+  rm,
+  stat as fsStat,
+  writeFile,
+} from 'node:fs/promises';
 import {dirname, resolve, sep} from 'node:path';
 import {Readable} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
 import {
   FileNotFoundError,
+  type FileMetadata,
   type FileStore,
   type PutOptions,
   type RetrievedFile,
@@ -72,7 +80,7 @@ export class FsFileStore implements FileStore {
       ...(opts.metadata ? {metadata: opts.metadata} : {}),
     };
     await writeFile(`${p}.meta.json`, JSON.stringify(sidecar));
-    const {size} = await stat(p);
+    const {size} = await fsStat(p);
     return {key, size, contentType: opts.contentType};
   }
 
@@ -80,7 +88,7 @@ export class FsFileStore implements FileStore {
     const p = this.pathFor(key);
     let size: number;
     try {
-      ({size} = await stat(p));
+      ({size} = await fsStat(p));
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
         throw new FileNotFoundError(key);
@@ -95,6 +103,28 @@ export class FsFileStore implements FileStore {
       contentType: sidecar.contentType,
       filename: sidecar.filename,
       metadata: sidecar.metadata,
+    };
+  }
+
+  async stat(key: string): Promise<FileMetadata> {
+    const p = this.pathFor(key);
+    let st: Awaited<ReturnType<typeof fsStat>>;
+    try {
+      st = await fsStat(p);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new FileNotFoundError(key);
+      }
+      throw err;
+    }
+    const sidecar = await this.readSidecar(p);
+    return {
+      key,
+      size: st.size,
+      contentType: sidecar.contentType,
+      filename: sidecar.filename,
+      metadata: sidecar.metadata,
+      lastModified: st.mtime,
     };
   }
 
