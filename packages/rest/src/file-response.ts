@@ -154,6 +154,10 @@ export interface ServeFileInit {
  *   (fetched via `store.get(key, {range})`, so the bytes are never over-read);
  * - an unsatisfiable range → `416` with `Content-Range: bytes *​/<size>`.
  *
+ * If the bound store reports `supportsRange === false`, the `Range` header is
+ * ignored and the whole object is served **without** advertising
+ * `Accept-Ranges` — so a backend with no range primitive never claims one.
+ *
  * A missing key throws `FileNotFoundError` (mapped to `404` upstream).
  *
  * @example
@@ -165,20 +169,22 @@ export interface ServeFileInit {
  *   }
  */
 export async function serveFile(
-  store: Pick<FileStore, 'stat' | 'get'>,
+  store: Pick<FileStore, 'stat' | 'get' | 'supportsRange'>,
   key: string,
   init: ServeFileInit = {},
 ): Promise<FileResponse> {
   const {disposition} = init;
-  // Fast path: no Range → one round-trip, full body, advertise range support.
-  if (!init.range) {
+  const canRange = store.supportsRange !== false;
+  // Fast path — no range requested, or the backend can't slice: serve the whole
+  // object, advertising Accept-Ranges only when ranges are genuinely supported.
+  if (!init.range || !canRange) {
     const file = await store.get(key);
     return fileResponse(file.stream, {
       contentType: init.contentType ?? file.contentType,
       filename: init.filename ?? file.filename,
       size: file.size,
       disposition,
-      headers: {'Accept-Ranges': 'bytes'},
+      ...(canRange ? {headers: {'Accept-Ranges': 'bytes'}} : {}),
     });
   }
 

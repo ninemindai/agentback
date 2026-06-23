@@ -28,6 +28,7 @@ interface Entry {
  * streaming adapter) in production.
  */
 export class InMemoryFileStore implements FileStore {
+  readonly supportsRange = true;
   private readonly store = new Map<string, Entry>();
 
   async put(

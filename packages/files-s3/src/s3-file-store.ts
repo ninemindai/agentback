@@ -46,6 +46,7 @@ export interface S3FileStoreOptions {
  * hooks for a direct-to-S3 flow.
  */
 export class S3FileStore implements FileStore {
+  readonly supportsRange = true;
   private readonly client: S3Client;
   private readonly bucket: string;
   private readonly prefix: string;

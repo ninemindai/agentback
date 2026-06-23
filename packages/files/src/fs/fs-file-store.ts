@@ -49,6 +49,7 @@ export interface FsFileStoreOptions {
  * depth — REST keys are already server-generated UUIDs, never client paths).
  */
 export class FsFileStore implements FileStore {
+  readonly supportsRange = true;
   private readonly baseDir: string;
   private readonly prefix: string;
 

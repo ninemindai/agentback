@@ -57,6 +57,9 @@ export interface FilesSdkFileStoreOptions {
 export class FilesSdkFileStore implements FileStore {
   private readonly files: Files;
 
+  /** Mirrors the backend's range primitive so `serveFile` never lies. */
+  readonly supportsRange: boolean;
+
   presignedGet?: (key: string, opts?: PresignOptions) => Promise<string>;
   presignedPut?: (
     key: string,
@@ -65,6 +68,7 @@ export class FilesSdkFileStore implements FileStore {
 
   constructor(opts: FilesSdkFileStoreOptions) {
     this.files = new Files({adapter: opts.adapter, prefix: opts.prefix});
+    this.supportsRange = this.files.capabilities.rangeRead;
     // Only expose the presign hooks the backend can actually honor — otherwise
     // they stay `undefined`, which the REST layer reads as "no direct flow".
     if (this.files.capabilities.signedUrl.supported) {

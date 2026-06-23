@@ -140,6 +140,14 @@ export interface FileStore {
   stat(key: string): Promise<FileMetadata>;
   exists(key: string): Promise<boolean>;
   delete(key: string): Promise<void>;
+  /**
+   * Whether `get(key, {range})` honors byte ranges. Consumers like `serveFile`
+   * advertise `Accept-Ranges` and serve `206` only when this is not `false`
+   * (unset is treated as supported, matching the built-in adapters). An adapter
+   * over a backend with no range primitive sets it `false` so range support is
+   * never advertised falsely.
+   */
+  readonly supportsRange?: boolean;
   presignedPut?(key: string, opts?: PresignPutOptions): Promise<SignedUpload>;
   presignedGet?(key: string, opts?: PresignOptions): Promise<string>;
 }
