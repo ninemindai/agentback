@@ -12,14 +12,17 @@ import {
   type S3ClientConfig,
 } from '@aws-sdk/client-s3';
 import {Upload} from '@aws-sdk/lib-storage';
+import {createPresignedPost} from '@aws-sdk/s3-presigned-post';
 import {getSignedUrl} from '@aws-sdk/s3-request-presigner';
 import {
   FileNotFoundError,
   type FileMetadata,
   type FileStore,
   type PresignOptions,
+  type PresignPutOptions,
   type PutOptions,
   type RetrievedFile,
+  type SignedUpload,
   type StoredFile,
 } from '@agentback/files';
 
@@ -146,17 +149,39 @@ export class S3FileStore implements FileStore {
 
   async presignedPut(
     key: string,
-    opts: PutOptions & PresignOptions = {},
-  ): Promise<string> {
-    return getSignedUrl(
+    opts: PresignPutOptions = {},
+  ): Promise<SignedUpload> {
+    const expiresIn = opts.expiresInSec ?? 900;
+    // A size cap can only be enforced by a presigned POST policy
+    // (`content-length-range`); a plain PUT URL is unbounded.
+    if (opts.maxSize != null) {
+      const {url, fields} = await createPresignedPost(this.client, {
+        Bucket: this.bucket,
+        Key: this.k(key),
+        Conditions: [['content-length-range', opts.minSize ?? 1, opts.maxSize]],
+        ...(opts.contentType
+          ? {Fields: {'Content-Type': opts.contentType}}
+          : {}),
+        Expires: expiresIn,
+      });
+      return {method: 'POST', url, fields};
+    }
+    const url = await getSignedUrl(
       this.client,
       new PutObjectCommand({
         Bucket: this.bucket,
         Key: this.k(key),
         ...(opts.contentType ? {ContentType: opts.contentType} : {}),
       }),
-      {expiresIn: opts.expiresInSec ?? 900},
+      {expiresIn},
     );
+    return {
+      method: 'PUT',
+      url,
+      ...(opts.contentType
+        ? {headers: {'Content-Type': opts.contentType}}
+        : {}),
+    };
   }
 
   async presignedGet(key: string, opts: PresignOptions = {}): Promise<string> {

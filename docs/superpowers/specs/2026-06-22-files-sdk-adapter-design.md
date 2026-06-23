@@ -81,6 +81,20 @@ all four adapters — in-memory (map entry), fs (`fsStat` + sidecar), S3
 case. `list`/`search`/`copy`/`move`/bulk/progress/plugins were declined (app-DB
 layering or framework features AgentBack already provides).
 
+## Follow-up: richer presigned-upload return + `maxSize` (2026-06-22)
+
+Closed the security gap noted in the original prototype: `presignedPut` returned
+a bare `string`, expressible only as an **unbounded** PUT URL. Changed the port
+to return a `SignedUpload` union (`PUT {url, headers?}` | `POST {url, fields}`)
+and added `PresignPutOptions.maxSize`/`minSize`. When `maxSize` is set, a signing
+adapter returns a size-enforced presigned **POST** (S3/R2 `content-length-range`
+policy); otherwise a PUT URL. `S3FileStore` uses `@aws-sdk/s3-presigned-post`
+(new dep) for the POST path; `FilesSdkFileStore` forwards `maxSize`/`minSize` to
+`files.signedUploadUrl` (its `SignedUpload` is structurally identical). Verified
+by a network-free `s3-presign.unit.ts` (local HMAC signing): PUT shape,
+size-enforced POST shape, and `keyPrefix`. Breaking for any `presignedPut`
+caller (none in-repo) — acceptable at alpha; migration is `result` → `result.url`.
+
 ## Validation
 
 `pnpm -F @agentback/files-sdk build` clean; the package's unit suite (4

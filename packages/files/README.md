@@ -20,8 +20,8 @@ interface FileStore {
   stat(key): Promise<FileMetadata>;       // HEAD: metadata, no body; throws if absent
   exists(key): Promise<boolean>;
   delete(key): Promise<void>;
-  presignedPut?(key, opts?): Promise<string>;  // optional (direct-to-storage)
-  presignedGet?(key, opts?): Promise<string>;  // optional
+  presignedPut?(key, opts?): Promise<SignedUpload>;  // optional; opts.maxSize → size-enforced POST
+  presignedGet?(key, opts?): Promise<string>;        // optional
 }
 ```
 

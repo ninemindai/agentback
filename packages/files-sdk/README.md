@@ -34,7 +34,7 @@ adapter needs nothing extra.
 | `get(key)` | `files.download` | body stream ← `Readable.fromWeb(sf.stream())`; `FilesError('NotFound')` → `FileNotFoundError`. |
 | `stat(key)` | `files.head` | metadata only (no body transfer); maps `type`→`contentType`, epoch `lastModified`→`Date`; `NotFound` → `FileNotFoundError`. |
 | `exists` / `delete` | `files.exists` / `files.delete` | `delete` swallows `NotFound` to stay idempotent. |
-| `presignedGet` / `presignedPut` | `files.url` / `files.signedUploadUrl` | **present only when** `files.capabilities.signedUrl.supported` — so S3/R2 stores can presign and a filesystem store reports "unsupported" by omitting the methods. |
+| `presignedGet` / `presignedPut` | `files.url` / `files.signedUploadUrl` | **present only when** `files.capabilities.signedUrl.supported` — so S3/R2 stores can presign and a filesystem store reports "unsupported" by omitting the methods. `presignedPut` returns a `SignedUpload` (PUT URL, or a size-enforced POST form when `opts.maxSize` is set). |
 
 The Node ⇄ Web stream conversion is the only real impedance, and it is isolated
 in `toBody()` / `get()` so the same store can run edge-native (Workers/Bun/Deno)

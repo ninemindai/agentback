@@ -52,6 +52,39 @@ export interface PresignOptions {
   expiresInSec?: number;
 }
 
+/** Extra controls for a presigned upload (direct-to-storage). */
+export interface PresignPutOptions extends PutOptions, PresignOptions {
+  /**
+   * Maximum upload size in bytes, enforced by the storage backend. When set, an
+   * adapter that can enforce it (S3/R2 via a presigned POST policy) returns a
+   * `POST`-form {@link SignedUpload}; an adapter that cannot enforce a size cap
+   * throws rather than handing back an unbounded URL. **Strongly recommended**
+   * for any client-facing upload — without it, anyone holding the URL can
+   * upload an arbitrarily large object until it expires.
+   */
+  maxSize?: number;
+  /**
+   * Minimum upload size in bytes for the size-enforced (POST) policy. Defaults
+   * to `1` (reject empty uploads) when {@link maxSize} is set. Pass `0` to allow
+   * empty uploads. Ignored when `maxSize` is absent.
+   */
+  minSize?: number;
+}
+
+/**
+ * A presigned direct-to-storage upload.
+ *
+ * - `PUT` — a single signed URL the client PUTs the bytes to, optionally with
+ *   the given request `headers`. Simple, but the size is **unbounded**.
+ * - `POST` — an HTML-form upload (S3/R2 presigned POST) whose `fields` carry
+ *   the signed policy. The only form that can enforce a server-side size limit
+ *   (see {@link PresignPutOptions.maxSize}); the client must send `fields`
+ *   followed by the file as `multipart/form-data`.
+ */
+export type SignedUpload =
+  | {method: 'PUT'; url: string; headers?: Record<string, string>}
+  | {method: 'POST'; url: string; fields: Record<string, string>};
+
 /**
  * Transport-agnostic file storage seam. Adapters (in-memory, S3, …) implement
  * it; REST handlers stream uploads in via {@link put} and downloads out via
@@ -82,10 +115,7 @@ export interface FileStore {
   stat(key: string): Promise<FileMetadata>;
   exists(key: string): Promise<boolean>;
   delete(key: string): Promise<void>;
-  presignedPut?(
-    key: string,
-    opts?: PutOptions & PresignOptions,
-  ): Promise<string>;
+  presignedPut?(key: string, opts?: PresignPutOptions): Promise<SignedUpload>;
   presignedGet?(key: string, opts?: PresignOptions): Promise<string>;
 }
 

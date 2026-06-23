@@ -10,8 +10,10 @@ import {
   type FileMetadata,
   type FileStore,
   type PresignOptions,
+  type PresignPutOptions,
   type PutOptions,
   type RetrievedFile,
+  type SignedUpload,
   type StoredFile,
 } from '@agentback/files';
 
@@ -57,8 +59,8 @@ export class FilesSdkFileStore implements FileStore {
   presignedGet?: (key: string, opts?: PresignOptions) => Promise<string>;
   presignedPut?: (
     key: string,
-    opts?: PutOptions & PresignOptions,
-  ) => Promise<string>;
+    opts?: PresignPutOptions,
+  ) => Promise<SignedUpload>;
 
   constructor(opts: FilesSdkFileStoreOptions) {
     this.files = new Files({adapter: opts.adapter, prefix: opts.prefix});
@@ -69,19 +71,15 @@ export class FilesSdkFileStore implements FileStore {
         this.files.url(key, {
           expiresIn: presign?.expiresInSec ?? DEFAULT_EXPIRES_IN_SEC,
         });
-      this.presignedPut = async (key, presign) => {
-        const signed = await this.files.signedUploadUrl(key, {
+      // files-sdk's SignedUpload is structurally identical to the port's, and
+      // it picks PUT vs size-enforced POST from `maxSize` for us.
+      this.presignedPut = (key, presign) =>
+        this.files.signedUploadUrl(key, {
           expiresIn: presign?.expiresInSec ?? DEFAULT_EXPIRES_IN_SEC,
           ...(presign?.contentType ? {contentType: presign.contentType} : {}),
+          ...(presign?.maxSize != null ? {maxSize: presign.maxSize} : {}),
+          ...(presign?.minSize != null ? {minSize: presign.minSize} : {}),
         });
-        if (signed.method !== 'PUT') {
-          throw new Error(
-            'FilesSdkFileStore.presignedPut: backend returned a POST upload ' +
-              'form, which the string-URL port contract cannot represent.',
-          );
-        }
-        return signed.url;
-      };
     }
   }
 
