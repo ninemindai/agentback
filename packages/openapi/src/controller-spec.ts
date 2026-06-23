@@ -297,7 +297,7 @@ export function assembleOpenApiSpec(
     const ctrl = getControllerSpec(ctor);
     const prefix = ctrl.basePath ?? '';
     for (const [path, item] of Object.entries(ctrl.paths ?? {})) {
-      const full = prefix + path;
+      const full = collapseSlashes(prefix + path);
       doc.paths = doc.paths ?? {};
       doc.paths[full] = {
         ...((doc.paths[full] as PathItemObject) ?? {}),
@@ -318,6 +318,16 @@ export function assembleOpenApiSpec(
   // promote it to the real 3.2 keyword.
   if (isOpenApi32OrLater(doc.openapi)) promoteItemSchemas(doc);
   return doc;
+}
+
+/**
+ * Collapse runs of `/` in a joined route path. Joining a `basePath` and a route
+ * path by concatenation yields `//hello` when the basePath is `'/'` (mount at
+ * root) or ends in a slash; this normalizes it back to a single separator so
+ * the OpenAPI path key and the mounted route agree (`/hello`).
+ */
+export function collapseSlashes(path: string): string {
+  return path.replace(/\/{2,}/g, '/');
 }
 
 /** True for '3.2.0' and later 3.x minors (string-compared, no semver dep). */

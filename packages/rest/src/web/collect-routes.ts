@@ -4,7 +4,11 @@
 
 import type {Context} from '@agentback/context';
 import {CoreTags} from '@agentback/core';
-import {getControllerSpec, lookupRouteSchemas} from '@agentback/openapi';
+import {
+  collapseSlashes,
+  getControllerSpec,
+  lookupRouteSchemas,
+} from '@agentback/openapi';
 import {lookupSuccessStatus} from '../route-meta.js';
 import {assertPathSchemaMatch} from '../route-path-validation.js';
 import type {RouteRecord} from './router.js';
@@ -41,7 +45,7 @@ export function collectRoutes(
         assertPathSchemaMatch(ctor.name, methodName, verb, path, schemas);
         records.push({
           method: verb.toUpperCase(),
-          template: prefix + path,
+          template: collapseSlashes(prefix + path),
           value: {
             ctor,
             methodName,

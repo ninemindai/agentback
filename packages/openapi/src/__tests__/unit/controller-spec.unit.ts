@@ -142,6 +142,17 @@ describe('assembleOpenApiSpec', () => {
     );
   });
 
+  it("collapses a root basePath of '/' instead of emitting '//path'", () => {
+    @api({basePath: '/'})
+    class Root {
+      @get('/hello/{name}')
+      hello() {}
+    }
+    const doc = assembleOpenApiSpec([Root]);
+    expect(Object.keys(doc.paths!)).toContain('/hello/{name}');
+    expect(Object.keys(doc.paths!)).not.toContain('//hello/{name}');
+  });
+
   it('sets jsonSchemaDialect for OpenAPI 3.1', () => {
     const doc = assembleOpenApiSpec([GreetingController]);
     expect((doc as unknown as Record<string, unknown>).jsonSchemaDialect).toBe(

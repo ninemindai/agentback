@@ -31,6 +31,7 @@ import {
   assembleOpenApiSpec,
   buildErrorEnvelope,
   ErrorCodes,
+  collapseSlashes,
   fileFieldsOf,
   getControllerSpec,
   lookupRouteSchemas,
@@ -419,7 +420,7 @@ export class RestServer implements Server {
         // enforced identically on every host — see route-path-validation.ts.
         assertPathSchemaMatch(ctor.name, methodName, verb, path, schemas);
 
-        const route = prefix + toExpressPath(path);
+        const route = collapseSlashes(prefix + toExpressPath(path));
         log.debug(
           'mounting %s %s -> %s.%s',
           verb,
