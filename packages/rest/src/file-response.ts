@@ -82,6 +82,16 @@ export function isFileResponse(v: unknown): v is FileResponse {
  * `If-Range` is **not** evaluated here — a conditional range is honored
  * unconditionally; add validator handling at the call site if you need it.
  */
+/**
+ * Parse a single RFC 7233 range value: `1*DIGIT` only. Returns a non-negative
+ * integer, or `null` for anything else — rejecting the forms `Number()` would
+ * silently accept from a client header (hex `0x10`, exponent `1e3`, leading
+ * `+`, whitespace).
+ */
+function decimal(s: string): number | null {
+  return /^\d+$/.test(s) ? Number(s) : null;
+}
+
 export function parseRangeHeader(
   header: string | undefined,
   size: number,
@@ -101,20 +111,21 @@ export function parseRangeHeader(
   let end: number;
   if (startStr === '') {
     // Suffix form: bytes=-N → the final N bytes.
-    const suffix = Number(endStr);
-    if (endStr === '' || !Number.isInteger(suffix) || suffix <= 0) return null;
+    const suffix = decimal(endStr);
+    if (suffix == null || suffix <= 0) return null;
     start = Math.max(0, size - suffix);
     end = size - 1;
   } else {
-    start = Number(startStr);
-    if (!Number.isInteger(start) || start < 0) return null;
+    const s = decimal(startStr);
+    if (s == null) return null;
+    start = s;
     if (start >= size) return 'unsatisfiable';
     if (endStr === '') {
       end = size - 1;
     } else {
-      end = Number(endStr);
-      if (!Number.isInteger(end) || end < start) return null;
-      end = Math.min(end, size - 1);
+      const e = decimal(endStr);
+      if (e == null || e < start) return null;
+      end = Math.min(e, size - 1);
     }
   }
   return {start, end};

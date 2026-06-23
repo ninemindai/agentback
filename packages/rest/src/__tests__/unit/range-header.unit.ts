@@ -44,4 +44,13 @@ describe('parseRangeHeader', () => {
     expect(parseRangeHeader('bytes=0-10,20-30', SIZE)).toBeNull(); // multi-range
     expect(parseRangeHeader('bytes=-0', SIZE)).toBeNull(); // zero suffix
   });
+
+  it('rejects non-decimal numeric forms (RFC 7233 is 1*DIGIT)', () => {
+    // Number() would accept these; the parser must not.
+    expect(parseRangeHeader('bytes=0x10-', SIZE)).toBeNull();
+    expect(parseRangeHeader('bytes=1e2-', SIZE)).toBeNull();
+    expect(parseRangeHeader('bytes=+5-', SIZE)).toBeNull();
+    expect(parseRangeHeader('bytes=0-1e2', SIZE)).toBeNull();
+    expect(parseRangeHeader('bytes=-1e1', SIZE)).toBeNull();
+  });
 });
