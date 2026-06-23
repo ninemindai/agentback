@@ -58,7 +58,8 @@
         <div class="hero-copy">
           <p class="eyebrow reveal">Agent-native, end to end</p>
           <h1 class="reveal d1">
-            Interfaces agents <em>use</em>.<br />Backends agents <em>build</em>.
+            <span class="clause">Interfaces agents <em>use</em>.</span><br />
+            <span class="clause">Backends agents <em>build</em>.</span>
           </h1>
           <p class="lede reveal d2">
             AgentBack gives your REST endpoints, MCP tools, OpenAPI docs, typed
@@ -66,9 +67,10 @@
             schema, every boundary. Agents consume that surface with
             machine-actionable errors, <code>/llms.txt</code>, and MCP tools;
             and because there's a single source of truth, a coding agent can
-            author the whole surface from it without drift. Built on
-            LoopBack&nbsp;4's proven dependency-injection core, rebuilt for ESM
-            and Node&nbsp;22.
+            author the whole surface from it without drift. When the caller is
+            an agent, a drifted contract isn't a stale doc — it's a failed tool
+            call. Built on LoopBack&nbsp;4's proven dependency-injection core,
+            rebuilt for ESM and Node&nbsp;22.
           </p>
           <div class="hero-actions reveal d3">
             <a class="button" href="docs/index.html">Read the docs</a>
@@ -89,6 +91,46 @@
           </p>
         </div>
 
+        <div class="hero-right">
+        <figure class="hero-emblem reveal d2">
+          <svg
+            viewBox="0 0 540 132"
+            role="img"
+            aria-label="An agent sits between two surfaces: it uses interfaces on the left and builds backends on the right."
+          >
+            <!-- use -->
+            <text class="he-kicker" style="--c: var(--cyan)" x="186" y="30">USE</text>
+            <line class="he-arrow" style="--c: var(--cyan)" x1="244" y1="58" x2="142" y2="58" />
+            <polygon class="he-head" style="--c: var(--cyan)" points="130,58 140,53 140,63" />
+            <g class="he-iface">
+              <rect x="34" y="36" width="92" height="44" rx="9" />
+              <text class="he-glyph" style="--c: var(--cyan)" x="80" y="64">{ }</text>
+            </g>
+            <text class="he-cap" x="80" y="100">interfaces</text>
+
+            <!-- agent -->
+            <polygon
+              class="he-agent"
+              points="270,32 292.5,45 292.5,71 270,84 247.5,71 247.5,45"
+            />
+            <path
+              class="he-spark"
+              d="M270,44 L274,54 L284,58 L274,62 L270,72 L266,62 L256,58 L266,54 Z"
+            />
+            <text class="he-cap he-cap-strong" x="270" y="108">agent</text>
+
+            <!-- build -->
+            <text class="he-kicker" style="--c: var(--violet)" x="354" y="30">BUILD</text>
+            <line class="he-arrow" style="--c: var(--violet)" x1="296" y1="58" x2="398" y2="58" />
+            <polygon class="he-head" style="--c: var(--violet)" points="410,58 400,53 400,63" />
+            <g class="he-stack" style="--c: var(--violet)">
+              <rect x="414" y="38" width="92" height="12" rx="4" />
+              <rect x="414" y="53" width="92" height="12" rx="4" />
+              <rect x="414" y="68" width="92" height="12" rx="4" />
+            </g>
+            <text class="he-cap" x="460" y="100">backends</text>
+          </svg>
+        </figure>
         <figure class="hero-code reveal d2" aria-label="Code example">
           <figcaption>
             <span class="dot r"></span><span class="dot a"></span
@@ -112,6 +154,7 @@
   <span class="kw">async</span> <span class="fn">forecast</span>(input: z.infer&lt;<span class="kw">typeof</span> <span class="ty">City</span>&gt;) { <span class="cm">/* … */</span> }
 }</code></pre>
         </figure>
+        </div>
       </section>
 
       <!-- ========================= schema fan-out ========================= -->
@@ -127,6 +170,67 @@
             one edit and nothing drifts.
           </p>
         </div>
+
+        <figure class="fanout-diagram reveal d2">
+          <svg
+            viewBox="0 0 480 360"
+            role="img"
+            aria-label="One Zod schema projected to six surfaces: a runtime validator, the z.infer TypeScript type, an OpenAPI 3.1 document, an MCP tool, a /llms.txt surface map, and a typed client — derived from a single z.object schema."
+          >
+            <g class="edges" fill="none" stroke-linecap="round">
+              <path class="edge e1" style="--c: var(--green)"  d="M170,180 C238,180 236,29  304,29" />
+              <path class="edge e2" style="--c: var(--cyan)"   d="M170,180 C238,180 236,89  304,89" />
+              <path class="edge e3" style="--c: var(--violet)" d="M170,180 C238,180 236,149 304,149" />
+              <path class="edge e4" style="--c: var(--amber)"  d="M170,180 C238,180 236,209 304,209" />
+              <path class="edge e5" style="--c: var(--rose)"   d="M170,180 C238,180 236,269 304,269" />
+              <path class="edge e6" style="--c: var(--cyan)"   d="M170,180 C238,180 236,329 304,329" />
+            </g>
+
+            <g class="source">
+              <rect x="14" y="146" width="156" height="68" rx="11" />
+              <text class="src-kicker" x="30" y="174">ONE SCHEMA</text>
+              <text class="src-main" x="30" y="197">z.object({ … })</text>
+            </g>
+
+            <g class="ep" style="--c: var(--green)">
+              <rect x="304" y="9" width="164" height="40" rx="9" />
+              <circle cx="304" cy="29" r="3.5" />
+              <text class="ep-label" x="318" y="27">validate()</text>
+              <text class="ep-sub" x="318" y="40">runtime guard</text>
+            </g>
+            <g class="ep" style="--c: var(--cyan)">
+              <rect x="304" y="69" width="164" height="40" rx="9" />
+              <circle cx="304" cy="89" r="3.5" />
+              <text class="ep-label" x="318" y="87">z.infer&lt;T&gt;</text>
+              <text class="ep-sub" x="318" y="100">TypeScript type</text>
+            </g>
+            <g class="ep" style="--c: var(--violet)">
+              <rect x="304" y="129" width="164" height="40" rx="9" />
+              <circle cx="304" cy="149" r="3.5" />
+              <text class="ep-label" x="318" y="147">/openapi.json</text>
+              <text class="ep-sub" x="318" y="160">OpenAPI 3.1</text>
+            </g>
+            <g class="ep" style="--c: var(--amber)">
+              <rect x="304" y="189" width="164" height="40" rx="9" />
+              <circle cx="304" cy="209" r="3.5" />
+              <text class="ep-label" x="318" y="207">forecast tool</text>
+              <text class="ep-sub" x="318" y="220">MCP input · output</text>
+            </g>
+            <g class="ep" style="--c: var(--rose)">
+              <rect x="304" y="249" width="164" height="40" rx="9" />
+              <circle cx="304" cy="269" r="3.5" />
+              <text class="ep-label" x="318" y="267">/llms.txt</text>
+              <text class="ep-sub" x="318" y="280">agent surface map</text>
+            </g>
+            <g class="ep" style="--c: var(--cyan)">
+              <rect x="304" y="309" width="164" height="40" rx="9" />
+              <circle cx="304" cy="329" r="3.5" />
+              <text class="ep-label" x="318" y="327">client.call()</text>
+              <text class="ep-sub" x="318" y="340">typed, no codegen</text>
+            </g>
+          </svg>
+        </figure>
+
         <ul class="fanout-grid">
           <li>
             <strong>Runtime validator</strong
@@ -158,6 +262,55 @@
             ><span>no codegen — the client imports the same schemas</span>
           </li>
         </ul>
+      </section>
+
+      <!-- ===================== why another framework ===================== -->
+      <section class="compare" aria-labelledby="why-heading">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Why another framework?</p>
+            <h2 id="why-heading">
+              Because the contract is now <em>three</em> contracts
+            </h2>
+          </div>
+          <p class="muted">
+            You can reach REST + OpenAPI + MCP by bolting add-ons onto a router.
+            Here's the math on what that costs once agents are in the loop.
+          </p>
+        </div>
+        <ul class="fanout-grid">
+          <li>
+            <strong>The bolt-on path is real</strong>
+            <span>
+              <code>@hono/zod-openapi</code> + <code>@hono/mcp</code> + a
+              hand-written tool manifest gets you there. AgentBack isn't
+              claiming the alternatives can't — it's removing the seams between
+              them.
+            </span>
+          </li>
+          <li>
+            <strong>Every seam is a place to drift</strong>
+            <span>
+              Each add-on keeps its own schema to align by hand. Add one field
+              and you edit the validator, the OpenAPI, and the tool — three
+              edits, one of which you'll forget. The tax compounds per endpoint.
+            </span>
+          </li>
+          <li>
+            <strong>Agents made it load-bearing</strong>
+            <span>
+              A drifted manifest used to mean a stale doc. Now it means an agent
+              calls a tool that no longer matches the route and the request
+              fails. One source of truth went from convenience to correctness —
+              that's the why-now.
+            </span>
+          </li>
+        </ul>
+        <p class="muted">
+          Built on LoopBack&nbsp;4's proven DI core — not a weekend rewrite —
+          rebuilt for ESM and Node&nbsp;22.
+          <a href="docs/compare.html">See the side-by-side from your framework →</a>
+        </p>
       </section>
 
       <!-- ========================= positioning ========================= -->
