@@ -1,0 +1,40 @@
+{
+  "name": "@agentback/files-sdk",
+  "version": "0.6.0",
+  "description": "FileStore adapter bridging @agentback/files to files-sdk (one port, 40+ storage backends)",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@agentback/files": "workspace:~",
+    "tslib": "^2.8.1"
+  },
+  "peerDependencies": {
+    "files-sdk": "^2.0.0"
+  },
+  "devDependencies": {
+    "files-sdk": "^2.0.0",
+    "vitest": "~4.1.9"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}
