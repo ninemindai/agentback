@@ -523,13 +523,18 @@ export class RestHandler {
         `${file.disposition ?? 'attachment'}; filename="${safe}"`,
       );
     }
+    if (file.headers) {
+      for (const [name, value] of Object.entries(file.headers)) {
+        headers.set(name, value);
+      }
+    }
     if (file.size != null) headers.set('Content-Length', String(file.size));
 
     const body = file.body;
     const webBody = Buffer.isBuffer(body)
       ? body
       : (Readable.toWeb(body) as unknown as ReadableStream<Uint8Array>);
-    return new Response(webBody, {status, headers});
+    return new Response(webBody, {status: file.status ?? status, headers});
   }
 
   /**

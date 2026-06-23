@@ -110,6 +110,22 @@ open-ended-to-EOF) runs against all adapters. **Not yet wired to REST** — maki
 `fileResponse`/`sendResult` honor an incoming `Range:` header (206 +
 `Content-Range`, 416, `If-Range`) is the natural next step and is its own change.
 
+## Follow-up: REST `Range` → 206 wiring (2026-06-22)
+
+Turned the storage-layer range capability into a working HTTP feature
+(video seek / resumable downloads). Added `serveFile(store, key, {range})` in
+`@agentback/rest`: it `stat`s for the total size, runs a pure, unit-tested
+`parseRangeHeader` (supports `bytes=s-e`, `s-`, `-suffix`; multi-range/malformed
+→ whole object; past-EOF → unsatisfiable), and returns a `FileResponse` with
+`status` 200/206/416 + `Accept-Ranges`/`Content-Range` headers. `FileResponse`
+gained optional `status` + `headers`; both send paths now honor them — Express
+`sendFile` and the edge `toFileResponse` (so range works on Workers too). The
+handler reads the `Range` value from a validated `headers` schema slot, keeping
+it host-neutral; no change to the `protected sendFile` override signature.
+Covered by `range-header.unit.ts` (6) + `files-range.integration.ts` (Express +
+edge, 8). **Out of scope:** `If-Range` conditional validation and multi-range
+(`multipart/byteranges`) responses.
+
 ## Validation
 
 `pnpm -F @agentback/files-sdk build` clean; the package's unit suite (4

@@ -872,8 +872,14 @@ export class RestServer implements Server {
         `${file.disposition ?? 'attachment'}; filename="${safe}"`,
       );
     }
+    if (file.headers) {
+      for (const [name, value] of Object.entries(file.headers)) {
+        res.setHeader(name, value);
+      }
+    }
     if (file.size != null) res.setHeader('Content-Length', String(file.size));
-    if (successStatus !== 200) res.status(successStatus);
+    const status = file.status ?? successStatus;
+    if (status !== 200) res.status(status);
 
     const body = file.body;
     if (Buffer.isBuffer(body)) {
