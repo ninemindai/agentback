@@ -21,7 +21,12 @@ import {
   type ClientContext,
   type AgentContext,
 } from '@agentclientprotocol/sdk';
-import {ChatBridgeController, CHAT_CONNECT_FN, CHAT_DISCOVER, CHAT_WORKSPACE_ROOT} from '../../bridge.controller.js';
+import {
+  ChatBridgeController,
+  CHAT_CONNECT_FN,
+  CHAT_DISCOVER,
+  CHAT_WORKSPACE_ROOT,
+} from '../../bridge.controller.js';
 import type {AcpConnectFn} from '../../acp-session.js';
 import type {AgentDescriptor} from '../../types.js';
 
@@ -37,7 +42,11 @@ function inProcessConnectFn(fakeAgent: AgentApp): AcpConnectFn {
   return async (
     _descriptor: AgentDescriptor,
     clientApp: ClientApp,
-  ): Promise<{connection: ClientConnection; ctx: ClientContext; kill: () => void}> => {
+  ): Promise<{
+    connection: ClientConnection;
+    ctx: ClientContext;
+    kill: () => void;
+  }> => {
     const connection = clientApp.connect(fakeAgent);
     const ctx = connection.agent;
     // In-process connections have no subprocess to kill.
@@ -53,13 +62,17 @@ function inProcessConnectFn(fakeAgent: AgentApp): AcpConnectFn {
  * The `onPrompt` callback receives `(sessionId, promptText, agentContext)`
  * and is responsible for sending updates and returning the stop reason.
  */
-function makeFakeAgent(opts: {
-  onPrompt?: (
-    sessionId: string,
-    text: string,
-    ctx: AgentContext,
-  ) => Promise<'end_turn' | 'cancelled' | 'max_tokens' | 'max_turn_requests' | 'refusal'>;
-} = {}): AgentApp {
+function makeFakeAgent(
+  opts: {
+    onPrompt?: (
+      sessionId: string,
+      text: string,
+      ctx: AgentContext,
+    ) => Promise<
+      'end_turn' | 'cancelled' | 'max_tokens' | 'max_turn_requests' | 'refusal'
+    >;
+  } = {},
+): AgentApp {
   const app = acpAgent({name: 'fake-agent'});
 
   app.onRequest('initialize', async () => ({
@@ -74,10 +87,17 @@ function makeFakeAgent(opts: {
 
   app.onRequest('session/prompt', async ({params, client}) => {
     const sessionId = params.sessionId;
-    const firstBlock = params.prompt[0] as {type: string; text?: string} | undefined;
+    const firstBlock = params.prompt[0] as
+      | {type: string; text?: string}
+      | undefined;
     const text = firstBlock?.type === 'text' ? (firstBlock.text ?? '') : '';
 
-    let stopReason: 'end_turn' | 'cancelled' | 'max_tokens' | 'max_turn_requests' | 'refusal';
+    let stopReason:
+      | 'end_turn'
+      | 'cancelled'
+      | 'max_tokens'
+      | 'max_turn_requests'
+      | 'refusal';
     if (opts.onPrompt) {
       stopReason = await opts.onPrompt(sessionId, text, client);
     } else {
@@ -108,7 +128,10 @@ function makeFakeAgent(opts: {
  * reads. Passing `undefined` leaves `req.auth` unset, so bridge endpoints
  * return 401 (tests the unauthenticated path).
  */
-function makeApp(connectFn: AcpConnectFn, principalId?: string): RestApplication {
+function makeApp(
+  connectFn: AcpConnectFn,
+  principalId?: string,
+): RestApplication {
   const app = new RestApplication({rest: {port: 0}});
   app.restController(ChatBridgeController);
   app.bind(CHAT_CONNECT_FN.key).to(connectFn);
@@ -117,8 +140,16 @@ function makeApp(connectFn: AcpConnectFn, principalId?: string): RestApplication
     // Uses the key+handler overload of expressMiddleware.
     app.expressMiddleware(
       'middleware.test.auth',
-      (req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) => {
-        (req as import('express').Request & {auth?: {token: string; clientId: string; scopes: string[]}}).auth = {
+      (
+        req: import('express').Request,
+        _res: import('express').Response,
+        next: import('express').NextFunction,
+      ) => {
+        (
+          req as import('express').Request & {
+            auth?: {token: string; clientId: string; scopes: string[]};
+          }
+        ).auth = {
           token: 'test',
           clientId: principalId,
           scopes: [],
@@ -180,7 +211,8 @@ describe('AcpSession connect + prompt flow', () => {
       session.on('event', ev => {
         if (ev.type === 'stop' || ev.type === 'error') {
           clearTimeout(timer);
-          if (ev.type === 'error') reject((ev as {error: unknown}).error as Error);
+          if (ev.type === 'error')
+            reject((ev as {error: unknown}).error as Error);
           else resolve();
         }
       });
@@ -192,12 +224,16 @@ describe('AcpSession connect + prompt flow', () => {
     const deltas = events.filter(e => e.type === 'assistant_delta');
     expect(deltas.length).toBeGreaterThan(0);
 
-    const texts = deltas.map(e => (e as import('../../acp-session.js').AssistantDeltaEvent).text);
+    const texts = deltas.map(
+      e => (e as import('../../acp-session.js').AssistantDeltaEvent).text,
+    );
     expect(texts.join('')).toBe('Hello world');
 
     const stop = events.find(e => e.type === 'stop');
     expect(stop).toBeDefined();
-    expect((stop as import('../../acp-session.js').StopEvent).stopReason).toBe('end_turn');
+    expect((stop as import('../../acp-session.js').StopEvent).stopReason).toBe(
+      'end_turn',
+    );
 
     session.dispose();
   });
@@ -300,7 +336,12 @@ describe('Permission-mode enforcement: open() forces prompting mode', () => {
     }));
 
     const connectFn = inProcessConnectFn(modeAgent);
-    const descriptor: AgentDescriptor = {id: 'test', name: 'Test', detect: {bin: 'test'}, command: ['test']};
+    const descriptor: AgentDescriptor = {
+      id: 'test',
+      name: 'Test',
+      detect: {bin: 'test'},
+      command: ['test'],
+    };
 
     const {AcpSession} = await import('../../acp-session.js');
     const session = new AcpSession(descriptor, connectFn);
@@ -339,7 +380,12 @@ describe('Permission-mode enforcement: open() forces prompting mode', () => {
     }));
 
     const connectFn = inProcessConnectFn(noModeAgent);
-    const descriptor: AgentDescriptor = {id: 'test', name: 'Test', detect: {bin: 'test'}, command: ['test']};
+    const descriptor: AgentDescriptor = {
+      id: 'test',
+      name: 'Test',
+      detect: {bin: 'test'},
+      command: ['test'],
+    };
 
     const {AcpSession} = await import('../../acp-session.js');
     const session = new AcpSession(descriptor, connectFn);
@@ -386,7 +432,12 @@ describe('I2: user_message_chunk not echoed as assistant_delta', () => {
     });
 
     const connectFn = inProcessConnectFn(fakeAgent);
-    const descriptor: AgentDescriptor = {id: 'test', name: 'Test', detect: {bin: 'test'}, command: ['test']};
+    const descriptor: AgentDescriptor = {
+      id: 'test',
+      name: 'Test',
+      detect: {bin: 'test'},
+      command: ['test'],
+    };
 
     const {AcpSession} = await import('../../acp-session.js');
     const session = new AcpSession(descriptor, connectFn);
@@ -399,8 +450,14 @@ describe('I2: user_message_chunk not echoed as assistant_delta', () => {
     const stopPromise = new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('timeout')), 3000);
       session.on('event', ev => {
-        if (ev.type === 'stop') { clearTimeout(timer); resolve(); }
-        if (ev.type === 'error') { clearTimeout(timer); reject((ev as {error: unknown}).error as Error); }
+        if (ev.type === 'stop') {
+          clearTimeout(timer);
+          resolve();
+        }
+        if (ev.type === 'error') {
+          clearTimeout(timer);
+          reject((ev as {error: unknown}).error as Error);
+        }
       });
     });
 
@@ -409,7 +466,9 @@ describe('I2: user_message_chunk not echoed as assistant_delta', () => {
 
     const deltas = events.filter(e => e.type === 'assistant_delta');
     expect(deltas.length).toBe(1);
-    expect((deltas[0] as import('../../acp-session.js').AssistantDeltaEvent).text).toBe('agent reply');
+    expect(
+      (deltas[0] as import('../../acp-session.js').AssistantDeltaEvent).text,
+    ).toBe('agent reply');
 
     session.dispose();
   });
@@ -434,7 +493,10 @@ describe('I-3: grounding turn drained quietly, first user turn streams clean', (
             sessionId,
             update: {
               sessionUpdate: 'agent_message_chunk',
-              content: {type: 'text', text: 'ORIENTATION_REPLY: got it, understood the schema.'},
+              content: {
+                type: 'text',
+                text: 'ORIENTATION_REPLY: got it, understood the schema.',
+              },
             } as unknown as import('@agentclientprotocol/sdk').SessionUpdate,
           });
           return 'end_turn';
@@ -452,7 +514,12 @@ describe('I-3: grounding turn drained quietly, first user turn streams clean', (
     });
 
     const connectFn = inProcessConnectFn(fakeAgent);
-    const descriptor: AgentDescriptor = {id: 'test', name: 'Test', detect: {bin: 'test'}, command: ['test']};
+    const descriptor: AgentDescriptor = {
+      id: 'test',
+      name: 'Test',
+      detect: {bin: 'test'},
+      command: ['test'],
+    };
 
     const {AcpSession} = await import('../../acp-session.js');
     const session = new AcpSession(descriptor, connectFn);
@@ -460,7 +527,9 @@ describe('I-3: grounding turn drained quietly, first user turn streams clean', (
     await session.open([], process.cwd());
 
     // Inject the orientation brief — this fires the quiet grounding drain.
-    await session.injectContext('REST routes / MCP tools / domain entities go here.');
+    await session.injectContext(
+      'REST routes / MCP tools / domain entities go here.',
+    );
 
     // Only collect events AFTER the user prompt begins.  Any orientation chunk
     // or a premature stop reaching this collector would prove the bug.
@@ -468,10 +537,19 @@ describe('I-3: grounding turn drained quietly, first user turn streams clean', (
     session.on('event', ev => userEvents.push(ev));
 
     const stopPromise = new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('timeout waiting for user turn stop')), 3000);
+      const timer = setTimeout(
+        () => reject(new Error('timeout waiting for user turn stop')),
+        3000,
+      );
       session.on('event', ev => {
-        if (ev.type === 'stop') { clearTimeout(timer); resolve(); }
-        if (ev.type === 'error') { clearTimeout(timer); reject((ev as {error: unknown}).error as Error); }
+        if (ev.type === 'stop') {
+          clearTimeout(timer);
+          resolve();
+        }
+        if (ev.type === 'error') {
+          clearTimeout(timer);
+          reject((ev as {error: unknown}).error as Error);
+        }
       });
     });
 
@@ -479,7 +557,9 @@ describe('I-3: grounding turn drained quietly, first user turn streams clean', (
     await stopPromise;
 
     const deltas = userEvents.filter(e => e.type === 'assistant_delta');
-    const texts = deltas.map(e => (e as import('../../acp-session.js').AssistantDeltaEvent).text);
+    const texts = deltas.map(
+      e => (e as import('../../acp-session.js').AssistantDeltaEvent).text,
+    );
 
     // The orientation reply must NOT appear in the user turn's stream.
     expect(texts.join('')).not.toContain('ORIENTATION_REPLY');
@@ -494,7 +574,9 @@ describe('I-3: grounding turn drained quietly, first user turn streams clean', (
     // And the very first delta must be the user reply, not the orientation
     // leftover — i.e. nothing bled in ahead of the user turn's content.
     expect(deltas.length).toBe(1);
-    expect((deltas[0] as import('../../acp-session.js').AssistantDeltaEvent).text).toBe('USER_REPLY: hello there');
+    expect(
+      (deltas[0] as import('../../acp-session.js').AssistantDeltaEvent).text,
+    ).toBe('USER_REPLY: hello there');
 
     session.dispose();
   });
@@ -554,24 +636,30 @@ describe('permission request', () => {
     session.on('event', ev => events.push(ev));
 
     // Wait for permission_request event.
-    const permPromise = new Promise<import('../../acp-session.js').PermissionRequestEvent>(
-      (resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('timeout waiting for permission_request')), 3000);
-        const check = (): void => {
-          const ev = events.find(e => e.type === 'permission_request');
-          if (ev) {
-            clearTimeout(timer);
-            resolve(ev as import('../../acp-session.js').PermissionRequestEvent);
-          }
-        };
-        session.on('event', check);
-        check();
-      },
-    );
+    const permPromise = new Promise<
+      import('../../acp-session.js').PermissionRequestEvent
+    >((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error('timeout waiting for permission_request')),
+        3000,
+      );
+      const check = (): void => {
+        const ev = events.find(e => e.type === 'permission_request');
+        if (ev) {
+          clearTimeout(timer);
+          resolve(ev as import('../../acp-session.js').PermissionRequestEvent);
+        }
+      };
+      session.on('event', check);
+      check();
+    });
 
     // Wait for stop event.
     const stopPromise = new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('timeout waiting for stop')), 5000);
+      const timer = setTimeout(
+        () => reject(new Error('timeout waiting for stop')),
+        5000,
+      );
       session.on('event', ev => {
         if (ev.type === 'stop') {
           clearTimeout(timer);
@@ -603,7 +691,9 @@ describe('permission request', () => {
 
     const deltas = events.filter(e => e.type === 'assistant_delta');
     expect(deltas.length).toBeGreaterThan(0);
-    const text = deltas.map(e => (e as import('../../acp-session.js').AssistantDeltaEvent).text).join('');
+    const text = deltas
+      .map(e => (e as import('../../acp-session.js').AssistantDeltaEvent).text)
+      .join('');
     expect(text).toBe('authorized');
 
     session.dispose();
@@ -617,7 +707,9 @@ describe('permission request', () => {
 describe('GET /console/chat/agents', () => {
   it('returns an array of agents', async () => {
     const connectFn = inProcessConnectFn(makeFakeAgent());
-    await using t = await createTestApp(makeApp.bind(null, connectFn, undefined));
+    await using t = await createTestApp(
+      makeApp.bind(null, connectFn, undefined),
+    );
 
     const res = await t.http.get('/console/chat/agents');
     // May return 200 with an empty or populated agents array.
@@ -708,7 +800,9 @@ describe('Security: authentication required', () => {
   it('POST /session without user returns 401', async () => {
     const connectFn = inProcessConnectFn(makeFakeAgent());
     // No user bound.
-    await using t = await createTestApp(makeApp.bind(null, connectFn, undefined));
+    await using t = await createTestApp(
+      makeApp.bind(null, connectFn, undefined),
+    );
 
     const res = await t.http
       .post('/console/chat/session')
@@ -719,7 +813,9 @@ describe('Security: authentication required', () => {
 
   it('POST /message without user returns 401', async () => {
     const connectFn = inProcessConnectFn(makeFakeAgent());
-    await using t = await createTestApp(makeApp.bind(null, connectFn, undefined));
+    await using t = await createTestApp(
+      makeApp.bind(null, connectFn, undefined),
+    );
 
     const res = await t.http
       .post('/console/chat/message')
@@ -739,7 +835,9 @@ describe('Two-principal session isolation', () => {
 
     // Build an app authenticated as alice to create the session.
     const connectFn = inProcessConnectFn(fakeAgent);
-    await using tA = await createTestApp(makeApp.bind(null, connectFn, 'alice'));
+    await using tA = await createTestApp(
+      makeApp.bind(null, connectFn, 'alice'),
+    );
 
     // Create a session as alice. Use claude-code which is in BUILTIN_AGENTS.
     const createRes = await tA.http
@@ -798,17 +896,25 @@ describe('SSE stream: C2 — stream stays open and delivers events', () => {
       },
     });
 
-    const descriptor: AgentDescriptor = {id: 'test', name: 'Test', detect: {bin: 'test'}, command: ['test']};
+    const descriptor: AgentDescriptor = {
+      id: 'test',
+      name: 'Test',
+      detect: {bin: 'test'},
+      command: ['test'],
+    };
     const session = new AcpSession(descriptor, inProcessConnectFn(fakeAgent));
     await session.connect();
     const acpSessionId = await session.open([], process.cwd());
     const principal = 'sse-test-principal';
 
-    const sessions = new Map<string, {
-      session: typeof session;
-      acpSessionId: string;
-      sseDisconnectedAt: number | null;
-    }>();
+    const sessions = new Map<
+      string,
+      {
+        session: typeof session;
+        acpSessionId: string;
+        sseDisconnectedAt: number | null;
+      }
+    >();
     sessions.set(`${principal}:${acpSessionId}`, {
       session,
       acpSessionId,
@@ -825,7 +931,9 @@ describe('SSE stream: C2 — stream stays open and delivers events', () => {
       );
     });
 
-    await new Promise<void>(resolve => rawServer.listen(0, '127.0.0.1', resolve));
+    await new Promise<void>(resolve =>
+      rawServer.listen(0, '127.0.0.1', resolve),
+    );
     const port = (rawServer.address() as {port: number}).port;
 
     const frames: string[] = [];
@@ -858,7 +966,9 @@ describe('SSE stream: C2 — stream stays open and delivers events', () => {
               }
             }
           });
-          res.on('error', () => {/* post-destroy cleanup */});
+          res.on('error', () => {
+            /* post-destroy cleanup */
+          });
         },
       );
       clientReq.on('error', (e: Error) => {
@@ -876,11 +986,20 @@ describe('SSE stream: C2 — stream stays open and delivers events', () => {
 
     // Wait for the stop event to arrive (data listeners are still active).
     await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('SSE stop frame timed out')), 5000);
+      const timeout = setTimeout(
+        () => reject(new Error('SSE stop frame timed out')),
+        5000,
+      );
       const check = () => {
-        if (frames.some(f => {
-          try { return (JSON.parse(f) as {type: string}).type === 'stop'; } catch { return false; }
-        })) {
+        if (
+          frames.some(f => {
+            try {
+              return (JSON.parse(f) as {type: string}).type === 'stop';
+            } catch {
+              return false;
+            }
+          })
+        ) {
           clearTimeout(timeout);
           resolve();
         } else {
@@ -890,7 +1009,9 @@ describe('SSE stream: C2 — stream stays open and delivers events', () => {
       check();
     });
 
-    const parsedFrames = frames.map(f => JSON.parse(f) as {type: string; text?: string});
+    const parsedFrames = frames.map(
+      f => JSON.parse(f) as {type: string; text?: string},
+    );
     const delta = parsedFrames.find(f => f.type === 'assistant_delta');
     expect(delta).toBeDefined();
     expect(delta?.text).toBe('streamed reply');
@@ -914,17 +1035,25 @@ describe('Lease GC: SSE disconnect triggers session GC after lease', () => {
     const {handleSseRequest} = await import('../../bridge.controller.js');
 
     const fakeAgent = makeFakeAgent();
-    const descriptor: AgentDescriptor = {id: 'test', name: 'Test', detect: {bin: 'test'}, command: ['test']};
+    const descriptor: AgentDescriptor = {
+      id: 'test',
+      name: 'Test',
+      detect: {bin: 'test'},
+      command: ['test'],
+    };
     const session = new AcpSession(descriptor, inProcessConnectFn(fakeAgent));
     await session.connect();
     const acpSessionId = await session.open([], process.cwd());
     const principal = 'lease-principal';
 
-    const sessions = new Map<string, {
-      session: typeof session;
-      acpSessionId: string;
-      sseDisconnectedAt: number | null;
-    }>();
+    const sessions = new Map<
+      string,
+      {
+        session: typeof session;
+        acpSessionId: string;
+        sseDisconnectedAt: number | null;
+      }
+    >();
     sessions.set(`${principal}:${acpSessionId}`, {
       session,
       acpSessionId,
@@ -941,7 +1070,9 @@ describe('Lease GC: SSE disconnect triggers session GC after lease', () => {
       );
     });
 
-    await new Promise<void>(resolve => rawServer.listen(0, '127.0.0.1', resolve));
+    await new Promise<void>(resolve =>
+      rawServer.listen(0, '127.0.0.1', resolve),
+    );
     const port = (rawServer.address() as {port: number}).port;
 
     // Connect, wait for the SSE response headers (the callback firing = headers
@@ -961,7 +1092,9 @@ describe('Lease GC: SSE disconnect triggers session GC after lease', () => {
           clientReq.destroy();
           // Allow the 'close' event to propagate through the server-side socket.
           setTimeout(resolve, 100);
-          res.on('error', () => {/* ignore post-destroy */});
+          res.on('error', () => {
+            /* ignore post-destroy */
+          });
         },
       );
       clientReq.on('error', (e: Error) => {
@@ -1001,7 +1134,8 @@ describe('Grounding: session/new receives mcpServers for the app mcp-http', () =
       agentCapabilities: {},
     }));
     groundingAgent.onRequest('session/new', async ({params}) => {
-      capturedMcpServers = (params as {mcpServers?: unknown[]}).mcpServers ?? [];
+      capturedMcpServers =
+        (params as {mcpServers?: unknown[]}).mcpServers ?? [];
       return {
         sessionId: `grounding-session-${Date.now()}`,
         _meta: null,
@@ -1013,7 +1147,9 @@ describe('Grounding: session/new receives mcpServers for the app mcp-http', () =
     }));
 
     const connectFn = inProcessConnectFn(groundingAgent);
-    await using t = await createTestApp(makeApp.bind(null, connectFn, 'ground-user'));
+    await using t = await createTestApp(
+      makeApp.bind(null, connectFn, 'ground-user'),
+    );
 
     // POST /session — no mcpServers in body → grounding should inject the app's URL.
     const res = await t.http
@@ -1029,7 +1165,11 @@ describe('Grounding: session/new receives mcpServers for the app mcp-http', () =
     expect(capturedMcpServers).toBeDefined();
     expect(capturedMcpServers!.length).toBeGreaterThan(0);
 
-    const srv = capturedMcpServers![0] as {type: string; name: string; url: string};
+    const srv = capturedMcpServers![0] as {
+      type: string;
+      name: string;
+      url: string;
+    };
     expect(srv.type).toBe('http');
     expect(srv.name).toBe('agentback-app');
     expect(typeof srv.url).toBe('string');
@@ -1039,6 +1179,43 @@ describe('Grounding: session/new receives mcpServers for the app mcp-http', () =
     expect(srv.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
     // The grounded URL must match the test server's own URL.
     expect(srv.url).toBe(`${t.url}/mcp`);
+  });
+
+  it('injects the AgentBack framework guide as standing context on session create', async () => {
+    const prompts: string[] = [];
+    const guideAgent = acpAgent({name: 'guide-agent'});
+    guideAgent.onRequest('initialize', async () => ({
+      protocolVersion: 1 as const,
+      agentCapabilities: {},
+    }));
+    guideAgent.onRequest('session/new', async () => ({
+      sessionId: `guide-session-${Date.now()}`,
+      _meta: null,
+    }));
+    guideAgent.onRequest('session/prompt', async ({params}) => {
+      const first = params.prompt[0] as
+        | {type: string; text?: string}
+        | undefined;
+      if (first?.type === 'text' && first.text) prompts.push(first.text);
+      return {stopReason: 'end_turn' as const, _meta: null};
+    });
+
+    const connectFn = inProcessConnectFn(guideAgent);
+    await using t = await createTestApp(
+      makeApp.bind(null, connectFn, 'guide-user'),
+    );
+
+    const res = await t.http
+      .post('/console/chat/session')
+      .send({agentId: 'claude-code', cwd: process.cwd()});
+    expect(res.status).toBe(200);
+
+    // createSession awaits the grounding injections before responding, so by now
+    // the framework guide must have been sent as a `<system-context>` turn.
+    expect(prompts.some(p => p.includes('AgentBack framework guide'))).toBe(
+      true,
+    );
+    expect(prompts.some(p => /@(get|tool|mcpServer)/.test(p))).toBe(true);
   });
 });
 
@@ -1056,23 +1233,38 @@ describe('I-1a: disposeAll() drains sessions and kills subprocesses', () => {
       return async (
         _descriptor: AgentDescriptor,
         clientApp: ClientApp,
-      ): Promise<{connection: ClientConnection; ctx: ClientContext; kill: () => void}> => {
+      ): Promise<{
+        connection: ClientConnection;
+        ctx: ClientContext;
+        kill: () => void;
+      }> => {
         const fakeAgent = makeFakeAgent();
         const connection = clientApp.connect(fakeAgent);
         const ctx = connection.agent;
-        const kill = () => { killCalls.push(sessionLabel); };
+        const kill = () => {
+          killCalls.push(sessionLabel);
+        };
         return {connection, ctx, kill};
       };
     }
 
     const {AcpSession} = await import('../../acp-session.js');
-    const {ChatBridgeController: Ctrl} = await import('../../bridge.controller.js');
+    const {ChatBridgeController: Ctrl} =
+      await import('../../bridge.controller.js');
 
     // Build a minimal app just to satisfy the DI constructor.
     const app = new RestApplication({rest: {port: 0}});
-    const ctrl = new Ctrl(app as unknown as import('@agentback/core').Application, undefined);
+    const ctrl = new Ctrl(
+      app as unknown as import('@agentback/core').Application,
+      undefined,
+    );
 
-    const descriptor: AgentDescriptor = {id: 'test', name: 'Test', detect: {bin: 'test'}, command: ['test']};
+    const descriptor: AgentDescriptor = {
+      id: 'test',
+      name: 'Test',
+      detect: {bin: 'test'},
+      command: ['test'],
+    };
 
     // Manually create two sessions and insert them into the controller map.
     const session1 = new AcpSession(descriptor, trackingConnectFn('s1'));
@@ -1084,18 +1276,38 @@ describe('I-1a: disposeAll() drains sessions and kills subprocesses', () => {
     const sid2 = await session2.open([], process.cwd());
 
     // Insert directly (bypassing POST /session to avoid TTL timers).
-    (ctrl.sessions as Map<string, {
-      session: typeof session1;
-      acpSessionId: string;
-      sseDisconnectedAt: number | null;
-      creationTtlTimer: ReturnType<typeof setTimeout> | null;
-    }>).set(`p:${sid1}`, {session: session1, acpSessionId: sid1, sseDisconnectedAt: null, creationTtlTimer: null});
-    (ctrl.sessions as Map<string, {
-      session: typeof session2;
-      acpSessionId: string;
-      sseDisconnectedAt: number | null;
-      creationTtlTimer: ReturnType<typeof setTimeout> | null;
-    }>).set(`p:${sid2}`, {session: session2, acpSessionId: sid2, sseDisconnectedAt: null, creationTtlTimer: null});
+    (
+      ctrl.sessions as Map<
+        string,
+        {
+          session: typeof session1;
+          acpSessionId: string;
+          sseDisconnectedAt: number | null;
+          creationTtlTimer: ReturnType<typeof setTimeout> | null;
+        }
+      >
+    ).set(`p:${sid1}`, {
+      session: session1,
+      acpSessionId: sid1,
+      sseDisconnectedAt: null,
+      creationTtlTimer: null,
+    });
+    (
+      ctrl.sessions as Map<
+        string,
+        {
+          session: typeof session2;
+          acpSessionId: string;
+          sseDisconnectedAt: number | null;
+          creationTtlTimer: ReturnType<typeof setTimeout> | null;
+        }
+      >
+    ).set(`p:${sid2}`, {
+      session: session2,
+      acpSessionId: sid2,
+      sseDisconnectedAt: null,
+      creationTtlTimer: null,
+    });
 
     expect(ctrl.sessions.size).toBe(2);
 
@@ -1114,8 +1326,12 @@ describe('I-1a: disposeAll() drains sessions and kills subprocesses', () => {
 // ---------------------------------------------------------------------------
 
 describe('I-1b: creation TTL disposes a never-subscribed session', () => {
-  beforeEach(() => { vi.useFakeTimers(); });
-  afterEach(() => { vi.useRealTimers(); });
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it('session is disposed when TTL fires before SSE subscribe', async () => {
     // Track kill calls.
@@ -1123,16 +1339,24 @@ describe('I-1b: creation TTL disposes a never-subscribed session', () => {
     const killTrackingConnectFn: AcpConnectFn = async (
       _descriptor: AgentDescriptor,
       clientApp: ClientApp,
-    ): Promise<{connection: ClientConnection; ctx: ClientContext; kill: () => void}> => {
+    ): Promise<{
+      connection: ClientConnection;
+      ctx: ClientContext;
+      kill: () => void;
+    }> => {
       const fakeAgent = makeFakeAgent();
       const connection = clientApp.connect(fakeAgent);
       const ctx = connection.agent;
-      const kill = () => { killed.push('killed'); };
+      const kill = () => {
+        killed.push('killed');
+      };
       return {connection, ctx, kill};
     };
 
     const connectFn = killTrackingConnectFn;
-    await using t = await createTestApp(makeApp.bind(null, connectFn, 'ttl-user'));
+    await using t = await createTestApp(
+      makeApp.bind(null, connectFn, 'ttl-user'),
+    );
 
     // Create a session but do NOT subscribe to SSE.
     const res = await t.http
@@ -1142,16 +1366,22 @@ describe('I-1b: creation TTL disposes a never-subscribed session', () => {
     const sessionId = (res.body as {sessionId: string}).sessionId;
 
     // Resolve the controller and verify the session is in the map.
-    const ctrl = await t.app.get<ChatBridgeController>('controllers.ChatBridgeController');
+    const ctrl = await t.app.get<ChatBridgeController>(
+      'controllers.ChatBridgeController',
+    );
     // The session should exist initially.
-    const anyEntry = [...ctrl.sessions.values()].find(e => e.acpSessionId === sessionId);
+    const anyEntry = [...ctrl.sessions.values()].find(
+      e => e.acpSessionId === sessionId,
+    );
     expect(anyEntry).toBeDefined();
 
     // Advance fake time past the TTL (SSE_RECONNECT_LEASE_MS = 30_000).
     vi.advanceTimersByTime(31_000);
 
     // After TTL fires, session must be removed from the map.
-    const afterEntry = [...ctrl.sessions.values()].find(e => e.acpSessionId === sessionId);
+    const afterEntry = [...ctrl.sessions.values()].find(
+      e => e.acpSessionId === sessionId,
+    );
     expect(afterEntry).toBeUndefined();
     // kill must have been invoked.
     expect(killed.length).toBeGreaterThan(0);
@@ -1161,27 +1391,51 @@ describe('I-1b: creation TTL disposes a never-subscribed session', () => {
     // This test verifies that after SSE subscribes the session is NOT disposed
     // when the TTL would have fired.  We use handleSseRequest directly.
     const {AcpSession} = await import('../../acp-session.js');
-    const {ChatBridgeController: Ctrl, SSE_RECONNECT_LEASE_MS: LEASE_MS} = await import('../../bridge.controller.js');
+    const {ChatBridgeController: Ctrl, SSE_RECONNECT_LEASE_MS: LEASE_MS} =
+      await import('../../bridge.controller.js');
 
-    const descriptor: AgentDescriptor = {id: 'test', name: 'Test', detect: {bin: 'test'}, command: ['test']};
-    const session = new AcpSession(descriptor, inProcessConnectFn(makeFakeAgent()));
+    const descriptor: AgentDescriptor = {
+      id: 'test',
+      name: 'Test',
+      detect: {bin: 'test'},
+      command: ['test'],
+    };
+    const session = new AcpSession(
+      descriptor,
+      inProcessConnectFn(makeFakeAgent()),
+    );
     await session.connect();
     const acpSessionId = await session.open([], process.cwd());
 
     // Build a minimal controller and manually inject the session with a live TTL.
     const app = new RestApplication({rest: {port: 0}});
-    const ctrl = new Ctrl(app as unknown as import('@agentback/core').Application, undefined);
+    const ctrl = new Ctrl(
+      app as unknown as import('@agentback/core').Application,
+      undefined,
+    );
 
     const key = `p:${acpSessionId}`;
     let timerFired = false;
-    const ttlTimer = setTimeout(() => { timerFired = true; }, LEASE_MS);
+    const ttlTimer = setTimeout(() => {
+      timerFired = true;
+    }, LEASE_MS);
 
-    (ctrl.sessions as Map<string, {
-      session: typeof session;
-      acpSessionId: string;
-      sseDisconnectedAt: number | null;
-      creationTtlTimer: ReturnType<typeof setTimeout> | null;
-    }>).set(key, {session, acpSessionId, sseDisconnectedAt: null, creationTtlTimer: ttlTimer});
+    (
+      ctrl.sessions as Map<
+        string,
+        {
+          session: typeof session;
+          acpSessionId: string;
+          sseDisconnectedAt: number | null;
+          creationTtlTimer: ReturnType<typeof setTimeout> | null;
+        }
+      >
+    ).set(key, {
+      session,
+      acpSessionId,
+      sseDisconnectedAt: null,
+      creationTtlTimer: ttlTimer,
+    });
 
     // Simulate SSE subscribe by calling handleSseRequest with a minimal mock.
     const {handleSseRequest} = await import('../../bridge.controller.js');
@@ -1239,7 +1493,9 @@ describe('I-2: chatConsoleFeature install() no-ops on native-listener host', () 
 
     // install() must not throw.
     await expect(
-      feature.install(app as unknown as import('@agentback/rest').RestApplication),
+      feature.install(
+        app as unknown as import('@agentback/rest').RestApplication,
+      ),
     ).resolves.toBeUndefined();
 
     // The bridge controller must NOT have been registered — the controllers
@@ -1306,20 +1562,21 @@ describe('AcpSession.baseDir: spawn uses buildAugmentedPath(baseDir)', () => {
     };
 
     const fakeAgent = makeFakeAgent();
-    const capturingConnectFn: import('../../acp-session.js').AcpConnectFn = async (
-      _desc,
-      clientApp,
-      options,
-    ) => {
-      capturedBaseDir = options?.baseDir;
-      const connection = clientApp.connect(fakeAgent);
-      const ctx = connection.agent;
-      return {connection, ctx, kill: () => {}};
-    };
+    const capturingConnectFn: import('../../acp-session.js').AcpConnectFn =
+      async (_desc, clientApp, options) => {
+        capturedBaseDir = options?.baseDir;
+        const connection = clientApp.connect(fakeAgent);
+        const ctx = connection.agent;
+        return {connection, ctx, kill: () => {}};
+      };
 
     const {AcpSession} = await import('../../acp-session.js');
     const expectedBaseDir = '/some/project/dir';
-    const session = new AcpSession(descriptor, capturingConnectFn, expectedBaseDir);
+    const session = new AcpSession(
+      descriptor,
+      capturingConnectFn,
+      expectedBaseDir,
+    );
     await session.connect();
 
     expect(capturedBaseDir).toBe(expectedBaseDir);
@@ -1337,16 +1594,13 @@ describe('AcpSession.baseDir: spawn uses buildAugmentedPath(baseDir)', () => {
     };
 
     const fakeAgent = makeFakeAgent();
-    const capturingConnectFn: import('../../acp-session.js').AcpConnectFn = async (
-      _desc,
-      clientApp,
-      options,
-    ) => {
-      capturedBaseDir = options?.baseDir;
-      const connection = clientApp.connect(fakeAgent);
-      const ctx = connection.agent;
-      return {connection, ctx, kill: () => {}};
-    };
+    const capturingConnectFn: import('../../acp-session.js').AcpConnectFn =
+      async (_desc, clientApp, options) => {
+        capturedBaseDir = options?.baseDir;
+        const connection = clientApp.connect(fakeAgent);
+        const ctx = connection.agent;
+        return {connection, ctx, kill: () => {}};
+      };
 
     const {AcpSession} = await import('../../acp-session.js');
     // No baseDir provided.
@@ -1369,19 +1623,18 @@ describe('createSession: cwd from POST body reaches AcpSession as baseDir', () =
     const fakeAgent = makeFakeAgent();
 
     // A connect function that captures the baseDir option.
-    const capturingConnectFn: import('../../acp-session.js').AcpConnectFn = async (
-      _desc,
-      clientApp,
-      options,
-    ) => {
-      capturedBaseDir = options?.baseDir;
-      const connection = clientApp.connect(fakeAgent);
-      const ctx = connection.agent;
-      return {connection, ctx, kill: () => {}};
-    };
+    const capturingConnectFn: import('../../acp-session.js').AcpConnectFn =
+      async (_desc, clientApp, options) => {
+        capturedBaseDir = options?.baseDir;
+        const connection = clientApp.connect(fakeAgent);
+        const ctx = connection.agent;
+        return {connection, ctx, kill: () => {}};
+      };
 
     const connectFn = capturingConnectFn;
-    await using t = await createTestApp(makeApp.bind(null, connectFn, 'cwd-user'));
+    await using t = await createTestApp(
+      makeApp.bind(null, connectFn, 'cwd-user'),
+    );
 
     const expectedCwd = '/path/to/my/project';
     const res = await t.http
@@ -1396,18 +1649,17 @@ describe('createSession: cwd from POST body reaches AcpSession as baseDir', () =
     let capturedBaseDir: string | undefined = 'NOT_SET';
     const fakeAgent = makeFakeAgent();
 
-    const capturingConnectFn: import('../../acp-session.js').AcpConnectFn = async (
-      _desc,
-      clientApp,
-      options,
-    ) => {
-      capturedBaseDir = options?.baseDir;
-      const connection = clientApp.connect(fakeAgent);
-      const ctx = connection.agent;
-      return {connection, ctx, kill: () => {}};
-    };
+    const capturingConnectFn: import('../../acp-session.js').AcpConnectFn =
+      async (_desc, clientApp, options) => {
+        capturedBaseDir = options?.baseDir;
+        const connection = clientApp.connect(fakeAgent);
+        const ctx = connection.agent;
+        return {connection, ctx, kill: () => {}};
+      };
 
-    await using t = await createTestApp(makeApp.bind(null, capturingConnectFn, 'cwd-user2'));
+    await using t = await createTestApp(
+      makeApp.bind(null, capturingConnectFn, 'cwd-user2'),
+    );
 
     // No cwd in body → undefined baseDir.
     const res = await t.http
@@ -1455,8 +1707,16 @@ describe('workspaceRoot: CHAT_WORKSPACE_ROOT is used as agent editing root', () 
     app.bind(CHAT_WORKSPACE_ROOT.key).to(expectedWorkspaceRoot);
     app.expressMiddleware(
       'middleware.test.auth',
-      (req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) => {
-        (req as import('express').Request & {auth?: {token: string; clientId: string; scopes: string[]}}).auth = {
+      (
+        req: import('express').Request,
+        _res: import('express').Response,
+        next: import('express').NextFunction,
+      ) => {
+        (
+          req as import('express').Request & {
+            auth?: {token: string; clientId: string; scopes: string[]};
+          }
+        ).auth = {
           token: 'test',
           clientId: 'ws-user',
           scopes: [],
@@ -1499,7 +1759,9 @@ describe('workspaceRoot: CHAT_WORKSPACE_ROOT is used as agent editing root', () 
     }));
 
     const connectFn = inProcessConnectFn(noRootAgent);
-    await using t = await createTestApp(makeApp.bind(null, connectFn, 'noroot-user'));
+    await using t = await createTestApp(
+      makeApp.bind(null, connectFn, 'noroot-user'),
+    );
 
     // No CHAT_WORKSPACE_ROOT binding — should default to process.cwd().
     const res = await t.http
@@ -1518,16 +1780,13 @@ describe('workspaceRoot: CHAT_WORKSPACE_ROOT is used as agent editing root', () 
     let capturedBaseDir: string | undefined = 'NOT_SET';
     const fakeAgent = makeFakeAgent();
 
-    const capturingConnectFn: import('../../acp-session.js').AcpConnectFn = async (
-      _desc,
-      clientApp,
-      options,
-    ) => {
-      capturedBaseDir = options?.baseDir;
-      const connection = clientApp.connect(fakeAgent);
-      const ctx = connection.agent;
-      return {connection, ctx, kill: () => {}};
-    };
+    const capturingConnectFn: import('../../acp-session.js').AcpConnectFn =
+      async (_desc, clientApp, options) => {
+        capturedBaseDir = options?.baseDir;
+        const connection = clientApp.connect(fakeAgent);
+        const ctx = connection.agent;
+        return {connection, ctx, kill: () => {}};
+      };
 
     // Bind workspaceRoot to something different from the POST body cwd.
     const serverRoot = '/server/workspace';
@@ -1537,8 +1796,16 @@ describe('workspaceRoot: CHAT_WORKSPACE_ROOT is used as agent editing root', () 
     app.bind(CHAT_WORKSPACE_ROOT.key).to(serverRoot);
     app.expressMiddleware(
       'middleware.test.auth',
-      (req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) => {
-        (req as import('express').Request & {auth?: {token: string; clientId: string; scopes: string[]}}).auth = {
+      (
+        req: import('express').Request,
+        _res: import('express').Response,
+        next: import('express').NextFunction,
+      ) => {
+        (
+          req as import('express').Request & {
+            auth?: {token: string; clientId: string; scopes: string[]};
+          }
+        ).auth = {
           token: 'test',
           clientId: 'spawn-user',
           scopes: [],

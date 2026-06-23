@@ -16,7 +16,8 @@
     "src"
   ],
   "scripts": {
-    "build": "tsc -b && node build-client.mjs",
+    "gen:guide": "node scripts/gen-framework-guide.mjs",
+    "build": "node scripts/gen-framework-guide.mjs && tsc -b && node build-client.mjs",
     "build:client": "node build-client.mjs",
     "clean": "rm -rf dist *.tsbuildinfo",
     "typecheck:client": "tsc -p tsconfig.client.json --noEmit"

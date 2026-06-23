@@ -30,13 +30,7 @@
  */
 
 import {z} from 'zod';
-import {
-  api,
-  get,
-  post,
-  del,
-  AgentError,
-} from '@agentback/openapi';
+import {api, get, post, del, AgentError} from '@agentback/openapi';
 import {
   BindingScope,
   BindingKey,
@@ -52,9 +46,16 @@ import type {AuthInfo} from '@agentback/mcp-http';
 import {loggers} from '@agentback/common';
 import type {Application} from '@agentback/core';
 import {buildOkfBundle, type OkfBundle} from '@agentback/schema-explorer';
+import {FRAMEWORK_GUIDE} from './framework-guide.js';
 import type {Request, Response} from 'express';
 import {BUILTIN_AGENTS, discoverAgents, makeProbe} from './agents.js';
-import {AcpSession, SpawnError, AcpHandshakeError, type AcpConnectFn, type AcpEvent} from './acp-session.js';
+import {
+  AcpSession,
+  SpawnError,
+  AcpHandshakeError,
+  type AcpConnectFn,
+  type AcpEvent,
+} from './acp-session.js';
 import type {AgentDescriptor} from './types.js';
 
 const log = loggers('agentback:console-chat:bridge');
@@ -100,11 +101,15 @@ async function resolveOwnMcpUrl(app: Application): Promise<string | null> {
 function buildOkfBrief(app: Application): string | null {
   const SIZE_LIMIT = 8192; // 8 KB
   try {
-    const bundle: OkfBundle = buildOkfBundle(app as unknown as import('@agentback/core').Context);
+    const bundle: OkfBundle = buildOkfBundle(
+      app as unknown as import('@agentback/core').Context,
+    );
     if (!bundle.files.length) return null;
 
     // Try to fit the full bundle.
-    const full = bundle.files.map(f => `--- ${f.path} ---\n${f.content}`).join('\n\n');
+    const full = bundle.files
+      .map(f => `--- ${f.path} ---\n${f.content}`)
+      .join('\n\n');
     if (full.length <= SIZE_LIMIT) return full;
 
     // Fallback: index only.
@@ -119,6 +124,27 @@ function buildOkfBrief(app: Application): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Build the AgentBack framework-guide brief for standing context — the "how to
+ * build with the framework" half of grounding (the OKF brief is the "what this
+ * app is" half). It's the embedded {@link FRAMEWORK_GUIDE} (the `agentback`
+ * skill, frontmatter stripped) with a one-line header telling the agent it can
+ * open the linked `references/*.md` pages with its own file tools.
+ *
+ * Returns `null` when the guide is empty (the skill wasn't on disk at build
+ * time), so grounding degrades gracefully.
+ */
+function buildFrameworkBrief(): string | null {
+  if (!FRAMEWORK_GUIDE) return null;
+  return (
+    'AgentBack framework guide — how to build with `@agentback/*` ' +
+    '(schema-on-decorator routing, the DI container, ports, doc-sync rules). ' +
+    'Apply these idioms when editing this app; open the linked ' +
+    '`skills/agentback/references/*.md` pages with your file tools for depth.\n\n' +
+    FRAMEWORK_GUIDE
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -172,7 +198,9 @@ export const CHAT_CWD = BindingKey.create<string>('console-chat.cwd');
  * Distinct from {@link CHAT_CWD} (the adapter-discovery base dir for PATH
  * augmentation during spawn).
  */
-export const CHAT_WORKSPACE_ROOT = BindingKey.create<string>('console-chat.workspaceRoot');
+export const CHAT_WORKSPACE_ROOT = BindingKey.create<string>(
+  'console-chat.workspaceRoot',
+);
 
 // ---------------------------------------------------------------------------
 // Zod schemas
@@ -267,7 +295,8 @@ export class ChatBridgeController {
   readonly sessions = new Map<string, SessionEntry>();
 
   constructor(
-    @inject(CoreBindings.APPLICATION_INSTANCE) private readonly app: Application,
+    @inject(CoreBindings.APPLICATION_INSTANCE)
+    private readonly app: Application,
     @inject(CHAT_CONNECT_FN, {optional: true})
     private readonly connectFn?: AcpConnectFn,
     @inject(CHAT_DISCOVER, {optional: true})
@@ -349,7 +378,9 @@ export class ChatBridgeController {
             },
           ];
         } else {
-          log.debug('mcp-http not available; opening session without MCP grounding');
+          log.debug(
+            'mcp-http not available; opening session without MCP grounding',
+          );
         }
       }
 
@@ -365,8 +396,21 @@ export class ChatBridgeController {
       // session/setContext endpoint visible in the ACP SDK types).
       const brief = buildOkfBrief(this.app);
       if (brief) {
-        log.debug('injecting OKF brief as standing context (length=%d)', brief.length);
+        log.debug(
+          'injecting OKF brief as standing context (length=%d)',
+          brief.length,
+        );
         await acpSession.injectContext(brief);
+      }
+
+      // --- Standing context: AgentBack framework guide (the `agentback` skill) ---
+      const guide = buildFrameworkBrief();
+      if (guide) {
+        log.debug(
+          'injecting framework guide as standing context (length=%d)',
+          guide.length,
+        );
+        await acpSession.injectContext(guide);
       }
 
       const key = sessionKey(principal, acpSessionId);
@@ -377,8 +421,15 @@ export class ChatBridgeController {
       // connects (see the `creationTtlTimer` field on SessionEntry).
       const creationTtlTimer = setTimeout(() => {
         const current = this.sessions.get(key);
-        if (current && current.sseDisconnectedAt === null && current.creationTtlTimer !== null) {
-          log.debug('creation TTL expired for never-subscribed session sessionId=%s', acpSessionId);
+        if (
+          current &&
+          current.sseDisconnectedAt === null &&
+          current.creationTtlTimer !== null
+        ) {
+          log.debug(
+            'creation TTL expired for never-subscribed session sessionId=%s',
+            acpSessionId,
+          );
           current.session.dispose();
           this.sessions.delete(key);
         }
@@ -402,10 +453,10 @@ export class ChatBridgeController {
         );
       }
       if (err instanceof AcpHandshakeError) {
-        throw new AgentError(
-          `ACP handshake failed: ${err.message}`,
-          {status: 502, code: 'agent_handshake_failed'},
-        );
+        throw new AgentError(`ACP handshake failed: ${err.message}`, {
+          status: 502,
+          code: 'agent_handshake_failed',
+        });
       }
       throw err;
     }
@@ -431,7 +482,10 @@ export class ChatBridgeController {
     // is not mounted (e.g. in tests that do not call install()).  Serve a
     // graceful error rather than silently returning.
     if (!res || !req) {
-      throw new AgentError('SSE requires an HTTP server context', {status: 500, code: 'internal_error'});
+      throw new AgentError('SSE requires an HTTP server context', {
+        status: 500,
+        code: 'internal_error',
+      });
     }
     const principal = principalFromRequest(req);
     const {sessionId} = input.query;
@@ -444,7 +498,13 @@ export class ChatBridgeController {
 
   @post('/message', {body: MessageRequest, response: MessageResponse})
   async message(
-    input: {body: {sessionId: string; text: string; focus?: {kind: string; id: string; label?: string}}},
+    input: {
+      body: {
+        sessionId: string;
+        text: string;
+        focus?: {kind: string; id: string; label?: string};
+      };
+    },
     @inject(RestBindings.HTTP_REQUEST, {optional: true}) req?: Request,
   ): Promise<{ok: boolean}> {
     const principal = principalFromRequest(req);
@@ -468,7 +528,9 @@ export class ChatBridgeController {
 
   @post('/permission', {body: PermissionRequest, response: PermissionResponse})
   async permission(
-    input: {body: {sessionId: string; requestId: string; optionId: string | null}},
+    input: {
+      body: {sessionId: string; requestId: string; optionId: string | null};
+    },
     @inject(RestBindings.HTTP_REQUEST, {optional: true}) req?: Request,
   ): Promise<{ok: boolean}> {
     const principal = principalFromRequest(req);
@@ -557,7 +619,12 @@ export function handleSseRequest(
   const entry = sessions.get(key);
 
   if (!entry) {
-    res.status(404).json({error: 'session_not_found', message: `Session not found: ${sessionId}`});
+    res
+      .status(404)
+      .json({
+        error: 'session_not_found',
+        message: `Session not found: ${sessionId}`,
+      });
     return;
   }
 
@@ -589,7 +656,10 @@ export function handleSseRequest(
   entry.session.on('event', onEvent);
 
   // Heartbeat timer.
-  const heartbeat = setInterval(() => send({type: 'heartbeat'}), SSE_HEARTBEAT_MS);
+  const heartbeat = setInterval(
+    () => send({type: 'heartbeat'}),
+    SSE_HEARTBEAT_MS,
+  );
 
   // Cleanup when the client disconnects.
   const cleanup = (): void => {
@@ -634,11 +704,17 @@ export function handleSseRequest(
  */
 export function principalFromRequest(req: Request | undefined): string {
   if (!req) {
-    throw new AgentError('Authentication required', {status: 401, code: 'unauthenticated'});
+    throw new AgentError('Authentication required', {
+      status: 401,
+      code: 'unauthenticated',
+    });
   }
   const auth = (req as Request & {auth?: AuthInfo | UserProfile}).auth;
   if (!auth) {
-    throw new AgentError('Authentication required', {status: 401, code: 'unauthenticated'});
+    throw new AgentError('Authentication required', {
+      status: 401,
+      code: 'unauthenticated',
+    });
   }
   // AuthInfo shape (from mcp-http frameworkAuthGuard or SDK requireBearerAuth).
   const asAuthInfo = auth as AuthInfo;
@@ -651,7 +727,10 @@ export function principalFromRequest(req: Request | undefined): string {
   if (typeof id === 'string' && id) {
     return id;
   }
-  throw new AgentError('Authentication required', {status: 401, code: 'unauthenticated'});
+  throw new AgentError('Authentication required', {
+    status: 401,
+    code: 'unauthenticated',
+  });
 }
 
 function sessionKey(principal: string, sessionId: string): string {
