@@ -53,6 +53,10 @@ interface LoadPluginOptions {
 Use `loadPlugins` (plural) for the declarative manifest path; use `loadPlugin`
 (singular) for an explicit, code-driven mount of a known target.
 
+`loadPlugin` is **not idempotent**: mounting the same plugin twice trips the
+collision guard (the second mount re-binds the component's own — now
+app-owned — key). Mount each plugin once, or pass `allowOverride` deliberately.
+
 ## Making a package a plugin
 
 Add one stanza to the package's `package.json`. The named export must be a

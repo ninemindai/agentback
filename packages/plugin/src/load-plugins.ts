@@ -6,7 +6,7 @@ import type {Application} from '@agentback/core';
 import {PluginBindings, PluginsConfig} from './config.js';
 import {applyGate} from './gate.js';
 import {discover} from './discovery.js';
-import {boundBindings, tryMount, type MountContext} from './mount.js';
+import {appOwnedContext, tryMount} from './mount.js';
 import type {
   LoadPluginsOptions,
   PluginLoadError,
@@ -33,7 +33,6 @@ export async function loadPlugins(
   const config = resolveConfig(app, options);
   const strict = options.strict ?? config.strict;
   const cwd = options.cwd ?? process.cwd();
-  const allowOverride = new Set(config.allowOverride);
 
   const warnings: string[] = [];
   const discovered = await discover(config, cwd, warnings);
@@ -48,8 +47,7 @@ export async function loadPlugins(
     errors: [],
   };
 
-  const ctx: MountContext = {owners: new Map(), allowOverride};
-  for (const key of boundBindings(app).keys()) ctx.owners.set(key, '<app>');
+  const ctx = appOwnedContext(app, config.allowOverride);
 
   const fail = (err: PluginLoadError): void => {
     report.errors.push(err);
