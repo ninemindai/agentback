@@ -17,6 +17,42 @@ the app and before `app.start()`. It does not subclass or wrap the app — it re
 a manifest, discovers plugins, mounts each plugin's `Component` via the normal
 `app.component()`, and returns an auditable report.
 
+## Imperative: `loadPlugin(app, specifier)`
+
+When you want to mount **one** specific plugin — by npm package name or
+filesystem path — rather than discover from the dependency graph, use the
+singular `loadPlugin`. Unlike `loadPlugins`, the target need not be a declared
+dependency and need not carry an `agentback` marker:
+
+```ts
+import {loadPlugin} from '@agentback/plugin';
+
+// A marked package (npm name) — marker names the component export:
+await loadPlugin(app, '@acme/foo');
+
+// A local directory (relative to cwd) — marker or {component}:
+await loadPlugin(app, './plugins/foo');
+
+// An UNMARKED package or bare file — name the export explicitly:
+await loadPlugin(app, './plugins/bare.js', {component: 'MyComponent'});
+```
+
+`loadPlugin` returns the mounted `PluginInfo` and **throws** on failure
+(unresolvable specifier, missing named export, or a DI-key collision). It shares
+the exact governance of `loadPlugins`: re-binding a key the app already owns
+throws unless you pass it in `options.allowOverride`.
+
+```ts
+interface LoadPluginOptions {
+  component?: string; // required for unmarked targets; overrides the marker
+  allowOverride?: string[]; // DI keys this mount may intentionally re-bind
+  cwd?: string; // base dir for relative paths / bare-specifier resolution
+}
+```
+
+Use `loadPlugins` (plural) for the declarative manifest path; use `loadPlugin`
+(singular) for an explicit, code-driven mount of a known target.
+
 ## Making a package a plugin
 
 Add one stanza to the package's `package.json`. The named export must be a

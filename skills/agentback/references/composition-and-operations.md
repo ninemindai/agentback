@@ -3,6 +3,7 @@
 ## Table of Contents
 
 - [Components](#components)
+- [Plugins](#plugins)
 - [Middleware](#middleware)
 - [CORS](#cors)
 - [Body parsing](#body-parsing)
@@ -34,6 +35,38 @@ app.component(MyComponent);
 `services`, and `components` in that order. `@mcpServer()` and `@api()` tagging
 flows from `@bind` metadata read by `createServiceBinding` — never call
 `.tag()` manually for service/controller registrations.
+
+## Plugins
+
+`@agentback/plugin` mounts third-party `Component`-contributing packages with
+fail-closed governance (a plugin silently re-binding a first-party DI key — an
+auth strategy, an enforcement point — halts startup unless allow-listed). A
+package opts in with one `package.json` stanza:
+
+```jsonc
+"agentback": {"plugin": true, "component": "MyComponent"}
+```
+
+Two entry points, both before `app.start()`:
+
+```ts
+import {loadPlugins, loadPlugin} from '@agentback/plugin';
+
+// Declarative: discover from declared deps + scanned dirs, gate, mount, report.
+await loadPlugins(app); // reads PluginBindings.CONFIG or options.config
+
+// Imperative: mount ONE plugin by npm name or path — need not be a declared
+// dep, need not carry the marker (pass {component} when it doesn't).
+await loadPlugin(app, '@acme/foo');
+await loadPlugin(app, './plugins/bare.js', {component: 'MyComponent'});
+```
+
+`loadPlugins` returns an auditable `PluginLoadReport` and obeys
+`enable`/`disable`/`order`/`allowOverride`/`strict` from the manifest.
+`loadPlugin` returns the mounted `PluginInfo` and throws on failure; both share
+the same DI-key collision detection. Use the plural for the dependency-graph
+path, the singular for an explicit code-driven mount. See
+`packages/plugin/README.md`.
 
 ## Middleware
 

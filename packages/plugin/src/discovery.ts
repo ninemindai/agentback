@@ -17,7 +17,7 @@ interface PackageJson {
   agentback?: Partial<PluginPackageMarker>;
 }
 
-function readPackageJson(pkgDir: string): PackageJson | null {
+export function readPackageJson(pkgDir: string): PackageJson | null {
   const file = resolve(pkgDir, 'package.json');
   if (!existsSync(file)) return null;
   try {
@@ -27,7 +27,7 @@ function readPackageJson(pkgDir: string): PackageJson | null {
   }
 }
 
-function entryRelative(pkg: PackageJson): string {
+export function entryRelative(pkg: PackageJson): string {
   const exp = pkg.exports as string | Record<string, unknown> | undefined;
   const dot =
     exp && typeof exp === 'object'

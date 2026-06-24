@@ -2,10 +2,11 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import type {Application, Component} from '@agentback/core';
+import type {Application} from '@agentback/core';
 import {PluginBindings, PluginsConfig} from './config.js';
 import {applyGate} from './gate.js';
 import {discover} from './discovery.js';
+import {boundBindings, tryMount, type MountContext} from './mount.js';
 import type {
   LoadPluginsOptions,
   PluginLoadError,
@@ -18,16 +19,6 @@ function resolveConfig(app: Application, options: LoadPluginsOptions) {
     return PluginsConfig.parse(app.getSync(PluginBindings.CONFIG));
   }
   return PluginsConfig.parse(undefined);
-}
-
-/**
- * Snapshot key -> Binding INSTANCE for every binding in the context. Instance
- * identity (not just key presence) is what lets us detect an *override*:
- * `context.add()` does `registry.set(key, binding)`, so re-binding an existing
- * key keeps the key string but swaps the Binding object.
- */
-function boundBindings(app: Application): Map<string, object> {
-  return new Map(app.find().map(b => [b.key, b as object]));
 }
 
 /**
@@ -57,8 +48,8 @@ export async function loadPlugins(
     errors: [],
   };
 
-  const owners = new Map<string, string>();
-  for (const key of boundBindings(app).keys()) owners.set(key, '<app>');
+  const ctx: MountContext = {owners: new Map(), allowOverride};
+  for (const key of boundBindings(app).keys()) ctx.owners.set(key, '<app>');
 
   const fail = (err: PluginLoadError): void => {
     report.errors.push(err);
@@ -72,54 +63,11 @@ export async function loadPlugins(
   };
 
   for (const info of gate.ordered) {
-    let mod: Record<string, unknown>;
-    try {
-      mod = (await import(info.importSpecifier)) as Record<string, unknown>;
-    } catch (err) {
-      fail({package: info.name, kind: 'import', message: String(err)});
+    const err = await tryMount(app, info, ctx);
+    if (err) {
+      fail(err);
       continue;
     }
-
-    const exported = mod[info.component];
-    if (typeof exported !== 'function') {
-      fail({
-        package: info.name,
-        kind: 'missing-export',
-        message: `named export "${info.component}" is missing or not a class`,
-      });
-      continue;
-    }
-
-    const before = boundBindings(app);
-    try {
-      app.component(exported as new (...args: unknown[]) => Component);
-    } catch (err) {
-      fail({package: info.name, kind: 'import', message: String(err)});
-      continue;
-    }
-    const after = boundBindings(app);
-
-    const collisions: string[] = [];
-    for (const [key, binding] of after) {
-      const priorBinding = before.get(key);
-      const touched = priorBinding === undefined || priorBinding !== binding;
-      if (!touched) continue;
-      const prior = owners.get(key);
-      if (prior && prior !== info.name && !allowOverride.has(key)) {
-        collisions.push(key);
-      }
-      owners.set(key, info.name);
-    }
-    if (collisions.length) {
-      fail({
-        package: info.name,
-        kind: 'key-collision',
-        message: `re-binds key(s) owned by another plugin: ${collisions.join(', ')}`,
-        collidingKeys: collisions,
-      });
-      continue;
-    }
-
     report.mounted.push(info);
   }
 

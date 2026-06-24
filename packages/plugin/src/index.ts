@@ -7,3 +7,4 @@ export * from './config.js';
 export * from './discovery.js';
 export * from './gate.js';
 export * from './load-plugins.js';
+export * from './load-plugin.js';

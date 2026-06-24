@@ -57,3 +57,20 @@ export interface LoadPluginsOptions {
   cwd?: string;
   strict?: boolean;
 }
+
+/**
+ * Options for the imperative, single-plugin `loadPlugin`. Unlike the
+ * manifest-driven `loadPlugins`, the specifier need not be a declared
+ * dependency or carry an `agentback` marker.
+ */
+export interface LoadPluginOptions {
+  /**
+   * Named export to mount as the Component. Required when the target has no
+   * `agentback` marker; otherwise overrides the marker's `component`.
+   */
+  component?: string;
+  /** DI keys this mount may intentionally re-bind (else a re-bind throws). */
+  allowOverride?: string[];
+  /** Base directory for resolving relative paths / bare specifiers. */
+  cwd?: string;
+}
