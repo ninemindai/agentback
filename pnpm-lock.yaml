@@ -392,6 +392,30 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
 
+  examples/hello-plugin:
+    dependencies:
+      '@agentback/context':
+        specifier: workspace:*
+        version: link:../../packages/context
+      '@agentback/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@agentback/openapi':
+        specifier: workspace:*
+        version: link:../../packages/openapi
+      '@agentback/plugin':
+        specifier: workspace:*
+        version: link:../../packages/plugin
+      '@agentback/rest':
+        specifier: workspace:*
+        version: link:../../packages/rest
+      tslib:
+        specifier: ^2.8.1
+        version: 2.8.1
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+
   examples/hello-rest:
     dependencies:
       '@agentback/authentication':

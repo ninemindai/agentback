@@ -57,6 +57,9 @@ Use `loadPlugins` (plural) for the declarative manifest path; use `loadPlugin`
 collision guard (the second mount re-binds the component's own — now
 app-owned — key). Mount each plugin once, or pass `allowOverride` deliberately.
 
+A runnable end-to-end demo of both entry points lives in
+[`examples/hello-plugin`](../../examples/hello-plugin).
+
 ## Making a package a plugin
 
 Add one stanza to the package's `package.json`. The named export must be a

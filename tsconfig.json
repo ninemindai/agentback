@@ -65,6 +65,7 @@
     {"path": "examples/hello-x402"},
     {"path": "examples/hello-chat"},
     {"path": "examples/hello-uploads"},
-    {"path": "examples/hello-mcp-apps"}
+    {"path": "examples/hello-mcp-apps"},
+    {"path": "examples/hello-plugin"}
   ]
 }

@@ -134,6 +134,7 @@ pnpm -F hello-client start       # the typed client calling hello-rest's schemas
 | `examples/hello-mcp-apps` | MCP Apps `ui://` widget rendered by a host | [MCP Apps](guides/mcp-apps-widgets.md)                                    |
 | `examples/hello-actors`         | Addressable, serialized actors over REST                      | [Actor model](actor-model.md)                                             |
 | `examples/hello-agent-console`  | Introspection MCP + agent console dock (see + evolve)         | [Agent console security](guides/agent-console.md)                         |
+| `examples/hello-plugin`         | Declarative `loadPlugins` + imperative `loadPlugin` mounting  | [Composition](../packages/plugin/README.md)                               |
 
 ## Conventions in these docs
 

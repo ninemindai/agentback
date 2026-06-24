@@ -66,7 +66,7 @@ await loadPlugin(app, './plugins/bare.js', {component: 'MyComponent'});
 `loadPlugin` returns the mounted `PluginInfo` and throws on failure; both share
 the same DI-key collision detection. Use the plural for the dependency-graph
 path, the singular for an explicit code-driven mount. See
-`packages/plugin/README.md`.
+`packages/plugin/README.md` and the runnable `examples/hello-plugin`.
 
 ## Middleware
 
