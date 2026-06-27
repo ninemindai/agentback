@@ -24,6 +24,7 @@ import {
   useCallback,
   useEffect,
   useReducer,
+  useRef,
   useState,
 } from 'react';
 import {getFocus, subscribeFocus} from '@agentback/console/focus.js';
@@ -40,7 +41,10 @@ import type {
   SseClientEvent,
 } from './sse.js';
 import {Markdown} from './markdown.js';
-import {MessageScroller} from '@shadcn/react/message-scroller';
+import {
+  MessageScroller,
+  useMessageScroller,
+} from '@shadcn/react/message-scroller';
 
 // ---------------------------------------------------------------------------
 // Config shape (mirrors ConsoleClientConfig['chat'])
@@ -312,6 +316,58 @@ function Spin({size = 14}: {size?: number}) {
 }
 
 // ---------------------------------------------------------------------------
+// Follow controller
+// ---------------------------------------------------------------------------
+
+/**
+ * Drives stick-to-bottom during streaming.
+ *
+ * `MessageScroller`'s built-in `autoScroll` only re-engages "follow" mode while
+ * the viewport is momentarily *at* the bottom, so a fast/continuous stream that
+ * outruns the scroll never re-pins and falls behind permanently. We instead
+ * drive the library's own `scrollToEnd()` on every streamed update — but only
+ * while the user is pinned to the bottom. A real user scroll away from the
+ * bottom clears `stickRef`, so we never fight a reader who scrolled up to read;
+ * the jump-to-latest button (which scrolls to end) re-arms the stick.
+ *
+ * Rendered as a child of `MessageScroller.Provider` so it can use the hook.
+ */
+function FollowController({
+  signal,
+  viewportRef,
+}: {
+  signal: number;
+  viewportRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const {scrollToEnd} = useMessageScroller();
+  // True while the reader is at (or within STICK_PX of) the live edge. A
+  // ref — not state — so updating it never re-renders mid-stream.
+  const stickRef = useRef(true);
+
+  // Track user scroll intent. Content growth alone does not fire `scroll`
+  // (scrollTop is unchanged, only scrollHeight grows), so this flips only on a
+  // real scroll — distinguishing "user scrolled up" from "content grew below".
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp) return;
+    const STICK_PX = 80;
+    const onScroll = () => {
+      const dist = vp.scrollHeight - vp.clientHeight - vp.scrollTop;
+      stickRef.current = dist <= STICK_PX;
+    };
+    vp.addEventListener('scroll', onScroll, {passive: true});
+    return () => vp.removeEventListener('scroll', onScroll);
+  }, [viewportRef]);
+
+  // On each streamed content change, follow the bottom iff still stuck.
+  useEffect(() => {
+    if (stickRef.current) scrollToEnd({behavior: 'auto'});
+  }, [signal, scrollToEnd]);
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Main Dock component
 // ---------------------------------------------------------------------------
 
@@ -549,6 +605,17 @@ export function Dock({
     return -1;
   })();
 
+  // ── Stream-follow plumbing ───────────────────────────────────────────────
+  // A ref to the MessageScroller viewport (the scrolling element) and a scalar
+  // that changes on every streamed token, so FollowController can re-pin.
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const lastMsg = conv.messages[conv.messages.length - 1];
+  const followSignal =
+    conv.messages.length * 2 +
+    (lastMsg?.text?.length ?? 0) +
+    (lastMsg?.toolCalls?.length ?? 0) +
+    (conv.status === 'streaming' ? 1 : 0);
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
@@ -602,12 +669,15 @@ export function Dock({
 
         {/* Stream / state body */}
         <MessageScroller.Provider
-          autoScroll
           defaultScrollPosition="end"
           scrollEdgeThreshold={48}
         >
+          <FollowController signal={followSignal} viewportRef={viewportRef} />
           <MessageScroller.Root className="dock-stream-root">
-            <MessageScroller.Viewport className="stream scroll-fade">
+            <MessageScroller.Viewport
+              ref={viewportRef}
+              className="stream scroll-fade"
+            >
               <MessageScroller.Content className="dock-stream-content">
                 {/* State: no-agent */}
                 {dock.status === 'no-agent' && (
@@ -728,7 +798,6 @@ export function Dock({
                       <MessageScroller.Item
                         key={idx}
                         messageId={String(idx)}
-                        scrollAnchor
                       >
                         <MessageBubble
                           msg={msg}
@@ -759,6 +828,7 @@ export function Dock({
             {/* Jump-to-latest — only visible when scrolled away from the end */}
             <MessageScroller.Button
               direction="end"
+              behavior="auto"
               className="dock-jump"
               render={(props, state) =>
                 state.active ? (
