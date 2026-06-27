@@ -22,6 +22,8 @@ The agent can:
 - **Run shell commands** under the developer's permission approval.
 - Call the app's own MCP tools (the business MCP surface, if wired).
 
+The dock's message list auto-follows the newest streaming token (stick-to-bottom) and surfaces a **↓ jump to latest** button when you scroll up; live status text uses a shimmer animation (`.shimmer` from `@agentback/console-theme`) with a spinner fallback under `prefers-reduced-motion`.
+
 It **cannot** (framework invariants):
 
 - Call routes or tools via the introspection surface — the introspection MCP

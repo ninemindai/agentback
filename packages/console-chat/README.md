@@ -83,6 +83,14 @@ the first discovered agent. Ask it anything about your running app; it can call
   "Rebuild & reconnect." Where `build:watch` is running, it detects the restart
   and re-grounds the session.
 
+### Conversation scrolling
+
+The dock's message list uses the headless `@shadcn/react` `MessageScroller`. It
+auto-follows the newest token while the agent streams, but stops following if you
+scroll up to read — a **↓ jump to latest** button then appears to return to the
+bottom. The streaming and connecting status lines use the `shimmer` utility from
+`@agentback/console-theme`; the spinner remains as the reduced-motion fallback.
+
 ---
 
 ## Bridge endpoints

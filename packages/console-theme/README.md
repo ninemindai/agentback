@@ -34,6 +34,17 @@ const html = `<!doctype html><html><head>
 </head><body>…</body></html>`;
 ```
 
+## Utilities
+
+- `.shimmer` — animated gradient text sweep for live status ("Working…", "handshake").
+  Honors `prefers-reduced-motion` (renders static `--muted` text).
+- `.scroll-fade` — scroll-aware top/bottom edge fade for scroll containers, via pure
+  CSS (`animation-timeline: scroll()` + `mask-image`, no scroll listeners). Gated on
+  `@supports`, so it is a no-op where unsupported (content stays fully visible).
+
+Both are ports of the same-named shadcn/ui utilities, rewritten as plain CSS (the
+console UIs do not use Tailwind).
+
 ## Layering
 
 No runtime dependencies beyond `tslib`. Pure CSS + constants — no DOM, no React, no framework coupling. The UI packages consume it at build/render time; it does not appear in any OpenAPI spec or DI container.
