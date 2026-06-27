@@ -13,7 +13,7 @@
 - **ESM only:** every relative import ends in `.js` (e.g. `import {x} from './live.js'`), even though the source is `.ts`/`.tsx`.
 - **Copyright header:** every new file starts with the 3-line header used by its sibling files:
   ```ts
-  // Copyright ninemind.ai 2026. All Rights Reserved.
+  // Copyright NineMind, Inc. 2026. All Rights Reserved.
   // This file is licensed under the MIT License.
   // License text available at https://opensource.org/license/mit/
   ```
@@ -40,7 +40,7 @@
 
 ```ts
 // packages/console/src/__tests__/unit/live-endpoint.unit.ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -115,7 +115,7 @@ Expected: FAIL to build — `Cannot find module '../../live.js'`.
 
 ```ts
 // packages/console/src/live.ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -176,7 +176,7 @@ git commit -m "feat(console): BOOT_ID + /live SSE handler"
 
 ```ts
 // packages/console/src/__tests__/integration/console-live.integration.ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -280,7 +280,7 @@ git commit -m "feat(console): mount /live SSE endpoint in mountConsole"
 
 ```ts
 // packages/console/src/__tests__/unit/live-bus.unit.ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -398,7 +398,7 @@ Expected: FAIL to build — `Cannot find module '../../client/live.js'`.
 
 ```ts
 // packages/console/src/client/live.ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -540,7 +540,7 @@ git commit -m "feat(console): liveBus client — reload on boot-id change"
 
 ```tsx
 // packages/console/src/__tests__/unit/live-wiring.unit.tsx
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -760,7 +760,7 @@ git commit -m "feat(console): wire reloadNonce through the shell (prop vs remoun
 
 ```tsx
 // packages/context-explorer/src/__tests__/unit/app-reload-prop.unit.tsx
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -890,7 +890,7 @@ git commit -m "feat(context-explorer): refetch on reloadNonce (preserve selectio
 
 ```tsx
 // packages/schema-explorer/src/__tests__/unit/app-reload-prop.unit.tsx
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 

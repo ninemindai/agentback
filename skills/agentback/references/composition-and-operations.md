@@ -504,7 +504,7 @@ prerequisite); needs wrangler ≥ 4.102.
 - **Tests run from `dist/`**, never from `src/`. Edit `.ts`, build, then test.
 - **Three-line MIT header** on every new source file:
   ```ts
-  // Copyright ninemind.ai 2026. All Rights Reserved.
+  // Copyright NineMind, Inc. 2026. All Rights Reserved.
   // Node module: @agentback/<pkg>
   // This file is licensed under the MIT License.
   ```

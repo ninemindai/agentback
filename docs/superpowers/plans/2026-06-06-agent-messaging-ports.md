@@ -14,7 +14,7 @@
 
 - Three-line MIT header (per CLAUDE.md — NOT other copyright variants):
   ```ts
-  // Copyright ninemind.ai 2026. All Rights Reserved.
+  // Copyright NineMind, Inc. 2026. All Rights Reserved.
   // Node module: @agentback/agent-messaging
   // This file is licensed under the MIT License.
   ```
@@ -88,7 +88,7 @@
 - [ ] **Step 3: Create `packages/agent-messaging/src/index.ts`** (stub barrel — filled in later tasks)
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -129,7 +129,7 @@ git commit -m "feat(agent-messaging): scaffold package"
 Create `packages/agent-messaging/src/__tests__/unit/descriptors.unit.ts`:
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -170,7 +170,7 @@ Expected: FAIL — `Cannot find module '../../descriptors.js'`.
 - [ ] **Step 3: Create `packages/agent-messaging/src/descriptors.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -233,7 +233,7 @@ Type-only files (no runtime) — verified by compilation; exercised by later tas
 - [ ] **Step 1: Create `packages/agent-messaging/src/types.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -332,7 +332,7 @@ export interface QueueStats {
 - [ ] **Step 2: Create `packages/agent-messaging/src/ports.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -425,7 +425,7 @@ Constants only — verified by compilation; used by decorators/bootstrapper/comp
 - [ ] **Step 1: Create `packages/agent-messaging/src/keys.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -479,7 +479,7 @@ The conformance suite is the behavioral contract; the in-memory adapter is imple
 Create `packages/agent-messaging/src/testing/conformance.ts`:
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -590,7 +590,7 @@ export function runJobQueueConformance(
 Create `packages/agent-messaging/src/__tests__/unit/in-memory-job-queue.unit.ts`:
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -608,7 +608,7 @@ Expected: FAIL — `Cannot find module '../../in-memory/in-memory-job-queue.js'`
 - [ ] **Step 4: Implement `packages/agent-messaging/src/in-memory/in-memory-job-queue.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -937,7 +937,7 @@ export function runEventBusConformance(
 Create `packages/agent-messaging/src/__tests__/unit/in-memory-event-bus.unit.ts`:
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -955,7 +955,7 @@ Expected: FAIL — `Cannot find module '../../in-memory/in-memory-event-bus.js'`
 - [ ] **Step 4: Implement `packages/agent-messaging/src/in-memory/in-memory-event-bus.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -1096,7 +1096,7 @@ The in-memory admin operates over the same store as `InMemoryJobQueue`, so they 
 Create `packages/agent-messaging/src/in-memory/in-memory-store.ts`:
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -1154,7 +1154,7 @@ export class InMemoryStore {
 Replace the full contents of `packages/agent-messaging/src/in-memory/in-memory-job-queue.ts`:
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -1395,7 +1395,7 @@ export function runQueueAdminConformance(
 - [ ] **Step 4: Implement `packages/agent-messaging/src/in-memory/in-memory-queue-admin.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -1458,7 +1458,7 @@ export class InMemoryQueueAdmin implements QueueAdmin {
 Create `packages/agent-messaging/src/__tests__/unit/in-memory-queue-admin.unit.ts`:
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -1499,7 +1499,7 @@ git commit -m "feat(agent-messaging): QueueAdmin conformance + shared in-memory 
 Create `packages/agent-messaging/src/__tests__/unit/scheduler.unit.ts`:
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -1543,7 +1543,7 @@ Expected: FAIL — `Cannot find module '../../scheduler.js'`.
 - [ ] **Step 3: Implement `packages/agent-messaging/src/scheduler.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -1601,7 +1601,7 @@ git commit -m "feat(agent-messaging): adapter-agnostic DefaultScheduler"
 Create `packages/agent-messaging/src/__tests__/unit/decorators.unit.ts`:
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -1660,7 +1660,7 @@ Expected: FAIL — `Cannot find module '../../decorators.js'`.
 - [ ] **Step 3: Implement `packages/agent-messaging/src/decorators.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -1757,7 +1757,7 @@ Discovers classes tagged `messaging:processor`/`messaging:subscriber`, reads met
 Create `packages/agent-messaging/src/__tests__/unit/bootstrapper.unit.ts`:
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -1830,7 +1830,7 @@ Expected: FAIL — `Cannot find module '../../bootstrapper.js'`.
 - [ ] **Step 3: Implement `packages/agent-messaging/src/bootstrapper.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -1987,7 +1987,7 @@ git commit -m "feat(agent-messaging): MessagingBootstrapper decorator discovery"
 Create `packages/agent-messaging/src/__tests__/unit/component.unit.ts`:
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -2018,7 +2018,7 @@ Expected: FAIL — `Cannot find module '../../component.js'`.
 - [ ] **Step 3: Implement `packages/agent-messaging/src/component.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 
@@ -2059,7 +2059,7 @@ export class InMemoryMessagingComponent implements Component {
 - [ ] **Step 4: Fill in the barrel `packages/agent-messaging/src/index.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/agent-messaging
 // This file is licensed under the MIT License.
 

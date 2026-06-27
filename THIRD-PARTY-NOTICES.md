@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-`AgentBack` (Copyright © 2026 ninemind.ai, MIT-licensed — see
+`AgentBack` (Copyright © 2026 NineMind, Inc., MIT-licensed — see
 [LICENSE](./LICENSE)) is a fork of **LoopBack 4** and contains substantial
 portions of code derived from it. Several packages
 (`metadata`, `context`, `core`, `http-server`, `express`, `authentication`,
@@ -9,7 +9,7 @@ portions of code derived from it. Several packages
 (`openapi`, `rest`, `mcp`, `mcp-http`, `mcp-inspector`, `rest-explorer`,
 `client`, `context-explorer`) are rewritten but follow LoopBack conventions.
 
-Per-file copyright headers in this repository carry the `ninemind.ai`
+Per-file copyright headers in this repository carry the `NineMind, Inc.`
 copyright; the upstream copyright notice and MIT permission notice required by
 the LoopBack license are retained here, in accordance with the MIT License.
 

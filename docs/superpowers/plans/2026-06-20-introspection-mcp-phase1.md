@@ -111,7 +111,7 @@
 - [ ] **Step 3: Create `packages/introspection/src/index.ts` (placeholder)**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -158,7 +158,7 @@ git commit -m "feat(introspection): scaffold the read-only introspection MCP pac
 Create `packages/introspection/src/__tests__/model.unit.ts`:
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -225,7 +225,7 @@ Expected: FAIL — `error TS2307: Cannot find module '../model.js'` (or "has no 
 - [ ] **Step 3: Implement `src/model.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -458,7 +458,7 @@ git commit -m "feat(introspection): get(selector) with 404 not_found, value-safe
 - [ ] **Step 1: Implement `src/index.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -606,7 +606,7 @@ git commit -m "feat(introspection): @mcpServer with inventory/get/get_okf_bundle
 Create `packages/introspection/src/__tests__/introspection.unit.ts`:
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -837,7 +837,7 @@ listed there, near the other `examples/hello-*` entries) — without it,
 - [ ] **Step 3: Create `examples/hello-agent-console/src/index.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 

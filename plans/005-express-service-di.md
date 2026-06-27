@@ -46,7 +46,7 @@ The framework already DI-injects the analogous seams: `CoreBindings.FETCH` (`pac
 - **Lifecycle/DI decorators** — confirm `@agentback/core` exports `lifeCycleObserver`, `BindingScope`, `config`, `ContextTags`, `Component` (it is the LB4 fork; the reference imports these from `@loopback/core`). If a name differs, use the `@agentback/core` equivalent and note it.
 - **Copyright header** — the repo's de-facto 3-line header (NOT the stale `CLAUDE.md` spec, and NOT the reference's Faction header):
   ```ts
-  // Copyright ninemind.ai 2026. All Rights Reserved.
+  // Copyright NineMind, Inc. 2026. All Rights Reserved.
   // This file is licensed under the MIT License.
   // License text available at https://opensource.org/license/mit/
   ```
@@ -73,7 +73,7 @@ The framework already DI-injects the analogous seams: `CoreBindings.FETCH` (`pac
 `packages/express/src/express-service.ts` — the service class, modeled on the reference but carrying what `RestServer` needs (the app, plus the runtime bits RestServer registers middleware/parsers with):
 
 ```ts
-// Copyright ninemind.ai 2026. ... (3-line header)
+// Copyright NineMind, Inc. 2026. ... (3-line header)
 import {BindingScope, ContextTags, lifeCycleObserver} from '@agentback/core';
 import express, {type Express} from 'express';
 import cors from 'cors';

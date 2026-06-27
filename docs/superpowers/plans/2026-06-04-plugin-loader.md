@@ -113,7 +113,7 @@ packages/plugin/
 - [ ] **Step 3: Create `packages/plugin/src/index.ts` (placeholder export so the build has something)**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/plugin
 // This file is licensed under the MIT License.
 
@@ -157,7 +157,7 @@ No test of its own (pure type declarations); exercised by every later test.
 - [ ] **Step 1: Create `packages/plugin/src/types.ts`**
 
 ````ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/plugin
 // This file is licensed under the MIT License.
 
@@ -258,7 +258,7 @@ git commit -m "feat(plugin): plugin loader public types"
 Create `packages/plugin/src/__tests__/unit/config.unit.ts`:
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/plugin
 // This file is licensed under the MIT License.
 
@@ -308,7 +308,7 @@ Expected: FAIL — build error, `config.js` does not exist.
 - [ ] **Step 3: Create `packages/plugin/src/config.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/plugin
 // This file is licensed under the MIT License.
 
@@ -419,7 +419,7 @@ export const nothing = true;
 Create `packages/plugin/src/__tests__/unit/discovery.unit.ts`:
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/plugin
 // This file is licensed under the MIT License.
 
@@ -475,7 +475,7 @@ Expected: FAIL — `discovery.js` does not exist.
 - [ ] **Step 5: Create `packages/plugin/src/discovery.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/plugin
 // This file is licensed under the MIT License.
 
@@ -676,7 +676,7 @@ git commit -m "feat(plugin): disk-based discovery + exports-map-safe resolver"
 Create `packages/plugin/src/__tests__/unit/gate.unit.ts`:
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/plugin
 // This file is licensed under the MIT License.
 
@@ -741,7 +741,7 @@ Expected: FAIL — `gate.js` does not exist.
 - [ ] **Step 3: Create `packages/plugin/src/gate.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/plugin
 // This file is licensed under the MIT License.
 
@@ -922,7 +922,7 @@ export class CollideBComponent {
 Create `packages/plugin/src/__tests__/acceptance/load-plugins.acceptance.ts`:
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/plugin
 // This file is licensed under the MIT License.
 
@@ -1026,7 +1026,7 @@ Expected: FAIL — `load-plugins.js` does not exist.
 - [ ] **Step 5: Create `packages/plugin/src/load-plugins.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/plugin
 // This file is licensed under the MIT License.
 
@@ -1214,7 +1214,7 @@ Expected: a class whose name exactly matches the `component` value above. If it 
 Create `packages/plugin/src/__tests__/acceptance/deps-discovery.acceptance.ts`:
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // Node module: @agentback/plugin
 // This file is licensed under the MIT License.
 

@@ -14,7 +14,7 @@
 - **Tests run against `dist/`**, not `src/`. Always `pnpm -F <pkg> build` before tests. Test files: `src/__tests__/unit/<name>.unit.ts`, globbed as `packages/*/dist/__tests__/**/*.{unit,integration,e2e}.js`. Canonical run (from worktree root): `pnpm exec vitest run packages/<pkg>/dist/__tests__/unit/<file>.unit.js`.
 - **License header** (tooling-package style, matching the rest of `@agentback/cli`):
   ```ts
-  // Copyright ninemind.ai 2026. All Rights Reserved.
+  // Copyright NineMind, Inc. 2026. All Rights Reserved.
   // This file is licensed under the MIT License.
   // License text available at https://opensource.org/license/mit/
   ```
@@ -101,7 +101,7 @@ Keep `detectPackageManager`, `parseUrl` as private helpers in `vercel.ts` (or a 
 - [ ] **Step 3: Create `run-deploy.ts` — the generic pipeline.**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -207,7 +207,7 @@ git commit -m "refactor(cli): extract DeployTarget seam; Vercel behind the inter
 - [ ] **Step 1: Write the failing test** (`asset-source.unit.ts`)
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -255,7 +255,7 @@ export type AssetSource = (suffix: string) => Promise<globalThis.Response | unde
 - [ ] **Step 4: Make `static.ts` re-export for back-compat.** Replace `static.ts`'s implementation with:
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -386,7 +386,7 @@ git commit -m "feat(rest): fromCdn AssetSource for edge dev UIs (CDN-hosted npm 
 - [ ] **Step 1: Write the failing test for `generateWorker`** (`__tests__/unit/generate-worker.unit.ts`)
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -418,7 +418,7 @@ describe('generateWorker', () => {
 - [ ] **Step 3: Implement `generate-worker.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -451,7 +451,7 @@ export default {
 - [ ] **Step 5: Write the failing test for `mergeWrangler`** (`__tests__/unit/merge-wrangler.unit.ts`)
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -493,7 +493,7 @@ Edit `packages/cli/package.json` dependencies: add `"smol-toml": "^1.3.1"`. Run 
 - [ ] **Step 7: Implement `merge-wrangler.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -542,7 +542,7 @@ export function mergeWrangler(
 - [ ] **Step 9: Write the failing test for `cloudflareTarget`** (`__tests__/unit/cloudflare-target.unit.ts`)
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -579,7 +579,7 @@ describe('cloudflareTarget', () => {
 - [ ] **Step 10: Run → fails. Implement `targets/cloudflare.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -691,7 +691,7 @@ git commit -m "feat(cli): cloudflare target — worker fetch leaf + wrangler.tom
 - [ ] **Step 1: Write the failing test** (drive the scanner over a fake metafile via dependency injection)
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -720,7 +720,7 @@ describe('scanImports', () => {
 - [ ] **Step 3: Implement `bundle-doctor.ts`**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -870,7 +870,7 @@ git commit -m "feat(cli): wire `deploy cloudflare` (aliases cf/workers) into the
 - [ ] **Step 2: Write the gated e2e**
 
 ```ts
-// Copyright ninemind.ai 2026. All Rights Reserved.
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 

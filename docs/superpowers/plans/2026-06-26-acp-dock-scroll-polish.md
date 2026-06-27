@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Node 22.13+, TypeScript 6.0, ESM-only, `.js` extensions on relative imports.
-- New source files carry the three-line MIT header (`// Copyright ninemind.ai 2026. All Rights Reserved.` …). This plan modifies existing files only — preserve their headers.
+- New source files carry the three-line MIT header (`// Copyright NineMind, Inc. 2026. All Rights Reserved.` …). This plan modifies existing files only — preserve their headers.
 - `@shadcn/react` peer dep is `react >=19`; console-chat is on `react ~19.2.7` ✓.
 - `@shadcn/react` bundles into `dist/client/main.js` — it must NOT be added to the `external` array in `build-client.mjs` (only `react`/`react-dom`/`react/jsx-runtime` stay external).
 - The client TSX (`src/client/**`) is excluded from vitest; `pnpm typecheck:client` is its only type gate. There is no unit-test seam for DOM scroll behavior — verification is build + typecheck:client + manual.
