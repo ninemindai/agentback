@@ -50,4 +50,3 @@ minimumReleaseAgeExclude:
   - '@typescript-eslint/typescript-estree@8.61.1'
   - '@typescript-eslint/utils@8.61.1'
   - '@typescript-eslint/visitor-keys@8.61.1'
-  - '@shadcn/react@0.1.0'
