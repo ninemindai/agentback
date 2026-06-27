@@ -24,7 +24,6 @@ import {
   useCallback,
   useEffect,
   useReducer,
-  useRef,
   useState,
 } from 'react';
 import {getFocus, subscribeFocus} from '@agentback/console/focus.js';
@@ -41,6 +40,7 @@ import type {
   SseClientEvent,
 } from './sse.js';
 import {Markdown} from './markdown.js';
+import {MessageScroller} from '@shadcn/react/message-scroller';
 
 // ---------------------------------------------------------------------------
 // Config shape (mirrors ConsoleClientConfig['chat'])
@@ -349,7 +349,6 @@ export function Dock({
 
   // ── Composer input ────────────────────────────────────────────────────────
   const [inputText, setInputText] = useState('');
-  const streamRef = useRef<HTMLDivElement | null>(null);
 
   // ── Pending permission (owned by conv state, updated here) ────────────────
   // conv.pendingPermission is the live pending perm; but the dock also needs to
@@ -362,14 +361,6 @@ export function Dock({
     [conv.pendingPermission],
   );
   const [scopeSession, setScopeSession] = useState(false);
-
-  // ── Auto-scroll to bottom ─────────────────────────────────────────────────
-  useEffect(() => {
-    const el = streamRef.current;
-    if (el) {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [conv.messages.length, conv.status]);
 
   // ── Load agents (if not pre-populated) ───────────────────────────────────
   useEffect(() => {
@@ -610,142 +601,175 @@ export function Dock({
         </div>
 
         {/* Stream / state body */}
-        <div className="stream" ref={streamRef}>
-          {/* State: no-agent */}
-          {dock.status === 'no-agent' && (
-            <div className="dock-empty">
-              <div className="dock-empty-title">No coding agent found</div>
-              <div>Install one to chat with your app.</div>
-              <code className="dock-install-hint">
-                npm i -g claude-agent-acp
-              </code>
-              <button
-                className="btn"
-                style={{marginTop: '8px'}}
-                onClick={() => dispatchDock({type: 'recheck'})}
-              >
-                Re-check
-              </button>
-            </div>
-          )}
+        <MessageScroller.Provider
+          autoScroll
+          defaultScrollPosition="end"
+          scrollEdgeThreshold={48}
+        >
+          <MessageScroller.Root className="dock-stream-root">
+            <MessageScroller.Viewport className="stream scroll-fade">
+              <MessageScroller.Content className="dock-stream-content">
+                {/* State: no-agent */}
+                {dock.status === 'no-agent' && (
+                  <div className="dock-empty">
+                    <div className="dock-empty-title">No coding agent found</div>
+                    <div>Install one to chat with your app.</div>
+                    <code className="dock-install-hint">
+                      npm i -g claude-agent-acp
+                    </code>
+                    <button
+                      className="btn"
+                      style={{marginTop: '8px'}}
+                      onClick={() => dispatchDock({type: 'recheck'})}
+                    >
+                      Re-check
+                    </button>
+                  </div>
+                )}
 
-          {/* State: connecting */}
-          {dock.status === 'connecting' && (
-            <div className="dock-empty">
-              <Spin size={16} />
-              <div>
-                Launching{' '}
-                <span className="badge">{dock.selectedAgentId ?? 'agent'}</span>
-                …
-              </div>
-              <div style={{color: 'var(--faint)', fontSize: '11px'}}>
-                handshake
-              </div>
-            </div>
-          )}
+                {/* State: connecting */}
+                {dock.status === 'connecting' && (
+                  <div className="dock-empty">
+                    <Spin size={16} />
+                    <div>
+                      Launching{' '}
+                      <span className="badge">
+                        {dock.selectedAgentId ?? 'agent'}
+                      </span>
+                      …
+                    </div>
+                    <div className="shimmer" style={{fontSize: '11px'}}>
+                      handshake
+                    </div>
+                  </div>
+                )}
 
-          {/* State: doctor / wrong version */}
-          {dock.status === 'doctor' && (
-            <div className="dock-empty">
-              <div
-                className="dock-empty-title"
-                style={{color: 'var(--accent)'}}
-              >
-                Adapter out of date
-              </div>
-              <div style={{fontSize: '12.5px', color: 'var(--muted)'}}>
-                {dock.doctorMessage ?? 'Version mismatch.'}
-              </div>
-              <code className="dock-install-hint">
-                npm i -g claude-agent-acp@latest
-              </code>
-              <button
-                className="btn"
-                style={{marginTop: '8px'}}
-                onClick={() => dispatchDock({type: 'restart'})}
-              >
-                Retry
-              </button>
-            </div>
-          )}
+                {/* State: doctor / wrong version */}
+                {dock.status === 'doctor' && (
+                  <div className="dock-empty">
+                    <div
+                      className="dock-empty-title"
+                      style={{color: 'var(--accent)'}}
+                    >
+                      Adapter out of date
+                    </div>
+                    <div style={{fontSize: '12.5px', color: 'var(--muted)'}}>
+                      {dock.doctorMessage ?? 'Version mismatch.'}
+                    </div>
+                    <code className="dock-install-hint">
+                      npm i -g claude-agent-acp@latest
+                    </code>
+                    <button
+                      className="btn"
+                      style={{marginTop: '8px'}}
+                      onClick={() => dispatchDock({type: 'restart'})}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
 
-          {/* State: crashed */}
-          {dock.status === 'crashed' && (
-            <div className="dock-empty">
-              <div
-                className="dock-empty-title"
-                style={{color: 'var(--err)'}}
-              >
-                Agent stopped
-              </div>
-              <div style={{fontSize: '12.5px'}}>
-                {dock.crashMessage ?? 'The session ended unexpectedly.'}
-              </div>
-              <div style={{display: 'flex', gap: '8px', marginTop: '8px'}}>
-                <button
-                  className="btn"
-                  onClick={() => dispatchDock({type: 'restart'})}
-                >
-                  Restart
-                </button>
-                <button className="btn ghost">
-                  View log
-                </button>
-              </div>
-            </div>
-          )}
+                {/* State: crashed */}
+                {dock.status === 'crashed' && (
+                  <div className="dock-empty">
+                    <div
+                      className="dock-empty-title"
+                      style={{color: 'var(--err)'}}
+                    >
+                      Agent stopped
+                    </div>
+                    <div style={{fontSize: '12.5px'}}>
+                      {dock.crashMessage ?? 'The session ended unexpectedly.'}
+                    </div>
+                    <div style={{display: 'flex', gap: '8px', marginTop: '8px'}}>
+                      <button
+                        className="btn"
+                        onClick={() => dispatchDock({type: 'restart'})}
+                      >
+                        Restart
+                      </button>
+                      <button className="btn ghost">View log</button>
+                    </div>
+                  </div>
+                )}
 
-          {/* State: rebuild (F5) */}
-          {dock.status === 'rebuild' && (
-            <div className="dock-empty">
-              <div>Edited files.</div>
-              <div className="dock-empty-title">Rebuild to see changes live</div>
-              <button
-                className="btn"
-                style={{marginTop: '8px'}}
-                onClick={() => {
-                  // Placeholder: Task 7 wires the real rebuild + reconnect.
-                  dispatchDock({type: 'restart'});
-                }}
-              >
-                Rebuild &amp; reconnect
-              </button>
-              <div style={{color: 'var(--faint)', fontSize: '11px'}}>
-                watch build detected
-              </div>
-            </div>
-          )}
+                {/* State: rebuild (F5) */}
+                {dock.status === 'rebuild' && (
+                  <div className="dock-empty">
+                    <div>Edited files.</div>
+                    <div className="dock-empty-title">
+                      Rebuild to see changes live
+                    </div>
+                    <button
+                      className="btn"
+                      style={{marginTop: '8px'}}
+                      onClick={() => {
+                        // Placeholder: Task 7 wires the real rebuild + reconnect.
+                        dispatchDock({type: 'restart'});
+                      }}
+                    >
+                      Rebuild &amp; reconnect
+                    </button>
+                    <div style={{color: 'var(--faint)', fontSize: '11px'}}>
+                      watch build detected
+                    </div>
+                  </div>
+                )}
 
-          {/* Conversation messages (ready state) */}
-          {(dock.status === 'ready' || conv.messages.length > 0) &&
-            dock.status !== 'no-agent' &&
-            dock.status !== 'connecting' &&
-            dock.status !== 'doctor' &&
-            dock.status !== 'rebuild' &&
-            conv.messages.map((msg, idx) => {
-              const isPerm = idx === lastAssistantIdx;
-              return (
-                <MessageBubble
-                  key={idx}
-                  msg={msg}
-                  perm={isPerm ? permForLastAssistant : null}
-                  onApprove={() => void resolvePermission(
-                    conv.pendingPermission?.options[0]?.optionId ?? 'allow_once',
-                  )}
-                  onDeny={() => void resolvePermission(null)}
-                  onScopeChange={handleScopeChange}
-                />
-              );
-            })
-          }
+                {/* Conversation messages (ready state) */}
+                {(dock.status === 'ready' || conv.messages.length > 0) &&
+                  dock.status !== 'no-agent' &&
+                  dock.status !== 'connecting' &&
+                  dock.status !== 'doctor' &&
+                  dock.status !== 'rebuild' &&
+                  conv.messages.map((msg, idx) => {
+                    const isPerm = idx === lastAssistantIdx;
+                    return (
+                      <MessageScroller.Item
+                        key={idx}
+                        messageId={String(idx)}
+                        scrollAnchor
+                      >
+                        <MessageBubble
+                          msg={msg}
+                          perm={isPerm ? permForLastAssistant : null}
+                          onApprove={() =>
+                            void resolvePermission(
+                              conv.pendingPermission?.options[0]?.optionId ??
+                                'allow_once',
+                            )
+                          }
+                          onDeny={() => void resolvePermission(null)}
+                          onScopeChange={handleScopeChange}
+                        />
+                      </MessageScroller.Item>
+                    );
+                  })}
 
-          {/* Inline streaming indicator */}
-          {dock.status === 'ready' && conv.status === 'streaming' && (
-            <div style={{paddingLeft: '4px'}}>
-              <Spin size={11} />
-            </div>
-          )}
-        </div>
+                {/* Inline streaming indicator (shimmer) */}
+                {dock.status === 'ready' && conv.status === 'streaming' && (
+                  <div className="dock-streaming">
+                    <Spin size={11} />
+                    <span className="shimmer">Working…</span>
+                  </div>
+                )}
+              </MessageScroller.Content>
+            </MessageScroller.Viewport>
+
+            {/* Jump-to-latest — only visible when scrolled away from the end */}
+            <MessageScroller.Button
+              direction="end"
+              className="dock-jump"
+              render={(props, state) =>
+                state.active ? (
+                  <button {...props} type="button">
+                    ↓ jump to latest
+                  </button>
+                ) : null
+              }
+            />
+          </MessageScroller.Root>
+        </MessageScroller.Provider>
 
         {/* Composer */}
         <div className="composer">
