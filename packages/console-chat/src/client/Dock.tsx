@@ -319,6 +319,9 @@ function Spin({size = 14}: {size?: number}) {
 // Follow controller
 // ---------------------------------------------------------------------------
 
+/** Distance from the live edge (px) within which we consider the reader stuck. */
+const STICK_PX = 80;
+
 /**
  * Drives stick-to-bottom during streaming.
  *
@@ -350,7 +353,6 @@ function FollowController({
   useEffect(() => {
     const vp = viewportRef.current;
     if (!vp) return;
-    const STICK_PX = 80;
     const onScroll = () => {
       const dist = vp.scrollHeight - vp.clientHeight - vp.scrollTop;
       stickRef.current = dist <= STICK_PX;
@@ -360,6 +362,10 @@ function FollowController({
   }, [viewportRef]);
 
   // On each streamed content change, follow the bottom iff still stuck.
+  // `scrollToEnd` is a stable callback from the library; `signal` is the real
+  // trigger. Calling it when already at the end is a harmless no-op, so firing
+  // on a slightly-too-broad signal never misbehaves — only ever fires while
+  // `stickRef` says the reader wants to follow.
   useEffect(() => {
     if (stickRef.current) scrollToEnd({behavior: 'auto'});
   }, [signal, scrollToEnd]);
@@ -607,13 +613,22 @@ export function Dock({
 
   // ── Stream-follow plumbing ───────────────────────────────────────────────
   // A ref to the MessageScroller viewport (the scrolling element) and a scalar
-  // that changes on every streamed token, so FollowController can re-pin.
+  // that changes on every streamed update, so FollowController can re-pin. It
+  // must move for anything that grows the content height: a new message, more
+  // assistant text, a new tool-call entry, or an in-place tool-call status flip
+  // (running → completed). `tcSignal` folds entry count + status lengths so the
+  // last case still registers; `* 2` on the message count dominates any
+  // opposing delta so a message boundary can never net to no change.
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const lastMsg = conv.messages[conv.messages.length - 1];
+  const tcSignal = (lastMsg?.toolCalls ?? []).reduce(
+    (sum, tc) => sum + 1 + (tc.status?.length ?? 0),
+    0,
+  );
   const followSignal =
     conv.messages.length * 2 +
     (lastMsg?.text?.length ?? 0) +
-    (lastMsg?.toolCalls?.length ?? 0) +
+    tcSignal +
     (conv.status === 'streaming' ? 1 : 0);
 
   // ── Render ────────────────────────────────────────────────────────────────
