@@ -1,10 +1,7 @@
 // Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
-import {
-  requireBearerAuth,
-  metadataHandler,
-} from '@modelcontextprotocol/server-legacy/auth';
-import type {OAuthTokenVerifier} from '@modelcontextprotocol/server-legacy/auth';
+import {requireBearerAuth} from '@modelcontextprotocol/express';
+import type {OAuthTokenVerifier} from '@modelcontextprotocol/express';
 import {isInitializeRequest} from '@modelcontextprotocol/server';
 import type {
   EventStore,
@@ -53,6 +50,12 @@ export {
 export {mountMcpHttpFetch} from './fetch.js';
 // Re-export so callers can implement a verifier/store without deep SDK imports.
 export type {AuthInfo, OAuthTokenVerifier, EventStore};
+// Re-export the exact `OAuthError` class this package's bearer middleware
+// recognizes. v2's sub-packages each bundle their own copy of the auth classes
+// (no shared `@modelcontextprotocol/core`), so `instanceof` only matches the
+// copy from the same package — a verifier that throws `OAuthError` imported
+// from `@modelcontextprotocol/client` would be misread as a 500. Throw THIS one.
+export {OAuthError} from '@modelcontextprotocol/server';
 
 export interface McpHttpOptions {
   /** URL path the Streamable HTTP transport is mounted at. Default `/mcp`. */
@@ -329,18 +332,16 @@ export function mountMcpHttp(
       bearer_methods_supported: ['header'],
       ...(auth.scopesSupported ? {scopes_supported: auth.scopesSupported} : {}),
     };
-    // metadataHandler returns a Router whose route is `/`, so it must be
-    // mounted with `use` (which strips the prefix), not `get`.
-    expressApp.use(PROTECTED_RESOURCE_PATH, metadataHandler(metadata));
+    // Serve the RFC 9728 Protected Resource Metadata directly. AgentBack is a
+    // pure resource server pointing at an EXTERNAL authorization server, so it
+    // has no AS metadata of its own to expose — v2's `mcpAuthMetadataRouter`
+    // would require the AS's RFC 8414 metadata, which lives on the AS, not
+    // here. `requireBearerAuth` points its `WWW-Authenticate` challenge at
+    // this URL so unauthenticated clients still discover the AS.
+    expressApp.get(PROTECTED_RESOURCE_PATH, (_req, res) => {
+      res.json(metadata);
+    });
     guards.push(
-      // TODO(mcp-sdk-v2): the RFC 9728 resource-server bearer path currently
-      // uses the FROZEN `@modelcontextprotocol/server-legacy/auth` copy of
-      // `requireBearerAuth`/`metadataHandler` (deprecated, but functional and
-      // behaviorally identical to v1). The maintained v2 home is
-      // `@modelcontextprotocol/express`; re-pointing there requires our
-      // `OAuthTokenVerifier`s (framework-auth.ts) to throw the v2 `OAuthError`
-      // — the express middleware does not recognize the legacy error classes.
-      // Deferred so the spike stays behavior-preserving.
       requireBearerAuth({
         verifier: auth.verifier,
         requiredScopes: auth.requiredScopes,

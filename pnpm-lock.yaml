@@ -1557,9 +1557,6 @@ importers:
       '@modelcontextprotocol/client':
         specifier: 2.0.0-beta.1
         version: 2.0.0-beta.1
-      '@modelcontextprotocol/server-legacy':
-        specifier: 2.0.0-beta.1
-        version: 2.0.0-beta.1(express@5.2.1)
       tslib:
         specifier: ^2.8.1
         version: 2.8.1
@@ -1616,9 +1613,6 @@ importers:
       '@agentback/testlab':
         specifier: workspace:~
         version: link:../testlab
-      '@modelcontextprotocol/server-legacy':
-        specifier: 2.0.0-beta.1
-        version: 2.0.0-beta.1(express@5.2.1)
       vitest:
         specifier: ~4.1.9
         version: 4.1.9(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@24.12.4)(vite@8.0.13(@types/node@24.13.2)(esbuild@0.28.1)(tsx@4.21.0)(yaml@2.9.0))
@@ -1686,15 +1680,15 @@ importers:
       '@modelcontextprotocol/client':
         specifier: 2.0.0-beta.1
         version: 2.0.0-beta.1
+      '@modelcontextprotocol/express':
+        specifier: 2.0.0-beta.1
+        version: 2.0.0-beta.1(@modelcontextprotocol/server@2.0.0-beta.1)(express@5.2.1)
       '@modelcontextprotocol/node':
         specifier: 2.0.0-beta.1
         version: 2.0.0-beta.1(@modelcontextprotocol/server@2.0.0-beta.1)(hono@4.12.27)
       '@modelcontextprotocol/server':
         specifier: 2.0.0-beta.1
         version: 2.0.0-beta.1
-      '@modelcontextprotocol/server-legacy':
-        specifier: 2.0.0-beta.1
-        version: 2.0.0-beta.1(express@5.2.1)
       '@types/express':
         specifier: ^5.0.6
         version: 5.0.6
@@ -3215,6 +3209,13 @@ packages:
     resolution: {integrity: sha512-1YbnguKN7OFGA/lmCtgIthyE5d+j7dvu7hJld+f0mKrM0YAV4Q8TG80RBto+qyupxhHjTMEWItHu7cQlAmVtyA==}
     engines: {node: '>=20'}
 
+  '@modelcontextprotocol/express@2.0.0-beta.1':
+    resolution: {integrity: sha512-ollDfegguMmJO4lv9UPJBvywsEiVDAgAJ5oWxqvcCyxRmu37axRszxi/MGRCRkLxveIXRDCsPXg9HY8/5C6pXA==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@modelcontextprotocol/server': ^2.0.0-beta.1
+      express: ^4.18.0 || ^5.0.0
+
   '@modelcontextprotocol/ext-apps@1.7.4':
     resolution: {integrity: sha512-QQqysE549cf/Y0VabBmAACXhj92EhB3t8yVct2BHbkWiPTFA1S91EqTVjYXXcZEefXU0pmHcdObhsNMcomJIOQ==}
     engines: {node: '>=20'}
@@ -3247,16 +3248,6 @@ packages:
       zod: ^3.25 || ^4.0
     peerDependenciesMeta:
       '@cfworker/json-schema':
-        optional: true
-
-  '@modelcontextprotocol/server-legacy@2.0.0-beta.1':
-    resolution: {integrity: sha512-KyBmF+cEeFkq02ArD2GCiq2sTk8w01zZzn55KQHb7KvQQ0ABcsP1j0zT4pefqFGg86JSky+BdcGwmPgwE+I9Vw==}
-    engines: {node: '>=20'}
-    deprecated: This package is a frozen copy of v1's SSE transport and OAuth Authorization Server helpers for migration purposes only. Use StreamableHTTP from @modelcontextprotocol/server and a dedicated OAuth server in production. Will not receive new features.
-    peerDependencies:
-      express: ^4.18.0 || ^5.0.0
-    peerDependenciesMeta:
-      express:
         optional: true
 
   '@modelcontextprotocol/server@2.0.0-beta.1':
@@ -6691,6 +6682,12 @@ snapshots:
       pkce-challenge: 5.0.1
       zod: 4.4.3
 
+  '@modelcontextprotocol/express@2.0.0-beta.1(@modelcontextprotocol/server@2.0.0-beta.1)(express@5.2.1)':
+    dependencies:
+      '@modelcontextprotocol/server': 2.0.0-beta.1
+      cors: 2.8.6
+      express: 5.2.1
+
   '@modelcontextprotocol/ext-apps@1.7.4(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(zod@4.4.3)':
     dependencies:
       '@modelcontextprotocol/sdk': 1.29.0(zod@4.4.3)
@@ -6728,17 +6725,6 @@ snapshots:
       zod-to-json-schema: 3.25.2(zod@4.4.3)
     transitivePeerDependencies:
       - supports-color
-
-  '@modelcontextprotocol/server-legacy@2.0.0-beta.1(express@5.2.1)':
-    dependencies:
-      content-type: 1.0.5
-      cors: 2.8.6
-      express-rate-limit: 8.5.2(express@5.2.1)
-      pkce-challenge: 5.0.1
-      raw-body: 3.0.2
-      zod: 4.4.3
-    optionalDependencies:
-      express: 5.2.1
 
   '@modelcontextprotocol/server@2.0.0-beta.1':
     dependencies:

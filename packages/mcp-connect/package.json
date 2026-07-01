@@ -33,7 +33,6 @@
     "@agentback/mcp": "workspace:~",
     "@agentback/mcp-http": "workspace:~",
     "@agentback/testlab": "workspace:~",
-    "@modelcontextprotocol/server-legacy": "2.0.0-beta.1",
     "vitest": "~4.1.9",
     "zod": "^4.4.3"
   },

@@ -1,6 +1,6 @@
 // Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
-import {InvalidTokenError} from '@modelcontextprotocol/server-legacy/auth';
+import {OAuthError} from '@modelcontextprotocol/server';
 import {
   Client,
   StreamableHTTPClientTransport,
@@ -199,7 +199,7 @@ const verifier = {
     const expiresAt = Math.floor(Date.now() / 1000) + 3600;
     if (token === 'good')
       return {token, clientId: 'cli', scopes: [], expiresAt};
-    throw new InvalidTokenError('invalid token');
+    throw new OAuthError('invalid_token', 'invalid token');
   },
 };
 
