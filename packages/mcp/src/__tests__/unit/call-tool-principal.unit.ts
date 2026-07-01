@@ -9,7 +9,7 @@ import {Context, inject} from '@agentback/context';
 import {Application} from '@agentback/core';
 import {securityId, SecurityBindings} from '@agentback/security';
 import type {UserProfile} from '@agentback/security';
-import type {AuthInfo} from '@modelcontextprotocol/sdk/server/auth/types.js';
+import type {AuthInfo} from '@modelcontextprotocol/server';
 import {MCPComponent} from '../../mcp.component.js';
 import {MCPServer} from '../../mcp.server.js';
 import {mcpServer, tool} from '../../decorators/index.js';

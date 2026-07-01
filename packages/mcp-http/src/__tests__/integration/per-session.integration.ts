@@ -1,6 +1,6 @@
 // Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
-import {InvalidTokenError} from '@modelcontextprotocol/server-legacy/auth';
+import {OAuthError} from '@modelcontextprotocol/server';
 import {
   Client,
   StreamableHTTPClientTransport,
@@ -78,7 +78,7 @@ const verifier = {
       case 'bob':
         return {token, clientId: 'bob', scopes: [], expiresAt};
       default:
-        throw new InvalidTokenError('invalid token');
+        throw new OAuthError('invalid_token', 'invalid token');
     }
   },
 };
@@ -114,7 +114,7 @@ describe('mcp-http (per-session tool discovery)', () => {
       // Key off the VALIDATED principal, never a header.
       perSession(ctx, req) {
         lastSessionCtx = ctx;
-        const principal = req.auth as AuthInfo | undefined;
+        const principal = (req as typeof req & {auth?: AuthInfo}).auth;
         if (principal?.clientId === 'alice') addTool(ctx, AliceTools);
       },
     });

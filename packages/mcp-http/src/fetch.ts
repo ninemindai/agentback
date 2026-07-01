@@ -1,10 +1,5 @@
 import {
-  InsufficientScopeError,
-  InvalidTokenError,
   OAuthError,
-  ServerError,
-} from '@modelcontextprotocol/server-legacy/auth';
-import {
   WebStandardStreamableHTTPServerTransport,
   isInitializeRequest,
 } from '@modelcontextprotocol/server';
@@ -54,10 +49,11 @@ async function verifyBearerFetch(
   try {
     const authHeader = req.headers.get('authorization');
     if (!authHeader)
-      throw new InvalidTokenError('Missing Authorization header');
+      throw new OAuthError('invalid_token', 'Missing Authorization header');
     const [type, token] = authHeader.split(' ');
     if (type?.toLowerCase() !== 'bearer' || !token) {
-      throw new InvalidTokenError(
+      throw new OAuthError(
+        'invalid_token',
         "Invalid Authorization header format, expected 'Bearer TOKEN'",
       );
     }
@@ -66,43 +62,44 @@ async function verifyBearerFetch(
       requiredScopes.length > 0 &&
       !requiredScopes.every(s => authInfo.scopes.includes(s))
     ) {
-      throw new InsufficientScopeError('Insufficient scope');
+      throw new OAuthError('insufficient_scope', 'Insufficient scope');
     }
     if (typeof authInfo.expiresAt !== 'number' || isNaN(authInfo.expiresAt)) {
-      throw new InvalidTokenError('Token has no expiration time');
+      throw new OAuthError('invalid_token', 'Token has no expiration time');
     }
     if (authInfo.expiresAt < Date.now() / 1000) {
-      throw new InvalidTokenError('Token has expired');
+      throw new OAuthError('invalid_token', 'Token has expired');
     }
     return authInfo;
   } catch (error) {
-    if (error instanceof InvalidTokenError) {
-      return Response.json(error.toResponseObject(), {
-        status: 401,
-        headers: {
-          'WWW-Authenticate': buildHeader(error.errorCode, error.message),
-        },
-      });
-    }
-    if (error instanceof InsufficientScopeError) {
-      return Response.json(error.toResponseObject(), {
-        status: 403,
-        headers: {
-          'WWW-Authenticate': buildHeader(error.errorCode, error.message),
-        },
-      });
-    }
-    if (error instanceof ServerError) {
-      return Response.json(error.toResponseObject(), {status: 500});
-    }
+    // v2 consolidated the auth error hierarchy into a single `OAuthError`
+    // discriminated by `code`; map the code to the HTTP status the RFC 6750
+    // resource-server flow expects (401 challenges + 403 carry
+    // `WWW-Authenticate`; other OAuth errors are 400; anything else is 500).
     if (error instanceof OAuthError) {
-      return Response.json(error.toResponseObject(), {status: 400});
+      const status =
+        error.code === 'invalid_token'
+          ? 401
+          : error.code === 'insufficient_scope'
+            ? 403
+            : error.code === 'server_error'
+              ? 500
+              : 400;
+      const challenge =
+        status === 401 || status === 403
+          ? {'WWW-Authenticate': buildHeader(String(error.code), error.message)}
+          : undefined;
+      return Response.json(error.toResponseObject(), {
+        status,
+        ...(challenge ? {headers: challenge} : {}),
+      });
     }
     return Response.json(
-      new ServerError('Internal Server Error').toResponseObject(),
-      {
-        status: 500,
-      },
+      new OAuthError(
+        'server_error',
+        'Internal Server Error',
+      ).toResponseObject(),
+      {status: 500},
     );
   }
 }

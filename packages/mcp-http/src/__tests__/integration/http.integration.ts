@@ -1,7 +1,7 @@
 // Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 import type {JSONRPCMessage} from '@modelcontextprotocol/server';
-import {InvalidTokenError} from '@modelcontextprotocol/server-legacy/auth';
+import {OAuthError} from '@modelcontextprotocol/server';
 import {
   Client,
   StreamableHTTPClientTransport,
@@ -85,7 +85,7 @@ const verifier = {
     if (token === 'user')
       return {token, clientId: 'cli', scopes: [], expiresAt};
     // An OAuth error maps to a 401 (a plain Error would be a 500).
-    throw new InvalidTokenError('invalid token');
+    throw new OAuthError('invalid_token', 'invalid token');
   },
 };
 
