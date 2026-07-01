@@ -1,16 +1,16 @@
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
-// This file is licensed under the MIT License.
-// License text available at https://opensource.org/license/mit/
-
-import {auth} from '@modelcontextprotocol/sdk/client/auth.js';
-import type {OAuthClientProvider} from '@modelcontextprotocol/sdk/client/auth.js';
-import type {FetchLike} from '@modelcontextprotocol/sdk/shared/transport.js';
+import {auth} from '@modelcontextprotocol/client';
 import type {
+  OAuthClientProvider,
+  FetchLike,
   OAuthClientInformationFull,
   OAuthClientInformationMixed,
   OAuthClientMetadata,
   OAuthTokens,
-} from '@modelcontextprotocol/sdk/shared/auth.js';
+} from '@modelcontextprotocol/client';
+
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// This file is licensed under the MIT License.
+// License text available at https://opensource.org/license/mit/
 
 /**
  * Pluggable persistence for one OAuth session (tokens, registered client,

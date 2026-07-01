@@ -3,6 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 import type {Request, RequestHandler, Response} from 'express';
+import type {AuthInfo} from '@modelcontextprotocol/server';
 import type {Context} from '@agentback/core';
 import {
   fromExpressRequest,
@@ -15,7 +16,6 @@ import {
   type ClientApplication,
   type UserProfile,
 } from '@agentback/security';
-import type {AuthInfo} from '@modelcontextprotocol/sdk/server/auth/types.js';
 
 export interface McpStrategyAuthOptions {
   /**
@@ -43,8 +43,7 @@ type PrincipalScopes = UserProfile & {scopes?: string[] | string};
 /** Derive MCP scopes from the authenticated principal. */
 function defaultScopes(auth: AuthenticationResult): string[] {
   const principal = (auth.user ?? auth.clientApplication) as
-    | PrincipalScopes
-    | undefined;
+    PrincipalScopes | undefined;
   const raw = principal?.scopes ?? auth.clientApplication?.allowedScopes;
   if (Array.isArray(raw)) return raw;
   if (typeof raw === 'string') return raw.split(' ').filter(Boolean);

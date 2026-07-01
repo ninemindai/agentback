@@ -1,12 +1,16 @@
 // Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
+import type {JSONRPCMessage} from '@modelcontextprotocol/server';
+import {InvalidTokenError} from '@modelcontextprotocol/server-legacy/auth';
+import {
+  Client,
+  StreamableHTTPClientTransport,
+} from '@modelcontextprotocol/client';
+
 // License text available at https://opensource.org/license/mit/
 
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {z} from 'zod';
-import {Client} from '@modelcontextprotocol/sdk/client/index.js';
-import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import {InvalidTokenError} from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import {inject} from '@agentback/core';
 import {RestApplication} from '@agentback/rest';
 import {
@@ -19,7 +23,6 @@ import {
   tool,
 } from '@agentback/mcp';
 import type {AuthInfo} from '@agentback/mcp-http';
-import type {JSONRPCMessage} from '@modelcontextprotocol/sdk/types.js';
 import {installMcpHttp, InMemoryEventStore} from '../../index.js';
 
 const EchoIn = z.object({text: z.string().min(1)});

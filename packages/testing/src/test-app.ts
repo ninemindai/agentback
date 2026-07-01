@@ -10,11 +10,10 @@ import {
   type RouteOutput,
   type RouteSchemas,
 } from '@agentback/client';
+import type {Client as McpSdkClient} from '@modelcontextprotocol/client';
 import type {Application} from '@agentback/core';
 import type {FetchHost, RestServer} from '@agentback/rest';
 import {createRestAppClient} from '@agentback/testlab';
-import type {Client as McpSdkClient} from '@modelcontextprotocol/sdk/client/index.js';
-
 const REST_SERVER_KEY = 'servers.RestServer';
 const MCP_SERVER_KEY = 'servers.MCPServer';
 
@@ -173,8 +172,8 @@ export async function createTestApp<A extends Application>(
       );
     }
     const [{InMemoryTransport}, {Client: SdkClient}] = await Promise.all([
-      import('@modelcontextprotocol/sdk/inMemory.js'),
-      import('@modelcontextprotocol/sdk/client/index.js'),
+      import('@modelcontextprotocol/client'),
+      import('@modelcontextprotocol/client'),
     ]);
     const mcpServer = (await app.get(MCP_SERVER_KEY)) as {
       buildServer(opts?: {scopes?: string[]}): {

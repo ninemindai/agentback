@@ -4,14 +4,13 @@
 
 import {describe, it, expect} from 'vitest';
 import {z, type ZodObject, type ZodRawShape} from 'zod';
+import {Client, InMemoryTransport} from '@modelcontextprotocol/client';
 import {MetadataInspector} from '@agentback/metadata';
 import {
   registerJSONSchemaConverter,
   type StandardSchemaV1,
 } from '@agentback/openapi';
 import {Application} from '@agentback/core';
-import {Client} from '@modelcontextprotocol/sdk/client/index.js';
-import {InMemoryTransport} from '@modelcontextprotocol/sdk/inMemory.js';
 import {mcpServer, prompt, resource, tool} from '../../decorators/index.js';
 import {MCPComponent} from '../../mcp.component.js';
 import {MCPServer} from '../../mcp.server.js';

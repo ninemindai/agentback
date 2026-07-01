@@ -1,5 +1,18 @@
 // Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
+import {
+  requireBearerAuth,
+  metadataHandler,
+} from '@modelcontextprotocol/server-legacy/auth';
+import type {OAuthTokenVerifier} from '@modelcontextprotocol/server-legacy/auth';
+import {isInitializeRequest} from '@modelcontextprotocol/server';
+import type {
+  EventStore,
+  AuthInfo,
+  OAuthProtectedResourceMetadata,
+} from '@modelcontextprotocol/server';
+import {NodeStreamableHTTPServerTransport} from '@modelcontextprotocol/node';
+
 // License text available at https://opensource.org/license/mit/
 
 import {randomUUID} from 'node:crypto';
@@ -9,14 +22,6 @@ import express, {
   type RequestHandler,
   type Response,
 } from 'express';
-import {StreamableHTTPServerTransport} from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import type {EventStore} from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import {isInitializeRequest} from '@modelcontextprotocol/sdk/types.js';
-import {requireBearerAuth} from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
-import {metadataHandler} from '@modelcontextprotocol/sdk/server/auth/handlers/metadata.js';
-import type {OAuthTokenVerifier} from '@modelcontextprotocol/sdk/server/auth/provider.js';
-import type {AuthInfo} from '@modelcontextprotocol/sdk/server/auth/types.js';
-import type {OAuthProtectedResourceMetadata} from '@modelcontextprotocol/sdk/shared/auth.js';
 import {MCPBindings, MCPServer} from '@agentback/mcp';
 import {BindingScope, Context} from '@agentback/core';
 import {loggers} from '@agentback/common';
@@ -277,7 +282,7 @@ export function mountMcpHttp(
   const enableDnsRebindingProtection =
     options.enableDnsRebindingProtection ??
     (options.allowedHosts != null || options.allowedOrigins != null);
-  const transports: Record<string, StreamableHTTPServerTransport> = {};
+  const transports: Record<string, NodeStreamableHTTPServerTransport> = {};
   // For per-session servers: the principal that owns each session, so a later
   // request on the same session id can't be served to a different principal.
   const sessionOwners: Record<string, string | undefined> = {};
@@ -328,6 +333,14 @@ export function mountMcpHttp(
     // mounted with `use` (which strips the prefix), not `get`.
     expressApp.use(PROTECTED_RESOURCE_PATH, metadataHandler(metadata));
     guards.push(
+      // TODO(mcp-sdk-v2): the RFC 9728 resource-server bearer path currently
+      // uses the FROZEN `@modelcontextprotocol/server-legacy/auth` copy of
+      // `requireBearerAuth`/`metadataHandler` (deprecated, but functional and
+      // behaviorally identical to v1). The maintained v2 home is
+      // `@modelcontextprotocol/express`; re-pointing there requires our
+      // `OAuthTokenVerifier`s (framework-auth.ts) to throw the v2 `OAuthError`
+      // — the express middleware does not recognize the legacy error classes.
+      // Deferred so the spike stays behavior-preserving.
       requireBearerAuth({
         verifier: auth.verifier,
         requiredScopes: auth.requiredScopes,
@@ -395,7 +408,7 @@ export function mountMcpHttp(
         // own MCPServer resolved from a child context the binder populates
         // (principal + user-specific tools). Closed on every teardown path.
         let sessionCtx: Context | undefined;
-        transport = new StreamableHTTPServerTransport({
+        transport = new NodeStreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           enableDnsRebindingProtection,
           ...(options.allowedHosts ? {allowedHosts: options.allowedHosts} : {}),
