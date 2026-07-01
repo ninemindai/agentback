@@ -1,17 +1,16 @@
+import {
+  OAuthError,
+  WebStandardStreamableHTTPServerTransport,
+  isInitializeRequest,
+} from '@modelcontextprotocol/server';
+import type {
+  AuthInfo,
+  OAuthProtectedResourceMetadata,
+} from '@modelcontextprotocol/server';
+
 // Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
-
-import {WebStandardStreamableHTTPServerTransport} from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import {isInitializeRequest} from '@modelcontextprotocol/sdk/types.js';
-import type {AuthInfo} from '@modelcontextprotocol/sdk/server/auth/types.js';
-import {
-  InsufficientScopeError,
-  InvalidTokenError,
-  OAuthError,
-  ServerError,
-} from '@modelcontextprotocol/sdk/server/auth/errors.js';
-import type {OAuthProtectedResourceMetadata} from '@modelcontextprotocol/sdk/shared/auth.js';
 import {
   fromWebRequest,
   normalizeAuthResult,
@@ -49,10 +48,12 @@ async function verifyBearerFetch(
   };
   try {
     const authHeader = req.headers.get('authorization');
-    if (!authHeader) throw new InvalidTokenError('Missing Authorization header');
+    if (!authHeader)
+      throw new OAuthError('invalid_token', 'Missing Authorization header');
     const [type, token] = authHeader.split(' ');
     if (type?.toLowerCase() !== 'bearer' || !token) {
-      throw new InvalidTokenError(
+      throw new OAuthError(
+        'invalid_token',
         "Invalid Authorization header format, expected 'Bearer TOKEN'",
       );
     }
@@ -61,37 +62,45 @@ async function verifyBearerFetch(
       requiredScopes.length > 0 &&
       !requiredScopes.every(s => authInfo.scopes.includes(s))
     ) {
-      throw new InsufficientScopeError('Insufficient scope');
+      throw new OAuthError('insufficient_scope', 'Insufficient scope');
     }
     if (typeof authInfo.expiresAt !== 'number' || isNaN(authInfo.expiresAt)) {
-      throw new InvalidTokenError('Token has no expiration time');
+      throw new OAuthError('invalid_token', 'Token has no expiration time');
     }
     if (authInfo.expiresAt < Date.now() / 1000) {
-      throw new InvalidTokenError('Token has expired');
+      throw new OAuthError('invalid_token', 'Token has expired');
     }
     return authInfo;
   } catch (error) {
-    if (error instanceof InvalidTokenError) {
-      return Response.json(error.toResponseObject(), {
-        status: 401,
-        headers: {'WWW-Authenticate': buildHeader(error.errorCode, error.message)},
-      });
-    }
-    if (error instanceof InsufficientScopeError) {
-      return Response.json(error.toResponseObject(), {
-        status: 403,
-        headers: {'WWW-Authenticate': buildHeader(error.errorCode, error.message)},
-      });
-    }
-    if (error instanceof ServerError) {
-      return Response.json(error.toResponseObject(), {status: 500});
-    }
+    // v2 consolidated the auth error hierarchy into a single `OAuthError`
+    // discriminated by `code`; map the code to the HTTP status the RFC 6750
+    // resource-server flow expects (401 challenges + 403 carry
+    // `WWW-Authenticate`; other OAuth errors are 400; anything else is 500).
     if (error instanceof OAuthError) {
-      return Response.json(error.toResponseObject(), {status: 400});
+      const status =
+        error.code === 'invalid_token'
+          ? 401
+          : error.code === 'insufficient_scope'
+            ? 403
+            : error.code === 'server_error'
+              ? 500
+              : 400;
+      const challenge =
+        status === 401 || status === 403
+          ? {'WWW-Authenticate': buildHeader(String(error.code), error.message)}
+          : undefined;
+      return Response.json(error.toResponseObject(), {
+        status,
+        ...(challenge ? {headers: challenge} : {}),
+      });
     }
-    return Response.json(new ServerError('Internal Server Error').toResponseObject(), {
-      status: 500,
-    });
+    return Response.json(
+      new OAuthError(
+        'server_error',
+        'Internal Server Error',
+      ).toResponseObject(),
+      {status: 500},
+    );
   }
 }
 
@@ -134,9 +143,7 @@ async function resolveStrategyAuthInfo(
   if (!result) return undefined;
 
   const principal = result.user ?? result.clientApplication;
-  const scopes = toScopes
-    ? toScopes(result)
-    : defaultScopes(result);
+  const scopes = toScopes ? toScopes(result) : defaultScopes(result);
   return {
     token: 'framework',
     clientId: principal ? principal[securityId] : 'unknown',
@@ -148,8 +155,7 @@ async function resolveStrategyAuthInfo(
 /** Derive MCP scopes from the authenticated principal (mirrors framework-auth). */
 function defaultScopes(auth: AuthenticationResult): string[] {
   const principal = (auth.user ?? auth.clientApplication) as
-    | {scopes?: string[] | string}
-    | undefined;
+    {scopes?: string[] | string} | undefined;
   const raw = principal?.scopes ?? auth.clientApplication?.allowedScopes;
   if (Array.isArray(raw)) return raw;
   if (typeof raw === 'string') return raw.split(' ').filter(Boolean);

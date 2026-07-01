@@ -1,10 +1,11 @@
 // Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
+import {OAuthError} from '@agentback/mcp-http';
+
 // License text available at https://opensource.org/license/mit/
 
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {z} from 'zod';
-import {InvalidTokenError} from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import {RestApplication} from '@agentback/rest';
 import {MCPComponent, MCPServer, mcpServer, tool} from '@agentback/mcp';
 import {installMcpHttp} from '@agentback/mcp-http';
@@ -30,7 +31,7 @@ const verifier = {
         scopes: ['mcp'],
         expiresAt: Math.floor(Date.now() / 1000) + 3600,
       };
-    throw new InvalidTokenError('invalid token');
+    throw new OAuthError('invalid_token', 'invalid token');
   },
 };
 

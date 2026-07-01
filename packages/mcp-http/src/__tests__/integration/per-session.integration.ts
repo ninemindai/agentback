@@ -1,5 +1,11 @@
 // Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
+import {OAuthError} from '@modelcontextprotocol/server';
+import {
+  Client,
+  StreamableHTTPClientTransport,
+} from '@modelcontextprotocol/client';
+
 // License text available at https://opensource.org/license/mit/
 
 // Per-session MCP servers over Streamable HTTP.
@@ -13,9 +19,6 @@
 
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {z} from 'zod';
-import {Client} from '@modelcontextprotocol/sdk/client/index.js';
-import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import {InvalidTokenError} from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import {Context} from '@agentback/core';
 import {RestApplication} from '@agentback/rest';
 import {
@@ -75,7 +78,7 @@ const verifier = {
       case 'bob':
         return {token, clientId: 'bob', scopes: [], expiresAt};
       default:
-        throw new InvalidTokenError('invalid token');
+        throw new OAuthError('invalid_token', 'invalid token');
     }
   },
 };

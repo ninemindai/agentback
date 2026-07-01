@@ -1,11 +1,11 @@
+import {StdioClientTransport} from '@modelcontextprotocol/client/stdio';
+import {Client} from '@modelcontextprotocol/client';
+
 // Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
 // Spawn the hello-mcp server, drive it over stdio, and verify tools work.
-
-import {Client} from '@modelcontextprotocol/sdk/client/index.js';
-import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {join} from 'node:path';
 import {isMain} from '@agentback/core';
 

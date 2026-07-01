@@ -1,15 +1,16 @@
 // Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
+import {
+  InMemoryTransport,
+  McpServer,
+  ResourceTemplate,
+} from '@modelcontextprotocol/server';
+import {Client} from '@modelcontextprotocol/client';
+
 // License text available at https://opensource.org/license/mit/
 
 import {afterEach, describe, expect, it} from 'vitest';
 import {z} from 'zod';
-import {Client} from '@modelcontextprotocol/sdk/client/index.js';
-import {InMemoryTransport} from '@modelcontextprotocol/sdk/inMemory.js';
-import {
-  McpServer,
-  ResourceTemplate,
-} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
   compileUriTemplate,
   createMcpHost,
@@ -34,7 +35,7 @@ function makeUpstreamA() {
   const s = new McpServer({name: 'a-srv', version: '0.0.0'});
   s.registerTool(
     'add',
-    {inputSchema: {a: z.number(), b: z.number()}},
+    {inputSchema: z.object({a: z.number(), b: z.number()})},
     async ({a, b}) => ({content: [{type: 'text', text: String(a + b)}]}),
   );
   s.registerPrompt('greet', {description: 'a greeting'}, async () => ({
@@ -60,9 +61,13 @@ function makeUpstreamA() {
 /** Upstream B: a tool, the same prompt name as A, a resource, a narrower template. */
 function makeUpstreamB() {
   const s = new McpServer({name: 'b-srv', version: '0.0.0'});
-  s.registerTool('echo', {inputSchema: {text: z.string()}}, async ({text}) => ({
-    content: [{type: 'text', text}],
-  }));
+  s.registerTool(
+    'echo',
+    {inputSchema: z.object({text: z.string()})},
+    async ({text}) => ({
+      content: [{type: 'text', text}],
+    }),
+  );
   s.registerPrompt('greet', {description: 'b greeting'}, async () => ({
     messages: [
       {

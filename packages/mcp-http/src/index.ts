@@ -1,5 +1,15 @@
 // Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
+import {requireBearerAuth} from '@modelcontextprotocol/express';
+import type {OAuthTokenVerifier} from '@modelcontextprotocol/express';
+import {isInitializeRequest} from '@modelcontextprotocol/server';
+import type {
+  EventStore,
+  AuthInfo,
+  OAuthProtectedResourceMetadata,
+} from '@modelcontextprotocol/server';
+import {NodeStreamableHTTPServerTransport} from '@modelcontextprotocol/node';
+
 // License text available at https://opensource.org/license/mit/
 
 import {randomUUID} from 'node:crypto';
@@ -9,14 +19,6 @@ import express, {
   type RequestHandler,
   type Response,
 } from 'express';
-import {StreamableHTTPServerTransport} from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import type {EventStore} from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import {isInitializeRequest} from '@modelcontextprotocol/sdk/types.js';
-import {requireBearerAuth} from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
-import {metadataHandler} from '@modelcontextprotocol/sdk/server/auth/handlers/metadata.js';
-import type {OAuthTokenVerifier} from '@modelcontextprotocol/sdk/server/auth/provider.js';
-import type {AuthInfo} from '@modelcontextprotocol/sdk/server/auth/types.js';
-import type {OAuthProtectedResourceMetadata} from '@modelcontextprotocol/sdk/shared/auth.js';
 import {MCPBindings, MCPServer} from '@agentback/mcp';
 import {BindingScope, Context} from '@agentback/core';
 import {loggers} from '@agentback/common';
@@ -48,6 +50,12 @@ export {
 export {mountMcpHttpFetch} from './fetch.js';
 // Re-export so callers can implement a verifier/store without deep SDK imports.
 export type {AuthInfo, OAuthTokenVerifier, EventStore};
+// Re-export the exact `OAuthError` class this package's bearer middleware
+// recognizes. v2's sub-packages each bundle their own copy of the auth classes
+// (no shared `@modelcontextprotocol/core`), so `instanceof` only matches the
+// copy from the same package — a verifier that throws `OAuthError` imported
+// from `@modelcontextprotocol/client` would be misread as a 500. Throw THIS one.
+export {OAuthError} from '@modelcontextprotocol/server';
 
 export interface McpHttpOptions {
   /** URL path the Streamable HTTP transport is mounted at. Default `/mcp`. */
@@ -277,7 +285,7 @@ export function mountMcpHttp(
   const enableDnsRebindingProtection =
     options.enableDnsRebindingProtection ??
     (options.allowedHosts != null || options.allowedOrigins != null);
-  const transports: Record<string, StreamableHTTPServerTransport> = {};
+  const transports: Record<string, NodeStreamableHTTPServerTransport> = {};
   // For per-session servers: the principal that owns each session, so a later
   // request on the same session id can't be served to a different principal.
   const sessionOwners: Record<string, string | undefined> = {};
@@ -324,9 +332,15 @@ export function mountMcpHttp(
       bearer_methods_supported: ['header'],
       ...(auth.scopesSupported ? {scopes_supported: auth.scopesSupported} : {}),
     };
-    // metadataHandler returns a Router whose route is `/`, so it must be
-    // mounted with `use` (which strips the prefix), not `get`.
-    expressApp.use(PROTECTED_RESOURCE_PATH, metadataHandler(metadata));
+    // Serve the RFC 9728 Protected Resource Metadata directly. AgentBack is a
+    // pure resource server pointing at an EXTERNAL authorization server, so it
+    // has no AS metadata of its own to expose — v2's `mcpAuthMetadataRouter`
+    // would require the AS's RFC 8414 metadata, which lives on the AS, not
+    // here. `requireBearerAuth` points its `WWW-Authenticate` challenge at
+    // this URL so unauthenticated clients still discover the AS.
+    expressApp.get(PROTECTED_RESOURCE_PATH, (_req, res) => {
+      res.json(metadata);
+    });
     guards.push(
       requireBearerAuth({
         verifier: auth.verifier,
@@ -395,7 +409,7 @@ export function mountMcpHttp(
         // own MCPServer resolved from a child context the binder populates
         // (principal + user-specific tools). Closed on every teardown path.
         let sessionCtx: Context | undefined;
-        transport = new StreamableHTTPServerTransport({
+        transport = new NodeStreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           enableDnsRebindingProtection,
           ...(options.allowedHosts ? {allowedHosts: options.allowedHosts} : {}),

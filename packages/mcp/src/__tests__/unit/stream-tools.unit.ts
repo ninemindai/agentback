@@ -1,13 +1,11 @@
 // Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
-
+import {Client, InMemoryTransport} from '@modelcontextprotocol/client';
+import type {JSONRPCMessage} from '@modelcontextprotocol/client';
 import {describe, expect, it} from 'vitest';
 import {z} from 'zod';
 import {Application} from '@agentback/core';
-import {Client} from '@modelcontextprotocol/sdk/client/index.js';
-import {InMemoryTransport} from '@modelcontextprotocol/sdk/inMemory.js';
-import type {JSONRPCMessage} from '@modelcontextprotocol/sdk/types.js';
 import {MCPComponent} from '../../mcp.component.js';
 import {MCPServer} from '../../mcp.server.js';
 import {mcpServer, tool} from '../../decorators/index.js';
@@ -108,7 +106,6 @@ describe('stream-tools bridge over a transport', () => {
     const progresses: Array<{progress: number; message?: string}> = [];
     const result = await client.callTool(
       {name: 'count_up', arguments: {n: 3}},
-      undefined,
       {onprogress: p => progresses.push(p)},
     );
     expect(result.isError).toBeFalsy();

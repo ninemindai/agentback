@@ -3,10 +3,10 @@
 // License text available at https://opensource.org/license/mit/
 
 import {createServer, request as httpRequest, type Server} from 'node:http';
+import {OAuthError} from '@agentback/mcp-http';
 import type {AddressInfo} from 'node:net';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {z} from 'zod';
-import {InvalidTokenError} from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import {RestApplication} from '@agentback/rest';
 import {MCPComponent, MCPServer, mcpServer, tool} from '@agentback/mcp';
 import {installMcpHttp} from '@agentback/mcp-http';
@@ -176,7 +176,7 @@ async function startUpstream(auth?: {
                     scopes: [],
                     expiresAt: Math.floor(Date.now() / 1000) + 3600,
                   };
-                throw new InvalidTokenError('bad token');
+                throw new OAuthError('invalid_token', 'bad token');
               },
             },
             // Placeholder resource (port unknown pre-start); the client opts

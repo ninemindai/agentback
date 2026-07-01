@@ -17,6 +17,16 @@ import {
   type AuthorizationMetadata,
 } from '@agentback/authorization';
 import {SecurityBindings, type UserProfile} from '@agentback/security';
+import {StdioServerTransport} from '@modelcontextprotocol/server/stdio';
+import {
+  McpServer,
+  ProtocolError,
+  ProtocolErrorCode,
+} from '@modelcontextprotocol/server';
+import type {
+  CallToolResult,
+  ListToolsResult,
+} from '@modelcontextprotocol/server';
 import {extensionFilter, Server} from '@agentback/core';
 import {MetadataAccessor, MetadataInspector} from '@agentback/metadata';
 import {
@@ -27,15 +37,6 @@ import {
   type ParseIssue,
   type SchemaLike,
 } from '@agentback/openapi';
-import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
-import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
-import {
-  CallToolRequestSchema,
-  ErrorCode,
-  ListToolsRequestSchema,
-  McpError,
-  type CallToolResult,
-} from '@modelcontextprotocol/sdk/types.js';
 import {
   InMemoryConfirmationStore,
   loggers,
@@ -676,11 +677,17 @@ export class MCPServer implements Server {
    */
   protected requestContextFor(extra: ToolRequestExtra): Context {
     const ctx = new Context(this.context, 'mcp.request');
-    if (extra.authInfo) {
-      ctx.bind(MCPBindings.REQUEST_AUTH).to(extra.authInfo);
+    if (extra.http?.authInfo) {
+      ctx.bind(MCPBindings.REQUEST_AUTH).to(extra.http.authInfo);
     }
-    if (extra.requestInfo) {
-      ctx.bind(MCPBindings.REQUEST_INFO).to(extra.requestInfo);
+    // v2 surfaces the raw Fetch `Request` at `http.req` (HTTP transports
+    // only); flatten it to the stable {headers, url} contract tools consume.
+    const req = extra.http?.req;
+    if (req) {
+      ctx.bind(MCPBindings.REQUEST_INFO).to({
+        headers: Object.fromEntries(req.headers),
+        url: req.url,
+      });
     }
     ctx.bind(MCPBindings.REQUEST_EXTRA).to(extra);
     ctx.bind(MCPBindings.PROGRESS).to(progressFnFor(extra));
@@ -837,17 +844,26 @@ export class MCPServer implements Server {
     }
 
     const server = target.server;
-    server.setRequestHandler(ListToolsRequestSchema, async () => ({
-      tools: Array.from(visible.values(), v => v.entry),
+    server.setRequestHandler('tools/list', async () => ({
+      // AgentBack carries tool schemas as already-emitted JSON Schema (loose
+      // `Record` — see the ToolListEntry note above) to stay
+      // Standard-Schema-vendor neutral. v2 tightened tools/list to require a
+      // literal `inputSchema.type: "object"`, which always holds here (the
+      // default is `{type:'object'}` and non-object roots throw at
+      // registration), so assert the tightened shape at this one boundary.
+      tools: Array.from(
+        visible.values(),
+        v => v.entry,
+      ) as unknown as ListToolsResult['tools'],
     }));
     server.setRequestHandler(
-      CallToolRequestSchema,
+      'tools/call',
       async (request, extra): Promise<CallToolResult> => {
         try {
           const found = visible.get(request.params.name);
           if (!found) {
-            throw new McpError(
-              ErrorCode.InvalidParams,
+            throw new ProtocolError(
+              ProtocolErrorCode.InvalidParams,
               `Tool ${request.params.name} not found`,
             );
           }
@@ -995,17 +1011,18 @@ export class MCPServer implements Server {
 
 /**
  * Build the per-request {@link ProgressFn} for a tool invocation: when the
- * caller requested progress (sent `_meta.progressToken`), relay
- * `notifications/progress` via `extra.sendNotification` with that token;
- * otherwise return the shared no-op so tool code never branches.
+ * caller requested progress (sent `mcpReq._meta.progressToken`), relay
+ * `notifications/progress` via `mcpReq.notify` with that token; otherwise
+ * return the shared no-op so tool code never branches.
  */
 export function progressFnFor(
-  extra: Pick<ToolRequestExtra, 'sendNotification' | '_meta'>,
+  extra: Pick<ToolRequestExtra, 'mcpReq'>,
 ): ProgressFn {
-  const progressToken = extra._meta?.progressToken;
+  const {_meta, notify} = extra.mcpReq;
+  const progressToken = _meta?.progressToken;
   if (progressToken === undefined) return noopProgress;
   return async p => {
-    await extra.sendNotification({
+    await notify({
       method: 'notifications/progress',
       params: {progressToken, ...p},
     });

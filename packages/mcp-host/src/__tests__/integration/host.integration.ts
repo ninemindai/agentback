@@ -1,11 +1,11 @@
 // Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
+import {Client, InMemoryTransport} from '@modelcontextprotocol/client';
+
 // License text available at https://opensource.org/license/mit/
 
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {z} from 'zod';
-import {Client} from '@modelcontextprotocol/sdk/client/index.js';
-import {InMemoryTransport} from '@modelcontextprotocol/sdk/inMemory.js';
 import {RestApplication} from '@agentback/rest';
 import {MCPComponent, MCPServer, mcpServer, tool} from '@agentback/mcp';
 import {installMcpHttp} from '@agentback/mcp-http';
