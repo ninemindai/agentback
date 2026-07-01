@@ -1,25 +1,16 @@
+import {StdioClientTransport} from '@modelcontextprotocol/client/stdio';
+import {Client, ProtocolErrorCode} from '@modelcontextprotocol/client';
+import {Server, ProtocolError} from '@modelcontextprotocol/server';
+import type {
+  Prompt,
+  ResourceTemplateType,
+  Tool,
+  Transport,
+} from '@modelcontextprotocol/server';
+
 // Copyright NineMind, Inc. 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
-
-import {Server} from '@modelcontextprotocol/sdk/server/index.js';
-import {Client} from '@modelcontextprotocol/sdk/client/index.js';
-import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {
-  CallToolRequestSchema,
-  ErrorCode,
-  GetPromptRequestSchema,
-  ListPromptsRequestSchema,
-  ListResourcesRequestSchema,
-  ListResourceTemplatesRequestSchema,
-  ListToolsRequestSchema,
-  McpError,
-  ReadResourceRequestSchema,
-  type Prompt,
-  type ResourceTemplate,
-  type Tool,
-} from '@modelcontextprotocol/sdk/types.js';
-import type {Transport} from '@modelcontextprotocol/sdk/shared/transport.js';
 import {connectMcp, type TokenSource} from '@agentback/mcp-client';
 
 /** Declares one upstream MCP server to aggregate. */
@@ -79,7 +70,7 @@ interface PromptRoute {
 
 interface TemplateRoute {
   client: Client;
-  def: ResourceTemplate;
+  def: ResourceTemplateType;
   regex: RegExp;
   literalLength: number;
 }
@@ -121,7 +112,10 @@ async function connectUpstream(cfg: UpstreamConfig): Promise<Client> {
  */
 function emptyOnMethodNotFound<T>(fallback: T): (e: unknown) => T {
   return e => {
-    if (e instanceof McpError && e.code === ErrorCode.MethodNotFound) {
+    if (
+      e instanceof ProtocolError &&
+      e.code === ProtocolErrorCode.MethodNotFound
+    ) {
       return fallback;
     }
     throw e;
@@ -266,11 +260,11 @@ export async function createMcpHost(options: McpHostOptions): Promise<McpHost> {
         }
         resourceRoutes.set(resource.uri, client);
       }
-      const {resourceTemplates} = await client
-        .listResourceTemplates()
-        .catch(
-          emptyOnMethodNotFound({resourceTemplates: [] as ResourceTemplate[]}),
-        );
+      const {resourceTemplates} = await client.listResourceTemplates().catch(
+        emptyOnMethodNotFound({
+          resourceTemplates: [] as ResourceTemplateType[],
+        }),
+      );
       for (const def of resourceTemplates) {
         if (templateRoutes.some(t => t.def.uriTemplate === def.uriTemplate)) {
           throw new Error(
@@ -297,11 +291,11 @@ export async function createMcpHost(options: McpHostOptions): Promise<McpHost> {
     },
   );
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+  server.setRequestHandler('tools/list', async () => ({
     tools: [...toolRoutes.values()].map(r => r.def),
   }));
 
-  server.setRequestHandler(CallToolRequestSchema, async req => {
+  server.setRequestHandler('tools/call', async req => {
     const route = toolRoutes.get(req.params.name);
     if (!route) {
       throw new Error(`mcp-host: unknown tool '${req.params.name}'`);
@@ -314,7 +308,7 @@ export async function createMcpHost(options: McpHostOptions): Promise<McpHost> {
 
   if (promptUpstreams.length) {
     // prompts/list re-queries upstreams per request — no cache.
-    server.setRequestHandler(ListPromptsRequestSchema, async () => {
+    server.setRequestHandler('prompts/list', async () => {
       const lists = await Promise.all(
         promptUpstreams.map(async u => {
           const {prompts} = await u.client
@@ -326,7 +320,7 @@ export async function createMcpHost(options: McpHostOptions): Promise<McpHost> {
       return {prompts: lists.flat()};
     });
 
-    server.setRequestHandler(GetPromptRequestSchema, async req => {
+    server.setRequestHandler('prompts/get', async req => {
       const {name} = req.params;
       let route = promptRoutes.get(name);
       if (!route && prefix) {
@@ -352,7 +346,7 @@ export async function createMcpHost(options: McpHostOptions): Promise<McpHost> {
 
   if (resourceUpstreams.length) {
     // resources/list + resources/templates/list re-query per request.
-    server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    server.setRequestHandler('resources/list', async () => {
       const lists = await Promise.all(
         resourceUpstreams.map(u =>
           u.client
@@ -364,14 +358,14 @@ export async function createMcpHost(options: McpHostOptions): Promise<McpHost> {
       return {resources: lists.flat()};
     });
 
-    server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
+    server.setRequestHandler('resources/templates/list', async () => {
       const lists = await Promise.all(
         resourceUpstreams.map(u =>
           u.client
             .listResourceTemplates()
             .catch(
               emptyOnMethodNotFound({
-                resourceTemplates: [] as ResourceTemplate[],
+                resourceTemplates: [] as ResourceTemplateType[],
               }),
             )
             .then(r => r.resourceTemplates),
@@ -380,7 +374,7 @@ export async function createMcpHost(options: McpHostOptions): Promise<McpHost> {
       return {resourceTemplates: lists.flat()};
     });
 
-    server.setRequestHandler(ReadResourceRequestSchema, async req => {
+    server.setRequestHandler('resources/read', async req => {
       const {uri} = req.params;
       // Exact URI first (routing map built at connect)…
       const owner = resourceRoutes.get(uri);

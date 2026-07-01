@@ -1,17 +1,21 @@
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
-// This file is licensed under the MIT License.
-// License text available at https://opensource.org/license/mit/
-
-import {WebStandardStreamableHTTPServerTransport} from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import {isInitializeRequest} from '@modelcontextprotocol/sdk/types.js';
-import type {AuthInfo} from '@modelcontextprotocol/sdk/server/auth/types.js';
 import {
   InsufficientScopeError,
   InvalidTokenError,
   OAuthError,
   ServerError,
-} from '@modelcontextprotocol/sdk/server/auth/errors.js';
-import type {OAuthProtectedResourceMetadata} from '@modelcontextprotocol/sdk/shared/auth.js';
+} from '@modelcontextprotocol/server-legacy/auth';
+import {
+  WebStandardStreamableHTTPServerTransport,
+  isInitializeRequest,
+} from '@modelcontextprotocol/server';
+import type {
+  AuthInfo,
+  OAuthProtectedResourceMetadata,
+} from '@modelcontextprotocol/server';
+
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// This file is licensed under the MIT License.
+// License text available at https://opensource.org/license/mit/
 import {
   fromWebRequest,
   normalizeAuthResult,

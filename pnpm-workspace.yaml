@@ -88,3 +88,7 @@ minimumReleaseAgeExclude:
   - konsistent@1.0.0-beta.3
   - miniflare@4.20260708.0
   - wrangler@4.109.0
+  - '@modelcontextprotocol/client@2.0.0-beta.1'
+  - '@modelcontextprotocol/node@2.0.0-beta.1'
+  - '@modelcontextprotocol/server-legacy@2.0.0-beta.1'
+  - '@modelcontextprotocol/server@2.0.0-beta.1'

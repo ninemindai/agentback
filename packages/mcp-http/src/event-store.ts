@@ -1,13 +1,13 @@
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
-// This file is licensed under the MIT License.
-// License text available at https://opensource.org/license/mit/
-
 import type {
   EventStore,
   EventId,
   StreamId,
-} from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import type {JSONRPCMessage} from '@modelcontextprotocol/sdk/types.js';
+  JSONRPCMessage,
+} from '@modelcontextprotocol/server';
+
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// This file is licensed under the MIT License.
+// License text available at https://opensource.org/license/mit/
 
 /**
  * A simple in-memory {@link EventStore} enabling **resumable** Streamable HTTP

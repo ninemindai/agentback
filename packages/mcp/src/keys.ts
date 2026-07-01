@@ -3,31 +3,38 @@
 // License text available at https://opensource.org/license/mit/
 
 import {BindingKey, type Context} from '@agentback/context';
+import type {AuthInfo, ServerContext} from '@modelcontextprotocol/server';
 import type {ConfirmationStore} from '@agentback/common';
 import {MetadataAccessor} from '@agentback/metadata';
 import type {SchemaLike} from '@agentback/openapi';
-import type {AuthInfo} from '@modelcontextprotocol/sdk/server/auth/types.js';
 // Re-exported so tool handlers can type the injected `MCPBindings.REQUEST_AUTH`
 // principal (`auth?: AuthInfo`) without reaching into the MCP SDK internals.
-export type {AuthInfo} from '@modelcontextprotocol/sdk/server/auth/types.js';
-import type {RequestHandlerExtra} from '@modelcontextprotocol/sdk/shared/protocol.js';
-import type {
-  RequestInfo,
-  ServerNotification,
-  ServerRequest,
-} from '@modelcontextprotocol/sdk/types.js';
+export type {AuthInfo} from '@modelcontextprotocol/server';
 import type {MCPServer, ToolBinding} from './mcp.server.js';
 
 /**
- * The raw SDK per-request extras handed to a tool handler: `signal`,
- * `sessionId`, `requestId`, `_meta`, `sendNotification`, `sendRequest`, ….
- * Escape hatch for advanced tools (elicitation via `sendRequest`, custom
- * notifications). See {@link MCPBindings.REQUEST_EXTRA}.
+ * The raw SDK per-request context handed to a tool handler (v2
+ * `ServerContext`): `sessionId`, the request bits under `mcpReq`
+ * (`.id`, `.signal`, `.send`, `.notify`, `._meta`, …) and the transport
+ * bits under `http` (`.authInfo`, `.req`). Escape hatch for advanced tools
+ * (related requests via `mcpReq.send`, custom notifications via
+ * `mcpReq.notify`). See {@link MCPBindings.REQUEST_EXTRA}.
  */
-export type ToolRequestExtra = RequestHandlerExtra<
-  ServerRequest,
-  ServerNotification
->;
+export type ToolRequestExtra = ServerContext;
+
+/**
+ * Transport request info surfaced to tools on HTTP transports (see
+ * `@agentback/mcp-http`). Derived from the SDK's `ctx.http.req` (a Fetch
+ * `Request`) into a stable, plain shape so consumers (e.g.
+ * `@agentback/payments`) read `headers['x-payment']` without touching the
+ * SDK's `Headers` object. Undefined for stdio.
+ */
+export interface McpRequestInfo {
+  /** Lower-cased request headers. */
+  headers: Record<string, string>;
+  /** Request URL, when the transport exposes one. */
+  url?: string;
+}
 
 /**
  * Per-request progress reporter for `@tool` methods. Relays
@@ -61,11 +68,11 @@ export namespace MCPBindings {
    * `@agentback/payments`). Undefined for stdio.
    */
   export const REQUEST_INFO =
-    BindingKey.create<RequestInfo>('mcp.request.info');
+    BindingKey.create<McpRequestInfo>('mcp.request.info');
   /**
-   * The raw SDK `RequestHandlerExtra` for the current MCP tool invocation —
+   * The raw SDK `ServerContext` for the current MCP tool invocation —
    * the escape hatch for capabilities the framework has not wrapped yet
-   * (elicitation / sampling via `extra.sendRequest`, abort `signal`, …).
+   * (related requests via `extra.mcpReq.send`, abort `extra.mcpReq.signal`, …).
    * Only bound on transport-driven calls; inject it optionally:
    * `@inject(MCPBindings.REQUEST_EXTRA, {optional: true})`. Undefined for
    * direct `callTool` / inspector invocations. There is deliberately no

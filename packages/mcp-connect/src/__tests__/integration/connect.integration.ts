@@ -3,10 +3,10 @@
 // License text available at https://opensource.org/license/mit/
 
 import {createServer, request as httpRequest, type Server} from 'node:http';
+import {InvalidTokenError} from '@modelcontextprotocol/server-legacy/auth';
 import type {AddressInfo} from 'node:net';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {z} from 'zod';
-import {InvalidTokenError} from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import {RestApplication} from '@agentback/rest';
 import {MCPComponent, MCPServer, mcpServer, tool} from '@agentback/mcp';
 import {installMcpHttp} from '@agentback/mcp-http';
