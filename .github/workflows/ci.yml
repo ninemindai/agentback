@@ -55,6 +55,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Structural conventions (konsistent.json) — runs on source, no
+      # build needed; first so violations fail in seconds, not minutes.
+      - name: Check structural conventions
+        run: pnpm konsistent
+
       - name: Build
         run: pnpm build
 

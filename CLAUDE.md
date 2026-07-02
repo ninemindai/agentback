@@ -18,7 +18,8 @@ pnpm clean                         # tsc -b --clean + rm -rf each package's dist
 pnpm test                          # vitest run — IMPORTANT: requires a prior `pnpm build`
 pnpm test:watch                    # vitest watch
 pnpm typecheck:client              # tsc --noEmit on the esbuild client bundles (NOT covered by build/test)
-pnpm verify                        # full local CI mirror: build + typecheck:client + test + validate-templates
+pnpm verify                        # full local CI mirror: konsistent + build + typecheck:client + test + validate-templates
+pnpm konsistent                    # structural-convention check (konsistent.json) — fast, runs on source
 pnpm lint                          # eslint + prettier --check
 pnpm lint:fix                      # eslint --fix + prettier --write
 
@@ -227,9 +228,9 @@ The project is MIT-licensed (root `LICENSE`, `Copyright (c) NineMind, Inc.`). Ev
 
 ## CI
 
-`.github/workflows/ci.yml` runs, on Node 22.13 and 24 (pnpm 11 requires Node ≥ 22.13): `pnpm install --frozen-lockfile` → `pnpm build` → **`pnpm typecheck:client`** → `pnpm test`, plus a separate **validate-templates** job (`pnpm build` → `node scripts/validate-templates.mjs`). The lockfile must be committed in sync with `package.json` changes or CI fails at install.
+`.github/workflows/ci.yml` runs, on Node 22.13 and 24 (pnpm 11 requires Node ≥ 22.13): `pnpm install --frozen-lockfile` → **`pnpm konsistent`** (structural conventions, fails in seconds) → `pnpm build` → **`pnpm typecheck:client`** → `pnpm test`, plus a separate **validate-templates** job (`pnpm build` → `node scripts/validate-templates.mjs`). The lockfile must be committed in sync with `package.json` changes or CI fails at install.
 
-**Run `pnpm verify` before pushing — it mirrors CI** (build + typecheck:client + test + validate-templates). `pnpm build`/`pnpm test` alone are **not** sufficient: esbuild bundles the client `.tsx` without type-checking and vitest runs only the server `dist/`, so neither catches client-bundle type errors. The CI-only `typecheck:client` step (`tsc -p tsconfig.client.json --noEmit` per UI package) is the one that does — e.g. a client file importing from `src/lib`/`src/model.ts` must be inside that package's `tsconfig.client.json` `include`.
+**Run `pnpm verify` before pushing — it mirrors CI** (konsistent + build + typecheck:client + test + validate-templates). `pnpm build`/`pnpm test` alone are **not** sufficient: esbuild bundles the client `.tsx` without type-checking and vitest runs only the server `dist/`, so neither catches client-bundle type errors. The CI-only `typecheck:client` step (`tsc -p tsconfig.client.json --noEmit` per UI package) is the one that does — e.g. a client file importing from `src/lib`/`src/model.ts` must be inside that package's `tsconfig.client.json` `include`.
 
 ## Merging PRs (rebase-merge)
 
