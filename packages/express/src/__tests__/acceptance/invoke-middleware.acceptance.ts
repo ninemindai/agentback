@@ -13,7 +13,7 @@ import {
 } from '../../index.js';
 import {InvokeMiddleware} from '@agentback/middleware';
 import spyMiddlewareFactory from '../fixtures/spy.middleware.js';
-import {spy, TestHelper} from './test-helpers.js';
+import {spy, TestHelper} from '../fixtures/test-helpers.js';
 
 describe('Express middleware registry', () => {
   let helper: TestHelper;

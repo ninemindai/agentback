@@ -1,0 +1,135 @@
+{
+  "$schema": "node_modules/konsistent/konsistent.schema.json",
+  "version": "v1",
+  "conventions": [
+    {
+      "name": "package-layout",
+      "description": "Every workspace package ships package.json, tsconfig.json, and a README.md (CLAUDE.md lists the package README as a mandatory documentation surface)",
+      "paths": "packages/{pkgName}",
+      "must": {
+        "haveType": "directory",
+        "haveFiles": ["package.json", "tsconfig.json", "README.md"]
+      }
+    },
+    {
+      "name": "package-barrel",
+      "description": "Every library package exposes a src/index.ts barrel (cli and create-agentback are bin-first packages without one)",
+      "paths": [
+        "packages/{pkgName}",
+        "!packages/cli",
+        "!packages/create-agentback"
+      ],
+      "must": {
+        "haveType": "directory",
+        "haveFiles": ["src/index.ts"]
+      }
+    },
+    {
+      "name": "client-bundle-typecheck",
+      "description": "A package with an esbuild client bundle (build-client.mjs) must have tsconfig.client.json, or CI's typecheck:client silently skips it",
+      "paths": "packages/{pkgName}",
+      "must": [
+        {
+          "if": {"hasFile": "build-client.mjs"},
+          "must": {"haveFiles": ["tsconfig.client.json"]}
+        }
+      ]
+    },
+    {
+      "name": "unit-test-naming",
+      "description": "Files under __tests__/unit/ must use the .unit.ts suffix — vitest only globs dist/**/*.{test,spec,unit,integration,acceptance}.js and the suffix should match the directory",
+      "paths": [
+        "packages/*/src/__tests__/unit/**/*.ts",
+        "!packages/*/src/__tests__/unit/**/*.unit.ts"
+      ],
+      "mustNot": {
+        "haveType": "file"
+      }
+    },
+    {
+      "name": "integration-test-naming",
+      "description": "Files under __tests__/integration/ must use the .integration.ts suffix",
+      "paths": [
+        "packages/*/src/__tests__/integration/**/*.ts",
+        "!packages/*/src/__tests__/integration/**/*.integration.ts"
+      ],
+      "mustNot": {
+        "haveType": "file"
+      }
+    },
+    {
+      "name": "acceptance-test-naming",
+      "description": "Files under __tests__/acceptance/ should use the .acceptance.ts suffix; helpers belong in __tests__/fixtures or __tests__/support",
+      "severity": "warning",
+      "paths": [
+        "packages/*/src/__tests__/acceptance/**/*.ts",
+        "!packages/*/src/__tests__/acceptance/**/*.acceptance.ts"
+      ],
+      "mustNot": {
+        "haveType": "file"
+      }
+    },
+    {
+      "name": "test-files-import-vitest",
+      "description": "Test files import from vitest directly (the excluded messaging runners delegate to the shared conformance suite, which imports vitest itself)",
+      "severity": "warning",
+      "paths": "packages/*/src/__tests__/**/*.{unit,integration,acceptance}.ts",
+      "excludeFiles": [
+        "packages/messaging/src/__tests__/unit/in-memory-event-bus.unit.ts",
+        "packages/messaging/src/__tests__/unit/in-memory-job-queue.unit.ts",
+        "packages/messaging/src/__tests__/unit/in-memory-queue-admin.unit.ts"
+      ],
+      "must": {
+        "importFrom": "vitest"
+      }
+    },
+    {
+      "name": "no-direct-debug-import",
+      "description": "CLAUDE.md logging rule: use loggers from @agentback/common everywhere; only common's debug utils may import the debug npm package",
+      "paths": "packages/*/src/**/*.ts",
+      "excludeFiles": [
+        "packages/common/src/utils/debug.ts",
+        "packages/common/src/utils/debug-factory.ts",
+        "packages/common/src/utils/debug-pino.ts"
+      ],
+      "mustNot": {
+        "importFrom": "debug"
+      }
+    },
+    {
+      "name": "no-cjs-lodash",
+      "description": "ESM-only workspace: import lodash-es, never lodash",
+      "paths": "packages/*/src/**/*.ts",
+      "mustNot": {
+        "importFrom": "lodash"
+      }
+    },
+    {
+      "name": "mcp-stays-express-free",
+      "description": "CLAUDE.md: mcp-http exists so @agentback/mcp stays Express-free — the mcp package must never import express",
+      "paths": "packages/mcp/src/**/*.ts",
+      "mustNot": {
+        "importFrom": "express"
+      }
+    },
+    {
+      "name": "client-stays-browser-safe",
+      "description": "CLAUDE.md: @agentback/client has no @agentback/openapi runtime dep (browser-safe) — both ends share Zod schemas instead",
+      "paths": "packages/client/src/**/*.ts",
+      "excludeFiles": ["packages/client/src/__tests__/**"],
+      "mustNot": {
+        "importFrom": "@agentback/openapi"
+      }
+    },
+    {
+      "name": "example-layout",
+      "description": "Examples are a documentation surface (CLAUDE.md): each should ship package.json, tsconfig.json, and a README.md",
+      "severity": "warning",
+      "paths": "examples/{exampleName}",
+      "must": {
+        "haveType": "directory",
+        "haveFiles": ["package.json", "tsconfig.json", "README.md"]
+      }
+    }
+  ]
+}

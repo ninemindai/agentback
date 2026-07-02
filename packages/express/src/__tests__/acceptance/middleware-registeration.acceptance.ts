@@ -9,7 +9,12 @@ import {Router} from 'express';
 import {ExpressServer, Middleware} from '../../index.js';
 import {asMiddleware} from '@agentback/middleware';
 import {SpyAction} from '../fixtures/spy-config.js';
-import {spy, SpyConfig, TestFunction, TestHelper} from './test-helpers.js';
+import {
+  spy,
+  SpyConfig,
+  TestFunction,
+  TestHelper,
+} from '../fixtures/test-helpers.js';
 
 describe('Express middleware registry', () => {
   let helper: TestHelper;

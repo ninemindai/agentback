@@ -33,7 +33,12 @@ import {
 } from '../../index.js';
 import {ExpressMiddlewareFactory} from '@agentback/middleware';
 import {SpyAction} from '../fixtures/spy-config.js';
-import {spy, SpyConfig, TestFunction, TestHelper} from './test-helpers.js';
+import {
+  spy,
+  SpyConfig,
+  TestFunction,
+  TestHelper,
+} from '../fixtures/test-helpers.js';
 
 describe('Middleware interceptor', () => {
   let helper: TestHelper;

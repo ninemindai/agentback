@@ -8,7 +8,7 @@ import {ChildProcess, fork} from 'child_process';
 import {createRequire} from 'module';
 
 const require = createRequire(import.meta.filename);
-const app = require.resolve('./application-with-shutdown.js');
+const app = require.resolve('../fixtures/application-with-shutdown.js');
 const isWindows = process.platform === 'win32';
 
 describe('Application shutdown hooks', () => {

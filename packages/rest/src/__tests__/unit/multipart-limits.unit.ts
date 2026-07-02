@@ -3,10 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 import {describe, expect, it} from 'vitest';
-import {
-  DEFAULT_MAX_FILE_SIZE,
-  multerFileSizeLimit,
-} from '../../multipart.js';
+import {DEFAULT_MAX_FILE_SIZE, multerFileSizeLimit} from '../../multipart.js';
 
 describe('multerFileSizeLimit', () => {
   it('uses a field’s declared maxSize when set', () => {

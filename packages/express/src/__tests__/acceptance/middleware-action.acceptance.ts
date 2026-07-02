@@ -6,7 +6,12 @@ import {describe, it, beforeEach, afterEach, expect} from 'vitest';
 
 import {registerExpressMiddleware} from '../../index.js';
 import {SpyAction} from '../fixtures/spy-config.js';
-import {spy, SpyConfig, TestFunction, TestHelper} from './test-helpers.js';
+import {
+  spy,
+  SpyConfig,
+  TestFunction,
+  TestHelper,
+} from '../fixtures/test-helpers.js';
 
 describe('Middleware request interceptor', () => {
   let helper: TestHelper;

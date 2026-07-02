@@ -9,19 +9,15 @@ import {
   intercept,
   InterceptorOrKey,
 } from '@agentback/core';
-import {
-  Client,
-  givenHttpServerConfig,
-  supertest,
-} from '@agentback/testlab';
+import {Client, givenHttpServerConfig, supertest} from '@agentback/testlab';
 import bodyParser from 'body-parser';
 import {NextFunction, Request, Response} from 'express';
 import {ExpressApplication} from '../../express.application.js';
 import {ExpressRequestHandler} from '@agentback/middleware';
-import {SpyAction, SpyConfig} from '../fixtures/spy-config.js';
+import {SpyAction, SpyConfig} from './spy-config.js';
 
 export {default as spy} from '../fixtures/spy.middleware.js';
-export {SpyConfig} from '../fixtures/spy-config.js';
+export {SpyConfig} from './spy-config.js';
 
 function runAsyncWrapper(
   callback: (req: Request, res: Response, next: NextFunction) => Promise<void>,
