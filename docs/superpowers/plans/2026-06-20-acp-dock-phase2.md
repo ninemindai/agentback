@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add the **agent chat dock** to the console — a right-hand panel that drives a local ACP coding agent, grounded in the live app (Phase 1 introspection MCP + OKF), so a developer can *see and evolve* their app with the agent they already use.
+**Goal:** Add the **agent chat dock** to the console — a right-hand panel that drives a local ACP coding agent, grounded in the live app (Phase 1 introspection MCP + OKF), so a developer can _see and evolve_ their app with the agent they already use.
 
 **Architecture:** A new Node-host-only package `@agentback/console-chat`. Server side: a `chatConsoleFeature()` that registers an `@api` bridge controller (agent discovery + doctor, an SSE stream, and POST message/permission/session) and spawns the selected ACP adapter as a subprocess, relaying `session/update` over SSE and `session/request_permission` to the dock. Client side: a dock region added to the console shell, rendering the conversation, tool-activity, the inline permission card, and the composer with a nav-focus chip. The ACP protocol glue is isolated behind one `AcpSession` module, pinned by a spike (Task 1) because the SDK is 0.x and volatile.
 
@@ -26,6 +26,7 @@
 > This is the one non-TDD task. ACP's TS SDK is 0.x and has already deprecated `ClientSideConnection`; the exact client surface MUST be confirmed against the installed version before any bridge code is written. Output is a notes file + a throwaway spike script, not shipped code.
 
 **Files:**
+
 - Create: `packages/console-chat/ACP-NOTES.md` (pinned API reference)
 - Create (throwaway): `packages/console-chat/spike/acp-spike.mjs`
 
@@ -34,6 +35,7 @@
 Run: `npm view @agentclientprotocol/sdk version` (confirm `^0.28`; the old `@zed-industries/agent-client-protocol` is deprecated), then inspect `node_modules/@agentclientprotocol/sdk/dist/*.d.ts`. This SDK is added in **Task 5** (the first task that imports it), not the Task 2 scaffold.
 
 Answer and record in `ACP-NOTES.md`:
+
 - The current client entrypoint (the non-deprecated replacement for `ClientSideConnection`).
 - How to attach to a spawned subprocess's stdio (read/write streams).
 - The `initialize` call shape + capability negotiation.
@@ -64,6 +66,7 @@ git commit -m "spike(console-chat): pin the ACP SDK client API against claude-ag
 ### Task 2: Scaffold `@agentback/console-chat` + the shell dock slot
 
 **Files:**
+
 - Create: `packages/console-chat/{package.json,tsconfig.json,src/index.ts}`
 - Modify: `tsconfig.json` (root reference)
 - Modify: `packages/console/src/client/types.ts` (add `chat` to `ConsoleClientConfig`)
@@ -72,6 +75,7 @@ git commit -m "spike(console-chat): pin the ACP SDK client API against claude-ag
 - Test: `packages/console/src/client/__tests__/dock.unit.tsx`
 
 **Interfaces:**
+
 - Produces: `ConsoleClientConfig.chat?: {enabled: boolean; agents: {id: string; name: string}[]; apiBase: string}`; a `<Dock>` region in the shell that renders only when `config.chat?.enabled`.
 
 - [ ] **Step 1: `package.json`** (deps: `@agentback/common`, `@agentback/core`, `@agentback/rest`, `@agentback/console`, `@agentback/console-theme`, `zod`, `tslib`; devDeps: `@agentback/testing`, `react`, `vitest`). **Do NOT add `@agentback/introspection`, `@agentback/mcp-http`, or the ACP SDK here — they're added in Tasks 5/7 when first imported (YAGNI; avoids unused deps + a workspace cycle in the scaffold).** Mirror `packages/mcp-http/package.json` shape, `version` `0.6.0`, add `build:client` if it ships TSX (it does — the dock). Model the client build on `packages/console/build-client.mjs`.
@@ -108,7 +112,14 @@ describe('console dock slot', () => {
     expect(html).not.toContain('data-dock');
   });
   it('renders the dock when chat.enabled', () => {
-    const cfg = {...base, chat: {enabled: true, apiBase: '/console/chat', agents: [{id: 'cc', name: 'Claude Code'}]}};
+    const cfg = {
+      ...base,
+      chat: {
+        enabled: true,
+        apiBase: '/console/chat',
+        agents: [{id: 'cc', name: 'Claude Code'}],
+      },
+    };
     const html = renderToString(<App config={cfg} pages={[]} />);
     expect(html).toContain('data-dock');
   });
@@ -133,11 +144,13 @@ git commit -m "feat(console-chat): scaffold package + shell dock slot (renders w
 ### Task 3: Navigation-focus context bus (console client)
 
 **Files:**
+
 - Create: `packages/console/src/client/focus.ts`
 - Modify: panels that should publish focus (schema-explorer / context-explorer client entries) — minimal: publish on selection.
 - Test: `packages/console/src/client/__tests__/focus.unit.ts`
 
 **Interfaces:**
+
 - Produces: `type FocusDescriptor = {kind:'schema-entity'|'binding'|'route'|'tool'; id: string; label?: string}`; `publishFocus(d|null)`, `subscribeFocus(fn): () => void`, `getFocus(): FocusDescriptor|null`. A tiny pub/sub (module-level `Set` of listeners). The descriptor shape matches `@agentback/introspection`'s `get` selector, so the dock can pass it straight through.
 
 - [ ] **Step 1: failing test** — publish a descriptor, assert subscriber receives it; publish `null`, assert cleared; unsubscribe stops delivery.
@@ -150,10 +163,12 @@ git commit -m "feat(console-chat): scaffold package + shell dock slot (renders w
 ### Task 4: Agent discovery + doctor (server)
 
 **Files:**
+
 - Create: `packages/console-chat/src/agents.ts`
 - Test: `packages/console-chat/src/__tests__/agents.unit.ts`
 
 **Interfaces:**
+
 - Produces:
   - `type AgentDescriptor = {id: string; name: string; detect: {bin: string; minVersion?: string}; command: string[]}`
   - `BUILTIN_AGENTS: AgentDescriptor[]` — seeded with the pinned `claude-agent-acp` adapter (exact `command` from ACP-NOTES, Task 1).
@@ -169,12 +184,14 @@ git commit -m "feat(console-chat): scaffold package + shell dock slot (renders w
 ### Task 5: The ACP bridge (server) — `AcpSession` + `@api` controller
 
 **Files:**
+
 - Create: `packages/console-chat/src/acp-session.ts` (all ACP protocol glue — per ACP-NOTES)
 - Create: `packages/console-chat/src/bridge.controller.ts` (the `@api` endpoints)
 - Create: `packages/console-chat/src/feature.ts` (`chatConsoleFeature()`)
 - Test: `packages/console-chat/src/__tests__/bridge.unit.ts` (with a fake ACP agent fixture)
 
 **Interfaces:**
+
 - Consumes: `agents.ts`, `AcpSession`, the console `auth` middleware, `loggers`, `AgentError`.
 - Produces: `chatConsoleFeature(): ConsoleFeature` (`id:'chat'`, `apiBase:'/console/chat'`, advertises `extra` → the shell's `config.chat`); endpoints:
   - `GET  /console/chat/agents` → discovered agents
@@ -194,11 +211,13 @@ git commit -m "feat(console-chat): scaffold package + shell dock slot (renders w
 ### Task 6: The dock client UI (`@agentback/console-chat/console`)
 
 **Files:**
+
 - Create: `packages/console-chat/src/client/Dock.tsx` (+ `pages`-style export `./console`)
 - Create: `packages/console-chat/src/client/sse.ts` (EventSource client + a turn reducer)
 - Test: `packages/console-chat/src/client/__tests__/reducer.unit.ts`
 
 **Interfaces:**
+
 - Produces: `Dock` component (consumed by Task 2's shell) implementing the approved wireframe: picker (with doctor states), conversation (assistant deltas + mono tool-activity blocks), the **inline permission card** (rust left border, Approve/Deny ≥44px, **no auto-dismiss**, path+session scope checkbox), composer with the dismissible focus chip (from Task 3's bus), and the six states (no-agent, connecting, doctor/wrong-version, streaming, crashed, rebuild). A pure `turnReducer(state, sseEvent)` so the streaming logic is unit-testable without a DOM.
 
 - [ ] **Step 1: failing test** for `turnReducer`: a sequence of SSE events (assistant delta ×2, tool-call, permission-request, permission-resolved, turn-end) reduces to the expected conversation state; an `error` event yields the crashed state.
@@ -212,6 +231,7 @@ git commit -m "feat(console-chat): scaffold package + shell dock slot (renders w
 ### Task 7: Grounding wiring + F5 rebuild affordance
 
 **Files:**
+
 - Modify: `packages/console-chat/src/acp-session.ts` (register MCP servers + OKF brief on `session/new`)
 - Modify: `packages/console-chat/src/client/Dock.tsx` (rebuild affordance)
 
@@ -224,10 +244,11 @@ git commit -m "feat(console-chat): scaffold package + shell dock slot (renders w
 ### Task 8: Docs, example, security model, console wiring
 
 **Files:**
+
 - Create: `packages/console-chat/README.md`
 - Modify: `docs/packages.md`, `CLAUDE.md` (capability list), `skills/agentback/SKILL.md` + `references/` page
 - Create: `docs/guides/agent-console.md` (the security model: off-by-default, loopback-only, sandbox note, permission scoping)
-- Modify: `packages/console/src/index.ts` + `pages.ts` — register `chatConsoleFeature()` into `defaultFeatures()` *only when configured* (gate on `options.chat`), and the dock import
+- Modify: `packages/console/src/index.ts` + `pages.ts` — register `chatConsoleFeature()` into `defaultFeatures()` _only when configured_ (gate on `options.chat`), and the dock import
 - Modify: `examples/hello-agent-console` — add a `console` entry with `installConsole(app, {chat: {...}})` so the example shows the full see+evolve loop
 
 - [ ] **Step 1:** Write each doc surface (per CLAUDE.md's doc-discipline checklist). The security guide is required given the RCE surface.

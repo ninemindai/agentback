@@ -128,12 +128,7 @@ interface JobRef {
 interface JobInfo<T = unknown> {
   readonly id: string;
   readonly state:
-    | 'waiting'
-    | 'delayed'
-    | 'active'
-    | 'completed'
-    | 'failed'
-    | 'unknown';
+    'waiting' | 'delayed' | 'active' | 'completed' | 'failed' | 'unknown';
   readonly data?: T;
   readonly attempt: number;
 }

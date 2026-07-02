@@ -89,8 +89,7 @@ export interface Injection<ValueType = BoundValue> {
   target: Object;
   member?: string;
   methodDescriptorOrParameterIndex?:
-    | TypedPropertyDescriptor<ValueType>
-    | number;
+    TypedPropertyDescriptor<ValueType> | number;
 
   bindingSelector: BindingSelector<ValueType>; // Binding selector
   metadata: InjectionMetadata; // Related metadata
@@ -145,8 +144,7 @@ export function inject(
     target: Object,
     member: string | undefined,
     methodDescriptorOrParameterIndex?:
-      | TypedPropertyDescriptor<BoundValue>
-      | number,
+      TypedPropertyDescriptor<BoundValue> | number,
   ) {
     if (typeof methodDescriptorOrParameterIndex === 'number') {
       // The decorator is applied to a method parameter

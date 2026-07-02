@@ -118,6 +118,8 @@ export class IntrospectionTools {
   async getOkfBundle(
     _input: z.infer<typeof OkfInput>,
   ): Promise<z.infer<typeof OkfOutput>> {
-    return {files: tryBuild('OKF bundle', () => buildOkfBundle(this.app).files)};
+    return {
+      files: tryBuild('OKF bundle', () => buildOkfBundle(this.app).files),
+    };
   }
 }

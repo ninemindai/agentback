@@ -61,10 +61,12 @@ Root `tsconfig.json` gains `{"path": "packages/cli"}` in `references`. `pnpm-wor
 ### Task 1: Package skeleton + bins
 
 **Files:**
+
 - Create: `packages/cli/package.json`, `packages/cli/tsconfig.json`, `packages/cli/src/cli.ts`, `packages/cli/README.md`
 - Modify: `tsconfig.json` (root, add reference)
 
 **Interfaces:**
+
 - Produces: the `agentback`/`abc` bin → `dist/cli.js`; an exported `main(argv: string[]): Promise<number>` returning a process exit code.
 
 - [ ] **Step 1: Create `packages/cli/package.json`**
@@ -188,9 +190,11 @@ git commit -m "feat(cli): @agentback/cli package skeleton with agentback/abc bin
 ### Task 2: Arg parser
 
 **Files:**
+
 - Create: `packages/cli/src/args.ts`, `packages/cli/src/__tests__/unit/args.unit.ts`
 
 **Interfaces:**
+
 - Produces:
   ```ts
   export interface DeployArgs {
@@ -205,7 +209,7 @@ git commit -m "feat(cli): @agentback/cli package skeleton with agentback/abc bin
     force: boolean;
     dryRun: boolean;
     yes: boolean;
-    verifyPath: string;        // default '/openapi.json'
+    verifyPath: string; // default '/openapi.json'
     help: boolean;
   }
   export function parseDeployArgs(argv: string[]): DeployArgs;
@@ -234,14 +238,35 @@ describe('parseDeployArgs', () => {
 
   it('parses flags and values', () => {
     const a = parseDeployArgs([
-      'vercel', '--prod', '--name', 'svc', '--entry', 'dist/main.js',
-      '--export', 'buildApp', '--console', '--unsafe-public-console',
-      '--eject', '--force', '--dry-run', '--yes', '--verify-path', '/v1/openapi.json',
+      'vercel',
+      '--prod',
+      '--name',
+      'svc',
+      '--entry',
+      'dist/main.js',
+      '--export',
+      'buildApp',
+      '--console',
+      '--unsafe-public-console',
+      '--eject',
+      '--force',
+      '--dry-run',
+      '--yes',
+      '--verify-path',
+      '/v1/openapi.json',
     ]);
     expect(a).toMatchObject({
-      prod: true, name: 'svc', entry: 'dist/main.js', exportName: 'buildApp',
-      console: true, unsafePublicConsole: true, eject: true, force: true,
-      dryRun: true, yes: true, verifyPath: '/v1/openapi.json',
+      prod: true,
+      name: 'svc',
+      entry: 'dist/main.js',
+      exportName: 'buildApp',
+      console: true,
+      unsafePublicConsole: true,
+      eject: true,
+      force: true,
+      dryRun: true,
+      yes: true,
+      verifyPath: '/v1/openapi.json',
     });
   });
 
@@ -289,12 +314,17 @@ export interface DeployArgs {
   help: boolean;
 }
 
-const VALUE_FLAGS = new Set([
-  '--entry', '--export', '--name', '--verify-path',
-]);
+const VALUE_FLAGS = new Set(['--entry', '--export', '--name', '--verify-path']);
 const BOOL_FLAGS = new Set([
-  '--prod', '--console', '--unsafe-public-console', '--eject', '--force',
-  '--dry-run', '--yes', '-h', '--help',
+  '--prod',
+  '--console',
+  '--unsafe-public-console',
+  '--eject',
+  '--force',
+  '--dry-run',
+  '--yes',
+  '-h',
+  '--help',
 ]);
 
 function bad(message: string): never {
@@ -304,12 +334,20 @@ function bad(message: string): never {
 export function parseDeployArgs(argv: string[]): DeployArgs {
   const [target, ...rest] = argv;
   if (!target) bad('deploy: missing target. Usage: agentback deploy vercel');
-  if (target !== 'vercel') bad(`deploy: unknown target '${target}' (only 'vercel' in Phase 1)`);
+  if (target !== 'vercel')
+    bad(`deploy: unknown target '${target}' (only 'vercel' in Phase 1)`);
 
   const out: DeployArgs = {
-    target: 'vercel', prod: false, console: false, unsafePublicConsole: false,
-    eject: false, force: false, dryRun: false, yes: false,
-    verifyPath: '/openapi.json', help: false,
+    target: 'vercel',
+    prod: false,
+    console: false,
+    unsafePublicConsole: false,
+    eject: false,
+    force: false,
+    dryRun: false,
+    yes: false,
+    verifyPath: '/openapi.json',
+    help: false,
   };
 
   for (let i = 0; i < rest.length; i++) {
@@ -357,9 +395,11 @@ git commit -m "feat(cli): deploy arg parser"
 ### Task 3: Generate `api/index.ts`
 
 **Files:**
+
 - Create: `packages/cli/src/generate-entry.ts`, `packages/cli/src/__tests__/unit/generate-entry.unit.ts`
 
 **Interfaces:**
+
 - Consumes: `{entry: string; exportName: string}` (a resolved builder).
 - Produces: `export function generateEntry(b: {entry: string; exportName: string}): string;`
 
@@ -453,18 +493,23 @@ git commit -m "feat(cli): generate Vercel api/index.ts entry"
 ### Task 4: Order-aware idempotent `vercel.json` merge
 
 **Files:**
+
 - Create: `packages/cli/src/merge-config.ts`, `packages/cli/src/__tests__/unit/merge-config.unit.ts`
 
 **Interfaces:**
+
 - Produces:
   ```ts
   export interface MergeOpts {
     packageManager: 'pnpm' | 'yarn' | 'bun' | 'npm';
-    includeConsoleAssets: boolean;   // true only when --console
+    includeConsoleAssets: boolean; // true only when --console
     force: boolean;
     eject: boolean;
   }
-  export interface MergeResult {json: Record<string, unknown>; warnings: string[];}
+  export interface MergeResult {
+    json: Record<string, unknown>;
+    warnings: string[];
+  }
   export function mergeVercelConfig(
     existing: Record<string, unknown> | undefined,
     opts: MergeOpts,
@@ -482,7 +527,12 @@ git commit -m "feat(cli): generate Vercel api/index.ts entry"
 import {describe, expect, it} from 'vitest';
 import {mergeVercelConfig} from '../../merge-config.js';
 
-const base = {packageManager: 'pnpm', includeConsoleAssets: false, force: false, eject: false} as const;
+const base = {
+  packageManager: 'pnpm',
+  includeConsoleAssets: false,
+  force: false,
+  eject: false,
+} as const;
 
 describe('mergeVercelConfig', () => {
   it('writes a fresh canonical config (no hardcoded build/public)', () => {
@@ -496,8 +546,13 @@ describe('mergeVercelConfig', () => {
   it('adds console includeFiles only when requested', () => {
     const off = mergeVercelConfig(undefined, base).json as any;
     expect(off.functions['api/index.ts'].includeFiles).toBeUndefined();
-    const on = mergeVercelConfig(undefined, {...base, includeConsoleAssets: true}).json as any;
-    expect(on.functions['api/index.ts'].includeFiles).toContain('swagger-ui-dist');
+    const on = mergeVercelConfig(undefined, {
+      ...base,
+      includeConsoleAssets: true,
+    }).json as any;
+    expect(on.functions['api/index.ts'].includeFiles).toContain(
+      'swagger-ui-dist',
+    );
   });
 
   it('preserves unrelated user keys', () => {
@@ -581,7 +636,11 @@ export function mergeVercelConfig(
     Array.isArray(existingRewrites) &&
     existingRewrites.length === 1 &&
     JSON.stringify(existingRewrites[0]) === JSON.stringify(CANONICAL_REWRITE);
-  if (Array.isArray(existingRewrites) && existingRewrites.length > 0 && !isCanonical) {
+  if (
+    Array.isArray(existingRewrites) &&
+    existingRewrites.length > 0 &&
+    !isCanonical
+  ) {
     if (!opts.force && !opts.eject) {
       throw new AgentError(
         'vercel.json already defines `rewrites`. A catch-all rewrite would ' +
@@ -617,17 +676,22 @@ git commit -m "feat(cli): order-aware idempotent vercel.json merge"
 ### Task 5: Builder resolution + console gate
 
 **Files:**
+
 - Create: `packages/cli/src/detect.ts`, `packages/cli/src/__tests__/unit/detect.unit.ts`
 
 **Interfaces:**
+
 - Produces:
   ```ts
   export function resolveBuilder(opts: {
-    entry?: string; exportName?: string; cwd: string;
-  }): {entry: string; exportName: string};   // throws AgentError if unresolved
+    entry?: string;
+    exportName?: string;
+    cwd: string;
+  }): {entry: string; exportName: string}; // throws AgentError if unresolved
   export function enforceConsoleGate(a: {
-    console: boolean; unsafePublicConsole: boolean;
-  }): void;                                   // throws AgentError when gate fails
+    console: boolean;
+    unsafePublicConsole: boolean;
+  }): void; // throws AgentError when gate fails
   ```
 - `resolveBuilder`: when `entry` is given, require `exportName` (default `buildApp`); when absent, probe `cwd` for `dist/console.js` then `dist/main.js` and pick the first that exists, defaulting `exportName` to `buildConsoleApp` (for `console.js`) or `buildApp` (for `main.js`). Throw a clear `AgentError` naming the `--entry`/`--export` contract when nothing resolves.
 
@@ -658,17 +722,25 @@ describe('resolveBuilder', () => {
   });
 
   it('defaults export to buildApp when only --entry given', () => {
-    expect(resolveBuilder({entry: './dist/x.js', cwd}).exportName).toBe('buildApp');
+    expect(resolveBuilder({entry: './dist/x.js', cwd}).exportName).toBe(
+      'buildApp',
+    );
   });
 
   it('detects dist/console.js → buildConsoleApp', () => {
     writeFileSync(path.join(cwd, 'dist', 'console.js'), '');
-    expect(resolveBuilder({cwd})).toEqual({entry: './dist/console.js', exportName: 'buildConsoleApp'});
+    expect(resolveBuilder({cwd})).toEqual({
+      entry: './dist/console.js',
+      exportName: 'buildConsoleApp',
+    });
   });
 
   it('detects dist/main.js → buildApp', () => {
     writeFileSync(path.join(cwd, 'dist', 'main.js'), '');
-    expect(resolveBuilder({cwd})).toEqual({entry: './dist/main.js', exportName: 'buildApp'});
+    expect(resolveBuilder({cwd})).toEqual({
+      entry: './dist/main.js',
+      exportName: 'buildApp',
+    });
   });
 
   it('throws an actionable error when nothing resolves', () => {
@@ -678,13 +750,19 @@ describe('resolveBuilder', () => {
 
 describe('enforceConsoleGate', () => {
   it('no-op when console is off', () => {
-    expect(() => enforceConsoleGate({console: false, unsafePublicConsole: false})).not.toThrow();
+    expect(() =>
+      enforceConsoleGate({console: false, unsafePublicConsole: false}),
+    ).not.toThrow();
   });
   it('throws when --console without acknowledgement', () => {
-    expect(() => enforceConsoleGate({console: true, unsafePublicConsole: false})).toThrow(/unsafe-public-console/);
+    expect(() =>
+      enforceConsoleGate({console: true, unsafePublicConsole: false}),
+    ).toThrow(/unsafe-public-console/);
   });
   it('allows --console with --unsafe-public-console', () => {
-    expect(() => enforceConsoleGate({console: true, unsafePublicConsole: true})).not.toThrow();
+    expect(() =>
+      enforceConsoleGate({console: true, unsafePublicConsole: true}),
+    ).not.toThrow();
   });
 });
 ```
@@ -714,7 +792,11 @@ export function resolveBuilder(opts: {
     return {entry: opts.entry, exportName: opts.exportName ?? 'buildApp'};
   }
   const probes: Array<{file: string; entry: string; exportName: string}> = [
-    {file: 'dist/console.js', entry: './dist/console.js', exportName: 'buildConsoleApp'},
+    {
+      file: 'dist/console.js',
+      entry: './dist/console.js',
+      exportName: 'buildConsoleApp',
+    },
     {file: 'dist/main.js', entry: './dist/main.js', exportName: 'buildApp'},
   ];
   for (const probe of probes) {
@@ -767,12 +849,18 @@ git commit -m "feat(cli): builder resolution and console acknowledgement gate"
 ### Task 6: Verify (REST liveness)
 
 **Files:**
+
 - Create: `packages/cli/src/verify.ts`, `packages/cli/src/__tests__/unit/verify.unit.ts`
 
 **Interfaces:**
+
 - Produces:
   ```ts
-  export interface VerifyResult {ok: boolean; status: number; body?: string;}
+  export interface VerifyResult {
+    ok: boolean;
+    status: number;
+    body?: string;
+  }
   export function verifyDeploy(
     url: string,
     opts: {verifyPath: string; headers?: Record<string, string>},
@@ -800,12 +888,20 @@ function stub(status: number, body: string): typeof fetch {
 
 describe('verifyDeploy', () => {
   it('passes on 200', async () => {
-    const r = await verifyDeploy('https://x.vercel.app', {verifyPath: '/openapi.json'}, stub(200, '{"openapi":"3.1.1"}'));
+    const r = await verifyDeploy(
+      'https://x.vercel.app',
+      {verifyPath: '/openapi.json'},
+      stub(200, '{"openapi":"3.1.1"}'),
+    );
     expect(r).toMatchObject({ok: true, status: 200});
   });
 
   it('fails on non-200 and returns body', async () => {
-    const r = await verifyDeploy('https://x.vercel.app', {verifyPath: '/openapi.json'}, stub(500, 'boom'));
+    const r = await verifyDeploy(
+      'https://x.vercel.app',
+      {verifyPath: '/openapi.json'},
+      stub(500, 'boom'),
+    );
     expect(r.ok).toBe(false);
     expect(r.status).toBe(500);
     expect(r.body).toContain('boom');
@@ -817,7 +913,11 @@ describe('verifyDeploy', () => {
       seen = String(input);
       return new Response('{}', {status: 200});
     }) as unknown as typeof fetch;
-    await verifyDeploy('https://x.vercel.app', {verifyPath: '/v1/openapi.json'}, fetchFn);
+    await verifyDeploy(
+      'https://x.vercel.app',
+      {verifyPath: '/v1/openapi.json'},
+      fetchFn,
+    );
     expect(seen).toBe('https://x.vercel.app/v1/openapi.json');
   });
 });
@@ -871,20 +971,37 @@ git commit -m "feat(cli): REST liveness verify with injectable fetch"
 ### Task 7: Shell-out seam + deploy orchestration (dry-run aware)
 
 **Files:**
+
 - Create: `packages/cli/src/exec.ts`, `packages/cli/src/run-vercel.ts`, `packages/cli/src/__tests__/unit/run-vercel.unit.ts`
 
 **Interfaces:**
+
 - Produces:
   ```ts
   // exec.ts
-  export interface ExecResult {code: number; stdout: string; stderr: string;}
+  export interface ExecResult {
+    code: number;
+    stdout: string;
+    stderr: string;
+  }
   export type Exec = (cmd: string, args: string[]) => Promise<ExecResult>;
   export const nodeExec: Exec;
 
   // run-vercel.ts
-  export interface RunDeps {exec: Exec; fetchFn: typeof fetch; cwd: string;}
-  export interface RunOutcome {status: 'deployed' | 'ejected' | 'dry-run'; url?: string; verify?: import('./verify.js').VerifyResult;}
-  export function runVercelDeploy(args: import('./args.js').DeployArgs, deps: RunDeps): Promise<RunOutcome>;
+  export interface RunDeps {
+    exec: Exec;
+    fetchFn: typeof fetch;
+    cwd: string;
+  }
+  export interface RunOutcome {
+    status: 'deployed' | 'ejected' | 'dry-run';
+    url?: string;
+    verify?: import('./verify.js').VerifyResult;
+  }
+  export function runVercelDeploy(
+    args: import('./args.js').DeployArgs,
+    deps: RunDeps,
+  ): Promise<RunOutcome>;
   ```
 - `runVercelDeploy` ties Tasks 3–6 together: resolveBuilder → enforceConsoleGate → write `api/index.ts` + merged `vercel.json` at `cwd` root → if `eject` stop (`ejected`) → if `dryRun` run preflight only and stop without exec deploy (`dry-run`) → else preflight, `exec('vercel', [...])`, parse URL from stdout, verify. Preflight runs `exec('vercel', ['whoami'])`; a non-zero code throws an actionable `AgentError`.
 
@@ -929,7 +1046,14 @@ export const nodeExec: Exec = (cmd, args) =>
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync} from 'fs';
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'fs';
 import {tmpdir} from 'os';
 import path from 'path';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
@@ -937,7 +1061,8 @@ import {runVercelDeploy} from '../../run-vercel.js';
 import {parseDeployArgs} from '../../args.js';
 import type {Exec} from '../../exec.js';
 
-const okFetch = (async () => new Response('{}', {status: 200})) as unknown as typeof fetch;
+const okFetch = (async () =>
+  new Response('{}', {status: 200})) as unknown as typeof fetch;
 
 function fakeExec(map: Record<string, {code: number; stdout?: string}>): Exec {
   return async (cmd, args) => {
@@ -958,7 +1083,11 @@ describe('runVercelDeploy', () => {
 
   it('writes root files and stops on --eject', async () => {
     const exec = vi.fn(fakeExec({}));
-    const out = await runVercelDeploy(parseDeployArgs(['vercel', '--eject']), {exec, fetchFn: okFetch, cwd});
+    const out = await runVercelDeploy(parseDeployArgs(['vercel', '--eject']), {
+      exec,
+      fetchFn: okFetch,
+      cwd,
+    });
     expect(out.status).toBe('ejected');
     expect(existsSync(path.join(cwd, 'api', 'index.ts'))).toBe(true);
     expect(existsSync(path.join(cwd, 'vercel.json'))).toBe(true);
@@ -967,7 +1096,10 @@ describe('runVercelDeploy', () => {
 
   it('--dry-run preflights but never deploys', async () => {
     const exec = vi.fn(fakeExec({'vercel whoami': {code: 0}}));
-    const out = await runVercelDeploy(parseDeployArgs(['vercel', '--dry-run']), {exec, fetchFn: okFetch, cwd});
+    const out = await runVercelDeploy(
+      parseDeployArgs(['vercel', '--dry-run']),
+      {exec, fetchFn: okFetch, cwd},
+    );
     expect(out.status).toBe('dry-run');
     // whoami may run; deploy must not.
     const calledDeploy = exec.mock.calls.some(c => c[1][0] === 'deploy');
@@ -979,7 +1111,11 @@ describe('runVercelDeploy', () => {
       'vercel whoami': {code: 0},
       'vercel deploy': {code: 0, stdout: 'https://demo-abc.vercel.app\n'},
     });
-    const out = await runVercelDeploy(parseDeployArgs(['vercel']), {exec, fetchFn: okFetch, cwd});
+    const out = await runVercelDeploy(parseDeployArgs(['vercel']), {
+      exec,
+      fetchFn: okFetch,
+      cwd,
+    });
     expect(out.status).toBe('deployed');
     expect(out.url).toBe('https://demo-abc.vercel.app');
     expect(out.verify?.ok).toBe(true);
@@ -988,7 +1124,11 @@ describe('runVercelDeploy', () => {
   it('throws an actionable error when not authed', async () => {
     const exec = fakeExec({'vercel whoami': {code: 1}});
     await expect(
-      runVercelDeploy(parseDeployArgs(['vercel']), {exec, fetchFn: okFetch, cwd}),
+      runVercelDeploy(parseDeployArgs(['vercel']), {
+        exec,
+        fetchFn: okFetch,
+        cwd,
+      }),
     ).rejects.toThrow(/login/i);
   });
 
@@ -996,7 +1136,11 @@ describe('runVercelDeploy', () => {
     mkdirSync(path.join(cwd, 'api'));
     writeFileSync(path.join(cwd, 'api', 'index.ts'), '// user file');
     await expect(
-      runVercelDeploy(parseDeployArgs(['vercel', '--eject']), {exec: fakeExec({}), fetchFn: okFetch, cwd}),
+      runVercelDeploy(parseDeployArgs(['vercel', '--eject']), {
+        exec: fakeExec({}),
+        fetchFn: okFetch,
+        cwd,
+      }),
     ).rejects.toThrow(/force/i);
   });
 });
@@ -1044,7 +1188,11 @@ function detectPackageManager(): 'pnpm' | 'yarn' | 'bun' | 'npm' {
 }
 
 function writeRootFiles(args: DeployArgs, cwd: string): void {
-  const builder = resolveBuilder({entry: args.entry, exportName: args.exportName, cwd});
+  const builder = resolveBuilder({
+    entry: args.entry,
+    exportName: args.exportName,
+    cwd,
+  });
   // api/index.ts is one level deeper than the builder's dist/ path; the entry
   // string is repo-root-relative, so prefix `../` to reach it from api/.
   const entryFromApi = builder.entry.startsWith('./')
@@ -1063,7 +1211,10 @@ function writeRootFiles(args: DeployArgs, cwd: string): void {
     }
   }
   mkdirSync(apiDir, {recursive: true});
-  writeFileSync(apiFile, generateEntry({entry: entryFromApi, exportName: builder.exportName}));
+  writeFileSync(
+    apiFile,
+    generateEntry({entry: entryFromApi, exportName: builder.exportName}),
+  );
 
   const vercelPath = path.join(cwd, 'vercel.json');
   const existing = existsSync(vercelPath)
@@ -1111,7 +1262,11 @@ export async function runVercelDeploy(
   await preflight(deps.exec);
   if (args.dryRun) return {status: 'dry-run'};
 
-  const deployArgs = ['deploy', ...(args.prod ? ['--prod'] : []), ...(args.yes ? ['--yes'] : [])];
+  const deployArgs = [
+    'deploy',
+    ...(args.prod ? ['--prod'] : []),
+    ...(args.yes ? ['--yes'] : []),
+  ];
   const res = await deps.exec('vercel', deployArgs);
   if (res.code !== 0) {
     throw new AgentError(`vercel deploy failed (exit ${res.code}).`, {
@@ -1119,7 +1274,11 @@ export async function runVercelDeploy(
     });
   }
   const url = parseUrl(res.stdout);
-  const verify = await verifyDeploy(url, {verifyPath: args.verifyPath}, deps.fetchFn);
+  const verify = await verifyDeploy(
+    url,
+    {verifyPath: args.verifyPath},
+    deps.fetchFn,
+  );
   return {status: 'deployed', url, verify};
 }
 ```
@@ -1141,10 +1300,12 @@ git commit -m "feat(cli): vercel deploy orchestration with injectable exec/fetch
 ### Task 8: Wire `cli.ts` end-to-end
 
 **Files:**
+
 - Modify: `packages/cli/src/cli.ts`
 - Create: `packages/cli/src/__tests__/unit/cli.unit.ts`
 
 **Interfaces:**
+
 - Consumes: `parseDeployArgs`, `runVercelDeploy`, `nodeExec`. Produces the final `main(argv)` that prints a result summary and maps `AgentError` to a clean stderr line + exit 1; a `verify.ok === false` deploy exits 1.
 
 - [ ] **Step 1: Write the failing test**
@@ -1268,10 +1429,12 @@ Expected: PASS (all unit suites green).
 - [ ] **Step 5: Manual smoke (eject + dry-run against agentback-demo)**
 
 Run:
+
 ```bash
 cd ../agentback-demo && node ../agentback/packages/cli/dist/cli.js deploy vercel --eject --force && head -5 api/index.ts && cat vercel.json
 git checkout -- api vercel.json   # restore the demo's committed files
 ```
+
 Expected: a generated `api/index.ts` (Node http types) + a `vercel.json` with the catch-all rewrite; then restored.
 
 - [ ] **Step 6: Commit**
@@ -1286,9 +1449,11 @@ git commit -m "feat(cli): wire deploy vercel end-to-end with clean error mapping
 ### Task 9: Opt-in credential-gated e2e
 
 **Files:**
+
 - Create: `packages/cli/src/__tests__/e2e/deploy-vercel.e2e.ts`
 
 **Interfaces:**
+
 - Consumes: `main` from `cli.js`. Runs a REAL `vercel deploy` only when `ABC_E2E_VERCEL=1` and Vercel credentials are present; otherwise the suite is skipped, so default CI never needs creds.
 
 - [ ] **Step 1: Write the gated e2e**
@@ -1363,5 +1528,6 @@ git commit -m "chore(cli): workspace wiring verified (pnpm verify green)"
 **Type consistency:** `DeployArgs.exportName` (not `export`, a reserved word) used consistently across T2/T5/T7. `RunDeps`/`RunOutcome`/`VerifyResult`/`MergeOpts`/`MergeResult` names match across tasks. `Exec`/`ExecResult` consistent. `generateEntry` takes `{entry, exportName}` everywhere. OK.
 
 **Pre-verified (no action needed):**
+
 - `@agentback/openapi` exports `AgentError` and `ErrorCodes.INVALID_INPUT` (`= 'invalid_input'`) from its barrel (`packages/openapi/src/agent-error.ts:48,104`, re-exported via `index.ts`); constructor is `new AgentError(message, {code})`. The plan's imports/usage match.
 - The builder contract `await builder({listen:false})` → `await app.restServer` → `.expressApp` is verified against `agentback-demo/api/index.ts`. If a REST-only template's builder differs, the two lines inside `generateEntry` (Task 3) are the only thing to adjust.

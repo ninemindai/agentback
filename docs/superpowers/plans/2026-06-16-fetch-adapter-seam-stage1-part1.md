@@ -18,23 +18,24 @@
 
 ## File Structure
 
-| File | Responsibility |
-|---|---|
-| `packages/rest/src/web/router.ts` | `Router<T>`: register `{method, template, value}` routes; `match(method, pathname)` → `{value, params}` or `undefined`. Non-greedy. Pure, no I/O. |
-| `packages/rest/src/web/convert.ts` | `toWebRequest(IncomingMessage): Request` and `writeWebResponse(ServerResponse, Response): Promise<void>`. The only Node↔Web boundary. |
-| `packages/rest/src/host/fetch.ts` | `createFetchHost<T>({router, dispatch, notFound?})`: composes a router + a dispatch fn into a `{fetch(req): Promise<Response>}`. The `FetchHostAdapter`. |
-| `packages/rest/src/host/node.ts` | `createNodeListener(host): RequestListener`: converts Node req → Web, calls `host.fetch`, writes the Web response back. |
-| `packages/rest/src/__tests__/unit/web-router.unit.ts` | Router tests. |
-| `packages/rest/src/__tests__/unit/web-convert.unit.ts` | `toWebRequest` tests. |
-| `packages/rest/src/__tests__/unit/host-fetch.unit.ts` | `createFetchHost` tests. |
-| `packages/rest/src/__tests__/integration/host-node.integration.ts` | End-to-end Node round-trip (exercises convert both ways + fetch host). |
-| `packages/rest/src/index.ts` | Add exports for the new public symbols. |
+| File                                                               | Responsibility                                                                                                                                           |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/rest/src/web/router.ts`                                  | `Router<T>`: register `{method, template, value}` routes; `match(method, pathname)` → `{value, params}` or `undefined`. Non-greedy. Pure, no I/O.        |
+| `packages/rest/src/web/convert.ts`                                 | `toWebRequest(IncomingMessage): Request` and `writeWebResponse(ServerResponse, Response): Promise<void>`. The only Node↔Web boundary.                    |
+| `packages/rest/src/host/fetch.ts`                                  | `createFetchHost<T>({router, dispatch, notFound?})`: composes a router + a dispatch fn into a `{fetch(req): Promise<Response>}`. The `FetchHostAdapter`. |
+| `packages/rest/src/host/node.ts`                                   | `createNodeListener(host): RequestListener`: converts Node req → Web, calls `host.fetch`, writes the Web response back.                                  |
+| `packages/rest/src/__tests__/unit/web-router.unit.ts`              | Router tests.                                                                                                                                            |
+| `packages/rest/src/__tests__/unit/web-convert.unit.ts`             | `toWebRequest` tests.                                                                                                                                    |
+| `packages/rest/src/__tests__/unit/host-fetch.unit.ts`              | `createFetchHost` tests.                                                                                                                                 |
+| `packages/rest/src/__tests__/integration/host-node.integration.ts` | End-to-end Node round-trip (exercises convert both ways + fetch host).                                                                                   |
+| `packages/rest/src/index.ts`                                       | Add exports for the new public symbols.                                                                                                                  |
 
 ---
 
 ## Task 1: Core Router
 
 **Files:**
+
 - Create: `packages/rest/src/web/router.ts`
 - Test: `packages/rest/src/__tests__/unit/web-router.unit.ts`
 
@@ -114,6 +115,7 @@ describe('Router', () => {
 ```bash
 pnpm -F @agentback/rest build
 ```
+
 Expected: build FAILS — `Cannot find module '../../web/router.js'` (the source file does not exist yet).
 
 - [ ] **Step 3: Write the implementation**
@@ -198,6 +200,7 @@ export class Router<T> {
 pnpm -F @agentback/rest build
 pnpm exec vitest run packages/rest/dist/__tests__/unit/web-router.unit.js
 ```
+
 Expected: PASS — 8 tests pass.
 
 - [ ] **Step 5: Commit**
@@ -212,6 +215,7 @@ git commit -m "feat(rest): runtime-neutral core Router"
 ## Task 2: Node → Web Request converter
 
 **Files:**
+
 - Create: `packages/rest/src/web/convert.ts`
 - Test: `packages/rest/src/__tests__/unit/web-convert.unit.ts`
 
@@ -283,6 +287,7 @@ describe('toWebRequest', () => {
 ```bash
 pnpm -F @agentback/rest build
 ```
+
 Expected: build FAILS — `Cannot find module '../../web/convert.js'`.
 
 - [ ] **Step 3: Write the implementation**
@@ -348,6 +353,7 @@ export async function writeWebResponse(
 pnpm -F @agentback/rest build
 pnpm exec vitest run packages/rest/dist/__tests__/unit/web-convert.unit.js
 ```
+
 Expected: PASS — 3 tests pass. (`writeWebResponse` is covered end-to-end in Task 4.)
 
 - [ ] **Step 5: Commit**
@@ -362,6 +368,7 @@ git commit -m "feat(rest): Node<->Web request/response converters"
 ## Task 3: Fetch host
 
 **Files:**
+
 - Create: `packages/rest/src/host/fetch.ts`
 - Test: `packages/rest/src/__tests__/unit/host-fetch.unit.ts`
 
@@ -384,7 +391,7 @@ describe('createFetchHost', () => {
     router.add({method: 'GET', template: '/greet/{name}', value: 'greet'});
     const host = createFetchHost({
       router,
-      dispatch: async (match) =>
+      dispatch: async match =>
         Response.json({value: match.value, params: match.params}),
     });
     const res = await host.fetch(
@@ -424,6 +431,7 @@ describe('createFetchHost', () => {
 ```bash
 pnpm -F @agentback/rest build
 ```
+
 Expected: build FAILS — `Cannot find module '../../host/fetch.js'`.
 
 - [ ] **Step 3: Write the implementation**
@@ -481,6 +489,7 @@ export function createFetchHost<T>(opts: FetchHostOptions<T>): FetchHost {
 pnpm -F @agentback/rest build
 pnpm exec vitest run packages/rest/dist/__tests__/unit/host-fetch.unit.js
 ```
+
 Expected: PASS — 3 tests pass.
 
 - [ ] **Step 5: Commit**
@@ -495,6 +504,7 @@ git commit -m "feat(rest): FetchHost adapter composing router + dispatch"
 ## Task 4: Node listener + end-to-end round-trip
 
 **Files:**
+
 - Create: `packages/rest/src/host/node.ts`
 - Test: `packages/rest/src/__tests__/integration/host-node.integration.ts`
 
@@ -537,12 +547,12 @@ let base: string;
 
 beforeAll(async () => {
   server = http.createServer(createNodeListener(host));
-  await new Promise<void>((resolve) => server.listen(0, resolve));
+  await new Promise<void>(resolve => server.listen(0, resolve));
   const {port} = server.address() as AddressInfo;
   base = `http://127.0.0.1:${port}`;
 });
 
-afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
+afterAll(() => new Promise<void>(resolve => server.close(() => resolve())));
 
 describe('createNodeListener (end-to-end)', () => {
   it('round-trips a GET with a path param', async () => {
@@ -576,6 +586,7 @@ describe('createNodeListener (end-to-end)', () => {
 ```bash
 pnpm -F @agentback/rest build
 ```
+
 Expected: build FAILS — `Cannot find module '../../host/node.js'`.
 
 - [ ] **Step 3: Write the implementation**
@@ -628,6 +639,7 @@ export function createNodeListener(host: FetchHost): RequestListener {
 pnpm -F @agentback/rest build
 pnpm exec vitest run packages/rest/dist/__tests__/integration/host-node.integration.js
 ```
+
 Expected: PASS — 3 tests pass. This confirms `toWebRequest`, `writeWebResponse`, `Router`, and `createFetchHost` all work together over a real socket.
 
 - [ ] **Step 5: Commit**
@@ -642,6 +654,7 @@ git commit -m "feat(rest): Node RequestListener adapter + e2e round-trip"
 ## Task 5: Public exports + full-package regression check
 
 **Files:**
+
 - Modify: `packages/rest/src/index.ts`
 
 - [ ] **Step 1: Confirm the export style**
@@ -649,6 +662,7 @@ git commit -m "feat(rest): Node RequestListener adapter + e2e round-trip"
 ```bash
 grep -n "export" packages/rest/src/index.ts | head -40
 ```
+
 Expected: the file uses barrel `export * from './….js';` lines. Match that style.
 
 - [ ] **Step 2: Add the new exports**
@@ -668,6 +682,7 @@ export * from './host/node.js';
 pnpm -F @agentback/rest build
 pnpm exec vitest run packages/rest/dist
 ```
+
 Expected: PASS — all existing `@agentback/rest` tests still pass, plus the new web/host tests. No existing test changed (these modules are additive and untouched by `RestServer`).
 
 - [ ] **Step 4: Lint**
@@ -675,6 +690,7 @@ Expected: PASS — all existing `@agentback/rest` tests still pass, plus the new
 ```bash
 pnpm lint
 ```
+
 Expected: no errors for the new files. Fix any prettier/eslint issues (single quotes, no bracket spacing, trailing commas) and re-run.
 
 - [ ] **Step 5: Commit**
@@ -698,6 +714,7 @@ git commit -m "feat(rest): export web/host neutral plumbing"
 ## Self-Review
 
 **Spec coverage (this plan's slice):**
+
 - Spec component `router.ts` → Task 1 ✅
 - Spec component `convert.ts` → Task 2 ✅
 - Spec component `host/fetch.ts` (FetchHostAdapter) → Task 3 ✅
@@ -767,7 +784,10 @@ import type {RouteMatch} from './router.js';
  * schemas + controller ref); the per-request DI Context is derived inside the
  * dispatch impl from the request, not threaded here.
  */
-export type Dispatch<T> = (match: RouteMatch<T>, req: Request) => Promise<Response>;
+export type Dispatch<T> = (
+  match: RouteMatch<T>,
+  req: Request,
+) => Promise<Response>;
 ```
 
 `FetchHostOptions<T>.dispatch` is typed as `Dispatch<T>`.
@@ -778,7 +798,10 @@ export type Dispatch<T> = (match: RouteMatch<T>, req: Request) => Promise<Respon
 
 ```ts
 function defaultNotFound(): Response {
-  return Response.json({code: 'not_found', message: 'Not Found'}, {status: 404});
+  return Response.json(
+    {code: 'not_found', message: 'Not Found'},
+    {status: 404},
+  );
 }
 ```
 
@@ -789,6 +812,7 @@ Update Task 3's two assertions accordingly (`expect(await res.json()).toEqual({c
 Add to `host-node.integration.ts`, beyond the three happy-path tests:
 
 - **[REGRESSION — mandatory]** two `Set-Cookie` headers survive intact:
+
 ```ts
 it('preserves multiple Set-Cookie headers (D1 regression)', async () => {
   router.add({method: 'GET', template: '/multi', value: 'multi'});
@@ -799,6 +823,7 @@ it('preserves multiple Set-Cookie headers (D1 regression)', async () => {
   expect(res.headers.getSetCookie()).toEqual(['a=1; Path=/', 'b=2; Path=/']);
 });
 ```
+
 - **HEAD** request → status + headers, empty body (`await res.text()` is `''`).
 - **Streaming** `ReadableStream` response body → chunks arrive intact (dispatch returns `new Response(stream)`; assert the concatenated text).
 
@@ -844,7 +869,8 @@ interface CompiledRoute<T> {
   value: T;
 }
 
-const isParam = (seg: string): boolean => seg.startsWith('{') && seg.endsWith('}');
+const isParam = (seg: string): boolean =>
+  seg.startsWith('{') && seg.endsWith('}');
 
 function splitPath(p: string): string[] {
   const trimmed = p.replace(/^\/+/, '').replace(/\/+$/, '');
@@ -923,9 +949,9 @@ export class Router<T> {
 it('rejects a structurally duplicate route at registration', () => {
   const r = new Router<string>();
   r.add({method: 'GET', template: '/x/{a}', value: 'first'});
-  expect(() => r.add({method: 'GET', template: '/x/{b}', value: 'second'})).toThrow(
-    /duplicate route/,
-  );
+  expect(() =>
+    r.add({method: 'GET', template: '/x/{b}', value: 'second'}),
+  ).toThrow(/duplicate route/);
 });
 
 it('prefers a static segment over a param regardless of order', () => {
@@ -958,19 +984,19 @@ it('treats malformed percent-encoding as a non-match (never throws)', () => {
 ## What already exists (reuse vs rebuild)
 
 - `@agentback/http-server` (`http.createServer` wrapper) — complemented, not duplicated; Part 3's Express host uses it.
-- `@agentback/openapi` `buildErrorEnvelope` / `ErrorCodes.NOT_FOUND` — Part 2's dispatch reuses these for the real envelope; Part 1's generic default only mirrors the flat *shape* (D3).
+- `@agentback/openapi` `buildErrorEnvelope` / `ErrorCodes.NOT_FOUND` — Part 2's dispatch reuses these for the real envelope; Part 1's generic default only mirrors the flat _shape_ (D3).
 - `@hono/node-server` — **adopted** (D1) instead of rebuilding Node↔Web conversion.
 - Express routing — intentionally replaced by the core `Router` (the Fetch host has no Express router).
 
 ## Failure modes (per new codepath)
 
-| Codepath | Realistic failure | Test? | Error handling? | User sees |
-|---|---|---|---|---|
-| `Router.match` | malformed `%`-encoding throws | ✅ D6 test | ✅ caught → non-match | clean 404 |
-| `Router.add` | duplicate/shadowing route | ✅ D7 test | ✅ throws at `add()` (startup) | startup error, not prod misroute |
-| `host/node` (Hono) | multiple `Set-Cookie` corrupted | ✅ D4 regression | ✅ library `getSetCookie` | both cookies set |
-| `host/node` (Hono) | client disconnect mid-stream | ⚠️ not unit-tested | ✅ library wires `AbortSignal` | stream aborted, no leak |
-| `FetchHost.fetch` | unmatched path | ✅ Task 3 | ✅ flat 404 (D3) | `{code:'not_found'}` |
+| Codepath           | Realistic failure               | Test?              | Error handling?                | User sees                        |
+| ------------------ | ------------------------------- | ------------------ | ------------------------------ | -------------------------------- |
+| `Router.match`     | malformed `%`-encoding throws   | ✅ D6 test         | ✅ caught → non-match          | clean 404                        |
+| `Router.add`       | duplicate/shadowing route       | ✅ D7 test         | ✅ throws at `add()` (startup) | startup error, not prod misroute |
+| `host/node` (Hono) | multiple `Set-Cookie` corrupted | ✅ D4 regression   | ✅ library `getSetCookie`      | both cookies set                 |
+| `host/node` (Hono) | client disconnect mid-stream    | ⚠️ not unit-tested | ✅ library wires `AbortSignal` | stream aborted, no leak          |
+| `FetchHost.fetch`  | unmatched path                  | ✅ Task 3          | ✅ flat 404 (D3)               | `{code:'not_found'}`             |
 
 No critical gaps (no failure mode is simultaneously untested, unhandled, and silent).
 
@@ -1005,13 +1031,13 @@ Synthesized from this review's findings. Each derives from a specific finding ab
 
 ## GSTACK REVIEW REPORT
 
-| Review | Trigger | Why | Runs | Status | Findings |
-|--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
-| Codex Review | `/codex review` | Independent 2nd opinion | 1 | issues_found | outside-voice: 14 points; 7 folded, rest resolved-by-D1/deferred |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | issues_found | 7 findings, 0 critical gaps — all resolved into the plan |
-| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+| Review        | Trigger               | Why                             | Runs | Status       | Findings                                                         |
+| ------------- | --------------------- | ------------------------------- | ---- | ------------ | ---------------------------------------------------------------- |
+| CEO Review    | `/plan-ceo-review`    | Scope & strategy                | 0    | —            | —                                                                |
+| Codex Review  | `/codex review`       | Independent 2nd opinion         | 1    | issues_found | outside-voice: 14 points; 7 folded, rest resolved-by-D1/deferred |
+| Eng Review    | `/plan-eng-review`    | Architecture & tests (required) | 1    | issues_found | 7 findings, 0 critical gaps — all resolved into the plan         |
+| Design Review | `/plan-design-review` | UI/UX gaps                      | 0    | —            | —                                                                |
+| DX Review     | `/plan-devex-review`  | Developer experience gaps       | 0    | —            | —                                                                |
 
 **CODEX:** flagged convert.ts as protocol code (Set-Cookie corruption, aborts, header fidelity), router primitiveness (shadowing, decode-throw), and premature public export. High overlap with the structured review.
 

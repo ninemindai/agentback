@@ -4,7 +4,12 @@
 
 import express from 'express';
 import swaggerUI from 'swagger-ui-dist';
-import {AssetSource, fromDisk, RestApplication, RestServer} from '@agentback/rest';
+import {
+  AssetSource,
+  fromDisk,
+  RestApplication,
+  RestServer,
+} from '@agentback/rest';
 
 export interface ExplorerOptions {
   /** URL path where the explorer is mounted. Default `/explorer`. */
@@ -80,13 +85,13 @@ export function mountExplorer(
   server.addFetchHandler(
     'GET',
     opts.path + '/',
-    async () => new Response(html, {headers: {'content-type': 'text/html; charset=utf-8'}}),
+    async () =>
+      new Response(html, {
+        headers: {'content-type': 'text/html; charset=utf-8'},
+      }),
   );
-  server.addFetchHandler(
-    'GET',
-    opts.path,
-    async req =>
-      Response.redirect(new URL(opts.path + '/', req.url).toString(), 301),
+  server.addFetchHandler('GET', opts.path, async req =>
+    Response.redirect(new URL(opts.path + '/', req.url).toString(), 301),
   );
   server.addFetchPrefix(opts.path, suffix => serveAsset(suffix));
 }

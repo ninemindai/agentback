@@ -22,10 +22,12 @@
 ### Task 1: Create the comparison page and wire it into the build
 
 **Files:**
+
 - Create: `docs/compare.md`
 - Modify: `website/build.mjs` (the `DOC_PAGES` array near line 31; the `NAV_SECTIONS` "Start" group near line 52)
 
 **Interfaces:**
+
 - Consumes: nothing from earlier tasks.
 - Produces: a built page at `website/dist/docs/compare.html` (+ `.md` twin), a sidebar nav entry "Coming from another framework?" under the **Start** group, and `docs/compare.html` as the homepage's link target consumed by Task 2.
 
@@ -42,13 +44,13 @@ typed client, and your runtime validation — served from a single process with 
 real dependency-injection container. If you're arriving from one of the
 frameworks below, here's what carries over and what you gain.
 
-| Coming from | What carries over | What you gain |
-|---|---|---|
-| **LoopBack 4** | DI instincts — `@inject`, `@injectable`, `Context`, binding scopes, extension points map 1:1 | Zod-first schemas, MCP tools, OpenAPI 3.1 emitted from the same Zod, ESM/Node 22, no `@loopback/repository` baggage |
-| **NestJS** | Decorated classes and a DI container | One Zod-on-decorator source instead of `nestjs-zod` + `@nestjs/swagger` + a community MCP bridge across two metadata systems |
-| **tRPC** | A no-codegen, end-to-end-typed client | Your API is *also* a public OpenAPI 3.1 document and MCP tools — first-class outputs, not a bolt-on — plus a DI container |
-| **ts-rest** | Contract-first discipline | The same contract becomes MCP tools an agent can call, under one `@authorize` policy, plus a DI container |
-| **Hono** | — | `@hono/zod-openapi` + `@hono/mcp` + hand-written SDK tools collapse to one schema, one process |
+| Coming from    | What carries over                                                                            | What you gain                                                                                                                |
+| -------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| **LoopBack 4** | DI instincts — `@inject`, `@injectable`, `Context`, binding scopes, extension points map 1:1 | Zod-first schemas, MCP tools, OpenAPI 3.1 emitted from the same Zod, ESM/Node 22, no `@loopback/repository` baggage          |
+| **NestJS**     | Decorated classes and a DI container                                                         | One Zod-on-decorator source instead of `nestjs-zod` + `@nestjs/swagger` + a community MCP bridge across two metadata systems |
+| **tRPC**       | A no-codegen, end-to-end-typed client                                                        | Your API is _also_ a public OpenAPI 3.1 document and MCP tools — first-class outputs, not a bolt-on — plus a DI container    |
+| **ts-rest**    | Contract-first discipline                                                                    | The same contract becomes MCP tools an agent can call, under one `@authorize` policy, plus a DI container                    |
+| **Hono**       | —                                                                                            | `@hono/zod-openapi` + `@hono/mcp` + hand-written SDK tools collapse to one schema, one process                               |
 
 ## From LoopBack 4
 
@@ -193,10 +195,12 @@ git commit -m "feat(website): add 'Coming from another framework?' comparison pa
 ### Task 2: Link the page from the homepage
 
 **Files:**
+
 - Modify: `website/index.html` (the `.nav-links` block near line 43; the hero, after the `.hero-actions` div near line 81)
 - Modify: `website/styles.css` (add a `.hero-switch` rule after the `.hero-status` rule near line 267)
 
 **Interfaces:**
+
 - Consumes: `docs/compare.html` (built by Task 1) as the link target.
 - Produces: nothing consumed by later tasks (final task).
 
@@ -205,20 +209,22 @@ git commit -m "feat(website): add 'Coming from another framework?' comparison pa
 In `website/index.html`, replace:
 
 ```html
-        <div class="nav-links">
-          <a href="docs/index.html">Docs</a>
-          <a href="docs/guides/build-a-rest-api.html">Guides</a>
-          <a href="blog/index.html">Blog</a>
+<div class="nav-links">
+  <a href="docs/index.html">Docs</a>
+  <a href="docs/guides/build-a-rest-api.html">Guides</a>
+  <a href="blog/index.html">Blog</a>
+</div>
 ```
 
 with:
 
 ```html
-        <div class="nav-links">
-          <a href="docs/index.html">Docs</a>
-          <a href="docs/guides/build-a-rest-api.html">Guides</a>
-          <a href="docs/compare.html">Compare</a>
-          <a href="blog/index.html">Blog</a>
+<div class="nav-links">
+  <a href="docs/index.html">Docs</a>
+  <a href="docs/guides/build-a-rest-api.html">Guides</a>
+  <a href="docs/compare.html">Compare</a>
+  <a href="blog/index.html">Blog</a>
+</div>
 ```
 
 - [ ] **Step 2: Add the hero line under the call-to-action buttons**
@@ -226,35 +232,29 @@ with:
 In `website/index.html`, replace:
 
 ```html
-          <div class="hero-actions reveal d3">
-            <a class="button" href="docs/index.html">Read the docs</a>
-            <a
-              class="button secondary"
-              href="https://github.com/ninemindai/agentback"
-            >
-              ninemindai/agentback
-            </a>
-          </div>
-          <p class="hero-status reveal d3">
+<div class="hero-actions reveal d3">
+  <a class="button" href="docs/index.html">Read the docs</a>
+  <a class="button secondary" href="https://github.com/ninemindai/agentback">
+    ninemindai/agentback
+  </a>
+</div>
+<p class="hero-status reveal d3"></p>
 ```
 
 with:
 
 ```html
-          <div class="hero-actions reveal d3">
-            <a class="button" href="docs/index.html">Read the docs</a>
-            <a
-              class="button secondary"
-              href="https://github.com/ninemindai/agentback"
-            >
-              ninemindai/agentback
-            </a>
-          </div>
-          <p class="hero-switch reveal d3">
-            Coming from LoopBack, NestJS, tRPC, ts-rest, or Hono?
-            <a href="docs/compare.html">See what carries over →</a>
-          </p>
-          <p class="hero-status reveal d3">
+<div class="hero-actions reveal d3">
+  <a class="button" href="docs/index.html">Read the docs</a>
+  <a class="button secondary" href="https://github.com/ninemindai/agentback">
+    ninemindai/agentback
+  </a>
+</div>
+<p class="hero-switch reveal d3">
+  Coming from LoopBack, NestJS, tRPC, ts-rest, or Hono?
+  <a href="docs/compare.html">See what carries over →</a>
+</p>
+<p class="hero-status reveal d3"></p>
 ```
 
 - [ ] **Step 3: Add the `.hero-switch` style**
@@ -332,6 +332,7 @@ git commit -m "feat(website): link the comparison page from the homepage hero an
 ## Self-Review
 
 **Spec coverage:**
+
 - New page `docs/compare.md` with H1 "Switching to AgentBack", frame paragraph, GFM table, five per-row sections each ending in `npm create agentback` → Task 1, Step 1. ✓
 - Nav label "Coming from another framework?" under Start → Task 1, Step 3. ✓
 - `build.mjs` wiring (`DOC_PAGES` + `NAV_SECTIONS`) → Task 1, Steps 2–3. ✓

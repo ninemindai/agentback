@@ -16,13 +16,7 @@ import {isMain} from '@agentback/core';
 import {api, get, post} from '@agentback/openapi';
 import {RestApplication} from '@agentback/rest';
 import {installExplorer} from '@agentback/rest-explorer';
-import {
-  MCPComponent,
-  mcpServer,
-  prompt,
-  resource,
-  tool,
-} from '@agentback/mcp';
+import {MCPComponent, mcpServer, prompt, resource, tool} from '@agentback/mcp';
 import {installInspector} from '@agentback/mcp-inspector';
 import {installMcpHttp} from '@agentback/mcp-http';
 

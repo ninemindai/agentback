@@ -18,15 +18,15 @@
 
 ## File Structure
 
-| File | Responsibility |
-|---|---|
-| `packages/rest/src/route-meta.ts` | Extracted `lookupSuccessStatus(ctor, methodName)` (currently module-private in `rest.server.ts`) — shared by the Express mount path and `collectRoutes`. |
-| `packages/rest/src/web/collect-routes.ts` | `collectRoutes(context, basePath?)` → `RouteRecord<RouteValue>[]` from controller specs. |
-| `packages/rest/src/rest.server.ts` | MODIFY: import `lookupSuccessStatus` from `route-meta.js`; add `fetchHandler(): FetchHost` (lazy). |
-| `packages/rest/src/index.ts` | MODIFY: export the now-validated `web/`+`host/` surface. |
-| `packages/rest/src/__tests__/integration/fetch-handler.integration.ts` | Build a `RestApplication`, drive both Express (supertest) and `fetchHandler()` → parity for multiple controllers/routes. |
-| `packages/testing/src/*` (createTestApp) | MODIFY: add `fetch(input, init?)` to the returned harness. |
-| `packages/testing/src/__tests__/*` | A createTestApp-level parity/fetch test. |
+| File                                                                   | Responsibility                                                                                                                                           |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/rest/src/route-meta.ts`                                      | Extracted `lookupSuccessStatus(ctor, methodName)` (currently module-private in `rest.server.ts`) — shared by the Express mount path and `collectRoutes`. |
+| `packages/rest/src/web/collect-routes.ts`                              | `collectRoutes(context, basePath?)` → `RouteRecord<RouteValue>[]` from controller specs.                                                                 |
+| `packages/rest/src/rest.server.ts`                                     | MODIFY: import `lookupSuccessStatus` from `route-meta.js`; add `fetchHandler(): FetchHost` (lazy).                                                       |
+| `packages/rest/src/index.ts`                                           | MODIFY: export the now-validated `web/`+`host/` surface.                                                                                                 |
+| `packages/rest/src/__tests__/integration/fetch-handler.integration.ts` | Build a `RestApplication`, drive both Express (supertest) and `fetchHandler()` → parity for multiple controllers/routes.                                 |
+| `packages/testing/src/*` (createTestApp)                               | MODIFY: add `fetch(input, init?)` to the returned harness.                                                                                               |
+| `packages/testing/src/__tests__/*`                                     | A createTestApp-level parity/fetch test.                                                                                                                 |
 
 ---
 
@@ -48,7 +48,10 @@ import {getControllerSpec} from '@agentback/openapi';
  * from the controller's OpenAPI spec. Shared by the Express mount path and the
  * Web `collectRoutes` so both agree on status without re-walking metadata.
  */
-export function lookupSuccessStatus(ctor: Function, methodName: string): number {
+export function lookupSuccessStatus(
+  ctor: Function,
+  methodName: string,
+): number {
   // ... (move the existing body verbatim)
 }
 ```
@@ -130,6 +133,7 @@ export function collectRoutes(
 **Files:** Modify `packages/rest/src/rest.server.ts`.
 
 - [ ] **Step 1:** Add imports near the other relative imports:
+
 ```ts
 import {collectRoutes} from './web/collect-routes.js';
 import {Router} from './web/router.js';
@@ -139,6 +143,7 @@ import type {RouteValue} from './web/route-value.js';
 ```
 
 - [ ] **Step 2:** Add a lazily-built handler (place near `expressApp` getter):
+
 ```ts
   private _fetchHost?: FetchHost;
 
@@ -166,6 +171,7 @@ import type {RouteValue} from './web/route-value.js';
     return this._fetchHost;
   }
 ```
+
 (If `this.config.basePath` isn't the right field name, grep the config type and use the actual one — match what `controller()` uses for its prefix.)
 
 - [ ] **Step 3:** Build. Commit Tasks 2+3 — `feat(rest): RestServer.fetchHandler() — registry-driven Web surface`.
@@ -187,6 +193,7 @@ import type {RouteValue} from './web/route-value.js';
 **Files:** Modify `packages/rest/src/index.ts`; modify `@agentback/testing`'s createTestApp.
 
 - [ ] **Step 1 (export the seam — lifts the Part 1/2 D5 hold):** Add to `index.ts`, matching the `export *` barrel style:
+
 ```ts
 export * from './web/router.js';
 export * from './web/dispatch.js';

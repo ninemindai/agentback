@@ -77,9 +77,24 @@ describe('turnReducer: happy-path sequence', () => {
     // completion update. The reducer must keep ONE row and NOT wipe the title
     // to null (else every row renders as the fallback "tool").
     const events: SseClientEvent[] = [
-      {type: 'tool_call', toolCallId: 'tc-1', title: 'inventory', status: 'pending'},
-      {type: 'tool_call', toolCallId: 'tc-1', title: undefined, status: undefined},
-      {type: 'tool_call', toolCallId: 'tc-1', title: undefined, status: 'completed'},
+      {
+        type: 'tool_call',
+        toolCallId: 'tc-1',
+        title: 'inventory',
+        status: 'pending',
+      },
+      {
+        type: 'tool_call',
+        toolCallId: 'tc-1',
+        title: undefined,
+        status: undefined,
+      },
+      {
+        type: 'tool_call',
+        toolCallId: 'tc-1',
+        title: undefined,
+        status: 'completed',
+      },
     ];
     const msg = applyAll(events).messages.at(-1)!;
     expect(msg.toolCalls.length).toBe(1); // upsert, not append
@@ -89,10 +104,25 @@ describe('turnReducer: happy-path sequence', () => {
 
   it('keeps distinct tool calls as distinct rows', () => {
     const events: SseClientEvent[] = [
-      {type: 'tool_call', toolCallId: 'a', title: 'inventory', status: 'pending'},
+      {
+        type: 'tool_call',
+        toolCallId: 'a',
+        title: 'inventory',
+        status: 'pending',
+      },
       {type: 'tool_call', toolCallId: 'b', title: 'get', status: 'pending'},
-      {type: 'tool_call', toolCallId: 'a', title: undefined, status: 'completed'},
-      {type: 'tool_call', toolCallId: 'b', title: undefined, status: 'completed'},
+      {
+        type: 'tool_call',
+        toolCallId: 'a',
+        title: undefined,
+        status: 'completed',
+      },
+      {
+        type: 'tool_call',
+        toolCallId: 'b',
+        title: undefined,
+        status: 'completed',
+      },
     ];
     const rows = applyAll(events).messages.at(-1)!.toolCalls;
     expect(rows.map(r => `${r.title}:${r.status}`)).toEqual([
@@ -146,7 +176,11 @@ describe('summarizeToolCalls', () => {
       {
         type: 'permission_request',
         requestId: 'req-1',
-        toolCall: {toolCallId: 'tc-2', kind: 'file_edit', title: 'Edit src/greeting.ts'},
+        toolCall: {
+          toolCallId: 'tc-2',
+          kind: 'file_edit',
+          title: 'Edit src/greeting.ts',
+        },
         options: [
           {optionId: 'allow_once', kind: 'allow_once', label: 'Allow once'},
           {optionId: 'reject_once', kind: 'reject_once', label: 'Reject once'},
@@ -197,7 +231,12 @@ describe('summarizeToolCalls', () => {
     const events: SseClientEvent[] = [
       {type: 'assistant_delta', text: 'Let me check '},
       {type: 'assistant_delta', text: 'the schema.'},
-      {type: 'tool_call', toolCallId: 'tc-3', title: 'inventory', status: 'running'},
+      {
+        type: 'tool_call',
+        toolCallId: 'tc-3',
+        title: 'inventory',
+        status: 'running',
+      },
       {
         type: 'permission_request',
         requestId: 'req-3',
@@ -297,8 +336,18 @@ describe('turnReducer: tool_call upsert', () => {
   it('two tool_call events with the same toolCallId produce one entry (updated)', () => {
     const events: SseClientEvent[] = [
       {type: 'assistant_delta', text: 'Working…'},
-      {type: 'tool_call', toolCallId: 'tc-dup', title: 'write_file', status: 'running'},
-      {type: 'tool_call', toolCallId: 'tc-dup', title: 'write_file', status: 'done'},
+      {
+        type: 'tool_call',
+        toolCallId: 'tc-dup',
+        title: 'write_file',
+        status: 'running',
+      },
+      {
+        type: 'tool_call',
+        toolCallId: 'tc-dup',
+        title: 'write_file',
+        status: 'done',
+      },
     ];
     const state = applyAll(events);
 

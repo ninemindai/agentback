@@ -93,12 +93,13 @@ import {EXPRESS_SERVICE_KEY} from './express-service-keys.js';
 export class ExpressService {
   readonly app: Express = express();
   // Expose the runtime pieces RestServer currently pulls via its loaders:
-  readonly express = express;          // factory + json/urlencoded/text/raw
+  readonly express = express; // factory + json/urlencoded/text/raw
   readonly cors = cors;
   readonly registerExpressMiddleware = registerExpressMiddleware;
   readonly toExpressMiddleware = toExpressMiddleware;
 }
 ```
+
 Plus `EXPRESS_SERVICE_KEY` in a small `express-service-keys.ts` (so the key has no static dep on the class — the class imports the key, mirroring the reference), and `ExpressComponent` (`{ services = [ExpressService] }`) in `express-component.ts`. Export all three from the barrel `index.ts`, and add `./express-service`, `./express-service-keys`, `./express-component` to `packages/express/package.json` `exports`.
 
 > Decide while implementing: should `ExpressService` own the **listener** (`start()`/`stop()`, like the reference) or keep that in `RestServer`? For Phase 1, **keep the listener in `RestServer`** (it already `implements Server` and owns `start()/stop()`) — `ExpressService` just owns the `app` + runtime helpers. Moving the listener is a larger change; defer it.

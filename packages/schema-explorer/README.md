@@ -89,7 +89,7 @@ The same schema graph serializes to an **[OKF](https://github.com/GoogleCloudPla
 (Open Knowledge Format) bundle** — a portable, vendor-neutral directory of
 markdown + YAML-frontmatter docs an agent can ingest verbatim or you can commit
 to git. It's a sixth projection of the one source of truth (alongside OpenAPI,
-MCP `inputSchema`, REST routes, Drizzle tables), aimed at *comprehension* rather
+MCP `inputSchema`, REST routes, Drizzle tables), aimed at _comprehension_ rather
 than the wire contract.
 
 The bundle is two-tier and cross-linked:
@@ -119,10 +119,10 @@ const onlyRest = inventoryToOkf(inv, {exclude: s => s.surface === 'mcp'});
 
 ## API
 
-| Route                         | Returns                                                        |
-| ----------------------------- | ------------------------------------------------------------- |
-| `GET /schema-explorer/api/schemas` | Every schema node with its cross-protocol usages + fields |
-| `GET /schema-explorer/api/graph`   | Schema nodes + surface (route/tool) nodes + role-labeled edges |
+| Route                              | Returns                                                          |
+| ---------------------------------- | ---------------------------------------------------------------- |
+| `GET /schema-explorer/api/schemas` | Every schema node with its cross-protocol usages + fields        |
+| `GET /schema-explorer/api/graph`   | Schema nodes + surface (route/tool) nodes + role-labeled edges   |
 | `GET /schema-explorer/api/okf`     | The schema graph as an OKF bundle (`{files: [{path, content}]}`) |
 
 ## Notes

@@ -7,7 +7,5 @@
   },
   "include": ["src/**/*"],
   "exclude": ["dist", "node_modules"],
-  "references": [
-    {"path": "../core"}
-  ]
+  "references": [{"path": "../core"}]
 }

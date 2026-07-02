@@ -713,8 +713,7 @@ export type ControllerClass<T = any> = Constructor<T>;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type ServiceOrProviderClass<T = any> =
-  | Constructor<T | Provider<T>>
-  | DynamicValueProviderClass<T>;
+  Constructor<T | Provider<T>> | DynamicValueProviderClass<T>;
 
 /**
  * Type description for `package.json`

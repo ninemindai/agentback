@@ -42,7 +42,7 @@ today dispatches only in-process.
 | 2   | Scope of this doc            | **Architecture map first** — define all four layers' boundaries; spec each separately                        |
 | 3   | Bus ↔ engine relationship    | **Bus UNDER the engine** — queue is the durable substrate; ExecutionEngine stays the brain                   |
 | 4   | Transport dependency policy  | **Pluggable transport, Redis default** — ports + adapters; open to SQS/SNS, NATS later                       |
-| 5   | Package home for ports       | **New `@agentback/agent-messaging`** — ports only; orchestration/engine depend on ports                 |
+| 5   | Package home for ports       | **New `@agentback/agent-messaging`** — ports only; orchestration/engine depend on ports                      |
 | 6   | Port taxonomy                | **Compare A vs B at job/worker spec time** — A (JobQueue + EventBus + thin Scheduler) is the leaning default |
 | 7   | Interactive vs detached path | **In-process for interactive, queue for detached** — two entry points, one engine                            |
 | 8   | Pub/sub mechanism            | **Redis Streams + consumer groups** (durable, independent cursors, at-least-once per group)                  |

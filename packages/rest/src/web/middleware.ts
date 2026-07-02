@@ -84,7 +84,8 @@ function sortEntries(entries: WebMiddlewareEntry[]): WebMiddlewareEntry[] {
   for (const e of entries) {
     const group = e.group ?? RestMiddlewareGroups.MIDDLEWARE;
     for (const up of e.upstreamGroups ?? []) groupOrders.push([up, group]);
-    for (const down of e.downstreamGroups ?? []) groupOrders.push([group, down]);
+    for (const down of e.downstreamGroups ?? [])
+      groupOrders.push([group, down]);
   }
   const sorted = sortListOfGroups(...groupOrders);
   const rank = new Map(sorted.map((g, i) => [g, i]));
@@ -110,6 +111,8 @@ function sortEntries(entries: WebMiddlewareEntry[]): WebMiddlewareEntry[] {
 export async function collectWebMiddleware(
   ctx: Context,
 ): Promise<WebMiddlewareEntry[]> {
-  const bindings = ctx.findByTag<WebMiddlewareEntry>(RestBindings.WEB_MIDDLEWARE);
+  const bindings = ctx.findByTag<WebMiddlewareEntry>(
+    RestBindings.WEB_MIDDLEWARE,
+  );
   return Promise.all(bindings.map(b => ctx.get<WebMiddlewareEntry>(b.key)));
 }

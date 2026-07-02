@@ -110,7 +110,10 @@ export function createCorsWebMiddleware(
       if (opts.maxAge != null) {
         headers.set('access-control-max-age', String(opts.maxAge));
       }
-      return new Response(null, {status: opts.optionsSuccessStatus ?? 204, headers});
+      return new Response(null, {
+        status: opts.optionsSuccessStatus ?? 204,
+        headers,
+      });
     }
     const res = await next();
     // Add the CORS headers to the actual response. Clone headers (a Response's

@@ -32,10 +32,7 @@ export interface PluginInfo {
 }
 
 export type PluginLoadErrorKind =
-  | 'import'
-  | 'missing-export'
-  | 'not-a-component'
-  | 'key-collision';
+  'import' | 'missing-export' | 'not-a-component' | 'key-collision';
 
 export interface PluginLoadError {
   package: string;

@@ -88,16 +88,11 @@ function makeFakeAgent(
   app.onRequest('session/prompt', async ({params, client}) => {
     const sessionId = params.sessionId;
     const firstBlock = params.prompt[0] as
-      | {type: string; text?: string}
-      | undefined;
+      {type: string; text?: string} | undefined;
     const text = firstBlock?.type === 'text' ? (firstBlock.text ?? '') : '';
 
     let stopReason:
-      | 'end_turn'
-      | 'cancelled'
-      | 'max_tokens'
-      | 'max_turn_requests'
-      | 'refusal';
+      'end_turn' | 'cancelled' | 'max_tokens' | 'max_turn_requests' | 'refusal';
     if (opts.onPrompt) {
       stopReason = await opts.onPrompt(sessionId, text, client);
     } else {
@@ -1194,8 +1189,7 @@ describe('Grounding: session/new receives mcpServers for the app mcp-http', () =
     }));
     guideAgent.onRequest('session/prompt', async ({params}) => {
       const first = params.prompt[0] as
-        | {type: string; text?: string}
-        | undefined;
+        {type: string; text?: string} | undefined;
       if (first?.type === 'text' && first.text) prompts.push(first.text);
       return {stopReason: 'end_turn' as const, _meta: null};
     });

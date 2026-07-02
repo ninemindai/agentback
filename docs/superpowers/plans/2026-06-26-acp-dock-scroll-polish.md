@@ -23,10 +23,12 @@
 ### Task 1: Add `@shadcn/react` dependency + port `scroll-fade`/`shimmer` and dock-scroll CSS into `console-theme`
 
 **Files:**
+
 - Modify: `packages/console-chat/package.json` (add dependency)
 - Modify: `packages/console-theme/src/index.ts` (add CSS to `THEME_CSS` string; line refs below)
 
 **Interfaces:**
+
 - Consumes: nothing (first task).
 - Produces: CSS classes other tasks rely on — `.shimmer`, `.scroll-fade`, `.dock-streaming`, `.dock-stream-root`, `.dock-stream-content`, `.dock-jump`; and a modified `.stream` rule (layout moved to `.dock-stream-content`).
 
@@ -54,20 +56,49 @@ In `packages/console-theme/src/index.ts`, find line 41:
 Insert immediately AFTER it:
 
 ```css
-@keyframes shimmer { to { background-position:-200% center; } }
+@keyframes shimmer {
+  to {
+    background-position: -200% center;
+  }
+}
 .shimmer {
-  background:linear-gradient(100deg, var(--muted) 35%, var(--ink) 50%, var(--muted) 65%);
-  background-size:200% auto; -webkit-background-clip:text; background-clip:text;
-  color:transparent; animation:shimmer 1.8s linear infinite;
+  background: linear-gradient(
+    100deg,
+    var(--muted) 35%,
+    var(--ink) 50%,
+    var(--muted) 65%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 1.8s linear infinite;
 }
 @media (prefers-reduced-motion: reduce) {
-  .shimmer { animation:none; background:none; color:var(--muted); -webkit-text-fill-color:currentColor; }
+  .shimmer {
+    animation: none;
+    background: none;
+    color: var(--muted);
+    -webkit-text-fill-color: currentColor;
+  }
 }
 @supports (animation-timeline: scroll()) {
   .scroll-fade {
-    --fade:18px;
-    -webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 var(--fade), #000 calc(100% - var(--fade)), transparent 100%);
-    mask-image:linear-gradient(to bottom, transparent 0, #000 var(--fade), #000 calc(100% - var(--fade)), transparent 100%);
+    --fade: 18px;
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 var(--fade),
+      #000 calc(100% - var(--fade)),
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 var(--fade),
+      #000 calc(100% - var(--fade)),
+      transparent 100%
+    );
   }
 }
 ```
@@ -85,17 +116,50 @@ In the same file, find line 85:
 Replace that single line with:
 
 ```css
-.stream { flex:1; min-height:0; overflow:auto; }
-.dock-stream-root { flex:1; min-height:0; position:relative; display:flex; flex-direction:column; }
-.dock-stream-content { display:flex; flex-direction:column; gap:14px; padding:14px; }
-.dock-streaming { display:flex; align-items:center; gap:8px; padding-left:4px; }
-.dock-jump {
-  position:absolute; left:50%; bottom:12px; transform:translateX(-50%);
-  background:var(--card); border:1px solid var(--line-2); color:var(--ink);
-  font:inherit; font-size:11.5px; padding:.3rem .75rem; border-radius:999px;
-  cursor:pointer; box-shadow:0 2px 8px rgba(34,29,22,.16); z-index:2;
+.stream {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
-.dock-jump:hover { border-color:var(--accent); color:var(--accent); }
+.dock-stream-root {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.dock-stream-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+}
+.dock-streaming {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 4px;
+}
+.dock-jump {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  background: var(--card);
+  border: 1px solid var(--line-2);
+  color: var(--ink);
+  font: inherit;
+  font-size: 11.5px;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(34, 29, 22, 0.16);
+  z-index: 2;
+}
+.dock-jump:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 ```
 
 (The padding/gap/flex that were on `.stream` move to `.dock-stream-content`, which becomes the `MessageScroller.Content` element in Task 2. `.dock-stream-root` is `position:relative` so the absolutely-positioned `.dock-jump` anchors to it.)
@@ -123,6 +187,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ### Task 2: Rewire `Dock.tsx` stream container to `MessageScroller` + shimmer status text
 
 **Files:**
+
 - Modify: `packages/console-chat/src/client/Dock.tsx`
   - Imports (line 23-43 region)
   - Remove `streamRef` (line 352) and the auto-scroll `useEffect` (lines 366-372)
@@ -130,6 +195,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
   - Add `shimmer` class to the `connecting` status text (lines 633-645)
 
 **Interfaces:**
+
 - Consumes: from Task 1 — CSS classes `.stream`, `.scroll-fade`, `.dock-stream-root`, `.dock-stream-content`, `.dock-streaming`, `.dock-jump`, `.shimmer`. From `@shadcn/react/message-scroller` — `MessageScroller` (compound: `.Provider`, `.Root`, `.Viewport`, `.Content`, `.Item`, `.Button`).
 - Produces: nothing downstream (Task 3 is docs only).
 
@@ -146,12 +212,7 @@ import {MessageScroller} from '@shadcn/react/message-scroller';
 In the `react` import block (lines 23-29), remove `useRef,` (it is used only by `streamRef`, which is being deleted). The block becomes:
 
 ```ts
-import {
-  useCallback,
-  useEffect,
-  useReducer,
-  useState,
-} from 'react';
+import {useCallback, useEffect, useReducer, useState} from 'react';
 ```
 
 - [ ] **Step 3: Delete the `streamRef` declaration**
@@ -159,7 +220,7 @@ import {
 Remove line 352:
 
 ```ts
-  const streamRef = useRef<HTMLDivElement | null>(null);
+const streamRef = useRef<HTMLDivElement | null>(null);
 ```
 
 - [ ] **Step 4: Delete the manual auto-scroll effect**
@@ -167,13 +228,13 @@ Remove line 352:
 Remove the entire block at lines 366-372:
 
 ```ts
-  // ── Auto-scroll to bottom ─────────────────────────────────────────────────
-  useEffect(() => {
-    const el = streamRef.current;
-    if (el) {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [conv.messages.length, conv.status]);
+// ── Auto-scroll to bottom ─────────────────────────────────────────────────
+useEffect(() => {
+  const el = streamRef.current;
+  if (el) {
+    el.scrollTop = el.scrollHeight;
+  }
+}, [conv.messages.length, conv.status]);
 ```
 
 - [ ] **Step 5: Add `shimmer` to the connecting status text**
@@ -181,20 +242,15 @@ Remove the entire block at lines 366-372:
 In the `connecting` state block (around lines 633-645), change the "Launching … handshake" copy so the status line shimmers. Replace:
 
 ```tsx
-              <div style={{color: 'var(--faint)', fontSize: '11px'}}>
-                handshake
-              </div>
+<div style={{color: 'var(--faint)', fontSize: '11px'}}>handshake</div>
 ```
 
 with:
 
 ```tsx
-              <div
-                className="shimmer"
-                style={{fontSize: '11px'}}
-              >
-                handshake
-              </div>
+<div className="shimmer" style={{fontSize: '11px'}}>
+  handshake
+</div>
 ```
 
 - [ ] **Step 6: Replace the stream container block**
@@ -202,176 +258,165 @@ with:
 Replace the entire `{/* Stream / state body */}` block — the opening `<div className="stream" ref={streamRef}>` through its closing `</div>` (lines 612-748) — with the MessageScroller tree below. The inner state-card JSX (`no-agent`, `connecting`, `doctor`, `crashed`, `rebuild`) is unchanged; only the wrapper, the message `.map`, and the streaming indicator change:
 
 ```tsx
-        {/* Stream / state body */}
-        <MessageScroller.Provider
-          autoScroll
-          defaultScrollPosition="end"
-          scrollEdgeThreshold={48}
-        >
-          <MessageScroller.Root className="dock-stream-root">
-            <MessageScroller.Viewport className="stream scroll-fade">
-              <MessageScroller.Content className="dock-stream-content">
-                {/* State: no-agent */}
-                {dock.status === 'no-agent' && (
-                  <div className="dock-empty">
-                    <div className="dock-empty-title">No coding agent found</div>
-                    <div>Install one to chat with your app.</div>
-                    <code className="dock-install-hint">
-                      npm i -g claude-agent-acp
-                    </code>
-                    <button
-                      className="btn"
-                      style={{marginTop: '8px'}}
-                      onClick={() => dispatchDock({type: 'recheck'})}
-                    >
-                      Re-check
-                    </button>
-                  </div>
-                )}
+{
+  /* Stream / state body */
+}
+<MessageScroller.Provider
+  autoScroll
+  defaultScrollPosition="end"
+  scrollEdgeThreshold={48}
+>
+  <MessageScroller.Root className="dock-stream-root">
+    <MessageScroller.Viewport className="stream scroll-fade">
+      <MessageScroller.Content className="dock-stream-content">
+        {/* State: no-agent */}
+        {dock.status === 'no-agent' && (
+          <div className="dock-empty">
+            <div className="dock-empty-title">No coding agent found</div>
+            <div>Install one to chat with your app.</div>
+            <code className="dock-install-hint">npm i -g claude-agent-acp</code>
+            <button
+              className="btn"
+              style={{marginTop: '8px'}}
+              onClick={() => dispatchDock({type: 'recheck'})}
+            >
+              Re-check
+            </button>
+          </div>
+        )}
 
-                {/* State: connecting */}
-                {dock.status === 'connecting' && (
-                  <div className="dock-empty">
-                    <Spin size={16} />
-                    <div>
-                      Launching{' '}
-                      <span className="badge">
-                        {dock.selectedAgentId ?? 'agent'}
-                      </span>
-                      …
-                    </div>
-                    <div className="shimmer" style={{fontSize: '11px'}}>
-                      handshake
-                    </div>
-                  </div>
-                )}
+        {/* State: connecting */}
+        {dock.status === 'connecting' && (
+          <div className="dock-empty">
+            <Spin size={16} />
+            <div>
+              Launching{' '}
+              <span className="badge">{dock.selectedAgentId ?? 'agent'}</span>…
+            </div>
+            <div className="shimmer" style={{fontSize: '11px'}}>
+              handshake
+            </div>
+          </div>
+        )}
 
-                {/* State: doctor / wrong version */}
-                {dock.status === 'doctor' && (
-                  <div className="dock-empty">
-                    <div
-                      className="dock-empty-title"
-                      style={{color: 'var(--accent)'}}
-                    >
-                      Adapter out of date
-                    </div>
-                    <div style={{fontSize: '12.5px', color: 'var(--muted)'}}>
-                      {dock.doctorMessage ?? 'Version mismatch.'}
-                    </div>
-                    <code className="dock-install-hint">
-                      npm i -g claude-agent-acp@latest
-                    </code>
-                    <button
-                      className="btn"
-                      style={{marginTop: '8px'}}
-                      onClick={() => dispatchDock({type: 'restart'})}
-                    >
-                      Retry
-                    </button>
-                  </div>
-                )}
+        {/* State: doctor / wrong version */}
+        {dock.status === 'doctor' && (
+          <div className="dock-empty">
+            <div className="dock-empty-title" style={{color: 'var(--accent)'}}>
+              Adapter out of date
+            </div>
+            <div style={{fontSize: '12.5px', color: 'var(--muted)'}}>
+              {dock.doctorMessage ?? 'Version mismatch.'}
+            </div>
+            <code className="dock-install-hint">
+              npm i -g claude-agent-acp@latest
+            </code>
+            <button
+              className="btn"
+              style={{marginTop: '8px'}}
+              onClick={() => dispatchDock({type: 'restart'})}
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
-                {/* State: crashed */}
-                {dock.status === 'crashed' && (
-                  <div className="dock-empty">
-                    <div
-                      className="dock-empty-title"
-                      style={{color: 'var(--err)'}}
-                    >
-                      Agent stopped
-                    </div>
-                    <div style={{fontSize: '12.5px'}}>
-                      {dock.crashMessage ?? 'The session ended unexpectedly.'}
-                    </div>
-                    <div style={{display: 'flex', gap: '8px', marginTop: '8px'}}>
-                      <button
-                        className="btn"
-                        onClick={() => dispatchDock({type: 'restart'})}
-                      >
-                        Restart
-                      </button>
-                      <button className="btn ghost">View log</button>
-                    </div>
-                  </div>
-                )}
+        {/* State: crashed */}
+        {dock.status === 'crashed' && (
+          <div className="dock-empty">
+            <div className="dock-empty-title" style={{color: 'var(--err)'}}>
+              Agent stopped
+            </div>
+            <div style={{fontSize: '12.5px'}}>
+              {dock.crashMessage ?? 'The session ended unexpectedly.'}
+            </div>
+            <div style={{display: 'flex', gap: '8px', marginTop: '8px'}}>
+              <button
+                className="btn"
+                onClick={() => dispatchDock({type: 'restart'})}
+              >
+                Restart
+              </button>
+              <button className="btn ghost">View log</button>
+            </div>
+          </div>
+        )}
 
-                {/* State: rebuild (F5) */}
-                {dock.status === 'rebuild' && (
-                  <div className="dock-empty">
-                    <div>Edited files.</div>
-                    <div className="dock-empty-title">
-                      Rebuild to see changes live
-                    </div>
-                    <button
-                      className="btn"
-                      style={{marginTop: '8px'}}
-                      onClick={() => {
-                        // Placeholder: Task 7 wires the real rebuild + reconnect.
-                        dispatchDock({type: 'restart'});
-                      }}
-                    >
-                      Rebuild &amp; reconnect
-                    </button>
-                    <div style={{color: 'var(--faint)', fontSize: '11px'}}>
-                      watch build detected
-                    </div>
-                  </div>
-                )}
+        {/* State: rebuild (F5) */}
+        {dock.status === 'rebuild' && (
+          <div className="dock-empty">
+            <div>Edited files.</div>
+            <div className="dock-empty-title">Rebuild to see changes live</div>
+            <button
+              className="btn"
+              style={{marginTop: '8px'}}
+              onClick={() => {
+                // Placeholder: Task 7 wires the real rebuild + reconnect.
+                dispatchDock({type: 'restart'});
+              }}
+            >
+              Rebuild &amp; reconnect
+            </button>
+            <div style={{color: 'var(--faint)', fontSize: '11px'}}>
+              watch build detected
+            </div>
+          </div>
+        )}
 
-                {/* Conversation messages (ready state) */}
-                {(dock.status === 'ready' || conv.messages.length > 0) &&
-                  dock.status !== 'no-agent' &&
-                  dock.status !== 'connecting' &&
-                  dock.status !== 'doctor' &&
-                  dock.status !== 'rebuild' &&
-                  conv.messages.map((msg, idx) => {
-                    const isPerm = idx === lastAssistantIdx;
-                    return (
-                      <MessageScroller.Item
-                        key={idx}
-                        messageId={String(idx)}
-                        scrollAnchor
-                      >
-                        <MessageBubble
-                          msg={msg}
-                          perm={isPerm ? permForLastAssistant : null}
-                          onApprove={() =>
-                            void resolvePermission(
-                              conv.pendingPermission?.options[0]?.optionId ??
-                                'allow_once',
-                            )
-                          }
-                          onDeny={() => void resolvePermission(null)}
-                          onScopeChange={handleScopeChange}
-                        />
-                      </MessageScroller.Item>
-                    );
-                  })}
+        {/* Conversation messages (ready state) */}
+        {(dock.status === 'ready' || conv.messages.length > 0) &&
+          dock.status !== 'no-agent' &&
+          dock.status !== 'connecting' &&
+          dock.status !== 'doctor' &&
+          dock.status !== 'rebuild' &&
+          conv.messages.map((msg, idx) => {
+            const isPerm = idx === lastAssistantIdx;
+            return (
+              <MessageScroller.Item
+                key={idx}
+                messageId={String(idx)}
+                scrollAnchor
+              >
+                <MessageBubble
+                  msg={msg}
+                  perm={isPerm ? permForLastAssistant : null}
+                  onApprove={() =>
+                    void resolvePermission(
+                      conv.pendingPermission?.options[0]?.optionId ??
+                        'allow_once',
+                    )
+                  }
+                  onDeny={() => void resolvePermission(null)}
+                  onScopeChange={handleScopeChange}
+                />
+              </MessageScroller.Item>
+            );
+          })}
 
-                {/* Inline streaming indicator (shimmer) */}
-                {dock.status === 'ready' && conv.status === 'streaming' && (
-                  <div className="dock-streaming">
-                    <Spin size={11} />
-                    <span className="shimmer">Working…</span>
-                  </div>
-                )}
-              </MessageScroller.Content>
-            </MessageScroller.Viewport>
+        {/* Inline streaming indicator (shimmer) */}
+        {dock.status === 'ready' && conv.status === 'streaming' && (
+          <div className="dock-streaming">
+            <Spin size={11} />
+            <span className="shimmer">Working…</span>
+          </div>
+        )}
+      </MessageScroller.Content>
+    </MessageScroller.Viewport>
 
-            {/* Jump-to-latest — only visible when scrolled away from the end */}
-            <MessageScroller.Button
-              direction="end"
-              className="dock-jump"
-              render={(props, state) =>
-                state.active ? (
-                  <button {...props} type="button">
-                    ↓ jump to latest
-                  </button>
-                ) : null
-              }
-            />
-          </MessageScroller.Root>
-        </MessageScroller.Provider>
+    {/* Jump-to-latest — only visible when scrolled away from the end */}
+    <MessageScroller.Button
+      direction="end"
+      className="dock-jump"
+      render={(props, state) =>
+        state.active ? (
+          <button {...props} type="button">
+            ↓ jump to latest
+          </button>
+        ) : null
+      }
+    />
+  </MessageScroller.Root>
+</MessageScroller.Provider>;
 ```
 
 (Note: the per-message `MessageBubble` props are copied verbatim from the original `.map` at lines 725-738; the only structural change is wrapping each in `MessageScroller.Item`.)
@@ -394,6 +439,7 @@ Expected: passes (no unused-var warnings for the removed `useRef`/`streamRef`).
 - [ ] **Step 10: Manual verification in the example app**
 
 Run: `pnpm -F hello-agent-console start` (or the example's documented start command), open the console, open the dock, and confirm:
+
 1. Streaming a reply auto-follows the bottom.
 2. Scrolling up mid-stream stops the follow and reveals "↓ jump to latest".
 3. Clicking the button returns to the bottom and resumes following.
@@ -421,11 +467,13 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ### Task 3: Documentation sync + full verify
 
 **Files:**
+
 - Modify: `packages/console-chat/README.md`
 - Modify: `packages/console-theme/README.md`
 - Modify: `docs/guides/agent-console.md`
 
 **Interfaces:**
+
 - Consumes: the behavior shipped in Tasks 1-2.
 - Produces: nothing.
 
@@ -485,6 +533,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Self-Review
 
 **Spec coverage:**
+
 - Scope item 1 (MessageScroller, stick + jump button) → Task 2 ✓
 - Scope item 2 (scroll-fade + shimmer ported to console-theme, applied) → Task 1 (CSS) + Task 2 (applied to viewport/status text) ✓
 - Dependency & build (add dep, not external, pnpm-11 caveat) → Task 1 Steps 1-2 + Global Constraints ✓

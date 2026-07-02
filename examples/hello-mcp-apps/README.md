@@ -39,12 +39,14 @@ Then register it with Claude Desktop (Settings → Developer → Edit Config,
   "mcpServers": {
     "hello-mcp-apps": {
       "command": "node",
-      "args": ["/absolute/path/to/agentback/examples/hello-mcp-apps/dist/server.js"]
+      "args": [
+        "/absolute/path/to/agentback/examples/hello-mcp-apps/dist/server.js"
+      ]
     }
   }
 }
 ```
 
-Ask Claude something like *"get the forecast for Berlin"*. It calls
+Ask Claude something like _"get the forecast for Berlin"_. It calls
 `get_forecast`, and the widget renders the daily cards inline. The **Refresh**
 button calls the tool again from inside the widget via `app.callServerTool(...)`.

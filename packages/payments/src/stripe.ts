@@ -2,11 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import type {
-  PrincipalRef,
-  UsageEvent,
-  UsageSink,
-} from '@agentback/metering';
+import type {PrincipalRef, UsageEvent, UsageSink} from '@agentback/metering';
 
 /**
  * A Stripe Billing **meter event** (the v1/billing/meter_events shape). The

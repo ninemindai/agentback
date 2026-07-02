@@ -12,7 +12,7 @@ describe('generateEntry', () => {
     expect(src).toContain("import {buildApp} from '../dist/main.js'");
   });
 
-  it("static-imports express + cors so node-file-trace bundles them (rest loads them lazily via createRequire)", () => {
+  it('static-imports express + cors so node-file-trace bundles them (rest loads them lazily via createRequire)', () => {
     expect(src).toContain("import 'express'");
     expect(src).toContain("import 'cors'");
   });

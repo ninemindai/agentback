@@ -27,21 +27,21 @@ So removing `express` from `@agentback/rest`'s `dependencies` changes nothing ab
 
 Within `@agentback/express`, the express **runtime** is confined to a small set of modules (verified at `c3b4d77`). Assign every module:
 
-| Module | Express runtime? | Phase-2 home |
-|---|---|---|
-| `types.ts` | no express (imports `on-finished` only) | **neutral** |
-| `keys.ts` | no | **neutral** |
-| `group-sorter.ts` | no | **neutral** |
-| `middleware.ts` | no | **neutral** |
-| `middleware-interceptor.ts` | no express (`on-finished` only) | **neutral** |
-| `middleware-registry.ts` | no | **neutral** |
-| `mixins/middleware.mixin.ts` | no | **neutral** |
-| `providers/invoke-middleware.provider.ts` | no | **neutral** |
-| `express.server.ts` | **yes** (`import express`) | **host** |
-| `express.application.ts` | yes (via ExpressServer) | **host** |
-| `express-service.ts` | **yes** (`import express`, `cors`) | **host** |
-| `express-service-keys.ts` | no (key + type) | **host** (co-located with the service; key is import-safe) |
-| `express-component.ts` | yes (imports the service class) | **host** |
+| Module                                    | Express runtime?                        | Phase-2 home                                               |
+| ----------------------------------------- | --------------------------------------- | ---------------------------------------------------------- |
+| `types.ts`                                | no express (imports `on-finished` only) | **neutral**                                                |
+| `keys.ts`                                 | no                                      | **neutral**                                                |
+| `group-sorter.ts`                         | no                                      | **neutral**                                                |
+| `middleware.ts`                           | no                                      | **neutral**                                                |
+| `middleware-interceptor.ts`               | no express (`on-finished` only)         | **neutral**                                                |
+| `middleware-registry.ts`                  | no                                      | **neutral**                                                |
+| `mixins/middleware.mixin.ts`              | no                                      | **neutral**                                                |
+| `providers/invoke-middleware.provider.ts` | no                                      | **neutral**                                                |
+| `express.server.ts`                       | **yes** (`import express`)              | **host**                                                   |
+| `express.application.ts`                  | yes (via ExpressServer)                 | **host**                                                   |
+| `express-service.ts`                      | **yes** (`import express`, `cors`)      | **host**                                                   |
+| `express-service-keys.ts`                 | no (key + type)                         | **host** (co-located with the service; key is import-safe) |
+| `express-component.ts`                    | yes (imports the service class)         | **host**                                                   |
 
 `rest` only imports neutral modules on its runtime/edge path (`@agentback/express/mixins/middleware.mixin`, `/keys`, `/types`, the `ExpressMiddlewareFactory` type). The host modules are reached only via the Phase-1 `ExpressService` seam / the createRequire loaders.
 
@@ -78,12 +78,12 @@ Express-coupled features (raw `@inject(HTTP_REQUEST/RESPONSE)`, dispatch-seam su
 The earlier framing was: make `listener: 'native'` the global default (fetch-seam "item D / full demotion"). That is a **behavioral migration** — every app using Express-coupled features silently breaks, and the exit criterion ("full suite green under native") is unreachable because some features are Express-only by design. The two-class design replaces that with an **explicit, opt-in class choice**:
 
 - No global default flip, no migration — existing apps keep `RestApplication`.
-- Express-only features are excluded *by construction* on `EdgeRestApplication`, not by a runtime guard you can trip.
+- Express-only features are excluded _by construction_ on `EdgeRestApplication`, not by a runtime guard you can trip.
 - Parity gaps (P2.0 below) are **rescoped, not gating**: `EdgeRestApplication` simply doesn't offer un-ported features (install\* UIs, configurable body-parser) until F2/B/C land. You ship the edge class without closing the whole backlog.
 
 The remaining gate is therefore just: the neutral-package extraction (P2.1) + whatever subset of fetch parity `EdgeRestApplication` must guarantee (a deliberately small, documented surface — `@api` routes, framework routes, MCP-over-fetch), NOT full native parity.
 
-**Item D's exit criterion is nuanced, not "the whole suite passes under native":** native intentionally CANNOT serve Express-coupled routes (raw `@inject(HTTP_REQUEST/HTTP_RESPONSE)`, dispatch-seam subclasses, `app.expressMiddleware`). Those must (a) keep working under an explicit `listener: 'express'` + host, and (b) fail loudly under native (the `assertNoExpressCoupledRoute` guard, already in place). The real criterion: *the non-Express-coupled suite + examples pass under native default; Express-coupled features pass under explicit express mode; the split changes neither.*
+**Item D's exit criterion is nuanced, not "the whole suite passes under native":** native intentionally CANNOT serve Express-coupled routes (raw `@inject(HTTP_REQUEST/HTTP_RESPONSE)`, dispatch-seam subclasses, `app.expressMiddleware`). Those must (a) keep working under an explicit `listener: 'express'` + host, and (b) fail loudly under native (the `assertNoExpressCoupledRoute` guard, already in place). The real criterion: _the non-Express-coupled suite + examples pass under native default; Express-coupled features pass under explicit express mode; the split changes neither._
 
 ## Phased execution (each phase ships + verifies independently)
 
@@ -93,14 +93,14 @@ The remaining gate is therefore just: the neutral-package extraction (P2.1) + wh
 
 Flipped the listener default to `'native'`, full `vitest run`: **45 failed / 2313 passed / 33 skipped.** Categorized by failure reason:
 
-| Category | ~count | What it is | Verdict |
-|---|---|---|---|
-| **Express-coupled-by-design** | 3 | `assertNoExpressCoupledRoute` correctly fired: raw `@inject(HTTP_REQUEST/RESPONSE)` (`req-injection`) + dispatch-seam subclasses (`EnvelopeRestServer`, `AuditRestServer` in `rest-server.integration`). | **Not a gap.** These tests just need explicit `listener: 'express'`. Native behaving correctly. |
-| **install\*/extension/UI routes 404 on native** | ~28 | Routes mounted via `app.get`/`app.use` on `expressApp` (not `addFetchHandler`): `extension-health` (/health, /ready), `extension-metrics` (/metrics), `console`, `rest-explorer`, `mcp-inspector`, `mcp-http` + `per-session`, `mcp-connect`, `chat` webhook. The fetch router doesn't know them → 404. | **Real gap = fetch-seam backlog item F2** ("neutralize install\* UIs") + extension route re-expression. Large. |
-| **body-parser / CORS / raw-body config** | ~9 | The web path parses bodies via `Request.json()/formData()` and does NOT honor the Express `bodyParser` config (`text`/`raw`/`urlencoded`) or CORS-origin/raw-byte semantics identically (`body-parser.integration`, chat raw-body, a CORS-origin assertion). | **Real gap = backlog items B/C** (web body-parse + CORS parity). |
-| **dispatch hooks / auth / metering parity** | ~5 | A few `expected 'authorize'/'connected'/401` — dispatch hooks, authz, and `mcp-connect` state not firing identically on the web path. | **Real gap = backlog items C1/C2.** |
+| Category                                        | ~count | What it is                                                                                                                                                                                                                                                                                              | Verdict                                                                                                        |
+| ----------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **Express-coupled-by-design**                   | 3      | `assertNoExpressCoupledRoute` correctly fired: raw `@inject(HTTP_REQUEST/RESPONSE)` (`req-injection`) + dispatch-seam subclasses (`EnvelopeRestServer`, `AuditRestServer` in `rest-server.integration`).                                                                                                | **Not a gap.** These tests just need explicit `listener: 'express'`. Native behaving correctly.                |
+| **install\*/extension/UI routes 404 on native** | ~28    | Routes mounted via `app.get`/`app.use` on `expressApp` (not `addFetchHandler`): `extension-health` (/health, /ready), `extension-metrics` (/metrics), `console`, `rest-explorer`, `mcp-inspector`, `mcp-http` + `per-session`, `mcp-connect`, `chat` webhook. The fetch router doesn't know them → 404. | **Real gap = fetch-seam backlog item F2** ("neutralize install\* UIs") + extension route re-expression. Large. |
+| **body-parser / CORS / raw-body config**        | ~9     | The web path parses bodies via `Request.json()/formData()` and does NOT honor the Express `bodyParser` config (`text`/`raw`/`urlencoded`) or CORS-origin/raw-byte semantics identically (`body-parser.integration`, chat raw-body, a CORS-origin assertion).                                            | **Real gap = backlog items B/C** (web body-parse + CORS parity).                                               |
+| **dispatch hooks / auth / metering parity**     | ~5     | A few `expected 'authorize'/'connected'/401` — dispatch hooks, authz, and `mcp-connect` state not firing identically on the web path.                                                                                                                                                                   | **Real gap = backlog items C1/C2.**                                                                            |
 
-**Go/no-go verdict (re-evaluated under the two-class design): the core is achievable; the parity gaps SCOPE the edge class, they don't gate it.** The 45 failures were measured against the *old* "flip the global default" approach, where every gap blocks. Under `EdgeRestApplication`, those features are simply **not offered on the edge host until ported** — so the ~42 gaps stop being a wall and become a prioritized backlog. The ~3 Express-coupled-by-design failures are non-issues (those features live only on `ExpressRestApplication`). What's left to *ship the edge class* is P2.1 (extraction) + a small, documented edge surface (`@api` routes, framework routes, MCP-over-fetch — all already passing). **Recommendation: still sequence carefully (P2.1 is a real package move), but Phase 2 is no longer blocked on closing the whole fetch-seam backlog.** Phase 1 already delivers express-out-of-bundle; this adds express-out-of-install for edge apps, incrementally.
+**Go/no-go verdict (re-evaluated under the two-class design): the core is achievable; the parity gaps SCOPE the edge class, they don't gate it.** The 45 failures were measured against the _old_ "flip the global default" approach, where every gap blocks. Under `EdgeRestApplication`, those features are simply **not offered on the edge host until ported** — so the ~42 gaps stop being a wall and become a prioritized backlog. The ~3 Express-coupled-by-design failures are non-issues (those features live only on `ExpressRestApplication`). What's left to _ship the edge class_ is P2.1 (extraction) + a small, documented edge surface (`@api` routes, framework routes, MCP-over-fetch — all already passing). **Recommendation: still sequence carefully (P2.1 is a real package move), but Phase 2 is no longer blocked on closing the whole fetch-seam backlog.** Phase 1 already delivers express-out-of-bundle; this adds express-out-of-install for edge apps, incrementally.
 
 **P2.1 — Extract the neutral package (no behavior change).** Create `@agentback/middleware`; move the 8 neutral modules; `@agentback/express` depends on + re-exports it (back-compat); point `@agentback/rest`'s + `RestServer`'s subpath imports at the neutral package; add to `tsconfig.json` refs + `pnpm-workspace`. **`express` not removed anywhere yet.** Verify: `pnpm verify` green; cf-app bundle doctor `{ok:true}`; live Workers deploy 200s.
 
@@ -127,7 +127,7 @@ Flipped the listener default to `'native'`, full `vitest run`: **45 failed / 231
 ## Risks / escape hatches
 
 - **Blast radius:** the symbol move touches every importer of `@agentback/express`'s middleware exports across the repo. Grep them all before moving; a missed importer is a build break, not silent. STOP and inventory before P2.1.
-- **The two-class design defuses the old "item D is the real cost" risk.** Because `EdgeRestApplication` ships with a *documented, deliberately-small* supported surface, you no longer need full native parity before shipping — the P2.0 gaps (F2/B/C) become an incremental backlog (P2.4) that expands the edge surface over time, not a wall in front of P2.1–P2.3. Don't re-import the "must close everything first" assumption.
+- **The two-class design defuses the old "item D is the real cost" risk.** Because `EdgeRestApplication` ships with a _documented, deliberately-small_ supported surface, you no longer need full native parity before shipping — the P2.0 gaps (F2/B/C) become an incremental backlog (P2.4) that expands the edge surface over time, not a wall in front of P2.1–P2.3. Don't re-import the "must close everything first" assumption.
 - **`on-finished`** stays in the neutral package — don't try to make it zero-runtime-dep; it's edge-safe.
 - If at P2.1 the back-compat re-export from `@agentback/express` re-introduces `express` onto the neutral graph (a re-export pulling a host module), STOP — re-export only the neutral symbols, never the host.
 - Scope the edge surface HONESTLY: `EdgeRestApplication` must throw a clear "this feature requires ExpressRestApplication" (or omit the method entirely) for anything not yet ported, so users hit a signpost, not a silent 404 — the same lesson as the generated-worker `listener:'native'` footgun.

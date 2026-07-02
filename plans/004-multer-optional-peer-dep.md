@@ -12,7 +12,7 @@
 
 `multer` is a hard `dependency` of `@agentback/rest` (`packages/rest/package.json:41`, `"multer": "^2.2.0"`), but it is used in exactly ONE place: `makeMultipartMiddleware()` (`packages/rest/src/multipart.ts:109`), the **Express-path** multipart parser, via the lazy `loadMulter()` (`multipart.ts:24-33`, `createRequire('multer')`). The runtime-neutral / `listener: 'native'` path does NOT use multer at all — it parses multipart with Web `request.formData()` in `parseWebMultipart()` (`packages/rest/src/web/multipart.ts:184`), called from `web/rest-handler.ts:181`.
 
-So every consumer installs multer (+ its `busboy` tree) even if they never declare a `fileField()` upload route, and even if they only deploy to the edge. `CLAUDE.md` already flags this: *"`multer` is currently a direct `rest` dependency — a candidate to optionalize as a peer dep."* This plan does that.
+So every consumer installs multer (+ its `busboy` tree) even if they never declare a `fileField()` upload route, and even if they only deploy to the edge. `CLAUDE.md` already flags this: _"`multer` is currently a direct `rest` dependency — a candidate to optionalize as a peer dep."_ This plan does that.
 
 > **Why not a full `MultipartParser` DI port?** Considered and deliberately deferred. The Express/multer middleware and the Web `parseWebMultipart` already ARE the two adapters (different shapes: an Express `RequestHandler` vs an async parser), selected by listener mode. A unifying DI port would let users swap the parser implementation, but there is no demand for that today, and it is more surface than the optional-dep goal needs. If a third parser or user-pluggable parsing is ever wanted, revisit with a `MULTIPART_PARSER` binding key mirroring `FILE_STORE`. For now, peer-dep + a clear error is the right-sized change.
 
@@ -27,37 +27,47 @@ So every consumer installs multer (+ its `busboy` tree) even if they never decla
 ## Current state (read first)
 
 `multipart.ts:24-33` — `loadMulter()` already lazy-loads multer and is the only loader:
+
 ```ts
 function loadMulter(): typeof import('multer') {
-  const _process = process as NodeJS.Process & {getBuiltinModule?<T = unknown>(id: string): T};
-  const nodeModule = _process.getBuiltinModule!('node:module') as typeof import('node:module');
+  const _process = process as NodeJS.Process & {
+    getBuiltinModule?<T = unknown>(id: string): T;
+  };
+  const nodeModule = _process.getBuiltinModule!(
+    'node:module',
+  ) as typeof import('node:module');
   const require = nodeModule.createRequire(import.meta.url);
-  return require('multer') as typeof import('multer');   // <-- throws an opaque MODULE_NOT_FOUND if multer absent
+  return require('multer') as typeof import('multer'); // <-- throws an opaque MODULE_NOT_FOUND if multer absent
 }
 ```
+
 `makeMultipartMiddleware()` (`:109-`) calls `loadMulter()({...})` (`:117`). `import type multer from 'multer'` (`multipart.ts:11`) is type-only and stays (no runtime/install footprint).
 
 ## The change
 
 1. **`packages/rest/package.json`:** move `multer` out of `dependencies` into `peerDependencies` and mark it optional:
+
    ```jsonc
    "peerDependencies": { "multer": "^2.2.0" },
    "peerDependenciesMeta": { "multer": { "optional": true } }
    ```
+
    (Create the `peerDependencies`/`peerDependenciesMeta` blocks if absent. Keep `@types/multer` — if present — wherever the type import needs it; if `@types/multer` is a `dependency`, move it to `devDependencies` since the type import is compile-time only. Verify whether multer ships its own types first: `node -e "console.log(require('multer/package.json').types || require('multer/package.json').typings || 'no own types')"`.)
 
 2. **`multipart.ts` `loadMulter()`:** wrap the `require('multer')` in a try/catch that rethrows an actionable error, so a missing optional dep fails with guidance instead of a raw `ERR_MODULE_NOT_FOUND`:
+
    ```ts
    try {
      return require('multer') as typeof import('multer');
    } catch {
      throw new Error(
        "@agentback/rest: file uploads require the optional peer dependency 'multer'. " +
-         "Install it (`npm i multer`) to use fileField() routes on the Express host, " +
+         'Install it (`npm i multer`) to use fileField() routes on the Express host, ' +
          "or serve via `listener: 'native'`, where multipart is parsed with Web FormData (no multer).",
      );
    }
    ```
+
    This only fires when an app actually mounts a `fileField()` route on the Express path without multer installed — the failure is now self-explaining.
 
 3. **Workspace install:** multer is still needed at dev/test time (the upload tests + `examples/hello-uploads` exercise it). Because it is now an optional peer dep of `@agentback/rest`, ensure it is still installed in the workspace for tests: add `multer` (and `@types/multer` if it lacks built-in types) to `devDependencies` of the package(s) whose tests/examples use it — at minimum `@agentback/rest` (for `multipart` unit/integration tests) and `examples/hello-uploads`. Run `pnpm install` and confirm `packages/rest/node_modules/multer` resolves.

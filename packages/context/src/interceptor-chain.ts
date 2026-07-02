@@ -69,8 +69,7 @@ export type GenericInterceptor<C extends Context = Context> = (
  * @typeParam T - Return type of `next()`
  */
 export type GenericInterceptorOrKey<C extends Context = Context> =
-  | BindingAddress<GenericInterceptor<C>>
-  | GenericInterceptor<C>;
+  BindingAddress<GenericInterceptor<C>> | GenericInterceptor<C>;
 
 /**
  * Invocation state of an interceptor chain

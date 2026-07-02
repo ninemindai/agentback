@@ -14,11 +14,7 @@ import {z} from 'zod';
 import createError from 'http-errors';
 import {inject} from '@agentback/core';
 import {api, get, post, fileField} from '@agentback/openapi';
-import {
-  FILE_STORE,
-  InMemoryFileStore,
-  type FileStore,
-} from '@agentback/files';
+import {FILE_STORE, InMemoryFileStore, type FileStore} from '@agentback/files';
 import {RestApplication} from '../../rest.application.js';
 import {fileDownload} from '../../file-response.js';
 
@@ -82,7 +78,11 @@ async function boot() {
   app.bind(META_STORE).to(new MetaStore());
   app.restController(VaultController);
   await app.start();
-  return {app, client: supertest((await app.restServer).url), stop: () => app.stop()};
+  return {
+    app,
+    client: supertest((await app.restServer).url),
+    stop: () => app.stop(),
+  };
 }
 
 function upload(client: ReturnType<typeof supertest>, user: string) {

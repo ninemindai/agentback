@@ -56,9 +56,9 @@ export function startLiveBus(
   const delay = options?.reconnectDelayMs ?? 2000;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const defaultFactory: EventSourceFactory = (u: string) =>
-    new ((globalThis as any).EventSource as new (
-      url: string,
-    ) => MinimalEventSource)(u);
+    new (
+      (globalThis as any).EventSource as new (url: string) => MinimalEventSource
+    )(u);
   const makeEs = options?.eventSourceFactory ?? defaultFactory;
 
   let bootId: string | null = null;
@@ -77,7 +77,8 @@ export function startLiveBus(
         };
         if (msg.type === 'hello' && typeof msg.bootId === 'string') {
           emitStatus(true);
-          if (bootId === null) bootId = msg.bootId; // baseline
+          if (bootId === null)
+            bootId = msg.bootId; // baseline
           else if (msg.bootId !== bootId) {
             bootId = msg.bootId; // restart
             emitReload();

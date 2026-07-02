@@ -103,7 +103,10 @@ describe('mountMcpHttpFetch (native listener)', () => {
 
   it('calls a tool and returns structured content', async () => {
     const {client} = await connect();
-    const result = await client.callTool({name: 'add', arguments: {a: 2, b: 40}});
+    const result = await client.callTool({
+      name: 'add',
+      arguments: {a: 2, b: 40},
+    });
     expect(result.structuredContent).toEqual({sum: 42});
     await client.close();
   });
@@ -191,7 +194,8 @@ describe('installMcpHttp auto-routes to the fetch mount in native mode', () => {
 const verifier = {
   async verifyAccessToken(token: string) {
     const expiresAt = Math.floor(Date.now() / 1000) + 3600;
-    if (token === 'good') return {token, clientId: 'cli', scopes: [], expiresAt};
+    if (token === 'good')
+      return {token, clientId: 'cli', scopes: [], expiresAt};
     throw new InvalidTokenError('invalid token');
   },
 };
@@ -244,9 +248,7 @@ describe('mountMcpHttpFetch OAuth bearer (native listener)', () => {
   });
 
   it('serves the protected-resource metadata document', async () => {
-    const res = await fetch(
-      `${baseUrl}/.well-known/oauth-protected-resource`,
-    );
+    const res = await fetch(`${baseUrl}/.well-known/oauth-protected-resource`);
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({
       resource: 'https://api.example.com/mcp',

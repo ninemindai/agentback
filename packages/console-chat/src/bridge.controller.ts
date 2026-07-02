@@ -619,12 +619,10 @@ export function handleSseRequest(
   const entry = sessions.get(key);
 
   if (!entry) {
-    res
-      .status(404)
-      .json({
-        error: 'session_not_found',
-        message: `Session not found: ${sessionId}`,
-      });
+    res.status(404).json({
+      error: 'session_not_found',
+      message: `Session not found: ${sessionId}`,
+    });
     return;
   }
 

@@ -26,24 +26,24 @@ secret/env forwarding. See §12.
 
 ## 2. Locked decisions (this spec)
 
-| # | Decision | Choice | Rationale |
-|---|---|---|---|
-| 1 | CLI scope | New **`@agentback/cli`**, bins `agentback` + `abc`, **`deploy vercel` only** | One verb, smallest surface; `ab` not claimed (shadows ApacheBench). |
-| 2 | Deployed surface | **REST + `/openapi.json` by default**; console opt-in + gated | Console exposes DI internals/schema/inspector; `installConsole` refuses unauthenticated without an explicit unsafe flag. Don't publish internals by default. |
-| 3 | File location | **Repo root** (`api/index.ts`, `vercel.json`); no hidden ephemeral dir | Vercel discovers functions/config relative to the deploy root. A `.agentback/deploy/` subdir is never seen. |
-| 4 | App-build contract | **Explicit `--entry`/`--export`**, default to a detected exported builder | The demo imports `buildConsoleApp` from a built module, not `src/application.ts`; deploy must not guess how to boot the app. |
-| 5 | Generated handler types | **Node `IncomingMessage`/`ServerResponse`** (`RequestListener`), not `@vercel/node` | Avoid forcing an undeclared `@vercel/node` dep on the user's app (the demo already types it this way). |
-| 6 | File generation | **Inline template literals** in the Vercel code path | Two ~30-line files don't justify template-file machinery; explicit + smallest diff. |
-| 7 | `vercel.json` writing | **Idempotent, order-aware merge**; fail on conflict unless `--force`/`--eject` | `rewrites` is an ordered array; a naive deep-merge can steal or miss routes, or clobber user keys. |
-| 8 | Target abstraction | **None in Phase 1** — concrete Vercel path | Designing `DeployTarget` against one implementation is premature; extract in Phase 2 from two real targets. |
-| 9 | MCP-over-HTTP | **Deferred to Phase 2** | Stateful in-memory MCP sessions don't fit Vercel's stateless serverless (§3.1). |
+| #   | Decision                | Choice                                                                              | Rationale                                                                                                                                                    |
+| --- | ----------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | CLI scope               | New **`@agentback/cli`**, bins `agentback` + `abc`, **`deploy vercel` only**        | One verb, smallest surface; `ab` not claimed (shadows ApacheBench).                                                                                          |
+| 2   | Deployed surface        | **REST + `/openapi.json` by default**; console opt-in + gated                       | Console exposes DI internals/schema/inspector; `installConsole` refuses unauthenticated without an explicit unsafe flag. Don't publish internals by default. |
+| 3   | File location           | **Repo root** (`api/index.ts`, `vercel.json`); no hidden ephemeral dir              | Vercel discovers functions/config relative to the deploy root. A `.agentback/deploy/` subdir is never seen.                                                  |
+| 4   | App-build contract      | **Explicit `--entry`/`--export`**, default to a detected exported builder           | The demo imports `buildConsoleApp` from a built module, not `src/application.ts`; deploy must not guess how to boot the app.                                 |
+| 5   | Generated handler types | **Node `IncomingMessage`/`ServerResponse`** (`RequestListener`), not `@vercel/node` | Avoid forcing an undeclared `@vercel/node` dep on the user's app (the demo already types it this way).                                                       |
+| 6   | File generation         | **Inline template literals** in the Vercel code path                                | Two ~30-line files don't justify template-file machinery; explicit + smallest diff.                                                                          |
+| 7   | `vercel.json` writing   | **Idempotent, order-aware merge**; fail on conflict unless `--force`/`--eject`      | `rewrites` is an ordered array; a naive deep-merge can steal or miss routes, or clobber user keys.                                                           |
+| 8   | Target abstraction      | **None in Phase 1** — concrete Vercel path                                          | Designing `DeployTarget` against one implementation is premature; extract in Phase 2 from two real targets.                                                  |
+| 9   | MCP-over-HTTP           | **Deferred to Phase 2**                                                             | Stateful in-memory MCP sessions don't fit Vercel's stateless serverless (§3.1).                                                                              |
 
 ## 2.5. Prior art: `agentback-demo` on Vercel (the reference)
 
 `agentback-demo` is the concrete pattern Phase 1 codifies. From `api/index.ts`:
 
 - **Memoized async boot, Express leaf.** `appPromise ??= buildExpressApp()`; `handler(req,
-  res)` calls `server.expressApp`, typed as a Node `RequestListener` (no `@vercel/node`
+res)` calls `server.expressApp`, typed as a Node `RequestListener` (no `@vercel/node`
   runtime dep). Cold start builds; warm invocations reuse the promise.
 - **It imports a builder from a built module** — `buildConsoleApp` from `../dist/console.js`,
   `{listen: false}`. NOT `src/application.ts`. (Drives decision #4.)
@@ -63,14 +63,15 @@ package manager and does not hardcode them (decision #7).
 
 - `:280` — `const transports: Record<string, StreamableHTTPServerTransport> = {}` (in-memory, per-instance).
 - `:399` — `sessionIdGenerator: () => randomUUID()` (always stateful; the SDK's stateless mode is `sessionIdGenerator: undefined`).
-- `:382-383` — a request whose session id isn't in *this instance's* map → `404 Unknown MCP session`.
+- `:382-383` — a request whose session id isn't in _this instance's_ map → `404 Unknown MCP session`.
 
 Vercel function invocations land on different, short-lived instances that don't share
 memory. A client that initializes on instance X and calls a tool on instance Y gets a
 404; the GET leg is an SSE stream serverless functions don't hold well. A naive smoke
 test (one warm instance, sequential calls) would **pass and hide this**. So Phase 1
 deploys REST only. Phase 2 designs MCP-on-serverless properly (stateless transport mode
-+ target choice).
+
+- target choice).
 
 ### 3.2. Console is opt-in and gated
 
@@ -132,7 +133,7 @@ detect → generate → preflight → deploy → verify
    - `vercel.json` — idempotent order-aware merge (§6). Infer the package manager; leave
      `buildCommand` alone when unsure; set `includeFiles` only for the assets the chosen
      surface actually needs (console assets only when `--console`).
-   `--eject` stops here and prints next steps.
+     `--eject` stops here and prints next steps.
 3. **Preflight.** Verify the `vercel` CLI is installed, authenticated, and the project is
    linked. Never auto-install; print the exact `npm i -g vercel` / `vercel login` /
    `vercel link` command on a miss. (`--dry-run` stops after this stage.)
@@ -193,14 +194,14 @@ Memoized so the app builds once per cold start; warm invocations reuse the promi
 
 ## 9. Failure modes
 
-| Codepath | Realistic failure | Test? | Error handling | User sees |
-|---|---|---|---|---|
-| detect | no resolvable builder | unit | actionable error naming `--entry`/`--export` | clear message |
-| generate | `vercel.json` rewrites conflict | unit | fail unless `--force`/`--eject` | clear conflict + how to override |
-| generate | `--eject` over an existing `api/index.ts` | unit | refuse without `--force` (don't clobber user file) | clear message |
-| preflight | vercel CLI missing / not authed / project not linked | unit | exact install/login/link hint | clear message |
-| deploy | first deploy not linked → interactive prompt | — | honor `--yes`/`--name`; surface link step | guided, not a hang |
-| verify | OpenAPI behind auth / custom path / non-200 | unit | detect path + optional headers; FAIL with body | PASS/FAIL + reason |
+| Codepath  | Realistic failure                                    | Test? | Error handling                                     | User sees                        |
+| --------- | ---------------------------------------------------- | ----- | -------------------------------------------------- | -------------------------------- |
+| detect    | no resolvable builder                                | unit  | actionable error naming `--entry`/`--export`       | clear message                    |
+| generate  | `vercel.json` rewrites conflict                      | unit  | fail unless `--force`/`--eject`                    | clear conflict + how to override |
+| generate  | `--eject` over an existing `api/index.ts`            | unit  | refuse without `--force` (don't clobber user file) | clear message                    |
+| preflight | vercel CLI missing / not authed / project not linked | unit  | exact install/login/link hint                      | clear message                    |
+| deploy    | first deploy not linked → interactive prompt         | —     | honor `--yes`/`--name`; surface link step          | guided, not a hang               |
+| verify    | OpenAPI behind auth / custom path / non-200          | unit  | detect path + optional headers; FAIL with body     | PASS/FAIL + reason               |
 
 No flagged **critical gap** (no path is simultaneously untested, unhandled, and silent).
 
@@ -227,23 +228,23 @@ No flagged **critical gap** (no path is simultaneously untested, unhandled, and 
 
 ## 12. NOT in scope (deferred to Phase 2 — separate spec)
 
-| Deferred | Why |
-|---|---|
-| **Cloudflare Workers / Deno Deploy** | Edge isolates: fetch-handler leaf, bundle doctor (`nodejs_compat`, tree-shaking), `compatibility_flags`. Unproven, isolate-specific. |
-| **Live MCP-over-HTTP on serverless** | Needs a stateless MCP transport mode (`sessionIdGenerator: undefined`) + target choice (§3.1). |
-| **`AssetSource` (CDN/embed) for disk-served UIs** | Only matters where there's no filesystem (edge); Vercel Node has one + `includeFiles`. |
-| **`DeployTarget` interface** | Extract from two real targets in Phase 2, not designed against one. |
-| **`--env`/secret forwarding** | Build-vs-runtime-vs-local semantics ambiguous; not needed for Phase 1 acceptance. |
-| **`agentback.config.ts` deploy block; other CLI verbs; domain/DNS** | Add when the need is real. |
+| Deferred                                                            | Why                                                                                                                                  |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| **Cloudflare Workers / Deno Deploy**                                | Edge isolates: fetch-handler leaf, bundle doctor (`nodejs_compat`, tree-shaking), `compatibility_flags`. Unproven, isolate-specific. |
+| **Live MCP-over-HTTP on serverless**                                | Needs a stateless MCP transport mode (`sessionIdGenerator: undefined`) + target choice (§3.1).                                       |
+| **`AssetSource` (CDN/embed) for disk-served UIs**                   | Only matters where there's no filesystem (edge); Vercel Node has one + `includeFiles`.                                               |
+| **`DeployTarget` interface**                                        | Extract from two real targets in Phase 2, not designed against one.                                                                  |
+| **`--env`/secret forwarding**                                       | Build-vs-runtime-vs-local semantics ambiguous; not needed for Phase 1 acceptance.                                                    |
+| **`agentback.config.ts` deploy block; other CLI verbs; domain/DNS** | Add when the need is real.                                                                                                           |
 
 ## GSTACK REVIEW REPORT
 
-| Review | Trigger | Why | Runs | Status | Findings |
-|--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | clean (SCOPE_REDUCED) | 8 issues, 0 critical gaps |
-| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
-| Outside Voice | `/codex review` | Independent 2nd opinion | 1 | issues_found | 12 raised, 9 folded, 0 open |
+| Review        | Trigger               | Why                             | Runs | Status                | Findings                    |
+| ------------- | --------------------- | ------------------------------- | ---- | --------------------- | --------------------------- |
+| CEO Review    | `/plan-ceo-review`    | Scope & strategy                | 0    | —                     | —                           |
+| Eng Review    | `/plan-eng-review`    | Architecture & tests (required) | 1    | clean (SCOPE_REDUCED) | 8 issues, 0 critical gaps   |
+| Design Review | `/plan-design-review` | UI/UX gaps                      | 0    | —                     | —                           |
+| Outside Voice | `/codex review`       | Independent 2nd opinion         | 1    | issues_found          | 12 raised, 9 folded, 0 open |
 
 - **CODEX:** found 12 missed issues; the load-bearing 6 (root-discovery, fake app-detect contract, public-console security, `@vercel/node` dep, ordered-`rewrites` merge, custom OpenAPI path) verified against code and folded. Drove the cut to REST-only + explicit entry contract + dropping the `DeployTarget` abstraction.
 - **CROSS-MODEL:** Review kept the `DeployTarget` interface; Codex called it premature. User accepted Codex — deferred to Phase 2. Otherwise no disagreement.

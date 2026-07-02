@@ -22,7 +22,9 @@ const server = await app.restServer;
 console.log(`\nNative listener on ${server.url}`);
 console.log(`Try:`);
 console.log(`  curl ${server.url}/greet/Ada`);
-console.log(`  curl -X POST ${server.url}/echo -H 'content-type: application/json' -d '{"message":"hi"}'`);
+console.log(
+  `  curl -X POST ${server.url}/echo -H 'content-type: application/json' -d '{"message":"hi"}'`,
+);
 console.log(`  curl ${server.url}/openapi.json\n`);
 
 process.on('SIGTERM', () => void app.stop());

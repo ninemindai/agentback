@@ -68,10 +68,9 @@ describe('edge-safety: loggers bundle must not contain dotenv/fs', () => {
       expect(bundle, 'bundle must not reference dotenv').not.toContain(
         'dotenv',
       );
-      expect(
-        bundle,
-        'bundle must not reference readFileSync',
-      ).not.toContain('readFileSync');
+      expect(bundle, 'bundle must not reference readFileSync').not.toContain(
+        'readFileSync',
+      );
       expect(bundle, 'bundle must not reference node:fs').not.toContain(
         'node:fs',
       );

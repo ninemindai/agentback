@@ -19,7 +19,7 @@ framework's existing seams (Express middleware chain, protected
 | `createOtelMcpDispatchHook`  | factory     | Composable `INTERNAL` span `mcp.tool <name>` per tool call                        |
 | `OtelJobQueue`               | `JobQueue`  | Port decorator: `PRODUCER` span on enqueue, `CONSUMER` span around the handler    |
 | `getActiveTraceId`           | helper      | Trace id of the active span — the metering/billing correlation hook               |
-| `TRACER_NAME`                | const       | The instrumentation-scope name (`@agentback/extension-otel`)                 |
+| `TRACER_NAME`                | const       | The instrumentation-scope name (`@agentback/extension-otel`)                      |
 
 ## Wiring (NodeSDK)
 

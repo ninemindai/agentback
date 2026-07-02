@@ -8,7 +8,7 @@
 
 AgentBack already exposes **two inbound surfaces over one DI container**: REST (humans/programs) and MCP (agents). Chat platforms — Slack, Teams, Discord, Google Chat, Telegram, WhatsApp, GitHub, Linear — are a natural **third inbound surface class**. The same `@agentback/*` services, Drizzle clients, and `@tool` business logic should answer a Slack mention exactly as they answer a REST request or an MCP `tools/call`.
 
-Vercel's Chat SDK is a *transport-only* library: it normalizes per-platform webhooks and outbound posting (`post()` accepts an AI SDK text stream) behind one adapter API. It has **no DI, no config/secrets management, no lifecycle, no service container** — which is precisely the layer AgentBack supplies for everything else. They are complementary the way `@modelcontextprotocol/sdk` + `@agentback/mcp-http` are.
+Vercel's Chat SDK is a _transport-only_ library: it normalizes per-platform webhooks and outbound posting (`post()` accepts an AI SDK text stream) behind one adapter API. It has **no DI, no config/secrets management, no lifecycle, no service container** — which is precisely the layer AgentBack supplies for everything else. They are complementary the way `@modelcontextprotocol/sdk` + `@agentback/mcp-http` are.
 
 ## The boundary that must stay explicit
 
@@ -77,7 +77,9 @@ export class ChatServer {
   // Collect @chatBot instances the same way MCPServer collects @mcpServer classes:
   //   ctx.find(extensionFilter(CHAT_HANDLERS)) -> resolve each through its own
   //   binding (so constructor @inject works), then register with the Chat instance.
-  async build(adapters: ChatAdapters): Promise<MountHandle> { /* ... */ }
+  async build(adapters: ChatAdapters): Promise<MountHandle> {
+    /* ... */
+  }
 }
 ```
 
@@ -87,8 +89,8 @@ export class ChatServer {
 export async function installChat(app: RestApplication, options: ChatOptions) {
   const chat = await app.get(ChatBindings.SERVER);
   const server = await app.restServer;
-  const handle = await chat.mount(server, options);   // Express mount or fetch-native
-  app.onStop(() => handle.closeAll());                 // graceful shutdown, like mcp-http
+  const handle = await chat.mount(server, options); // Express mount or fetch-native
+  app.onStop(() => handle.closeAll()); // graceful shutdown, like mcp-http
   // (optionally contribute an AX section to /llms.txt advertising the chat surface)
 }
 ```
@@ -98,9 +100,9 @@ Call site is identical in spirit to the MCP one:
 ```ts
 const app = new RestApplication();
 app.component(ChatComponent);
-app.service(SupportBot);          // @chatBot class — a service, like @mcpServer
+app.service(SupportBot); // @chatBot class — a service, like @mcpServer
 await installChat(app, {adapters: {slack: slackAdapter()}});
-await app.start();                // -> POST /api/chat/slack (webhook)
+await app.start(); // -> POST /api/chat/slack (webhook)
 ```
 
 ## Config & secrets

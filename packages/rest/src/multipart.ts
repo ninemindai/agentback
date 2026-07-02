@@ -35,7 +35,7 @@ function loadMulter(): typeof import('multer') {
     // multer is an OPTIONAL peer dependency (uploads on the Express host only).
     // Fail with guidance instead of a raw ERR_MODULE_NOT_FOUND.
     throw new Error(
-      "@agentback/rest: file uploads require the optional peer dependency " +
+      '@agentback/rest: file uploads require the optional peer dependency ' +
         "'multer'. Install it (`npm i multer`) to use fileField() routes on " +
         "the Express host, or serve via `listener: 'native'`, where multipart " +
         'is parsed with Web FormData (no multer needed).',
@@ -165,7 +165,10 @@ export function makeMultipartMiddleware(
 function toHttpError(err: unknown): Error {
   const e = err as {code?: string; message?: string};
   if (e?.code === 'LIMIT_FILE_SIZE') {
-    const h = createError(413, 'Uploaded file exceeds the maximum allowed size.');
+    const h = createError(
+      413,
+      'Uploaded file exceeds the maximum allowed size.',
+    );
     (h as {code?: string}).code = 'payload_too_large';
     return h;
   }
@@ -182,9 +185,7 @@ function toHttpError(err: unknown): Error {
 /** Move each parsed file from `req.files` onto `req.body` as an UploadedFile. */
 function mergeFilesIntoBody(req: Request, fileFields: FileFieldEntry[]): void {
   if (!req.body || typeof req.body !== 'object') req.body = {};
-  const files = req.files as
-    | Record<string, Express.Multer.File[]>
-    | undefined;
+  const files = req.files as Record<string, Express.Multer.File[]> | undefined;
   if (!files) return;
   const body = req.body as Record<string, unknown>;
   for (const {name} of fileFields) {
@@ -193,9 +194,7 @@ function mergeFilesIntoBody(req: Request, fileFields: FileFieldEntry[]): void {
   }
 }
 
-function toUploadedFile(
-  f: Express.Multer.File & {key?: string},
-): UploadedFile {
+function toUploadedFile(f: Express.Multer.File & {key?: string}): UploadedFile {
   return {
     filename: f.originalname,
     mimeType: f.mimetype,

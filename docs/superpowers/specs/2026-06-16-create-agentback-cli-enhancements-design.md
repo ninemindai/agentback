@@ -65,9 +65,9 @@ interface Capability {
 }
 
 interface CapabilityContext {
-  name: string;          // app name
+  name: string; // app name
   template: TemplateName;
-  version: string;       // resolved @agentback/* version range
+  version: string; // resolved @agentback/* version range
 }
 ```
 
@@ -123,6 +123,7 @@ for a base template.
 ### Build-now capabilities
 
 **`drizzle`** — `templates: ['hybrid','rest','mcp']`
+
 - deps: `@agentback/drizzle`.
 - overlay: `src/db/schema.ts` — one Drizzle table + its `drizzle-zod` schema.
 - wiring: register the Drizzle client binding / component at `{{agentback:components}}`;
@@ -131,6 +132,7 @@ for a base template.
   `.env.example` is added.
 
 **`auth` (jwt)** — `templates: ['hybrid','rest']`
+
 - deps: `@agentback/authentication`, `@agentback/authentication-jwt`.
 - overlay: a protected example controller demonstrating a JWT-guarded route.
 - wiring: register the auth component + strategy at `{{agentback:components}}`.
@@ -151,6 +153,7 @@ Trigger: **app name omitted AND `process.stdin.isTTY`**. Otherwise the existing
 flag-parsing path runs unchanged (CI, scripts, non-TTY pipes keep working).
 
 Flow (via `@clack/prompts`):
+
 1. `text` — app name (validated against the existing `NAME_RE`).
 2. `select` — template.
 3. `multiselect` — capabilities, filtered to `cap.templates.includes(chosen)`.

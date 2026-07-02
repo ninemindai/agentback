@@ -17,7 +17,7 @@ AgentBack currently maintains **two routing systems** for REST:
 Because both exist, **every route must be registered into both**. That is the
 source of the dual-registration smell:
 
-- `@api` routes — collected into the `fetchHandler()` Router *and* mounted on
+- `@api` routes — collected into the `fetchHandler()` Router _and_ mounted on
   Express (and, in `dispatch: 'web'` mode, the Express handler internally
   reconstructs a Web `Request` and delegates to the same `RestHandler`).
 - `/openapi.json`, `/llms.txt` — `mountFrameworkRoutes()` calls **both**
@@ -45,7 +45,7 @@ fetchHandler()  ←── @api routes + framework routes + install* UIs  (ONE re
 `createNodeListener` (already shipped, via `@hono/node-server`) owns the
 Node↔Web conversion — Set-Cookie multiplicity, client-abort, HEAD,
 content-length, stream errors. So the Node host stops needing Express for
-*routing*; Express, if present at all, becomes one optional middleware host.
+_routing_; Express, if present at all, becomes one optional middleware host.
 
 `RestServer.start()` in native mode mounts
 `http.createServer(createNodeListener(this.fetchHandler()))` instead of
@@ -98,8 +98,9 @@ Express semantics.
 The Express-typed middleware chain (`MiddlewareContext` with Express
 `req`/`res`) only runs on the Express host. Native mode runs the neutral
 `WebMiddleware` onion (`app.webMiddleware`) instead — already at parity for CORS
-+ user entries (item B). An app relying on `expressMiddleware` for a route stays
-on the Express host until that middleware is re-expressed as `WebMiddleware`.
+
+- user entries (item B). An app relying on `expressMiddleware` for a route stays
+  on the Express host until that middleware is re-expressed as `WebMiddleware`.
 
 ## Prototype (this change)
 

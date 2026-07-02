@@ -209,8 +209,7 @@ export async function addTarget(
     body: JSON.stringify({url, auth}),
   });
   const json = (await r.json().catch(() => undefined)) as
-    | AddTargetResult
-    | {error?: {message?: string}};
+    AddTargetResult | {error?: {message?: string}};
   if (!r.ok) {
     throw new Error(
       (json as {error?: {message?: string}})?.error?.message ??

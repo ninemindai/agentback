@@ -7,7 +7,14 @@ import type {ConsoleFeature} from '@agentback/console';
 import type {Request, Response} from 'express';
 import type {ChatConsoleConfig} from './types.js';
 import {loggers} from '@agentback/common';
-import {ChatBridgeController, CHAT_DISCOVER, CHAT_CWD, CHAT_WORKSPACE_ROOT, handleSseRequest, principalFromRequest} from './bridge.controller.js';
+import {
+  ChatBridgeController,
+  CHAT_DISCOVER,
+  CHAT_CWD,
+  CHAT_WORKSPACE_ROOT,
+  handleSseRequest,
+  principalFromRequest,
+} from './bridge.controller.js';
 import {discoverAgents, makeProbe, BUILTIN_AGENTS} from './agents.js';
 
 const log = loggers('agentback:console-chat:feature');
@@ -28,7 +35,11 @@ const log = loggers('agentback:console-chat:feature');
 export function chatConsoleFeature(
   config: ChatConsoleConfig = {},
 ): ConsoleFeature & {
-  chatConfig: {enabled: boolean; apiBase: string; agents: {id: string; name: string}[]};
+  chatConfig: {
+    enabled: boolean;
+    apiBase: string;
+    agents: {id: string; name: string}[];
+  };
 } {
   const featureEnabled = config.enabled ?? false;
   const apiBase = '/console/chat';
@@ -59,9 +70,9 @@ export function chatConsoleFeature(
       if (server.listener === 'native') {
         log.warn(
           'chatConsoleFeature: skipping install — the REST server uses ' +
-          "listener:'native' (EdgeRestApplication). The chat dock requires " +
-          "the Express host (listener:'express' / RestApplication). No " +
-          'bridge endpoints will be registered.',
+            "listener:'native' (EdgeRestApplication). The chat dock requires " +
+            "the Express host (listener:'express' / RestApplication). No " +
+            'bridge endpoints will be registered.',
         );
         return;
       }
@@ -76,9 +87,7 @@ export function chatConsoleFeature(
       // ChatBridgeController resolves it from its @inject(CHAT_DISCOVER) constructor param.
       const catalog = [...BUILTIN_AGENTS, ...(config.agents ?? [])];
       const probe = makeProbe(config.cwd);
-      app.bind(CHAT_DISCOVER.key).to(
-        () => discoverAgents(catalog, probe),
-      );
+      app.bind(CHAT_DISCOVER.key).to(() => discoverAgents(catalog, probe));
       // Bind the configured cwd so createSession defaults the spawn base dir to
       // it (the browser dock sends no cwd in POST /session). Without this the
       // spawn can't find a workspace devDependency adapter and 503s.
@@ -111,37 +120,53 @@ export function chatConsoleFeature(
       // framework's route table, so RestServer.sendResult never runs for it.
       const expressApp = server.expressApp;
 
-      expressApp.get('/console/chat/stream', async (req: Request, res: Response) => {
-        // Resolve the controller AFTER start() so its DI bindings are ready.
-        // We await app.get() here to get the singleton ChatBridgeController.
-        let controller: ChatBridgeController;
-        try {
-          controller = await app.get<ChatBridgeController>('controllers.ChatBridgeController');
-        } catch {
-          res.status(500).json({error: 'internal_error', message: 'Chat bridge not ready'});
-          return;
-        }
+      expressApp.get(
+        '/console/chat/stream',
+        async (req: Request, res: Response) => {
+          // Resolve the controller AFTER start() so its DI bindings are ready.
+          // We await app.get() here to get the singleton ChatBridgeController.
+          let controller: ChatBridgeController;
+          try {
+            controller = await app.get<ChatBridgeController>(
+              'controllers.ChatBridgeController',
+            );
+          } catch {
+            res.status(500).json({
+              error: 'internal_error',
+              message: 'Chat bridge not ready',
+            });
+            return;
+          }
 
-        // Derive the principal from req.auth — set by the console `auth` guard
-        // middleware (same source as the @api bridge endpoints).  Uses the same
-        // `principalFromRequest` helper so both paths are guaranteed to produce
-        // the same principal id and the same 401 behaviour.
-        let principal: string;
-        try {
-          principal = principalFromRequest(req);
-        } catch {
-          res.status(401).json({error: 'unauthenticated', message: 'Authentication required'});
-          return;
-        }
+          // Derive the principal from req.auth — set by the console `auth` guard
+          // middleware (same source as the @api bridge endpoints).  Uses the same
+          // `principalFromRequest` helper so both paths are guaranteed to produce
+          // the same principal id and the same 401 behaviour.
+          let principal: string;
+          try {
+            principal = principalFromRequest(req);
+          } catch {
+            res.status(401).json({
+              error: 'unauthenticated',
+              message: 'Authentication required',
+            });
+            return;
+          }
 
-        const sessionId = (req.query as Record<string, string | undefined>)['sessionId'];
-        if (!sessionId || typeof sessionId !== 'string') {
-          res.status(400).json({error: 'invalid_request', message: 'sessionId query param required'});
-          return;
-        }
+          const sessionId = (req.query as Record<string, string | undefined>)[
+            'sessionId'
+          ];
+          if (!sessionId || typeof sessionId !== 'string') {
+            res.status(400).json({
+              error: 'invalid_request',
+              message: 'sessionId query param required',
+            });
+            return;
+          }
 
-        handleSseRequest(controller.sessions, principal, sessionId, req, res);
-      });
+          handleSseRequest(controller.sessions, principal, sessionId, req, res);
+        },
+      );
 
       // Eagerly run discovery and update the agents list so the console shell
       // gets an accurate initial set without a round-trip. Probe from

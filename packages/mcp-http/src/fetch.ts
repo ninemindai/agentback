@@ -49,7 +49,8 @@ async function verifyBearerFetch(
   };
   try {
     const authHeader = req.headers.get('authorization');
-    if (!authHeader) throw new InvalidTokenError('Missing Authorization header');
+    if (!authHeader)
+      throw new InvalidTokenError('Missing Authorization header');
     const [type, token] = authHeader.split(' ');
     if (type?.toLowerCase() !== 'bearer' || !token) {
       throw new InvalidTokenError(
@@ -74,13 +75,17 @@ async function verifyBearerFetch(
     if (error instanceof InvalidTokenError) {
       return Response.json(error.toResponseObject(), {
         status: 401,
-        headers: {'WWW-Authenticate': buildHeader(error.errorCode, error.message)},
+        headers: {
+          'WWW-Authenticate': buildHeader(error.errorCode, error.message),
+        },
       });
     }
     if (error instanceof InsufficientScopeError) {
       return Response.json(error.toResponseObject(), {
         status: 403,
-        headers: {'WWW-Authenticate': buildHeader(error.errorCode, error.message)},
+        headers: {
+          'WWW-Authenticate': buildHeader(error.errorCode, error.message),
+        },
       });
     }
     if (error instanceof ServerError) {
@@ -89,9 +94,12 @@ async function verifyBearerFetch(
     if (error instanceof OAuthError) {
       return Response.json(error.toResponseObject(), {status: 400});
     }
-    return Response.json(new ServerError('Internal Server Error').toResponseObject(), {
-      status: 500,
-    });
+    return Response.json(
+      new ServerError('Internal Server Error').toResponseObject(),
+      {
+        status: 500,
+      },
+    );
   }
 }
 
@@ -134,9 +142,7 @@ async function resolveStrategyAuthInfo(
   if (!result) return undefined;
 
   const principal = result.user ?? result.clientApplication;
-  const scopes = toScopes
-    ? toScopes(result)
-    : defaultScopes(result);
+  const scopes = toScopes ? toScopes(result) : defaultScopes(result);
   return {
     token: 'framework',
     clientId: principal ? principal[securityId] : 'unknown',
@@ -148,8 +154,7 @@ async function resolveStrategyAuthInfo(
 /** Derive MCP scopes from the authenticated principal (mirrors framework-auth). */
 function defaultScopes(auth: AuthenticationResult): string[] {
   const principal = (auth.user ?? auth.clientApplication) as
-    | {scopes?: string[] | string}
-    | undefined;
+    {scopes?: string[] | string} | undefined;
   const raw = principal?.scopes ?? auth.clientApplication?.allowedScopes;
   if (Array.isArray(raw)) return raw;
   if (typeof raw === 'string') return raw.split(' ').filter(Boolean);

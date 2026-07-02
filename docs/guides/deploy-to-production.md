@@ -70,10 +70,7 @@ Behind a path-prefixing proxy, set `basePath` in the same config object —
 ## Probes (Kubernetes-shaped)
 
 ```ts
-import {
-  installHealth,
-  registerHealthCheck,
-} from '@agentback/extension-health';
+import {installHealth, registerHealthCheck} from '@agentback/extension-health';
 
 await installHealth(app); // GET /health (liveness), GET /ready (readiness)
 registerHealthCheck(app, {
@@ -157,7 +154,7 @@ instance; on two or more, bind shared implementations:
 | `idempotency:` replay  | in-memory store   | bind `RestBindings.IDEMPOTENCY_STORE`                                     |
 | Metering sink          | in-memory log     | bind `MeteringBindings.SINK` (Redis/JSONL/composite ship in-box)          |
 | MCP resumable sessions | none              | pass a shared `EventStore` to `installMcpHttp`                            |
-| Job queue / event bus  | in-memory adapter | `@agentback/messaging-bullmq` (BullMQ + Redis Streams)               |
+| Job queue / event bus  | in-memory adapter | `@agentback/messaging-bullmq` (BullMQ + Redis Streams)                    |
 
 Also remember that MCP-over-HTTP sessions are sticky to an instance unless
 you enable session resumability — terminate MCP at one instance or use a

@@ -4,12 +4,7 @@
 
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import supertest from 'supertest';
-import {
-  api,
-  get,
-  post,
-  registerJSONSchemaConverter,
-} from '@agentback/openapi';
+import {api, get, post, registerJSONSchemaConverter} from '@agentback/openapi';
 import type {StandardSchemaV1} from '@agentback/openapi';
 import {RestApplication} from '../../rest.application.js';
 

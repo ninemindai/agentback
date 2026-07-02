@@ -129,7 +129,13 @@ export async function installConsole(
   );
   const chat = chatFeature?.chatConfig;
 
-  mountConsole(server, {basePath, title, features, assets: options.assets, chat});
+  mountConsole(server, {
+    basePath,
+    title,
+    features,
+    assets: options.assets,
+    chat,
+  });
   return {basePath, features};
 }
 

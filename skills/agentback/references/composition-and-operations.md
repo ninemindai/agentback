@@ -98,7 +98,7 @@ how CORS preflights, rate-limit `429` responses, and `/health` probes bypass
 route handlers.
 
 The chain is mounted as the **first** Express handler in the `RestServer`
-**constructor** (matching upstream LB4's `ExpressServer`), so it fronts *every*
+**constructor** (matching upstream LB4's `ExpressServer`), so it fronts _every_
 route — including ones `install*` helpers (`installMcpHttp`'s `/mcp`,
 `installConsole`, `installExplorer`, …) mount **before** `app.start()`.
 `toExpressMiddleware` resolves and **group-sorts** the chain lazily per request,
@@ -465,14 +465,16 @@ fully-mounted Express app via `RestServer.expressApp`.
 export async function buildApp({listen = true} = {}) {
   const app = new RestApplication({rest: {listen}});
   // … register controllers / services / installConsole / installMcpHttp …
-  await app.start();            // listen:false → routes mounted, no port bound
+  await app.start(); // listen:false → routes mounted, no port bound
   return app;
 }
 
 // api/index.ts (Vercel) — one function for the whole app, built once (memoized)
 let appP;
 export default async function handler(req, res) {
-  appP ??= buildApp({listen: false}).then(async a => (await a.restServer).expressApp);
+  appP ??= buildApp({listen: false}).then(
+    async a => (await a.restServer).expressApp,
+  );
   (await appP)(req, res);
 }
 ```
@@ -491,7 +493,7 @@ binds a port as a normal long-running server. Two deploy notes:
 For Cloudflare Workers, `agentback deploy cloudflare` (`@agentback/cli`) runs
 generate → preflight (bundle doctor) → `wrangler deploy` → verify `/openapi.json`.
 `--dry-run` stops after preflight; `--temporary` deploys to a **throwaway preview
-account** (no signup/token, 60-min TTL) for a *secretless* real deploy in CI.
+account** (no signup/token, 60-min TTL) for a _secretless_ real deploy in CI.
 `--temporary` only works **unauthenticated** — wrangler refuses it when logged in
 or `CLOUDFLARE_API_TOKEN` is set (the inverse of the normal `wrangler login`
 prerequisite); needs wrangler ≥ 4.102.

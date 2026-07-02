@@ -6,10 +6,7 @@
  * Decorator function types
  */
 export type DecoratorType =
-  | ClassDecorator
-  | PropertyDecorator
-  | MethodDecorator
-  | ParameterDecorator;
+  ClassDecorator | PropertyDecorator | MethodDecorator | ParameterDecorator;
 
 /**
  * A strongly-typed metadata accessor via reflection
@@ -41,8 +38,7 @@ export class MetadataAccessor<T, D extends DecoratorType = DecoratorType> {
  * @typeParam D - Type of the decorator
  */
 export type MetadataKey<T, D extends DecoratorType> =
-  | MetadataAccessor<T, D>
-  | string;
+  MetadataAccessor<T, D> | string;
 
 /**
  * An object mapping keys to corresponding metadata

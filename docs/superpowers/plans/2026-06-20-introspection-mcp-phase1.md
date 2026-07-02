@@ -24,12 +24,14 @@
 ### Task 1: Scaffold the package and wire the workspace
 
 **Files:**
+
 - Create: `packages/introspection/package.json`
 - Create: `packages/introspection/tsconfig.json`
 - Create: `packages/introspection/src/index.ts` (placeholder export)
 - Modify: `tsconfig.json` (root — add project reference)
 
 **Interfaces:**
+
 - Produces: the `@agentback/introspection` workspace package, buildable via `tsc -b`.
 
 - [ ] **Step 1: Create `packages/introspection/package.json`**
@@ -143,10 +145,12 @@ git commit -m "feat(introspection): scaffold the read-only introspection MCP pac
 ### Task 2: Selector model + `inventory()`
 
 **Files:**
+
 - Create: `packages/introspection/src/model.ts`
 - Test: `packages/introspection/src/__tests__/model.unit.ts`
 
 **Interfaces:**
+
 - Consumes: `buildModel(ctx)` from `@agentback/context-explorer`, `buildSchemaInventory(ctx)` from `@agentback/schema-explorer`.
 - Produces:
   - `IntrospectionKind` = `z.enum(['binding','schema-entity','route','tool'])`
@@ -312,10 +316,12 @@ git commit -m "feat(introspection): selector model + inventory() builder (metada
 ### Task 3: `get(selector)` with not-found handling
 
 **Files:**
+
 - Modify: `packages/introspection/src/model.ts` (add `getNode`)
 - Modify: `packages/introspection/src/__tests__/model.unit.ts` (add `getNode` tests)
 
 **Interfaces:**
+
 - Consumes: `AgentError`, `ErrorCodes` from `@agentback/openapi`.
 - Produces: `getNode(ctx: Context, selector: {kind: IntrospectionKind; id: string}): unknown` — returns the matching node's detail, throws `AgentError` (404 `not_found`) when absent. Bindings return the metadata-only `BindingNode`.
 
@@ -449,9 +455,11 @@ git commit -m "feat(introspection): get(selector) with 404 not_found, value-safe
 ### Task 4: The `@mcpServer` tool class
 
 **Files:**
+
 - Modify: `packages/introspection/src/index.ts` (replace placeholder with the tool class)
 
 **Interfaces:**
+
 - Consumes: `buildInventory`, `getNode`, `IntrospectionKind`, `IntrospectionNode` from `./model.js`; `buildOkfBundle` from `@agentback/schema-explorer`; `mcpServer`, `tool` from `@agentback/mcp`; `CoreBindings`, `inject`, `Context` from `@agentback/core`.
 - Produces: `export class IntrospectionTools` — a `@mcpServer()` service exposing tools `inventory`, `get`, `get_okf_bundle`. Re-exports the model types.
 
@@ -545,7 +553,9 @@ export class IntrospectionTools {
   async inventory(
     input: z.infer<typeof InventoryInput>,
   ): Promise<z.infer<typeof InventoryOutput>> {
-    return {nodes: tryBuild('inventory', () => buildInventory(this.app, input.kind))};
+    return {
+      nodes: tryBuild('inventory', () => buildInventory(this.app, input.kind)),
+    };
   }
 
   @tool('get', {
@@ -574,7 +584,9 @@ export class IntrospectionTools {
   async getOkfBundle(
     _input: z.infer<typeof OkfInput>,
   ): Promise<z.infer<typeof OkfOutput>> {
-    return {files: tryBuild('OKF bundle', () => buildOkfBundle(this.app).files)};
+    return {
+      files: tryBuild('OKF bundle', () => buildOkfBundle(this.app).files),
+    };
   }
 }
 ```
@@ -596,9 +608,11 @@ git commit -m "feat(introspection): @mcpServer with inventory/get/get_okf_bundle
 ### Task 5: In-process MCP integration test (incl. the hostile no-leak assertion)
 
 **Files:**
+
 - Test: `packages/introspection/src/__tests__/introspection.unit.ts`
 
 **Interfaces:**
+
 - Consumes: `createTestApp` from `@agentback/testing`; `RestApplication` from `@agentback/rest`; `MCPComponent` from `@agentback/mcp`; `IntrospectionTools` from `../index.js`.
 
 - [ ] **Step 1: Write the failing test**
@@ -689,6 +703,7 @@ git commit -m "test(introspection): in-process MCP client + hostile no-value-lea
 ### Task 6: Documentation surfaces
 
 **Files:**
+
 - Create: `packages/introspection/README.md`
 - Modify: `docs/packages.md` (add the catalog row)
 - Modify: `CLAUDE.md` (add to the "New capability packages" list)
@@ -698,11 +713,11 @@ git commit -m "test(introspection): in-process MCP client + hostile no-value-lea
 
 - [ ] **Step 1: Create `packages/introspection/README.md`**
 
-```markdown
+````markdown
 # @agentback/introspection
 
 A **read-only** MCP server that exposes a running AgentBack app to any agent, so
-your coding agent can ground itself in the *live instance* — what's bound, the
+your coding agent can ground itself in the _live instance_ — what's bound, the
 real schema graph, the routes and tools — instead of guessing from source.
 
 > Read-only forever: it NEVER resolves a binding value and NEVER invokes a route
@@ -720,10 +735,11 @@ import {IntrospectionTools} from '@agentback/introspection';
 const app = new RestApplication();
 app.component(MCPComponent);
 app.service(IntrospectionTools); // adds the introspection tools to the MCP surface
-await installMcpHttp(app);        // expose MCP over Streamable HTTP at /mcp
+await installMcpHttp(app); // expose MCP over Streamable HTTP at /mcp
 await app.start();
 // Point your agent (e.g. via an MCP client config) at http://localhost:3000/mcp
 ```
+````
 
 ## Tools
 
@@ -734,7 +750,8 @@ await app.start();
 Built on the same metadata-only builders as `@agentback/context-explorer`,
 `@agentback/schema-explorer` (incl. its OKF export) — this package is the
 agent-facing projection of those read APIs.
-```
+
+````
 
 - [ ] **Step 2: Add the `docs/packages.md` row**
 
@@ -742,14 +759,14 @@ Add one row to the package catalog table (match the existing column shape):
 
 ```markdown
 | `@agentback/introspection` | Read-only MCP server exposing the live app (bindings/schema/routes/tools + OKF) to any agent. |
-```
+````
 
 - [ ] **Step 3: Add to `CLAUDE.md` "New capability packages" list**
 
 Insert after the `schema-explorer` entry:
 
 ```markdown
-   - `introspection` — a **read-only** MCP server that projects the live app (the explorers' read APIs + OKF bundle) to any agent as a small selector surface (`inventory`/`get`/`get_okf_bundle`). Metadata-only (never resolves a binding value), never invokes anything; the agent-facing sibling of the explorers. Served over `mcp-http`. See `examples/hello-agent-console`.
+- `introspection` — a **read-only** MCP server that projects the live app (the explorers' read APIs + OKF bundle) to any agent as a small selector surface (`inventory`/`get`/`get_okf_bundle`). Metadata-only (never resolves a binding value), never invokes anything; the agent-facing sibling of the explorers. Served over `mcp-http`. See `examples/hello-agent-console`.
 ```
 
 - [ ] **Step 4: Add the agent skill entry**
@@ -768,12 +785,14 @@ git commit -m "docs(introspection): README, catalog, CLAUDE.md, agent skill"
 ### Task 7: On-ramp example `hello-agent-console`
 
 **Files:**
+
 - Create: `examples/hello-agent-console/package.json`
 - Create: `examples/hello-agent-console/tsconfig.json`
 - Create: `examples/hello-agent-console/src/index.ts`
 - Create: `examples/hello-agent-console/README.md`
 
 **Interfaces:**
+
 - Consumes: `RestApplication`, `MCPComponent`, `installMcpHttp`, `IntrospectionTools`, plus one sample `@api` controller so the inventory is non-trivial.
 
 > Name rationale: `examples/hello-chat` already exists; this example is named `hello-agent-console` to avoid collision (DX finding F3).
@@ -881,11 +900,11 @@ if (isMain(import.meta)) {
 
 - [ ] **Step 4: Create `examples/hello-agent-console/README.md`**
 
-```markdown
+````markdown
 # hello-agent-console
 
-Expose a running AgentBack app to your coding agent, read-only, so it can *see*
-the live instance (bindings, schema, routes, tools) before it helps you *evolve*
+Expose a running AgentBack app to your coding agent, read-only, so it can _see_
+the live instance (bindings, schema, routes, tools) before it helps you _evolve_
 the source.
 
 ```bash
@@ -893,11 +912,13 @@ pnpm -F hello-agent-console build
 pnpm -F hello-agent-console start
 # MCP (incl. introspection) is served at http://localhost:3000/mcp
 ```
+````
 
 Point your agent's MCP client at `http://localhost:3000/mcp`, then ask it to call
-`inventory` / `get` / `get_okf_bundle`. It now answers questions about *this*
+`inventory` / `get` / `get_okf_bundle`. It now answers questions about _this_
 running app, not a guess from source.
-```
+
+````
 
 - [ ] **Step 5: Build and smoke-test**
 
@@ -909,7 +930,7 @@ Expected: the JSON-RPC response lists `inventory`, `get`, `get_okf_bundle` among
 ```bash
 git add examples/hello-agent-console tsconfig.json
 git commit -m "feat(examples): hello-agent-console — ground an agent in the live app"
-```
+````
 
 ---
 
@@ -929,13 +950,13 @@ pnpm verify
 
 ## GSTACK REVIEW REPORT
 
-| Review | Trigger | Why | Runs | Status | Findings |
-|--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 1 (this session) | done | SELECTIVE EXPANSION; phased approach; 2 cherry-picks accepted; read-only introspection |
-| DX Review | `/plan-devex-review` | Developer experience | 1 (this session) | done | persona=app author; TTHW 4→7; F1 adapter+doctor, F5 evolve→see loop |
-| Codex Review | `/codex review` | Independent 2nd opinion | 1 | issues_found | 9 findings, all verified + folded (statusCode, verb-case, tsconfig ref, vacuous tests, read-only claim) |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | clean | 12 findings, all folded; 0 critical gaps; 0 unresolved |
-| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | n/a — Phase 1 has no UI |
+| Review        | Trigger               | Why                             | Runs             | Status       | Findings                                                                                                |
+| ------------- | --------------------- | ------------------------------- | ---------------- | ------------ | ------------------------------------------------------------------------------------------------------- |
+| CEO Review    | `/plan-ceo-review`    | Scope & strategy                | 1 (this session) | done         | SELECTIVE EXPANSION; phased approach; 2 cherry-picks accepted; read-only introspection                  |
+| DX Review     | `/plan-devex-review`  | Developer experience            | 1 (this session) | done         | persona=app author; TTHW 4→7; F1 adapter+doctor, F5 evolve→see loop                                     |
+| Codex Review  | `/codex review`       | Independent 2nd opinion         | 1                | issues_found | 9 findings, all verified + folded (statusCode, verb-case, tsconfig ref, vacuous tests, read-only claim) |
+| Eng Review    | `/plan-eng-review`    | Architecture & tests (required) | 1                | clean        | 12 findings, all folded; 0 critical gaps; 0 unresolved                                                  |
+| Design Review | `/plan-design-review` | UI/UX gaps                      | 0                | —            | n/a — Phase 1 has no UI                                                                                 |
 
 - **CODEX:** caught real compile/correctness bugs the section review missed — `.status`→`.statusCode`, uppercased route verbs, the overstated read-only invariant (`buildSchemaInventory` resolves schema bindings), missing root `tsconfig` ref, and vacuously-passing hostile tests. All verified against source and folded into the plan.
 - **CROSS-MODEL:** no disagreement — codex found bugs, not a competing design. Both reviewers agree Phase 1 is a thin read-only projection over existing builders.

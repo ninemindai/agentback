@@ -12,7 +12,7 @@
 The old `ClientSideConnection` class is **deprecated** as of 0.28.x. The replacement is the `client()` factory function from the main entry point:
 
 ```ts
-import { client } from '@agentclientprotocol/sdk';
+import {client} from '@agentclientprotocol/sdk';
 // main entry: dist/acp.d.ts (re-exports from dist/acp.js)
 ```
 
@@ -22,7 +22,9 @@ Pattern:
 const app = client({name: 'agentback-console'});
 
 // register handlers BEFORE connecting
-app.onNotification('session/update', ({params}) => { /* params: SessionNotification */ });
+app.onNotification('session/update', ({params}) => {
+  /* params: SessionNotification */
+});
 app.onRequest('session/request_permission', async ({params}) => {
   /* params: RequestPermissionRequest */
   return {outcome: {outcome: 'selected', optionId: params.options[0].optionId}};
@@ -30,8 +32,14 @@ app.onRequest('session/request_permission', async ({params}) => {
 
 // connect to a transport stream and run the session workflow
 await app.connectWith(stream, async (ctx: ClientContext) => {
-  const session = await ctx.buildSession('/absolute/cwd')
-    .withMcpServer({type: 'http', name: 'my-mcp', url: 'http://localhost:3000/mcp', headers: []})
+  const session = await ctx
+    .buildSession('/absolute/cwd')
+    .withMcpServer({
+      type: 'http',
+      name: 'my-mcp',
+      url: 'http://localhost:3000/mcp',
+      headers: [],
+    })
     .start();
   await session.prompt('Hello');
   const msg = await session.nextUpdate(); // ActiveSessionMessage
@@ -68,12 +76,12 @@ type AppOptions = { name?: string };
 ACP communicates over **newline-delimited JSON** on stdio. The helper:
 
 ```ts
-import { ndJsonStream } from '@agentclientprotocol/sdk';
+import {ndJsonStream} from '@agentclientprotocol/sdk';
 // dist/stream.d.ts
 
 declare function ndJsonStream(
   output: WritableStream<Uint8Array>,
-  input: ReadableStream<Uint8Array>
+  input: ReadableStream<Uint8Array>,
 ): Stream;
 ```
 
@@ -99,12 +107,12 @@ Source: `dist/stream.d.ts`.
 ### Alternative: HTTP transport (experimental)
 
 ```ts
-import { createHttpStream } from '@agentclientprotocol/sdk/experimental/http-client';
+import {createHttpStream} from '@agentclientprotocol/sdk/experimental/http-client';
 // dist/http-stream.d.ts
 
 declare function createHttpStream(
   serverUrl: string,
-  options?: HttpStreamOptions
+  options?: HttpStreamOptions,
 ): Stream;
 
 interface HttpStreamOptions {
@@ -120,12 +128,12 @@ Uses POST + SSE GET streams. Exports tagged as `experimental/http-client` in pac
 ### Alternative: WebSocket transport (experimental)
 
 ```ts
-import { createWebSocketStream } from '@agentclientprotocol/sdk/experimental/ws-client';
+import {createWebSocketStream} from '@agentclientprotocol/sdk/experimental/ws-client';
 // dist/ws-stream.d.ts
 
 declare function createWebSocketStream(
   serverUrl: string,
-  options?: WebSocketStreamOptions
+  options?: WebSocketStreamOptions,
 ): Stream;
 ```
 
@@ -140,20 +148,20 @@ The `InitializeRequest` the SDK sends:
 ```ts
 // dist/schema/types.gen.d.ts line 4015
 type InitializeRequest = {
-  protocolVersion: ProtocolVersion;         // number, PROTOCOL_VERSION = 1
+  protocolVersion: ProtocolVersion; // number, PROTOCOL_VERSION = 1
   clientCapabilities?: ClientCapabilities;
   clientInfo?: Implementation | null;
   _meta?: {[key: string]: unknown} | null;
 };
 
 type ClientCapabilities = {
-  fs?: FileSystemCapabilities;   // readTextFile/writeTextFile support
+  fs?: FileSystemCapabilities; // readTextFile/writeTextFile support
   terminal?: boolean;
-  plan?: PlanCapabilities | null;           // @experimental
-  auth?: AuthCapabilities;                  // @experimental
-  elicitation?: ElicitationCapabilities | null;  // @experimental
-  nes?: ClientNesCapabilities | null;       // @experimental
-  positionEncodings?: Array<PositionEncodingKind>;  // @experimental
+  plan?: PlanCapabilities | null; // @experimental
+  auth?: AuthCapabilities; // @experimental
+  elicitation?: ElicitationCapabilities | null; // @experimental
+  nes?: ClientNesCapabilities | null; // @experimental
+  positionEncodings?: Array<PositionEncodingKind>; // @experimental
   _meta?: {[key: string]: unknown} | null;
 };
 ```
@@ -172,20 +180,20 @@ type InitializeResponse = {
 
 type AgentCapabilities = {
   loadSession?: boolean;
-  promptCapabilities?: PromptCapabilities;   // image/audio/embeddedContext
-  mcpCapabilities?: McpCapabilities;         // http/sse/acp transport support
+  promptCapabilities?: PromptCapabilities; // image/audio/embeddedContext
+  mcpCapabilities?: McpCapabilities; // http/sse/acp transport support
   sessionCapabilities?: SessionCapabilities; // list/delete/fork/resume/close
   auth?: AgentAuthCapabilities;
-  providers?: ProvidersCapabilities | null;  // @experimental
-  nes?: NesCapabilities | null;              // @experimental
+  providers?: ProvidersCapabilities | null; // @experimental
+  nes?: NesCapabilities | null; // @experimental
   positionEncoding?: PositionEncodingKind | null; // @experimental
   _meta?: {[key: string]: unknown} | null;
 };
 
 type McpCapabilities = {
-  http?: boolean;   // McpServerHttp supported
-  sse?: boolean;    // McpServerSse supported
-  acp?: boolean;    // McpServerAcp supported (@experimental)
+  http?: boolean; // McpServerHttp supported
+  sse?: boolean; // McpServerSse supported
+  acp?: boolean; // McpServerAcp supported (@experimental)
 };
 ```
 
@@ -198,24 +206,24 @@ The bridge can inspect `agentCapabilities` from `connection.agent` or via the `C
 ```ts
 // dist/schema/types.gen.d.ts line 4478
 type NewSessionRequest = {
-  cwd: string;                      // REQUIRED — absolute path
+  cwd: string; // REQUIRED — absolute path
   additionalDirectories?: string[]; // additional workspace roots, absolute paths
-  mcpServers: Array<McpServer>;     // list of MCP servers to connect (empty array = none)
+  mcpServers: Array<McpServer>; // list of MCP servers to connect (empty array = none)
   _meta?: {[key: string]: unknown} | null;
 };
 
 // McpServer is a discriminated union:
 type McpServer =
-  | (McpServerHttp & {type: 'http'})   // HTTP transport
-  | (McpServerSse & {type: 'sse'})     // Legacy SSE transport
-  | (McpServerAcp & {type: 'acp'})     // @experimental: in-band ACP transport
-  | McpServerStdio;                     // Stdio transport (no type discriminant)
+  | (McpServerHttp & {type: 'http'}) // HTTP transport
+  | (McpServerSse & {type: 'sse'}) // Legacy SSE transport
+  | (McpServerAcp & {type: 'acp'}) // @experimental: in-band ACP transport
+  | McpServerStdio; // Stdio transport (no type discriminant)
 
 // HTTP transport (CONFIRMED in McpCapabilities):
 type McpServerHttp = {
   name: string;
   url: string;
-  headers: Array<HttpHeader>;           // [] for no custom headers
+  headers: Array<HttpHeader>; // [] for no custom headers
   _meta?: {[key: string]: unknown} | null;
 };
 
@@ -230,9 +238,9 @@ type McpServerSse = {
 // Stdio transport (no type field — structurally separate):
 type McpServerStdio = {
   name: string;
-  command: string;                      // path to executable
+  command: string; // path to executable
   args: Array<string>;
-  env: Array<EnvVariable>;             // [{name, value}]
+  env: Array<EnvVariable>; // [{name, value}]
   _meta?: {[key: string]: unknown} | null;
 };
 ```
@@ -260,7 +268,9 @@ class ActiveSession {
   get sessionId(): SessionId;
 
   // Strings auto-wrapped as [{type:'text', text: '...'}]
-  prompt(prompt: string | ContentBlock | Array<ContentBlock>): Promise<PromptResponse>;
+  prompt(
+    prompt: string | ContentBlock | Array<ContentBlock>,
+  ): Promise<PromptResponse>;
 
   // Read next update OR stop message
   nextUpdate(): Promise<ActiveSessionMessage>;
@@ -279,17 +289,18 @@ Raw `session/prompt` params (used by `ActiveSession` internally):
 // dist/schema/types.gen.d.ts line 4926
 type PromptRequest = {
   sessionId: SessionId;
-  prompt: Array<ContentBlock>;          // [{type:'text', text: 'Hello'}]
+  prompt: Array<ContentBlock>; // [{type:'text', text: 'Hello'}]
   _meta?: {[key: string]: unknown} | null;
 };
 
 type PromptResponse = {
-  stopReason: StopReason;               // see below
-  usage?: Usage | null;                 // @experimental
+  stopReason: StopReason; // see below
+  usage?: Usage | null; // @experimental
   _meta?: {[key: string]: unknown} | null;
 };
 
-type StopReason = 'end_turn' | 'max_tokens' | 'max_turn_requests' | 'refusal' | 'cancelled';
+type StopReason =
+  'end_turn' | 'max_tokens' | 'max_turn_requests' | 'refusal' | 'cancelled';
 ```
 
 ### `ActiveSessionMessage` — the discriminated union for `nextUpdate()`
@@ -300,12 +311,12 @@ type ActiveSessionMessage =
   | {
       kind: 'session_update';
       notification: SessionNotification;
-      update: SessionUpdate;             // convenience alias
+      update: SessionUpdate; // convenience alias
     }
   | {
       kind: 'stop';
       response: PromptResponse;
-      stopReason: StopReason;            // convenience alias
+      stopReason: StopReason; // convenience alias
     };
 ```
 
@@ -315,13 +326,13 @@ type ActiveSessionMessage =
 // dist/schema/types.gen.d.ts line 3379
 type SessionUpdate =
   | (ContentChunk & {sessionUpdate: 'user_message_chunk'})
-  | (ContentChunk & {sessionUpdate: 'agent_message_chunk'})  // ← text streaming
-  | (ContentChunk & {sessionUpdate: 'agent_thought_chunk'})  // ← thinking tokens
-  | (ToolCall & {sessionUpdate: 'tool_call'})                // ← new tool call
-  | (ToolCallUpdate & {sessionUpdate: 'tool_call_update'})   // ← tool progress
+  | (ContentChunk & {sessionUpdate: 'agent_message_chunk'}) // ← text streaming
+  | (ContentChunk & {sessionUpdate: 'agent_thought_chunk'}) // ← thinking tokens
+  | (ToolCall & {sessionUpdate: 'tool_call'}) // ← new tool call
+  | (ToolCallUpdate & {sessionUpdate: 'tool_call_update'}) // ← tool progress
   | (Plan & {sessionUpdate: 'plan'})
-  | (PlanUpdate & {sessionUpdate: 'plan_update'})            // @experimental
-  | (PlanRemoved & {sessionUpdate: 'plan_removed'})          // @experimental
+  | (PlanUpdate & {sessionUpdate: 'plan_update'}) // @experimental
+  | (PlanRemoved & {sessionUpdate: 'plan_removed'}) // @experimental
   | (AvailableCommandsUpdate & {sessionUpdate: 'available_commands_update'})
   | (CurrentModeUpdate & {sessionUpdate: 'current_mode_update'})
   | (ConfigOptionUpdate & {sessionUpdate: 'config_option_update'})
@@ -330,7 +341,7 @@ type SessionUpdate =
 
 // Text delta is in ContentChunk.content, typed as ContentBlock:
 type ContentChunk = {
-  content: ContentBlock;    // {type:'text', text: '<delta>'} for agent_message_chunk
+  content: ContentBlock; // {type:'text', text: '<delta>'} for agent_message_chunk
   messageId?: MessageId | null;
   _meta?: {[key: string]: unknown} | null;
 };
@@ -355,19 +366,20 @@ This is a **request from the agent to the client** (server-to-client JSON-RPC re
 // dist/schema/types.gen.d.ts lines 108–131
 type RequestPermissionRequest = {
   sessionId: SessionId;
-  toolCall: ToolCallUpdate;             // tool being authorized
-  options: Array<PermissionOption>;     // choices to show the user
+  toolCall: ToolCallUpdate; // tool being authorized
+  options: Array<PermissionOption>; // choices to show the user
   _meta?: {[key: string]: unknown} | null;
 };
 
 type PermissionOption = {
-  optionId: PermissionOptionId;         // opaque string ID
-  name: string;                         // human-readable label e.g. "Allow once"
+  optionId: PermissionOptionId; // opaque string ID
+  name: string; // human-readable label e.g. "Allow once"
   kind: PermissionOptionKind;
   _meta?: {[key: string]: unknown} | null;
 };
 
-type PermissionOptionKind = 'allow_once' | 'allow_always' | 'reject_once' | 'reject_always';
+type PermissionOptionKind =
+  'allow_once' | 'allow_always' | 'reject_once' | 'reject_always';
 ```
 
 Response from client:
@@ -379,11 +391,11 @@ type RequestPermissionResponse = {
 };
 
 type RequestPermissionOutcome =
-  | {outcome: 'cancelled'}                              // user cancelled the prompt turn
+  | {outcome: 'cancelled'} // user cancelled the prompt turn
   | (SelectedPermissionOutcome & {outcome: 'selected'});
 
 type SelectedPermissionOutcome = {
-  optionId: PermissionOptionId;   // must match one of request.options[].optionId
+  optionId: PermissionOptionId; // must match one of request.options[].optionId
   _meta?: {[key: string]: unknown} | null;
 };
 ```
@@ -490,21 +502,27 @@ import type {
   InitializeRequest,
   InitializeResponse,
   NewSessionRequest,
-  McpServer, McpServerHttp, McpServerStdio,
+  McpServer,
+  McpServerHttp,
+  McpServerStdio,
   SessionNotification,
   SessionUpdate,
   ContentChunk,
   ContentBlock,
-  ToolCall, ToolCallUpdate,
-  PromptRequest, PromptResponse,
+  ToolCall,
+  ToolCallUpdate,
+  PromptRequest,
+  PromptResponse,
   StopReason,
-  RequestPermissionRequest, RequestPermissionResponse,
+  RequestPermissionRequest,
+  RequestPermissionResponse,
   RequestPermissionOutcome,
-  PermissionOption, PermissionOptionKind,
+  PermissionOption,
+  PermissionOptionKind,
 } from '@agentclientprotocol/sdk';
 
 // HTTP transport (experimental subpath)
-import { createHttpStream } from '@agentclientprotocol/sdk/experimental/http-client';
+import {createHttpStream} from '@agentclientprotocol/sdk/experimental/http-client';
 ```
 
 ## 10. LIVE VALIDATION RESULTS (2026-06-20, claude-agent-acp 0.48, real Claude auth)

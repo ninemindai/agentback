@@ -19,12 +19,12 @@ src/native.ts       new RestApplication({rest:{listener:'native'}}) ← AgentBac
 `controller.ts` and `app.ts` are **identical** across all three runs. Only the
 host wrapper differs — and each wrapper is ~3 lines of glue.
 
-| | Fastify | Hono | Bun |
-| --- | --- | --- | --- |
-| Host setup | `Fastify()` | `new Hono()` | `Bun.serve({…})` |
-| AgentBack wiring | `installFastifyHost(fastify, host)` | `hono.all('*', c => host.fetch(c.req.raw))` | `fetch: host.fetch` |
-| Own route precedence | wildcard fallback (non-greedy) | `hono.get('/native')` registered first | n/a |
-| Runtime | Node | Node (`@hono/node-server`) / Bun / Deno | Bun |
+|                      | Fastify                             | Hono                                        | Bun                 |
+| -------------------- | ----------------------------------- | ------------------------------------------- | ------------------- |
+| Host setup           | `Fastify()`                         | `new Hono()`                                | `Bun.serve({…})`    |
+| AgentBack wiring     | `installFastifyHost(fastify, host)` | `hono.all('*', c => host.fetch(c.req.raw))` | `fetch: host.fetch` |
+| Own route precedence | wildcard fallback (non-greedy)      | `hono.get('/native')` registered first      | n/a                 |
+| Runtime              | Node                                | Node (`@hono/node-server`) / Bun / Deno     | Bun                 |
 
 ## Run it
 

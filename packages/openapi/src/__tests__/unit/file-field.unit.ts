@@ -81,12 +81,15 @@ describe('fileField — OpenAPI emission', () => {
   }
 
   const spec = getControllerSpec(PhotoController);
-  const op = (Object.values(spec.paths!)[0] as Record<string, unknown>).post as {
+  const op = (Object.values(spec.paths!)[0] as Record<string, unknown>)
+    .post as {
     requestBody: {content: Record<string, {schema: Record<string, unknown>}>};
   };
 
   it('emits multipart/form-data (not application/json) for a fileField body', () => {
-    expect(Object.keys(op.requestBody.content)).toEqual(['multipart/form-data']);
+    expect(Object.keys(op.requestBody.content)).toEqual([
+      'multipart/form-data',
+    ]);
   });
 
   it('renders the file property as {type: string, format: binary}', () => {

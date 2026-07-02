@@ -135,7 +135,11 @@ export type AcpConnectFn = (
   descriptor: AgentDescriptor,
   clientApp: ClientApp,
   options?: AcpConnectOptions,
-) => Promise<{connection: ClientConnection; ctx: ClientContext; kill: () => void}>;
+) => Promise<{
+  connection: ClientConnection;
+  ctx: ClientContext;
+  kill: () => void;
+}>;
 
 /**
  * Default connect function: spawns the subprocess indicated by
@@ -151,7 +155,11 @@ export type AcpConnectFn = (
  * claude-agent-acp.  The binary may prefer HTTP/SSE rather than stdio; update
  * this function once the real adapter is available.
  */
-export const defaultConnectFn: AcpConnectFn = async (descriptor, clientApp, options) => {
+export const defaultConnectFn: AcpConnectFn = async (
+  descriptor,
+  clientApp,
+  options,
+) => {
   const [bin, ...args] = descriptor.command;
   log.debug('spawning ACP subprocess: %s %o', bin, args);
 
@@ -177,8 +185,12 @@ export const defaultConnectFn: AcpConnectFn = async (descriptor, clientApp, opti
   });
 
   // NEEDS LIVE VALIDATION (ACP-NOTES §9a): Node streams → Web Streams.
-  const inputStream = Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>;
-  const outputStream = Writable.toWeb(child.stdin) as WritableStream<Uint8Array>;
+  const inputStream = Readable.toWeb(
+    child.stdout,
+  ) as ReadableStream<Uint8Array>;
+  const outputStream = Writable.toWeb(
+    child.stdin,
+  ) as WritableStream<Uint8Array>;
   const stream: Stream = ndJsonStream(outputStream, inputStream);
 
   const connection = clientApp.connect(stream);
@@ -190,9 +202,7 @@ export const defaultConnectFn: AcpConnectFn = async (descriptor, clientApp, opti
   child.once('exit', (code, signal) => {
     if (code !== 0 || signal) {
       log.debug('ACP subprocess exited code=%s signal=%s', code, signal);
-      connection.close(
-        new SpawnError(`Subprocess exited unexpectedly`, code),
-      );
+      connection.close(new SpawnError(`Subprocess exited unexpectedly`, code));
     }
   });
 
@@ -280,7 +290,11 @@ export class AcpSession extends EventEmitter {
 
     app.onRequest('session/request_permission', async ({params}) => {
       const requestId = `perm-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      log.debug('permission_request sessionId=%s requestId=%s', params.sessionId, requestId);
+      log.debug(
+        'permission_request sessionId=%s requestId=%s',
+        params.sessionId,
+        requestId,
+      );
 
       const optionId = await new Promise<string | null>(resolve => {
         this._pendingPermissions.set(requestId, resolve);
@@ -316,15 +330,19 @@ export class AcpSession extends EventEmitter {
     this._kill = kill;
 
     // If the connection closes unexpectedly, emit an error.
-    connection.closed.then(() => {
-      if (!this._disposed) {
-        log.debug('ACP connection closed unexpectedly');
-        this.emit('event', {
-          type: 'error',
-          error: new AcpHandshakeError('ACP connection closed unexpectedly'),
-        } satisfies ErrorEvent);
-      }
-    }).catch(() => {/* closed promise never rejects */});
+    connection.closed
+      .then(() => {
+        if (!this._disposed) {
+          log.debug('ACP connection closed unexpectedly');
+          this.emit('event', {
+            type: 'error',
+            error: new AcpHandshakeError('ACP connection closed unexpectedly'),
+          } satisfies ErrorEvent);
+        }
+      })
+      .catch(() => {
+        /* closed promise never rejects */
+      });
   }
 
   /**
@@ -346,16 +364,27 @@ export class AcpSession extends EventEmitter {
    * NEEDS LIVE VALIDATION (ACP-NOTES §9c): `cwd` requirement — whether the
    * field is truly required by `claude-agent-acp`.
    */
-  async open(mcpServers: unknown[] = [], cwd?: string, permissionMode = 'default'): Promise<string> {
-    if (!this._ctx) throw new Error('AcpSession: not connected — call connect() first');
+  async open(
+    mcpServers: unknown[] = [],
+    cwd?: string,
+    permissionMode = 'default',
+  ): Promise<string> {
+    if (!this._ctx)
+      throw new Error('AcpSession: not connected — call connect() first');
     if (this._disposed) throw new Error('AcpSession: already disposed');
 
     const workingDir = cwd ?? process.cwd();
-    log.debug('opening ACP session cwd=%s mcpServers=%d', workingDir, mcpServers.length);
+    log.debug(
+      'opening ACP session cwd=%s mcpServers=%d',
+      workingDir,
+      mcpServers.length,
+    );
 
     let builder = this._ctx.buildSession(workingDir);
     for (const srv of mcpServers) {
-      builder = builder.withMcpServer(srv as Parameters<typeof builder.withMcpServer>[0]);
+      builder = builder.withMcpServer(
+        srv as Parameters<typeof builder.withMcpServer>[0],
+      );
     }
 
     const session = await builder.start();
@@ -366,7 +395,11 @@ export class AcpSession extends EventEmitter {
     // session/request_permission to us — without this, claude-agent-acp defaults to
     // 'acceptEdits' which auto-accepts file edits without ever calling our
     // session/request_permission handler, bypassing the dock's permission card.
-    await this._enforcePermissionMode(session.sessionId as string, session.modes, permissionMode);
+    await this._enforcePermissionMode(
+      session.sessionId as string,
+      session.modes,
+      permissionMode,
+    );
 
     return session.sessionId as string;
   }
@@ -382,7 +415,8 @@ export class AcpSession extends EventEmitter {
    */
   async injectContext(contextText: string): Promise<void> {
     if (this._disposed) throw new Error('AcpSession: already disposed');
-    if (!this._session) throw new Error('AcpSession: no open session — call open() first');
+    if (!this._session)
+      throw new Error('AcpSession: no open session — call open() first');
 
     const session = this._session;
     log.debug('injecting standing context (length=%d)', contextText.length);
@@ -404,7 +438,7 @@ export class AcpSession extends EventEmitter {
       session,
       `<system-context>\n${contextText}\n</system-context>\n\n` +
         'You are an AI coding agent integrated with an AgentBack application. ' +
-        'The schema above describes the running app\'s REST routes, MCP tools, ' +
+        "The schema above describes the running app's REST routes, MCP tools, " +
         'and domain entities. Use it to understand the application before making changes.',
     );
   }
@@ -420,7 +454,8 @@ export class AcpSession extends EventEmitter {
    */
   async prompt(text: string): Promise<void> {
     if (this._disposed) throw new Error('AcpSession: already disposed');
-    if (!this._session) throw new Error('AcpSession: no open session — call open() first');
+    if (!this._session)
+      throw new Error('AcpSession: no open session — call open() first');
 
     const session = this._session;
     log.debug('sending prompt (length=%d)', text.length);
@@ -510,7 +545,7 @@ export class AcpSession extends EventEmitter {
     if (!modes) {
       log.warn(
         'AcpSession: agent did not advertise session modes — cannot enforce ' +
-        'permission mode %s; file edits may be auto-accepted without prompting',
+          'permission mode %s; file edits may be auto-accepted without prompting',
         targetMode,
       );
       return;
@@ -519,7 +554,10 @@ export class AcpSession extends EventEmitter {
     const {currentModeId, availableModes} = modes;
 
     if (currentModeId === targetMode) {
-      log.debug('AcpSession: permission mode already %s — no set_mode needed', targetMode);
+      log.debug(
+        'AcpSession: permission mode already %s — no set_mode needed',
+        targetMode,
+      );
       return;
     }
 
@@ -527,7 +565,7 @@ export class AcpSession extends EventEmitter {
     if (!hasTarget) {
       log.warn(
         'AcpSession: target permission mode %s is not in advertised availableModes %o; ' +
-        'cannot enforce prompting — file edits may be auto-accepted',
+          'cannot enforce prompting — file edits may be auto-accepted',
         targetMode,
         availableModes.map(m => m.id),
       );
@@ -544,7 +582,10 @@ export class AcpSession extends EventEmitter {
       // ClientContext.request() is the typed gateway for all agent-side methods;
       // 'session/set_mode' is a recognised AgentRequestMethod so params and
       // response are fully typed.
-      await this._ctx!.request('session/set_mode', {sessionId, modeId: targetMode});
+      await this._ctx!.request('session/set_mode', {
+        sessionId,
+        modeId: targetMode,
+      });
       log.debug('AcpSession: permission mode set to %s', targetMode);
     } catch (err) {
       log.warn(
@@ -614,7 +655,10 @@ export class AcpSession extends EventEmitter {
       while (!done && !this._disposed) {
         const msg: ActiveSessionMessage = await session.nextUpdate();
         if (msg.kind === 'stop') {
-          log.debug('grounding turn drained quietly (stopReason=%s)', msg.stopReason);
+          log.debug(
+            'grounding turn drained quietly (stopReason=%s)',
+            msg.stopReason,
+          );
           done = true;
         }
         // session_update chunks (if any) are intentionally swallowed — the
@@ -642,7 +686,11 @@ export class AcpSession extends EventEmitter {
     if (kind === 'agent_message_chunk') {
       // ContentChunk: content is a single ContentBlock (not array).
       const block = u['content'] as Record<string, unknown> | undefined;
-      if (block && block['type'] === 'text' && typeof block['text'] === 'string') {
+      if (
+        block &&
+        block['type'] === 'text' &&
+        typeof block['text'] === 'string'
+      ) {
         this.emit('event', {
           type: 'assistant_delta',
           text: block['text'],

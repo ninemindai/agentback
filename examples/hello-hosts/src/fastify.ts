@@ -26,7 +26,9 @@ await fastify.listen({port: PORT, host: '0.0.0.0'});
 console.log(`\nTry:`);
 console.log(`  curl http://localhost:${PORT}/native`);
 console.log(`  curl http://localhost:${PORT}/greet/Ada`);
-console.log(`  curl -X POST http://localhost:${PORT}/echo -H 'content-type: application/json' -d '{"message":"hi"}'`);
+console.log(
+  `  curl -X POST http://localhost:${PORT}/echo -H 'content-type: application/json' -d '{"message":"hi"}'`,
+);
 console.log(`  curl http://localhost:${PORT}/openapi.json\n`);
 
 process.on('SIGTERM', async () => {

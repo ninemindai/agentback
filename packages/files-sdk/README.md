@@ -14,12 +14,14 @@ it once, and every AgentBack upload/download recipe (`fileField()` /
 
 ```ts
 import {FilesSdkFileStore} from '@agentback/files-sdk';
-import {s3} from 'files-sdk/s3';          // or files-sdk/r2, /gcs, /azure, /fs, …
+import {s3} from 'files-sdk/s3'; // or files-sdk/r2, /gcs, /azure, /fs, …
 import {FILE_STORE} from '@agentback/files';
 
-app.bind(FILE_STORE).to(
-  new FilesSdkFileStore({adapter: s3({bucket: 'uploads'}), prefix: 'app/'}),
-);
+app
+  .bind(FILE_STORE)
+  .to(
+    new FilesSdkFileStore({adapter: s3({bucket: 'uploads'}), prefix: 'app/'}),
+  );
 ```
 
 `files-sdk` is a **peer dependency** — install it plus the peer deps of the
@@ -28,12 +30,12 @@ adapter needs nothing extra.
 
 ## How the bridge works
 
-| `FileStore` | delegates to | bridge detail |
-|---|---|---|
-| `put(key, body, opts)` | `files.upload` | `Buffer` is already a `Uint8Array` (passes through); `Readable` → `Readable.toWeb()`. `filename` rides in `metadata` (when the backend supports metadata). |
-| `get(key, {range?})` | `files.download` | body stream ← `Readable.fromWeb(sf.stream())`; `FilesError('NotFound')` → `FileNotFoundError`. A `range` requires `capabilities.rangeRead` (throws otherwise). |
-| `stat(key)` | `files.head` | metadata only (no body transfer); maps `type`→`contentType`, epoch `lastModified`→`Date`; `NotFound` → `FileNotFoundError`. |
-| `exists` / `delete` | `files.exists` / `files.delete` | `delete` swallows `NotFound` to stay idempotent. |
+| `FileStore`                     | delegates to                          | bridge detail                                                                                                                                                                                                                                                                  |
+| ------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `put(key, body, opts)`          | `files.upload`                        | `Buffer` is already a `Uint8Array` (passes through); `Readable` → `Readable.toWeb()`. `filename` rides in `metadata` (when the backend supports metadata).                                                                                                                     |
+| `get(key, {range?})`            | `files.download`                      | body stream ← `Readable.fromWeb(sf.stream())`; `FilesError('NotFound')` → `FileNotFoundError`. A `range` requires `capabilities.rangeRead` (throws otherwise).                                                                                                                 |
+| `stat(key)`                     | `files.head`                          | metadata only (no body transfer); maps `type`→`contentType`, epoch `lastModified`→`Date`; `NotFound` → `FileNotFoundError`.                                                                                                                                                    |
+| `exists` / `delete`             | `files.exists` / `files.delete`       | `delete` swallows `NotFound` to stay idempotent.                                                                                                                                                                                                                               |
 | `presignedGet` / `presignedPut` | `files.url` / `files.signedUploadUrl` | **present only when** `files.capabilities.signedUrl.supported` — so S3/R2 stores can presign and a filesystem store reports "unsupported" by omitting the methods. `presignedPut` returns a `SignedUpload` (PUT URL, or a size-enforced POST form when `opts.maxSize` is set). |
 
 The Node ⇄ Web stream conversion is the only real impedance, and it is isolated

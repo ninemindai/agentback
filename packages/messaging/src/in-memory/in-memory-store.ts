@@ -5,11 +5,7 @@
 import type {EnqueueOptions} from '../types.js';
 
 export type JobState =
-  | 'waiting'
-  | 'delayed'
-  | 'active'
-  | 'completed'
-  | 'failed';
+  'waiting' | 'delayed' | 'active' | 'completed' | 'failed';
 
 export interface StoredJob {
   id: string;

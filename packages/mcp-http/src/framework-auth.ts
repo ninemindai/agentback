@@ -43,8 +43,7 @@ type PrincipalScopes = UserProfile & {scopes?: string[] | string};
 /** Derive MCP scopes from the authenticated principal. */
 function defaultScopes(auth: AuthenticationResult): string[] {
   const principal = (auth.user ?? auth.clientApplication) as
-    | PrincipalScopes
-    | undefined;
+    PrincipalScopes | undefined;
   const raw = principal?.scopes ?? auth.clientApplication?.allowedScopes;
   if (Array.isArray(raw)) return raw;
   if (typeof raw === 'string') return raw.split(' ').filter(Boolean);

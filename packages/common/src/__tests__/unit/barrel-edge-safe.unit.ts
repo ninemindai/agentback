@@ -85,7 +85,7 @@ describe('BARREL edge-safety: import {loggers} from @agentback/common', () => {
 
       const reachableImports: string[] = [];
       for (const output of Object.values(
-        meta.outputs as Record<string, {imports?: {path: string}[]}>
+        meta.outputs as Record<string, {imports?: {path: string}[]}>,
       )) {
         if (output.imports) {
           for (const imp of output.imports) {
@@ -103,7 +103,9 @@ describe('BARREL edge-safety: import {loggers} from @agentback/common', () => {
       // None of these must appear as static imports in the graph
       const banned = ['dotenv', 'node:fs', 'node:path', 'node:module'];
       for (const mod of banned) {
-        const found = reachableImports.filter(p => p === mod || p.startsWith(mod + '/'));
+        const found = reachableImports.filter(
+          p => p === mod || p.startsWith(mod + '/'),
+        );
         expect(
           found,
           `static import graph must NOT contain "${mod}" — found: ${JSON.stringify(found)}`,

@@ -49,14 +49,22 @@ describe('parseMarkdown', () => {
     const blocks = parseMarkdown(DOC);
     const headings = blocks.filter(b => b.kind === 'heading');
     expect(headings).toContainEqual({kind: 'heading', level: 1, text: 'User'});
-    expect(headings).toContainEqual({kind: 'heading', level: 2, text: 'Fields'});
+    expect(headings).toContainEqual({
+      kind: 'heading',
+      level: 2,
+      text: 'Fields',
+    });
   });
 
   it('parses a GFM table (header row + body, separator dropped)', () => {
     const table = first(parseMarkdown(DOC), 'table');
     expect(table.headers).toEqual(['Field', 'Type', 'Required']);
     expect(table.rows).toContainEqual(['id', 'integer', 'yes']);
-    expect(table.rows).toContainEqual(['createdAt', 'string (date-time)', 'yes']);
+    expect(table.rows).toContainEqual([
+      'createdAt',
+      'string (date-time)',
+      'yes',
+    ]);
     // The `| --- |` separator must not leak in as a data row.
     expect(table.rows.some(r => r[0]?.includes('---'))).toBe(false);
   });
@@ -66,7 +74,9 @@ describe('parseMarkdown', () => {
       b => b.kind === 'paragraph' && b.spans.some(s => s.kind === 'code'),
     );
     expect(para).toBeDefined();
-    expect((para as Extract<MdBlock, {kind: 'paragraph'}>).spans).toContainEqual({
+    expect(
+      (para as Extract<MdBlock, {kind: 'paragraph'}>).spans,
+    ).toContainEqual({
       kind: 'code',
       text: 'users',
     });

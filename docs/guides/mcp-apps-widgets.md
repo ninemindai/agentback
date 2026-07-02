@@ -40,7 +40,10 @@ import {
 
 const UI_URI = 'ui://weather/forecast';
 
-const ForecastInput = z.object({city: z.string(), days: z.number().int().min(1).max(7).default(3)});
+const ForecastInput = z.object({
+  city: z.string(),
+  days: z.number().int().min(1).max(7).default(3),
+});
 const ForecastOutput = z.object({
   location: z.object({name: z.string()}),
   days: z.array(z.object({date: z.string(), condition: z.string()})),
@@ -55,7 +58,9 @@ class WeatherTools {
     // SEP-1865: link the tool to its widget.
     ui: {resourceUri: UI_URI, visibility: ['model', 'app']},
   })
-  async getForecast(input: z.infer<typeof ForecastInput>): Promise<z.infer<typeof ForecastOutput>> {
+  async getForecast(
+    input: z.infer<typeof ForecastInput>,
+  ): Promise<z.infer<typeof ForecastOutput>> {
     return {location: {name: input.city}, days: [/* … */]};
   }
 
@@ -88,7 +93,14 @@ app.ontoolresult = result => render(result.structuredContent);
 
 // Refresh from inside the widget by calling the tool again:
 document.getElementById('refresh').addEventListener('click', async () => {
-  render((await app.callServerTool({name: 'get_forecast', arguments: {city: 'Berlin'}})).structuredContent);
+  render(
+    (
+      await app.callServerTool({
+        name: 'get_forecast',
+        arguments: {city: 'Berlin'},
+      })
+    ).structuredContent,
+  );
 });
 
 // connect() defaults to PostMessageTransport(window.parent, …) + the handshake.
@@ -108,7 +120,10 @@ const {outputFiles} = await esbuild.build({
   format: 'esm',
   write: false,
 });
-const WIDGET_HTML = shellHtml.replace('/*__VIEW_BUNDLE__*/', () => outputFiles[0].text);
+const WIDGET_HTML = shellHtml.replace(
+  '/*__VIEW_BUNDLE__*/',
+  () => outputFiles[0].text,
+);
 ```
 
 ## What AgentBack emits

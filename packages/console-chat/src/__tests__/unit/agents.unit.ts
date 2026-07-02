@@ -18,7 +18,10 @@ import type {AgentDescriptor, RunProbe} from '../../agents.js';
 
 const presentProbe: RunProbe = async () => ({present: true, version: '1.2.3'});
 const missingProbe: RunProbe = async () => ({present: false});
-const oldVersionProbe: RunProbe = async () => ({present: true, version: '0.0.1'});
+const oldVersionProbe: RunProbe = async () => ({
+  present: true,
+  version: '0.0.1',
+});
 
 // A descriptor that requires a minimum version
 const descriptor: AgentDescriptor = {
@@ -51,7 +54,9 @@ describe('BUILTIN_AGENTS', () => {
   it('doctor on the claude-code entry produces the correct npm install command', async () => {
     const cc = BUILTIN_AGENTS.find(a => a.id === 'claude-code')!;
     const result = await doctor(cc, missingProbe);
-    expect(result.fix).toBe('npm install -g @agentclientprotocol/claude-agent-acp');
+    expect(result.fix).toBe(
+      'npm install -g @agentclientprotocol/claude-agent-acp',
+    );
   });
 });
 
@@ -155,7 +160,9 @@ describe('buildAugmentedPath', () => {
 
   /** Create a temp dir with a fake `node_modules/.bin/<bin>` file. */
   function makeFakeBin(bin: string): {tmpDir: string; binPath: string} {
-    const tmpDir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'agentback-test-'));
+    const tmpDir = fs.mkdtempSync(
+      nodePath.join(os.tmpdir(), 'agentback-test-'),
+    );
     tmpDirs.push(tmpDir);
     const dotBin = nodePath.join(tmpDir, 'node_modules', '.bin');
     fs.mkdirSync(dotBin, {recursive: true});
@@ -185,7 +192,9 @@ describe('buildAugmentedPath', () => {
   it('includes node_modules/.bin dirs walked up from the base dir', () => {
     // Create a nested structure: tmpDir/a/b — baseDir is a/b, but the .bin
     // is at tmpDir/node_modules/.bin (simulating a workspace root hoist).
-    const tmpDir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'agentback-test-'));
+    const tmpDir = fs.mkdtempSync(
+      nodePath.join(os.tmpdir(), 'agentback-test-'),
+    );
     tmpDirs.push(tmpDir);
     const nestedDir = nodePath.join(tmpDir, 'a', 'b');
     fs.mkdirSync(nestedDir, {recursive: true});
@@ -204,12 +213,7 @@ describe('buildAugmentedPath', () => {
     // the helper via the injectable RunProbe seam so the test is deterministic
     // and not dependent on what is globally installed.
     const stubProbe: RunProbe = async (bin: string) => {
-      const binPath = nodePath.join(
-        tmpDir,
-        'node_modules',
-        '.bin',
-        bin,
-      );
+      const binPath = nodePath.join(tmpDir, 'node_modules', '.bin', bin);
       const exists = fs.existsSync(binPath);
       return {present: exists, version: exists ? '0.48.0' : undefined};
     };

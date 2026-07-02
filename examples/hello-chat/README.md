@@ -12,7 +12,7 @@ greeting — swap in an AI SDK stream or a tool call).
 It also shows **identity**: a `principal` resolver (configured at `installChat` /
 `register`) maps the parsed sender to a `UserProfile`, which the handler reads via
 `@inject(SecurityBindings.USER)` — chat authorizes like REST and MCP. It's a
-*method* inject because `@chatBot` is a singleton (see the package README for the
+_method_ inject because `@chatBot` is a singleton (see the package README for the
 scope rule).
 
 ## Build

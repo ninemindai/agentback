@@ -27,7 +27,10 @@ class OnionController {
 async function boot(
   configure: (app: RestApplication) => void,
   cors?: boolean,
-): Promise<{app: RestApplication; host: ReturnType<RestServer['fetchHandler']>}> {
+): Promise<{
+  app: RestApplication;
+  host: ReturnType<RestServer['fetchHandler']>;
+}> {
   const app = new RestApplication({});
   app.configure('servers.RestServer').to({
     port: 0,

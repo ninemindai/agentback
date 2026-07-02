@@ -287,12 +287,7 @@ export interface JobRef {
 export interface JobInfo<T = unknown> {
   readonly id: string;
   readonly state:
-    | 'waiting'
-    | 'delayed'
-    | 'active'
-    | 'completed'
-    | 'failed'
-    | 'unknown';
+    'waiting' | 'delayed' | 'active' | 'completed' | 'failed' | 'unknown';
   readonly data?: T;
   readonly attempt: number;
 }
@@ -1103,11 +1098,7 @@ Create `packages/agent-messaging/src/in-memory/in-memory-store.ts`:
 import type {EnqueueOptions} from '../types.js';
 
 export type JobState =
-  | 'waiting'
-  | 'delayed'
-  | 'active'
-  | 'completed'
-  | 'failed';
+  'waiting' | 'delayed' | 'active' | 'completed' | 'failed';
 
 export interface StoredJob {
   id: string;

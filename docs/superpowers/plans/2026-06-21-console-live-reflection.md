@@ -4,7 +4,7 @@
 
 **Goal:** When the AgentBack app restarts (the agent or developer edited source and `build:watch` rebuilt), the open dev-console explorer panels auto-refresh to show the new structure.
 
-**Architecture:** A per-process `BOOT_ID` is served over a small `GET {basePath}/live` SSE endpoint in `@agentback/console`. A client `liveBus` opens that stream once; when a reconnect returns a *different* `BOOT_ID`, it publishes a `reload`. The console App bumps a `reloadNonce`; native React explorers (`context-explorer`, `schema-explorer`) refetch in place (selection is derived, so it is preserved automatically), and embedded panels (`rest-explorer`, `mcp-inspector`) remount via React `key`.
+**Architecture:** A per-process `BOOT_ID` is served over a small `GET {basePath}/live` SSE endpoint in `@agentback/console`. A client `liveBus` opens that stream once; when a reconnect returns a _different_ `BOOT_ID`, it publishes a `reload`. The console App bumps a `reloadNonce`; native React explorers (`context-explorer`, `schema-explorer`) refetch in place (selection is derived, so it is preserved automatically), and embedded panels (`rest-explorer`, `mcp-inspector`) remount via React `key`.
 
 **Tech Stack:** TypeScript 6 (ESM, `.js` import extensions), React 18 (`renderToString` for tests), Express 5 SSE, vitest, Node `node:crypto.randomUUID`.
 
@@ -29,10 +29,12 @@
 ### Task 1: Server — `BOOT_ID` + `/live` SSE handler
 
 **Files:**
+
 - Create: `packages/console/src/live.ts`
 - Test: `packages/console/src/__tests__/unit/live-endpoint.unit.ts`
 
 **Interfaces:**
+
 - Produces: `BOOT_ID: string` (module-level, one per process); `liveHandler(req, res): void` (an Express handler that writes the `hello` frame + heartbeats + cleans up on close); `LIVE_HEARTBEAT_MS: number`.
 - Consumes: nothing (Task 2 mounts `liveHandler`).
 
@@ -165,10 +167,12 @@ git commit -m "feat(console): BOOT_ID + /live SSE handler"
 ### Task 2: Server — mount `/live` in `mountConsole`
 
 **Files:**
+
 - Modify: `packages/console/src/index.ts` (the `mountConsole` function, ~line 150-167)
 - Test: `packages/console/src/__tests__/integration/console-live.integration.ts`
 
 **Interfaces:**
+
 - Consumes: `liveHandler`, `BOOT_ID` from Task 1.
 - Produces: a live SSE endpoint reachable at `{basePath}/live`, auth-gated by the existing `basePath` guard (`index.ts:117`).
 
@@ -235,12 +239,12 @@ import {liveHandler} from './live.js';
 In `mountConsole`, immediately after `const app = server.expressApp;` (currently line 151), add:
 
 ```ts
-  // Live-reflection channel: a per-process boot id over SSE. The client's
-  // liveBus refetches the explorer panels when a reconnect returns a NEW boot
-  // id (i.e. the app restarted). Mounted on expressApp like the chat stream so
-  // RestServer.sendResult never ends it. Under basePath → covered by the auth
-  // gate installed in installConsole.
-  app.get(basePath + '/live', liveHandler);
+// Live-reflection channel: a per-process boot id over SSE. The client's
+// liveBus refetches the explorer panels when a reconnect returns a NEW boot
+// id (i.e. the app restarted). Mounted on expressApp like the chat stream so
+// RestServer.sendResult never ends it. Under basePath → covered by the auth
+// gate installed in installConsole.
+app.get(basePath + '/live', liveHandler);
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -265,10 +269,12 @@ git commit -m "feat(console): mount /live SSE endpoint in mountConsole"
 ### Task 3: Client — `liveBus` (boot-id change → reload)
 
 **Files:**
+
 - Create: `packages/console/src/client/live.ts`
 - Test: `packages/console/src/__tests__/unit/live-bus.unit.ts`
 
 **Interfaces:**
+
 - Produces:
   - `subscribeReload(fn: () => void): () => void` — register a reload listener; returns unsubscribe.
   - `subscribeStatus(fn: (connected: boolean) => void): () => void` — connection status (for the "disconnected" dot).
@@ -456,9 +462,9 @@ export function startLiveBus(
   const delay = options?.reconnectDelayMs ?? 2000;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const defaultFactory: EventSourceFactory = (u: string) =>
-    new ((globalThis as any).EventSource as new (
-      url: string,
-    ) => MinimalEventSource)(u);
+    new (
+      (globalThis as any).EventSource as new (url: string) => MinimalEventSource
+    )(u);
   const makeEs = options?.eventSourceFactory ?? defaultFactory;
 
   let bootId: string | null = null;
@@ -477,7 +483,8 @@ export function startLiveBus(
         };
         if (msg.type === 'hello' && typeof msg.bootId === 'string') {
           emitStatus(true);
-          if (bootId === null) bootId = msg.bootId; // baseline
+          if (bootId === null)
+            bootId = msg.bootId; // baseline
           else if (msg.bootId !== bootId) {
             bootId = msg.bootId; // restart
             emitReload();
@@ -527,12 +534,14 @@ git commit -m "feat(console): liveBus client — reload on boot-id change"
 ### Task 4: Client — wire `reloadNonce` through the console App
 
 **Files:**
+
 - Modify: `packages/console/src/client/types.ts` (`ConsolePanelProps`, `ConsolePage`)
 - Modify: `packages/console/src/client/App.tsx` (start bus, hold nonce, Panel strategy, status dot)
 - Modify: `packages/console/src/client/pages.tsx` (forward `reloadNonce` to the two native explorers; tag them `liveRefresh: 'prop'`)
 - Test: `packages/console/src/__tests__/unit/live-wiring.unit.tsx`
 
 **Interfaces:**
+
 - Consumes: `startLiveBus`, `subscribeReload`, `subscribeStatus` (Task 3); `reloadNonce` prop accepted by `ContextApp`/`SchemaApp` (Tasks 5/6).
 - Produces: `ConsolePanelProps.reloadNonce?: number`; `ConsolePage.liveRefresh?: 'prop' | 'remount'`. The Panel passes `reloadNonce` as a prop to `'prop'` pages and folds it into the React `key` of all other pages (remount).
 
@@ -614,25 +623,25 @@ import {startLiveBus, subscribeReload, subscribeStatus} from './live.js';
 Inside `App(...)`, after `const onToggleDock = ...` (line 55), add state + the bus effect:
 
 ```ts
-  const [reloadNonce, setReloadNonce] = useState(0);
-  const [live, setLive] = useState(true);
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const stop = startLiveBus(config.basePath + '/live');
-    const offReload = subscribeReload(() => setReloadNonce(n => n + 1));
-    const offStatus = subscribeStatus(setLive);
-    return () => {
-      offReload();
-      offStatus();
-      stop();
-    };
-  }, [config.basePath]);
+const [reloadNonce, setReloadNonce] = useState(0);
+const [live, setLive] = useState(true);
+useEffect(() => {
+  if (typeof window === 'undefined') return;
+  const stop = startLiveBus(config.basePath + '/live');
+  const offReload = subscribeReload(() => setReloadNonce(n => n + 1));
+  const offStatus = subscribeStatus(setLive);
+  return () => {
+    offReload();
+    offStatus();
+    stop();
+  };
+}, [config.basePath]);
 ```
 
 Change the `<Panel .../>` call (line 78) to pass the nonce:
 
 ```tsx
-          <Panel page={active} config={config} reloadNonce={reloadNonce} />
+<Panel page={active} config={config} reloadNonce={reloadNonce} />
 ```
 
 (Drop the `key={active.id}` on this element — the Panel now owns keying. See Step 3c.)
@@ -640,11 +649,13 @@ Change the `<Panel .../>` call (line 78) to pass the nonce:
 Add a status dot inside `<aside className="sidebar">`, right after `<div className="brand">…</div>` (line 60):
 
 ```tsx
-        {!live && (
-          <div className="live-offline" title="Disconnected from the app">
-            ● offline
-          </div>
-        )}
+{
+  !live && (
+    <div className="live-offline" title="Disconnected from the app">
+      ● offline
+    </div>
+  );
+}
 ```
 
 Append to the `CONSOLE_CSS`-equivalent — the console CSS lives in `index.ts`; add the rule there in Step 3d.
@@ -693,7 +704,13 @@ Add `ConsolePage` to the type import at the top of `App.tsx` if not already impo
 In `packages/console/src/index.ts`, inside the `CONSOLE_CSS` template (after the `.panel` rule, ~line 229), add:
 
 ```css
-.live-offline { font-size:11px; color:var(--accent); margin:0 0 .75rem; padding:0 .4rem; letter-spacing:.02em; }
+.live-offline {
+  font-size: 11px;
+  color: var(--accent);
+  margin: 0 0 0.75rem;
+  padding: 0 0.4rem;
+  letter-spacing: 0.02em;
+}
 ```
 
 - [ ] **Step 3e: Forward the nonce in `pages.tsx`**
@@ -749,10 +766,12 @@ git commit -m "feat(console): wire reloadNonce through the shell (prop vs remoun
 ### Task 5: `context-explorer` — refetch on `reloadNonce`
 
 **Files:**
+
 - Modify: `packages/context-explorer/src/client/App.tsx`
 - Test: `packages/context-explorer/src/__tests__/unit/app-reload-prop.unit.tsx`
 
 **Interfaces:**
+
 - Consumes: `reloadNonce?: number` prop (from console `pages.tsx`, Task 4).
 - Produces: `App` accepts `reloadNonce`; on change (>0) it re-runs `api.fetchModel()`. Selection (`selectedKey`) is React state and `selected` is derived (`bindings.find`), so it is preserved automatically and resolves to `null` if the binding vanished.
 
@@ -820,46 +839,48 @@ export function App({
 Add a non-fatal reload-error flag near the other state (after line 50):
 
 ```ts
-  const [reloadError, setReloadError] = useState(false);
+const [reloadError, setReloadError] = useState(false);
 ```
 
 Replace the mount fetch effect (lines 60-62) with a reusable loader + two effects:
 
 ```tsx
-  const load = useCallback(
-    () =>
-      api.fetchModel().then(
-        m => {
-          setModel(m);
-          setReloadError(false);
-        },
-        e => setError(String(e)),
-      ),
-    [api],
-  );
+const load = useCallback(
+  () =>
+    api.fetchModel().then(
+      m => {
+        setModel(m);
+        setReloadError(false);
+      },
+      e => setError(String(e)),
+    ),
+  [api],
+);
 
-  // Initial load (and on apiBase change).
-  useEffect(() => {
-    load();
-  }, [load]);
+// Initial load (and on apiBase change).
+useEffect(() => {
+  load();
+}, [load]);
 
-  // Live reflection: refetch on restart. Keep stale data on failure (the app
-  // may be mid-restart) — surface a non-fatal notice instead of blanking.
-  useEffect(() => {
-    if (reloadNonce === 0) return;
-    api.fetchModel().then(setModel, () => setReloadError(true));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reloadNonce]);
+// Live reflection: refetch on restart. Keep stale data on failure (the app
+// may be mid-restart) — surface a non-fatal notice instead of blanking.
+useEffect(() => {
+  if (reloadNonce === 0) return;
+  api.fetchModel().then(setModel, () => setReloadError(true));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [reloadNonce]);
 ```
 
 Add a non-fatal notice in the header — inside `<header>`, after the `count` span (line 157), add:
 
 ```tsx
-        {reloadError && (
-          <span className="count" title="Could not refresh after restart">
-            ⚠ stale
-          </span>
-        )}
+{
+  reloadError && (
+    <span className="count" title="Could not refresh after restart">
+      ⚠ stale
+    </span>
+  );
+}
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -879,10 +900,12 @@ git commit -m "feat(context-explorer): refetch on reloadNonce (preserve selectio
 ### Task 6: `schema-explorer` — refetch on `reloadNonce`
 
 **Files:**
+
 - Modify: `packages/schema-explorer/src/client/App.tsx`
 - Test: `packages/schema-explorer/src/__tests__/unit/app-reload-prop.unit.tsx`
 
 **Interfaces:**
+
 - Consumes: `reloadNonce?: number` prop (from console `pages.tsx`, Task 4).
 - Produces: `App` accepts `reloadNonce`; on change (>0) re-runs `api.fetchSchemas()`. Selection (`selectedId`) preserved automatically (`selected` is `nodes.find`).
 
@@ -947,44 +970,46 @@ export function App({
 Add a non-fatal reload-error flag near the other state (after line 39):
 
 ```ts
-  const [reloadError, setReloadError] = useState(false);
+const [reloadError, setReloadError] = useState(false);
 ```
 
 Replace the mount fetch effect (lines 41-43) with:
 
 ```tsx
-  const load = useCallback(
-    () =>
-      api.fetchSchemas().then(
-        n => {
-          setNodes(n);
-          setReloadError(false);
-        },
-        e => setError(String(e)),
-      ),
-    [api],
-  );
+const load = useCallback(
+  () =>
+    api.fetchSchemas().then(
+      n => {
+        setNodes(n);
+        setReloadError(false);
+      },
+      e => setError(String(e)),
+    ),
+  [api],
+);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+useEffect(() => {
+  load();
+}, [load]);
 
-  // Live reflection: refetch on restart; keep stale data on failure.
-  useEffect(() => {
-    if (reloadNonce === 0) return;
-    api.fetchSchemas().then(setNodes, () => setReloadError(true));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reloadNonce]);
+// Live reflection: refetch on restart; keep stale data on failure.
+useEffect(() => {
+  if (reloadNonce === 0) return;
+  api.fetchSchemas().then(setNodes, () => setReloadError(true));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [reloadNonce]);
 ```
 
 Add a non-fatal notice in the header — inside `<header>`, after the `count` span (line 88):
 
 ```tsx
-          {reloadError && (
-            <span className="count" title="Could not refresh after restart">
-              ⚠ stale
-            </span>
-          )}
+{
+  reloadError && (
+    <span className="count" title="Could not refresh after restart">
+      ⚠ stale
+    </span>
+  );
+}
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -1009,6 +1034,7 @@ git commit -m "feat(schema-explorer): refetch on reloadNonce (preserve selection
 ### Task 7: Docs + full verification
 
 **Files:**
+
 - Modify: `packages/console/README.md`
 - Modify: `docs/guides/` console guide (the file that documents the console; if none exists for live reflection, add a short "Live reflection" section to the existing console guide referenced from `docs/README.md`).
 
@@ -1027,11 +1053,11 @@ structure. No configuration: it is on whenever the console is mounted.
 
 How it works: the console serves a per-process boot id over a `GET
 <basePath>/live` SSE stream. The client keeps that stream open; when a
-reconnect returns a *new* boot id (the process restarted), the native explorers
+reconnect returns a _new_ boot id (the process restarted), the native explorers
 (`context-explorer`, `schema-explorer`) refetch in place — your current
 selection and filters are preserved — and the embedded panels (`rest-explorer`,
 `mcp-inspector`) remount with fresh data. A transient network blip reconnects to
-the *same* boot id and is ignored. A small "offline" indicator appears in the
+the _same_ boot id and is ignored. A small "offline" indicator appears in the
 sidebar while the stream is down. Node-host-only; SSE (no WebSocket).
 ```
 
@@ -1060,6 +1086,7 @@ In `examples/hello-agent-console` (or any app that mounts the console): start it
 ## Self-Review
 
 **Spec coverage:**
+
 - Structure-on-rebuild scope → Tasks 1-6 (boot id restart detection, no domain-state view). ✓
 - Independent console channel (not chat-coupled) → Task 1/2 `/console/live`, started by the App regardless of chat. ✓
 - Auto-refresh, preserve state → Tasks 5/6 (derived selection preserved; refetch in place). ✓

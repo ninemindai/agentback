@@ -32,6 +32,7 @@ whose `.request`/`.response` are Express objects (`@agentback/express`
 
 **Design (additive, low-risk — mirrors the Part 3 choice):** introduce a
 SEPARATE neutral onion for the Web path; leave the Express chain untouched.
+
 - New type `WebMiddleware = (req: Request, ctx: Context, next: () => Promise<Response>) => Promise<Response>` in `@agentback/rest` (`web/middleware.ts`).
 - Register via a binding tag (`WEB_MIDDLEWARE`); order with the EXISTING `sortListOfGroups` (relocate `group-sorter.ts` from `@agentback/express` → `@agentback/common` so `rest` uses it without depending on `express` — DRY, pure util).
 - `RestHandler`/`FetchHost` runs the sorted onion around dispatch: `mw1(req, ctx, () => mw2(req, ctx, () => core(req)))`.
@@ -52,6 +53,7 @@ the Express `req` (headers, etc.) and resolve strategies from
 **Design:** add a neutral seam to the auth strategy contract — strategies should
 authenticate from a transport-neutral carrier (method + URL + headers map),
 which both Express `req` and Web `Request` can supply. Two sub-steps:
+
 - In `@agentback/authentication`: introduce `AuthRequest` (a minimal `{method, url, headers: Headers | Record, get(name)}`), adapt `resolveStrategy`/the strategy interface to accept it; provide an Express adapter (wrap `req`) and a Web adapter (the `Request` itself). Keep the existing Express signature working (overload or adapter) — additive.
 - In `RestHandler`: call the neutral `authenticate`/`authorize` before `run()`, binding `SecurityBindings.USER`/`CLIENT_APPLICATION` on `reqCtx` (same as `invokeRoute`).
 
@@ -116,9 +118,10 @@ core path; both hosts share the parser); `fileResponse`/`fileDownload` build a
 Per-field size enforced by counting bytes mid-stream.
 
 **Tasks:** `web/multipart.ts` (formData→FileStore); `RestHandler` upload bundle
-+ download Response; size-limit enforcement; conformance + parity tests vs the
-Express multer path (`examples/hello-uploads`). **Arbiter:** upload/download
-parity + the files conformance suite.
+
+- download Response; size-limit enforcement; conformance + parity tests vs the
+  Express multer path (`examples/hello-uploads`). **Arbiter:** upload/download
+  parity + the files conformance suite.
 
 ---
 

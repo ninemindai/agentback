@@ -72,9 +72,15 @@ function userInventory(): SchemaInventory {
 }
 
 /** Pull one file's content from the bundle by its path. */
-function file(bundle: {files: {path: string; content: string}[]}, path: string) {
+function file(
+  bundle: {files: {path: string; content: string}[]},
+  path: string,
+) {
   const f = bundle.files.find(x => x.path === path);
-  if (!f) throw new Error(`expected file ${path}; got ${bundle.files.map(x => x.path).join(', ')}`);
+  if (!f)
+    throw new Error(
+      `expected file ${path}; got ${bundle.files.map(x => x.path).join(', ')}`,
+    );
   return f.content;
 }
 
@@ -199,7 +205,10 @@ describe('inventoryToOkf', () => {
   });
 
   it('emits a reference doc per surface that links back to its schemas', () => {
-    const doc = file(inventoryToOkf(userInventory()), 'surfaces/rest-post-users.md');
+    const doc = file(
+      inventoryToOkf(userInventory()),
+      'surfaces/rest-post-users.md',
+    );
     expect(doc).toContain('type: reference');
     expect(doc).toContain('POST /users');
     expect(doc).toContain('UserController.create');

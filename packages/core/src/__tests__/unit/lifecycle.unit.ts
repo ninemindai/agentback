@@ -3,12 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 import {describe, it, beforeEach, expect} from 'vitest';
-import {
-  Binding,
-  BindingScope,
-  Context,
-  injectable,
-} from '@agentback/context';
+import {Binding, BindingScope, Context, injectable} from '@agentback/context';
 
 import {
   asLifeCycleObserver,

@@ -97,8 +97,7 @@ export interface ParseIssue {
 }
 
 export type ParseResult =
-  | {success: true; data: unknown}
-  | {success: false; issues: ParseIssue[]};
+  {success: true; data: unknown} | {success: false; issues: ParseIssue[]};
 
 /**
  * Validate a value against any SchemaLike, synchronously. Zod fast-path via

@@ -125,8 +125,7 @@ export class ChatServer {
     for (const [event, bound] of byEvent) {
       const runtimeMethod = EVENT_TO_RUNTIME_METHOD[event];
       const subscribe = chat[runtimeMethod] as
-        | ((handler: ChatRuntimeHandler) => void)
-        | undefined;
+        ((handler: ChatRuntimeHandler) => void) | undefined;
       if (typeof subscribe !== 'function') {
         log.warn(
           'chat runtime has no %s() for @%s — %d handler(s) skipped',

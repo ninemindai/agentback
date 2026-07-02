@@ -75,12 +75,17 @@ describe('openSseStream reconnect heuristic', () => {
     const events: SseClientEvent[] = [];
     const errors: unknown[] = [];
 
-    openSseStream('http://localhost/stream', ev => events.push(ev), err => errors.push(err), {
-      reconnectDelayMs: 500,
-      maxReconnects: 3,
-      restartWindowMs: 5000,
-      eventSourceFactory: factory,
-    });
+    openSseStream(
+      'http://localhost/stream',
+      ev => events.push(ev),
+      err => errors.push(err),
+      {
+        reconnectDelayMs: 500,
+        maxReconnects: 3,
+        restartWindowMs: 5000,
+        eventSourceFactory: factory,
+      },
+    );
 
     // Initial connection is established.
     expect(instances.length).toBe(1);
@@ -107,12 +112,17 @@ describe('openSseStream reconnect heuristic', () => {
     const errors: unknown[] = [];
 
     const maxReconnects = 2;
-    openSseStream('http://localhost/stream', ev => events.push(ev), err => errors.push(err), {
-      reconnectDelayMs: 100,
-      maxReconnects,
-      restartWindowMs: 5000,
-      eventSourceFactory: factory,
-    });
+    openSseStream(
+      'http://localhost/stream',
+      ev => events.push(ev),
+      err => errors.push(err),
+      {
+        reconnectDelayMs: 100,
+        maxReconnects,
+        restartWindowMs: 5000,
+        eventSourceFactory: factory,
+      },
+    );
 
     // Advance time far past restartWindowMs for subsequent drops so we're not
     // in the early-drop window (avoids extra server_restart events after the

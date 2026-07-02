@@ -2,7 +2,15 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {afterAll, afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import supertest from 'supertest';
 import {z} from 'zod';
 import {api, get} from '@agentback/openapi';

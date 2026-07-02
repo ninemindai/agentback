@@ -59,9 +59,7 @@ export class CartController {
     @injectActor(CartActor) private carts: ActorAccessor<CartActor>,
   ) {}
 
-  @post('/{id}/items', {
-    /* …schemas… */
-  })
+  @post('/{id}/items', {/* …schemas… */})
   async add(input) {
     // this.carts(id) is the typed proxy for cart/<id>
     return this.carts(input.path.id).add(input.body, {
@@ -69,9 +67,7 @@ export class CartController {
     });
   }
 
-  @get('/{id}', {
-    /* … */
-  })
+  @get('/{id}', {/* … */})
   async show(input) {
     return this.carts(input.path.id).view({}); // an @actorQuery, lease-free
   }

@@ -1,13 +1,13 @@
 # Introspection (`@agentback/introspection`)
 
 A **read-only** MCP server that exposes a running AgentBack app to any agent, so
-a coding agent can ground itself in the *live instance* instead of guessing from
+a coding agent can ground itself in the _live instance_ instead of guessing from
 source. It is the agent-facing projection of the context/schema explorers.
 
 ## When to use
 
 - You want your existing agent (terminal Claude Code, Cursor, an A2A peer) to
-  answer questions about the *live* app: what's bound, the real schema graph,
+  answer questions about the _live_ app: what's bound, the real schema graph,
   which routes and tools exist.
 - You do NOT need the agent to mutate anything through this surface — it is
   read-only. The agent evolves the app by editing source, not via these tools.
@@ -23,7 +23,7 @@ import {IntrospectionTools} from '@agentback/introspection';
 const app = new RestApplication();
 app.component(MCPComponent);
 app.service(IntrospectionTools); // registers the introspection tools
-await installMcpHttp(app);        // serves MCP (incl. these tools) at /mcp
+await installMcpHttp(app); // serves MCP (incl. these tools) at /mcp
 await app.start();
 ```
 

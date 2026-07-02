@@ -147,10 +147,7 @@ API-key or OAuth2 client) is allowed to do, independent of the user. A
 | `SCOPE_ALL` / `SCOPE_PUBLIC` / `SCOPE_INTERNAL` | Scope sentinels (`ALL` grants everything **except** `INTERNAL`, which must be listed explicitly; `PUBLIC` needs no governance) |
 
 ```ts
-import {
-  clientAppScopeVoter,
-  GLOBAL_VOTER_TAG,
-} from '@agentback/authorization';
+import {clientAppScopeVoter, GLOBAL_VOTER_TAG} from '@agentback/authorization';
 import {SecurityBindings} from '@agentback/security';
 
 // 1. Enforce client-app scopes on every route:

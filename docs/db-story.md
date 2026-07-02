@@ -22,10 +22,7 @@ The choice of Drizzle is driven by **boundary coherence**: a Drizzle table decla
 ```ts
 // db/schema.ts — single source of truth
 import {pgTable, serial, text, timestamp} from 'drizzle-orm/pg-core';
-import {
-  createInsertSchema,
-  createSelectSchema,
-} from '@agentback/drizzle/zod';
+import {createInsertSchema, createSelectSchema} from '@agentback/drizzle/zod';
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),

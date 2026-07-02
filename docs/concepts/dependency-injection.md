@@ -161,13 +161,13 @@ const controllers = app.findByTag('controller'); // Binding[]
 You rarely call `.tag()` by hand. The class decorators put the tag in metadata,
 and the registration helpers apply it for you:
 
-| Helper                  | Tag applied                                                    | Found by                   |
-| ----------------------- | -------------------------------------------------------------- | -------------------------- |
-| `app.controller(C)`     | `controller` (+ `extensionFor: MCP_SERVERS` if `@mcpServer()`) | `RestServer`               |
-| `app.restController(C)` | `controller` — a thin alias for `app.controller(C)`            | `RestServer`               |
-| `app.service(C)`        | `service` (+ `extensionFor: MCP_SERVERS` if `@mcpServer()`)    | DI / MCP server            |
-| `app.component(C)`      | — (registers the component's bindings)                         | —                          |
-| `app.server(C)`         | `server`                                                       | `Application` lifecycle    |
+| Helper                  | Tag applied                                                    | Found by                |
+| ----------------------- | -------------------------------------------------------------- | ----------------------- |
+| `app.controller(C)`     | `controller` (+ `extensionFor: MCP_SERVERS` if `@mcpServer()`) | `RestServer`            |
+| `app.restController(C)` | `controller` — a thin alias for `app.controller(C)`            | `RestServer`            |
+| `app.service(C)`        | `service` (+ `extensionFor: MCP_SERVERS` if `@mcpServer()`)    | DI / MCP server         |
+| `app.component(C)`      | — (registers the component's bindings)                         | —                       |
+| `app.server(C)`         | `server`                                                       | `Application` lifecycle |
 
 `@mcpServer()` is built on `@injectable`: it tags the class
 `extensionFor: MCP_SERVERS` (and defaults it to singleton scope); when you
@@ -183,7 +183,7 @@ A dual REST + MCP class (`@api` + `@mcpServer`) needs only **one** registration:
 `app.restController(C)` (or `app.controller(C)`) tags it `controller` so
 `RestServer` mounts its routes, and — because the helper honors the class's
 `@mcpServer` metadata — keeps its `extensionFor: MCP_SERVERS` membership so the
-MCP server discovers its tools. Don't *also* `app.service(C)` the same class:
+MCP server discovers its tools. Don't _also_ `app.service(C)` the same class:
 explicit calls keep separate bindings, which would register the tool twice.
 
 ## Configuration

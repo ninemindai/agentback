@@ -6,13 +6,7 @@ import {describe, expect, it} from 'vitest';
 import {z} from 'zod';
 import {api, get} from '@agentback/openapi';
 import {RestApplication} from '@agentback/rest';
-import {
-  MCPComponent,
-  mcpServer,
-  prompt,
-  resource,
-  tool,
-} from '@agentback/mcp';
+import {MCPComponent, mcpServer, prompt, resource, tool} from '@agentback/mcp';
 import {authorize} from '@agentback/authorization';
 import {securityId} from '@agentback/security';
 import {createTestApp} from '../../test-app.js';

@@ -4,11 +4,7 @@
 
 /** Outcome of a metered call. Only `ok` is billable by default. */
 export type UsageStatus =
-  | 'ok'
-  | 'error'
-  | 'denied'
-  | 'rate_limited'
-  | 'payment_required';
+  'ok' | 'error' | 'denied' | 'rate_limited' | 'payment_required';
 
 /** The billable account a call is attributed to. */
 export interface PrincipalRef {

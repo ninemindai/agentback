@@ -14,12 +14,12 @@ That artifact-coherence property is what gives AI agents — whose dominant fail
 
 Modern Node/TS API frameworks fall on a spectrum:
 
-|                           | Code↔runtime        | Type↔runtime              | Service↔service                        | Tool↔LLM                                       | Human↔docs                 |
-| ------------------------- | ------------------- | ------------------------- | -------------------------------------- | ---------------------------------------------- | -------------------------- |
-| **Express, raw**          | `req.body` is `any` | Hand-maintained types     | Hand-written OpenAPI                   | Hand-written tool defs                         | Hand-written README        |
-| **tRPC**                  | Zod validation      | `z.infer`                 | TS-only (no language-agnostic export)  | Custom adapter                                 | Hand-written               |
-| **NestJS + DI**           | class-validator     | Decorators on classes     | OpenAPI emission via `@nestjs/swagger` | Custom adapter                                 | Swagger UI                 |
-| **FastAPI (Python)**      | Pydantic            | Type hints _are_ Pydantic | OpenAPI auto-emitted                   | Custom adapter                                 | Swagger UI                 |
+|                      | Code↔runtime        | Type↔runtime              | Service↔service                        | Tool↔LLM                                       | Human↔docs                 |
+| -------------------- | ------------------- | ------------------------- | -------------------------------------- | ---------------------------------------------- | -------------------------- |
+| **Express, raw**     | `req.body` is `any` | Hand-maintained types     | Hand-written OpenAPI                   | Hand-written tool defs                         | Hand-written README        |
+| **tRPC**             | Zod validation      | `z.infer`                 | TS-only (no language-agnostic export)  | Custom adapter                                 | Hand-written               |
+| **NestJS + DI**      | class-validator     | Decorators on classes     | OpenAPI emission via `@nestjs/swagger` | Custom adapter                                 | Swagger UI                 |
+| **FastAPI (Python)** | Pydantic            | Type hints _are_ Pydantic | OpenAPI auto-emitted                   | Custom adapter                                 | Swagger UI                 |
 | **AgentBack (this)** | Zod                 | `z.infer` derived         | OpenAPI 3.1 auto-emitted from same Zod | MCP `inputSchema`/`outputSchema` from same Zod | Swagger UI + MCP Inspector |
 
 The further down the table, the fewer distinct artifacts a contributor (or an AI agent) has to keep coherent. FastAPI's adoption among AI engineers is not coincidental: a Pydantic model is the validator, the type, and the OpenAPI parameter all at once. TypeScript has historically not had a clean version of this story; the framework's bet is that decorators carrying Zod schemas can supply it.

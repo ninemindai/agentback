@@ -17,7 +17,7 @@ thin adapter over `files-sdk`'s server-side `Files` client.
 port — both are "one interface, many storage backends." The `FileStore` port is
 a stable public seam: `fileField()` / `fileResponse()`, the `FILE_STORE` DI
 binding, and the conformance suite all depend on it. So `files-sdk` belongs
-*below* that seam as one more implementation — exactly the role `S3FileStore`
+_below_ that seam as one more implementation — exactly the role `S3FileStore`
 plays for the AWS SDK. This keeps `files-sdk` (young, single-maintainer, v2.0.0)
 swappable without touching a single caller.
 
@@ -35,14 +35,14 @@ Constructor builds `new Files({adapter, prefix})` and capability-detects presign
 
 ## Bridge mapping (port ⇄ files-sdk server `Files`)
 
-| Port | Delegate | Detail |
-|---|---|---|
-| `put` | `files.upload(key, body, {contentType, metadata})` | `Buffer` → pass-through (`Buffer extends Uint8Array`); `Readable` → `Readable.toWeb()`. `filename` folded into a reserved `metadata.filename`, only when `capabilities.metadata`. Returns `{key, size, contentType, etag}` from `UploadResult`. |
-| `get` | `files.download(key)` | `stream` ← `Readable.fromWeb(sf.stream())`; map `sf.type`→`contentType`, `sf.metadata.filename`→`filename`. `FilesError.code === 'NotFound'` → `FileNotFoundError`. |
-| `exists` | `files.exists(key)` | direct. |
-| `delete` | `files.delete(key)` | swallow `NotFound` for idempotency. |
-| `presignedGet?` | `files.url(key, {expiresIn})` | gated on `capabilities.signedUrl.supported`. |
-| `presignedPut?` | `files.signedUploadUrl(key, {expiresIn, contentType?})` | gated likewise; require the PUT form, return `.url` (POST form throws — the string-URL port contract can't carry POST fields). |
+| Port            | Delegate                                                | Detail                                                                                                                                                                                                                                          |
+| --------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `put`           | `files.upload(key, body, {contentType, metadata})`      | `Buffer` → pass-through (`Buffer extends Uint8Array`); `Readable` → `Readable.toWeb()`. `filename` folded into a reserved `metadata.filename`, only when `capabilities.metadata`. Returns `{key, size, contentType, etag}` from `UploadResult`. |
+| `get`           | `files.download(key)`                                   | `stream` ← `Readable.fromWeb(sf.stream())`; map `sf.type`→`contentType`, `sf.metadata.filename`→`filename`. `FilesError.code === 'NotFound'` → `FileNotFoundError`.                                                                             |
+| `exists`        | `files.exists(key)`                                     | direct.                                                                                                                                                                                                                                         |
+| `delete`        | `files.delete(key)`                                     | swallow `NotFound` for idempotency.                                                                                                                                                                                                             |
+| `presignedGet?` | `files.url(key, {expiresIn})`                           | gated on `capabilities.signedUrl.supported`.                                                                                                                                                                                                    |
+| `presignedPut?` | `files.signedUploadUrl(key, {expiresIn, contentType?})` | gated likewise; require the PUT form, return `.url` (POST form throws — the string-URL port contract can't carry POST fields).                                                                                                                  |
 
 ### Key decisions (confirmed with user)
 

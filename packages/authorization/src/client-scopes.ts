@@ -2,10 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {
-  SecurityBindings,
-  type ClientApplication,
-} from '@agentback/security';
+import {SecurityBindings, type ClientApplication} from '@agentback/security';
 import {AuthorizationDecision, type Authorizer} from './types.js';
 
 /** Scope sentinels recognized by {@link areScopesAllowed}. */

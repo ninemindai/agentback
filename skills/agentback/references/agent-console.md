@@ -34,7 +34,7 @@ await installMcpHttp(app);
 
 const chat = chatConsoleFeature({
   enabled: true,
-  introspection: true,   // ground the session via IntrospectionTools
+  introspection: true, // ground the session via IntrospectionTools
 });
 
 await installConsole(app, {
@@ -55,10 +55,14 @@ with `claude-agent-acp`). Extend with custom agents:
 chatConsoleFeature({
   enabled: true,
   agents: [
-    {id: 'my-agent', name: 'My Agent',
-     detect: {bin: 'my-agent'}, command: ['my-agent', '--acp']},
+    {
+      id: 'my-agent',
+      name: 'My Agent',
+      detect: {bin: 'my-agent'},
+      command: ['my-agent', '--acp'],
+    },
   ],
-})
+});
 ```
 
 Install the pinned reference adapter:
@@ -73,6 +77,7 @@ missing or the wrong version — you never need to read the docs to fix it.
 ## What the agent sees
 
 At session start the bridge injects:
+
 1. The **OKF brief** (`GET /schema-explorer/api/okf`) as standing context.
 2. The app's **`/mcp` endpoint** as an HTTP MCP server (business tools + the
    `IntrospectionTools` `inventory`/`get`/`get_okf_bundle` surface).

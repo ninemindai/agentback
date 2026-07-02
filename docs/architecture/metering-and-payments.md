@@ -159,9 +159,7 @@ import {X402Rail, paymentMiddleware} from '@agentback/payments';
 
 const rail = new X402Rail({
   facilitator,
-  requirements: ctx => [
-    /* PaymentRequirements */
-  ],
+  requirements: ctx => [/* PaymentRequirements */],
 });
 restServer.expressApp.post('/premium', paymentMiddleware(rail), handler);
 ```

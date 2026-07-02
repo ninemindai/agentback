@@ -39,17 +39,17 @@ import {chatConsoleFeature} from '@agentback/console-chat';
 
 const app = new RestApplication();
 app.component(MCPComponent);
-app.service(IntrospectionTools);     // grounding: agent sees the live app
-await installMcpHttp(app);           // serves MCP (incl. introspection) at /mcp
+app.service(IntrospectionTools); // grounding: agent sees the live app
+await installMcpHttp(app); // serves MCP (incl. introspection) at /mcp
 
 const chat = chatConsoleFeature({
   enabled: true,
-  introspection: true,               // ground the session via IntrospectionTools
+  introspection: true, // ground the session via IntrospectionTools
 });
 
 await installConsole(app, {
   features: [...defaultFeatures(), chat],
-  unsafeAllowUnauthenticated: true,  // local dev only — use real auth otherwise
+  unsafeAllowUnauthenticated: true, // local dev only — use real auth otherwise
 });
 
 await app.start();
@@ -98,14 +98,14 @@ bottom. The streaming and connecting status lines use the `shimmer` utility from
 All endpoints are registered under `/console/chat` and gated behind the console
 `auth` middleware.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET`  | `/console/chat/agents` | Discovered ACP agents `{id, name}[]` for the picker |
-| `POST` | `/console/chat/session` | Start a session `{agentId}` → `{sessionId}` |
-| `GET`  | `/console/chat/stream?sessionId=…` | SSE: assistant deltas, tool activity, permission requests, lifecycle |
-| `POST` | `/console/chat/message` | Send a user turn `{text, focus?}` |
-| `POST` | `/console/chat/permission` | Resolve a pending permission `{requestId, outcome}` |
-| `DELETE` | `/console/chat/session` | Stop the session and kill the subprocess |
+| Method   | Path                               | Description                                                          |
+| -------- | ---------------------------------- | -------------------------------------------------------------------- |
+| `GET`    | `/console/chat/agents`             | Discovered ACP agents `{id, name}[]` for the picker                  |
+| `POST`   | `/console/chat/session`            | Start a session `{agentId}` → `{sessionId}`                          |
+| `GET`    | `/console/chat/stream?sessionId=…` | SSE: assistant deltas, tool activity, permission requests, lifecycle |
+| `POST`   | `/console/chat/message`            | Send a user turn `{text, focus?}`                                    |
+| `POST`   | `/console/chat/permission`         | Resolve a pending permission `{requestId, outcome}`                  |
+| `DELETE` | `/console/chat/session`            | Stop the session and kill the subprocess                             |
 
 All requests require an authenticated principal (`SecurityBindings.USER`);
 unauthenticated calls receive `401`.
@@ -116,10 +116,11 @@ unauthenticated calls receive `401`.
 
 ```ts
 chatConsoleFeature({
-  enabled: true,          // gate the dock (default: false)
-  cwd: '/my/project',     // subprocess working dir (default: process.cwd())
-  introspection: true,    // inject IntrospectionTools as a grounding server (default: true)
-  agents: [               // add to the built-in catalog
+  enabled: true, // gate the dock (default: false)
+  cwd: '/my/project', // subprocess working dir (default: process.cwd())
+  introspection: true, // inject IntrospectionTools as a grounding server (default: true)
+  agents: [
+    // add to the built-in catalog
     {
       id: 'my-agent',
       name: 'My Agent',
@@ -127,7 +128,7 @@ chatConsoleFeature({
       command: ['my-agent', '--acp'],
     },
   ],
-})
+});
 ```
 
 `installConsole` reads the `chatConfig` property from the feature via duck-

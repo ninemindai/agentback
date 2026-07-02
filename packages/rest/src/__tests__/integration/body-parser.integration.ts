@@ -73,7 +73,11 @@ describe('RestServer body parsing (group model)', () => {
   });
 
   it('accepts text/* bodies when text parsing is enabled', async () => {
-    const {client, captured, stop: s} = await boot({
+    const {
+      client,
+      captured,
+      stop: s,
+    } = await boot({
       bodyParser: {json: false, text: true},
     });
     stop = s;
@@ -89,7 +93,11 @@ describe('RestServer body parsing (group model)', () => {
     // `urlencoded: true` must resolve to `{extended: true}` internally so
     // express.urlencoded() doesn't log the Express 4 "undefined extended"
     // deprecation; here we assert the parse actually happens.
-    const {client, captured, stop: s} = await boot({
+    const {
+      client,
+      captured,
+      stop: s,
+    } = await boot({
       bodyParser: {json: false, urlencoded: true},
     });
     stop = s;
@@ -102,7 +110,11 @@ describe('RestServer body parsing (group model)', () => {
   });
 
   it('parses raw bodies into a Buffer when raw parsing is enabled', async () => {
-    const {client, captured, stop: s} = await boot({
+    const {
+      client,
+      captured,
+      stop: s,
+    } = await boot({
       bodyParser: {json: false, raw: true},
     });
     stop = s;
@@ -117,7 +129,11 @@ describe('RestServer body parsing (group model)', () => {
   });
 
   it('runs multiple parsers, each handling its own content-type', async () => {
-    const {client, captured, stop: s} = await boot({
+    const {
+      client,
+      captured,
+      stop: s,
+    } = await boot({
       bodyParser: {json: true, text: true},
     });
     stop = s;
@@ -164,7 +180,10 @@ describe('RestServer body parsing (group model)', () => {
         if (ctx.request.path === '/ping') beforeBody = ctx.request.body;
         return next();
       },
-      {group: 'before-body', downstreamGroups: [RestMiddlewareGroups.PARSE_BODY]},
+      {
+        group: 'before-body',
+        downstreamGroups: [RestMiddlewareGroups.PARSE_BODY],
+      },
     );
     app.middleware(async (ctx, next) => {
       if (ctx.request.path === '/ping') afterBody = ctx.request.body;

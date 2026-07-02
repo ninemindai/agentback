@@ -2,11 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import type {
-  JobRef,
-  QueueDescriptor,
-  Scheduler,
-} from '@agentback/messaging';
+import type {JobRef, QueueDescriptor, Scheduler} from '@agentback/messaging';
 import type {BullMQJobQueue} from './bullmq-job-queue.js';
 import {wrapJobData} from './bullmq-job-queue.js';
 

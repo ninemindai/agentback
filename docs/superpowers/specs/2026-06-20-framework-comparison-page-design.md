@@ -54,13 +54,13 @@ A clean top-level `/compare` URL (vs `/docs/compare.html`) would require a small
      of the frameworks below, here's what carries over and what you gain.
   2. **Comparison table** (GFM):
 
-     | Coming from | What carries over | What you gain |
-     |---|---|---|
-     | **LoopBack 4** | DI instincts — `@inject`, `@injectable`, `Context`, binding scopes, extension points map 1:1 | Zod-first schemas, MCP tools, OpenAPI 3.1 emitted from the same Zod, ESM/Node 22, no `@loopback/repository` baggage |
-     | **NestJS** | Decorators + a DI container | One Zod-on-decorator source instead of `nestjs-zod` + `@nestjs/swagger` + a community MCP-Nest across two metadata systems |
-     | **tRPC** | No-codegen typed client | Your API is *also* public OpenAPI 3.1 and MCP — first-class, not a lossy add-on; plus a DI container |
-     | **ts-rest** | Contract-first discipline | MCP tools + a DI container from the same contract |
-     | **Hono** | — | Three libraries (`@hono/zod-openapi` + `@hono/mcp` + hand-written SDK tools) collapse to one process, one schema |
+     | Coming from    | What carries over                                                                            | What you gain                                                                                                              |
+     | -------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+     | **LoopBack 4** | DI instincts — `@inject`, `@injectable`, `Context`, binding scopes, extension points map 1:1 | Zod-first schemas, MCP tools, OpenAPI 3.1 emitted from the same Zod, ESM/Node 22, no `@loopback/repository` baggage        |
+     | **NestJS**     | Decorators + a DI container                                                                  | One Zod-on-decorator source instead of `nestjs-zod` + `@nestjs/swagger` + a community MCP-Nest across two metadata systems |
+     | **tRPC**       | No-codegen typed client                                                                      | Your API is _also_ public OpenAPI 3.1 and MCP — first-class, not a lossy add-on; plus a DI container                       |
+     | **ts-rest**    | Contract-first discipline                                                                    | MCP tools + a DI container from the same contract                                                                          |
+     | **Hono**       | —                                                                                            | Three libraries (`@hono/zod-openapi` + `@hono/mcp` + hand-written SDK tools) collapse to one process, one schema           |
 
   3. **Five short sections**, one per row (2–4 sentences each), expanding the
      "why," each ending with the CTA `npm create agentback`.
@@ -87,7 +87,7 @@ page up automatically.
 
 - Add a **"Compare"** link to the `nav-links` row in the header.
 - Add one hero line under the lede linking to the page, e.g.:
-  *"Coming from LoopBack, NestJS, tRPC, ts-rest, or Hono? →"* pointing at
+  _"Coming from LoopBack, NestJS, tRPC, ts-rest, or Hono? →"_ pointing at
   `docs/compare.html`.
 
 No dedicated homepage band/section beyond these two links.

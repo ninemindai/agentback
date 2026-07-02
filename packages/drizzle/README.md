@@ -83,10 +83,7 @@ and the MCP tool schema. The re-exports live on the **`/zod` subpath**:
 ```ts
 // db/schema.ts — single source of truth
 import {pgTable, serial, text} from 'drizzle-orm/pg-core';
-import {
-  createInsertSchema,
-  createSelectSchema,
-} from '@agentback/drizzle/zod';
+import {createInsertSchema, createSelectSchema} from '@agentback/drizzle/zod';
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),

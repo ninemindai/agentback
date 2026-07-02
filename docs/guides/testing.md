@@ -61,7 +61,7 @@ express the assertion:
 | Surface    | What it is                                          | Use for                                                |
 | ---------- | --------------------------------------------------- | ------------------------------------------------------ |
 | `t.call`   | typed route-handle execution (schema-shared client) | most behavior tests — input and output are `z.infer`ed |
-| `t.client` | a `@agentback/client` Client at the test URL   | `safeCall`, custom handles, error-result shapes        |
+| `t.client` | a `@agentback/client` Client at the test URL        | `safeCall`, custom handles, error-result shapes        |
 | `t.http`   | raw supertest                                       | status codes, headers, malformed-input cases           |
 | `t.mcp`    | in-memory MCP SDK client                            | tool/resource/prompt behavior, visibility, envelopes   |
 | `t.app`    | the application (a `Context`)                       | DI assertions: `t.app.getSync(KEY)`                    |

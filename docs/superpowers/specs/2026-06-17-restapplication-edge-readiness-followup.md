@@ -24,7 +24,7 @@ The transitive-tail prediction below was directionally right but mis-attributed 
 
 ### Layer 2 — runtime-clean (`d16e913`) — what the stub missed
 
-**The bundle doctor is a *static* analyzer; bundle-clean ≠ runtime-clean.** A worker that bundles `{ok:true}` still crashed on Workers in two ways the doctor cannot see:
+**The bundle doctor is a _static_ analyzer; bundle-clean ≠ runtime-clean.** A worker that bundles `{ok:true}` still crashed on Workers in two ways the doctor cannot see:
 
 1. **Global-scope ops** — Workers forbid generating random values / IO / timers at module-load (global scope). `@agentback/context`'s `unique-id.ts` ran `hyperid()` at import, which seeds a random UUID at construction → startup-validation crash. Fix: `generateUniqueId` now delegates to `@agentback/common`'s `generateIdSync` (nanoid-backed; randomness only on call). Also removed the dead deprecated `uuid()` helper + `UUID_PATTERN` from `value-promise.ts`; dropped `hyperid` + `uuid` from `context`.
 2. **Runtime Node-API reach** — `RestServer.start()` mounted `@api` routes on Express via `ensureExpressApp()` → `createRequire(import.meta.url)`; `import.meta.url` is `undefined` on a Worker (and express isn't bundled). Fix: in **`listener: 'native'`** mode, `start()`/`mountFrameworkRoutes()`/`mountAxRoutes()` skip **all** Express mounting — `fetchHandler()` is the single router via `collectRoutes()`. **Edge apps must set `rest: {listener: 'native'}`** (the cf-app fixture does). Express mode is unchanged.
@@ -36,13 +36,12 @@ Full `pnpm verify` (2350 tests) green throughout; Node Express/upload/cookie beh
 
 ### Follow-ups (not yet done)
 
-- A `wrangler dev`-based CI smoke test (boot the worker, hit `/openapi.json`) would catch *runtime* regressions without a credential-gated real deploy — neither the doctor nor `pnpm verify` would have caught Layer 2.
+- A `wrangler dev`-based CI smoke test (boot the worker, hit `/openapi.json`) would catch _runtime_ regressions without a credential-gated real deploy — neither the doctor nor `pnpm verify` would have caught Layer 2.
 - `auto`-detect or document `listener: 'native'` in the generated worker so edge users don't have to set it by hand.
 
 ---
 
 ## Original analysis (historical — superseded by the Resolution above)
-
 
 ## Problem
 
@@ -58,13 +57,13 @@ A worker that does `await buildApp({listen:false}) → app.restServer → fetchH
 
 Empirically, after lazy-Express + edge-safe-dotenv, a real `RestApplication` worker STILL pulls (verified via `esbuild --external:node:*`):
 
-| Dep | Pulled by | Node-only via |
-|---|---|---|
-| `multer` → `busboy` | rest's upload/multipart handling (multer is a direct `@agentback/rest` dep) | bare `stream`, disk storage → `fs` |
-| `cookie-signature` | Express (cookie handling) | `crypto` |
-| `etag` | Express (response/static) | `crypto` |
-| `send` / `serve-static` (likely) | Express static/file responses | `fs` |
-| a residual `node:fs` | (trace to its importer — likely multer disk storage or `serveStaticDir` reachable via an install\* path) | `fs` |
+| Dep                              | Pulled by                                                                                                | Node-only via                      |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `multer` → `busboy`              | rest's upload/multipart handling (multer is a direct `@agentback/rest` dep)                              | bare `stream`, disk storage → `fs` |
+| `cookie-signature`               | Express (cookie handling)                                                                                | `crypto`                           |
+| `etag`                           | Express (response/static)                                                                                | `crypto`                           |
+| `send` / `serve-static` (likely) | Express static/file responses                                                                            | `fs`                               |
+| a residual `node:fs`             | (trace to its importer — likely multer disk storage or `serveStaticDir` reachable via an install\* path) | `fs`                               |
 
 The lesson: the headline dep (Express) is lazy in two edits, but the **transitive tail** (multer, etag, cookie-signature, send) is the bulk of the work, and the estimate from the direct imports undercounts it.
 

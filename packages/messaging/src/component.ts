@@ -2,11 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {
-  Binding,
-  createBindingFromClass,
-  type Component,
-} from '@agentback/core';
+import {Binding, createBindingFromClass, type Component} from '@agentback/core';
 import {MessagingBootstrapper} from './bootstrapper.js';
 import {InMemoryEventBus} from './in-memory/in-memory-event-bus.js';
 import {InMemoryJobQueue} from './in-memory/in-memory-job-queue.js';

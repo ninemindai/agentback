@@ -36,14 +36,20 @@ const Day = z.object({
   temperature_min: z.number(),
 });
 const ForecastOutput = z.object({
-  location: z.object({name: z.string(), latitude: z.number(), longitude: z.number()}),
+  location: z.object({
+    name: z.string(),
+    latitude: z.number(),
+    longitude: z.number(),
+  }),
   temperature_unit: z.string(),
   days: z.array(Day),
 });
 
 // Deterministic sample so the example never depends on the network (swap in a
 // live fetch via the injectable CoreBindings.FETCH seam if you want real data).
-function forecast(input: z.infer<typeof ForecastInput>): z.infer<typeof ForecastOutput> {
+function forecast(
+  input: z.infer<typeof ForecastInput>,
+): z.infer<typeof ForecastOutput> {
   const base = [
     {condition: 'Partly cloudy', temperature_max: 24, temperature_min: 14},
     {condition: 'Light rain', temperature_max: 21, temperature_min: 13},
@@ -54,7 +60,11 @@ function forecast(input: z.infer<typeof ForecastInput>): z.infer<typeof Forecast
     {condition: 'Thunderstorm', temperature_max: 25, temperature_min: 15},
   ];
   return {
-    location: {name: `${input.city} (sample)`, latitude: 52.52, longitude: 13.405},
+    location: {
+      name: `${input.city} (sample)`,
+      latitude: 52.52,
+      longitude: 13.405,
+    },
     temperature_unit: '°C',
     days: Array.from({length: input.days}, (_, i) => ({
       date: `2026-06-${String(16 + i).padStart(2, '0')}`,

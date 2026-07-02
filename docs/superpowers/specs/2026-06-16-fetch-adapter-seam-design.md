@@ -21,7 +21,7 @@ This is the highest-leverage of the Hono lessons surveyed (others: RegExpRouter,
 
 ## Non-Goals
 
-- Deploying to Workers/Deno/Bun (the Fetch handler tests *are* the proof; real deploy is a follow-up).
+- Deploying to Workers/Deno/Bun (the Fetch handler tests _are_ the proof; real deploy is a follow-up).
 - A `FastifyHostAdapter` (additive follow-up — trivial because of the seam).
 - Neutralizing the `install*` dev UIs (explorer / mcp-http / rest-explorer / console) — they stay Express-host-only for now (see Known Limitations).
 - RegExpRouter (later optimization once the core router exists).
@@ -60,16 +60,16 @@ The core stops delegating routing to Express and **becomes a self-contained fetc
 
 ### File layout in `@agentback/rest`
 
-| File | Role | Origin |
-|---|---|---|
-| `web/router.ts` | Core router: compile route registry → `(method, pathname) → {route, params}`; **non-greedy** (no match → caller `next()`s). Houses the path-key-vs-schema check moved out of `start()`. | new |
-| `web/rest-handler.ts` | The neutral `RestHandler.fetch(req): Promise<Response>`. Absorbs today's `dispatch` / `invokeRoute` / `sendResult` / `sendError`, retargeted to Web objects. | refactor of `rest.server.ts` |
-| `web/middleware.ts` | Onion runner; orders neutral middleware via the group sorter. | new |
-| `web/multipart.ts` | Web `request.formData()` → stream each `File` to `FileStore` under a UUID → `UploadedFile` handles. Replaces multer on the core path. | rewrite of `multipart.ts` |
-| `web/convert.ts` | Node `IncomingMessage`/`ServerResponse` ↔ Web `Request`/`Response`. | new |
-| `host/node.ts` | `NodeHostAdapter`: Express app, onion as outermost layer, `install*` UI mounts, core handler as fallback, `http.createServer`/listen, the `expressApp` getter. | extracted from `rest.server.ts` |
-| `host/fetch.ts` | `FetchHostAdapter`: returns `{fetch}` for Workers/Deno/Bun/tests. | new |
-| `rest.server.ts` | Slims to *be* the NodeHostAdapter; public API unchanged. | slimmed |
+| File                  | Role                                                                                                                                                                                    | Origin                          |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `web/router.ts`       | Core router: compile route registry → `(method, pathname) → {route, params}`; **non-greedy** (no match → caller `next()`s). Houses the path-key-vs-schema check moved out of `start()`. | new                             |
+| `web/rest-handler.ts` | The neutral `RestHandler.fetch(req): Promise<Response>`. Absorbs today's `dispatch` / `invokeRoute` / `sendResult` / `sendError`, retargeted to Web objects.                            | refactor of `rest.server.ts`    |
+| `web/middleware.ts`   | Onion runner; orders neutral middleware via the group sorter.                                                                                                                           | new                             |
+| `web/multipart.ts`    | Web `request.formData()` → stream each `File` to `FileStore` under a UUID → `UploadedFile` handles. Replaces multer on the core path.                                                   | rewrite of `multipart.ts`       |
+| `web/convert.ts`      | Node `IncomingMessage`/`ServerResponse` ↔ Web `Request`/`Response`.                                                                                                                     | new                             |
+| `host/node.ts`        | `NodeHostAdapter`: Express app, onion as outermost layer, `install*` UI mounts, core handler as fallback, `http.createServer`/listen, the `expressApp` getter.                          | extracted from `rest.server.ts` |
+| `host/fetch.ts`       | `FetchHostAdapter`: returns `{fetch}` for Workers/Deno/Bun/tests.                                                                                                                       | new                             |
+| `rest.server.ts`      | Slims to _be_ the NodeHostAdapter; public API unchanged.                                                                                                                                | slimmed                         |
 
 **Targeted refactor (in scope):** relocate the pure group-topology sorter from `@agentback/express` (`group-sorter.ts`) to `@agentback/common` so the neutral onion can use it without `rest` depending on the `express` package (a wrong-direction dep).
 
@@ -86,7 +86,7 @@ multer is Express/Node/busboy-specific and cannot be the core path:
 
 - The core parses multipart via Web **`request.formData()`**, streams each `File` to the bound `FileStore` under a UUID, and merges non-file fields back into `body` for Zod — preserving the `fileField()` + `UploadedFile` contract exactly.
 - Both hosts share this one parser (the Node→Web conversion gives the Express host a `Request` whose `.formData()` works). multer leaves the core entirely (and can be optionalized — already flagged in CLAUDE.md).
-- **Size limits:** multer enforced a global `fileSize` *pre-stream*; with `formData()` we enforce per-field limits by counting bytes as we stream to `FileStore` and aborting on exceed (mid-stream). Behavior parity, different mechanism.
+- **Size limits:** multer enforced a global `fileSize` _pre-stream_; with `formData()` we enforce per-field limits by counting bytes as we stream to `FileStore` and aborting on exceed (mid-stream). Behavior parity, different mechanism.
 
 ### Downloads
 
@@ -120,14 +120,14 @@ host receives request
 
 ## Host adapters & interop matrix
 
-| Concern | Express host (default) | Fetch host — Workers/Deno/Bun | Fastify host (follow-up) |
-|---|---|---|---|
-| Neutral `app.middleware` onion | ✅ | ✅ | ✅ |
-| `app.expressMiddleware` / Express receivers (Slack Bolt) | ✅ | ❌ | ❌ |
-| Fastify plugins | ❌ | ❌ | ✅ |
-| Mount third-party router/receiver | `expressApp` getter | n/a | `fastify` getter |
-| `install*` dev UIs (explorer/mcp-http/console) | ✅ | ❌ (see limitations) | ❌ (see limitations) |
-| Core `@api` routes, MCP, uploads, downloads | ✅ | ✅ | ✅ |
+| Concern                                                  | Express host (default) | Fetch host — Workers/Deno/Bun | Fastify host (follow-up) |
+| -------------------------------------------------------- | ---------------------- | ----------------------------- | ------------------------ |
+| Neutral `app.middleware` onion                           | ✅                     | ✅                            | ✅                       |
+| `app.expressMiddleware` / Express receivers (Slack Bolt) | ✅                     | ❌                            | ❌                       |
+| Fastify plugins                                          | ❌                     | ❌                            | ✅                       |
+| Mount third-party router/receiver                        | `expressApp` getter    | n/a                           | `fastify` getter         |
+| `install*` dev UIs (explorer/mcp-http/console)           | ✅                     | ❌ (see limitations)          | ❌ (see limitations)     |
+| Core `@api` routes, MCP, uploads, downloads              | ✅                     | ✅                            | ✅                       |
 
 The **Fetch host** column is one adapter (`FetchHostAdapter`) serving every
 Web-standard runtime — Cloudflare Workers, Deno, and Bun — because they all take
@@ -135,27 +135,28 @@ the same `fetch(Request): Promise<Response>` entry point. Each runtime is a
 ~5-line wrapper around the shared `host.fetch`, not a separate port.
 
 Rules:
+
 - **Node hosts are mutually exclusive — Express XOR Fastify** (one host per process). The Fetch host is a third, independent option for the runtimes that have a native fetch entry point.
-- **Bun is the zero-adapter case.** `Bun.serve({fetch: host.fetch})` consumes the `FetchHost` directly — no `convert.ts`, no `@hono/node-server`. (Bun can *also* run the Express host today via its `node:http` compat, but that forgoes the native fetch path.) Same shape for Deno (`Deno.serve`) and Workers (`export default {fetch}`).
+- **Bun is the zero-adapter case.** `Bun.serve({fetch: host.fetch})` consumes the `FetchHost` directly — no `convert.ts`, no `@hono/node-server`. (Bun can _also_ run the Express host today via its `node:http` compat, but that forgoes the native fetch path.) Same shape for Deno (`Deno.serve`) and Workers (`export default {fetch}`).
 - The core converting handler is **non-greedy / fallback** (match-or-`next()`), so externally mounted routes (Bolt's `/slack/events`, the UIs) front-run.
 - **Raw body:** signature-verifying receivers (Bolt HMAC) need the raw body — mount them with their own raw parser / `bodyParser:false` scope (`RestServerConfig.bodyParser` already supports this), or a Fastify `'*'` content-type parser.
 
 ## Testing — how "seam proven" is earned
 
 - **In-process Web client:** `createTestApp` gains `fetch(input, init)` calling the `FetchHostAdapter` directly (no socket) → returns a real Web `Response`.
-- **Parity harness:** run existing acceptance scenarios through *both* (a) supertest → Node host and (b) the Fetch handler; assert identical status + envelope + key headers. Central evidence.
+- **Parity harness:** run existing acceptance scenarios through _both_ (a) supertest → Node host and (b) the Fetch handler; assert identical status + envelope + key headers. Central evidence.
 - **Regression guard:** every existing Express/supertest test stays green — the Node host behaves exactly as today.
 - **Conformance:** uploads (`formData`→FileStore) and downloads (`ReadableStream`) exercised through the Fetch handler.
 
-The Fetch handler the tests drive *is* the object that would mount on Workers — the test is the proof; no deployment required.
+The Fetch handler the tests drive _is_ the object that would mount on Workers — the test is the proof; no deployment required.
 
 ## Delivery — 3 stages (each a green-suite, reviewable PR)
 
-| Stage | Ships | Gate |
-|---|---|---|
-| **1 · Core seam** | `convert.ts`, `router.ts`, `rest-handler.ts` (JSON routes, validation, DI, error envelope, confirm/idempotency, output validation), `host/node.ts` (RestServer slimmed, `expressApp` preserved, core as non-greedy fallback), `host/fetch.ts`; group-sorter → `common` | All existing tests green + JSON-route parity tests; **benchmark Node↔Web overhead** |
-| **2 · Middleware onion** | `web/middleware.ts`, neutral `app.middleware` tier, CORS as onion entry, body-parse collapse; `app.expressMiddleware` documented Node-only | Middleware-ordering parity tests |
-| **3 · Uploads + downloads** | `web/multipart.ts` (formData→FileStore, mid-stream size enforcement), `fileResponse`→`ReadableStream`, retire multer from core (optionalize dep) | Upload/download parity tests, both hosts |
+| Stage                       | Ships                                                                                                                                                                                                                                                                  | Gate                                                                                |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| **1 · Core seam**           | `convert.ts`, `router.ts`, `rest-handler.ts` (JSON routes, validation, DI, error envelope, confirm/idempotency, output validation), `host/node.ts` (RestServer slimmed, `expressApp` preserved, core as non-greedy fallback), `host/fetch.ts`; group-sorter → `common` | All existing tests green + JSON-route parity tests; **benchmark Node↔Web overhead** |
+| **2 · Middleware onion**    | `web/middleware.ts`, neutral `app.middleware` tier, CORS as onion entry, body-parse collapse; `app.expressMiddleware` documented Node-only                                                                                                                             | Middleware-ordering parity tests                                                    |
+| **3 · Uploads + downloads** | `web/multipart.ts` (formData→FileStore, mid-stream size enforcement), `fileResponse`→`ReadableStream`, retire multer from core (optionalize dep)                                                                                                                       | Upload/download parity tests, both hosts                                            |
 
 ## Known limitations (documented, with named follow-ups)
 

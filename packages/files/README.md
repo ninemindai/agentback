@@ -16,12 +16,12 @@ import {FILE_STORE, type FileStore} from '@agentback/files';
 
 interface FileStore {
   put(key, body: Readable | Buffer, opts?): Promise<StoredFile>;
-  get(key, opts?): Promise<RetrievedFile>;  // throws if absent; opts.range → byte slice
-  stat(key): Promise<FileMetadata>;       // HEAD: metadata, no body; throws if absent
+  get(key, opts?): Promise<RetrievedFile>; // throws if absent; opts.range → byte slice
+  stat(key): Promise<FileMetadata>; // HEAD: metadata, no body; throws if absent
   exists(key): Promise<boolean>;
   delete(key): Promise<void>;
-  presignedPut?(key, opts?): Promise<SignedUpload>;  // optional; opts.maxSize → size-enforced POST
-  presignedGet?(key, opts?): Promise<string>;        // optional
+  presignedPut?(key, opts?): Promise<SignedUpload>; // optional; opts.maxSize → size-enforced POST
+  presignedGet?(key, opts?): Promise<string>; // optional
 }
 ```
 

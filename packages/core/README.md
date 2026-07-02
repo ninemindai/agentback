@@ -36,12 +36,7 @@ Re-exports everything from `@agentback/context` (and transitively from
 ## Usage
 
 ```ts
-import {
-  Application,
-  Component,
-  Server,
-  CoreBindings,
-} from '@agentback/core';
+import {Application, Component, Server, CoreBindings} from '@agentback/core';
 
 class PingServer implements Server {
   async start() {

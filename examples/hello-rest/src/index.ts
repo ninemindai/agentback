@@ -31,10 +31,7 @@ import {
   JWTBindings,
   JWTService,
 } from '@agentback/authentication-jwt';
-import {
-  installHealth,
-  registerHealthCheck,
-} from '@agentback/extension-health';
+import {installHealth, registerHealthCheck} from '@agentback/extension-health';
 import {installMetrics} from '@agentback/extension-metrics';
 import {installRateLimit} from '@agentback/extension-rate-limit';
 import {inject, isMain} from '@agentback/core';

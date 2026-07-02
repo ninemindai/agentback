@@ -46,12 +46,7 @@ only need to import from `@agentback/context`.
 ## Usage
 
 ```ts
-import {
-  Context,
-  inject,
-  injectable,
-  BindingScope,
-} from '@agentback/context';
+import {Context, inject, injectable, BindingScope} from '@agentback/context';
 
 @injectable({scope: BindingScope.SINGLETON})
 class Greeter {

@@ -53,9 +53,9 @@ import {RestApplication} from '@agentback/rest';
 
 const app = new RestApplication({rest: {listen: false}}); // no TCP listener
 app.restController(MyController);
-await app.start();                                         // mounts routes
+await app.start(); // mounts routes
 const server = await app.getServer('RestServer');
-export const fetchHandler = server.fetchHandler();         // {fetch}
+export const fetchHandler = server.fetchHandler(); // {fetch}
 ```
 
 `listen: false` makes `start()` wire every route but bind no port — the runtime
@@ -86,7 +86,7 @@ single source of truth.
 ```ts
 const app = new RestApplication({rest: {listener: 'native'}});
 app.restController(MyController);
-await app.start();   // binds http.createServer(createNodeListener(fetchHandler()))
+await app.start(); // binds http.createServer(createNodeListener(fetchHandler()))
 ```
 
 `start()` throws if a route opts into Express semantics (raw req/res injection or
@@ -105,7 +105,7 @@ const server = await app.getServer('RestServer');
 
 const fastify = Fastify();
 fastify.get('/native', async () => ({from: 'fastify'})); // Fastify-native route
-installFastifyHost(fastify, server.fetchHandler());       // non-greedy fallback
+installFastifyHost(fastify, server.fetchHandler()); // non-greedy fallback
 await fastify.listen({port: 3000});
 ```
 
@@ -134,7 +134,7 @@ expects.
 Bun.serve({port: 3000, fetch: fetchHandler.fetch});
 ```
 
-Bun's server *is* a fetch host — no adapter, no `@hono/node-server`. Its `fetch`
+Bun's server _is_ a fetch host — no adapter, no `@hono/node-server`. Its `fetch`
 field IS the `FetchHost` interface.
 
 ## Deno
@@ -164,7 +164,7 @@ const host = () =>
   (booted ??= (async () => {
     const app = new EdgeRestApplication({rest: {listen: false}});
     app.restController(MyController);
-    await app.start();                   // collects routes; mounts NO Express
+    await app.start(); // collects routes; mounts NO Express
     const server = await app.getServer('RestServer');
     return server.fetchHandler();
   })());
@@ -187,12 +187,12 @@ Node-only deps must be avoided in the route handlers.
 supports `@api` routes, `/openapi.json`, `/llms.txt`, and MCP-over-fetch; the
 `install*` UIs (console/explorers) are Express-host-only for now.
 
-Two edge-runtime constraints the **bundle doctor cannot catch** (it is a *static*
+Two edge-runtime constraints the **bundle doctor cannot catch** (it is a _static_
 analyzer — bundle-clean ≠ runtime-clean), already handled by the framework but
 worth knowing if you author module-scope code:
 
 - **No "generate random values" / IO / timers in the global (module-load) scope** —
-  Workers reject it at startup validation. Generate IDs *inside* handlers (the
+  Workers reject it at startup validation. Generate IDs _inside_ handlers (the
   framework's `generateUniqueId` and `crypto.randomUUID()` are call-time safe).
 - **`nodejs_compat` fakes `process.versions.node`** — don't gate "am I on Node?"
   on that alone; also check `import.meta.url` is a `file:` URL.
@@ -211,7 +211,7 @@ import {installMcpHttp} from '@agentback/mcp-http';
 const app = new RestApplication({rest: {listener: 'native'}});
 app.component(MCPComponent);
 app.service(MyTools);
-await installMcpHttp(app);   // POST/GET/DELETE /mcp on the fetch path
+await installMcpHttp(app); // POST/GET/DELETE /mcp on the fetch path
 await app.start();
 ```
 
@@ -242,7 +242,7 @@ envelopes are identical wherever it runs.
 The `agentback deploy cloudflare` command automates the full deploy pipeline:
 
 1. **Generate** — writes `.agentback/deploy/cloudflare/worker.ts` (a thin fetch-handler wrapper around `buildApp`) and merges `wrangler.toml`.
-2. **Preflight** — runs the bundle doctor: esbuild-bundles the generated worker and checks for denied `node:` imports (`node:fs`, `node:fs/promises`, `node:net`, …) that the Workers runtime rejects. The fetch path of `@agentback/rest` is edge-safe; `fromDisk`/`serveStaticDir` (which pull `node:fs`) tree-shake away unless your app actually imports them, so a REST-only app passes. **Note:** the doctor is *static* — passing it proves the bundle is clean, **not** that the worker runs. Use `listener: 'native'` (below) and a real deploy to confirm runtime behavior.
+2. **Preflight** — runs the bundle doctor: esbuild-bundles the generated worker and checks for denied `node:` imports (`node:fs`, `node:fs/promises`, `node:net`, …) that the Workers runtime rejects. The fetch path of `@agentback/rest` is edge-safe; `fromDisk`/`serveStaticDir` (which pull `node:fs`) tree-shake away unless your app actually imports them, so a REST-only app passes. **Note:** the doctor is _static_ — passing it proves the bundle is clean, **not** that the worker runs. Use `listener: 'native'` (below) and a real deploy to confirm runtime behavior.
 3. **Deploy** — calls `wrangler deploy` and parses the `*.workers.dev` URL from the output.
 4. **Verify** — HTTP-GETs `/openapi.json` on the live worker to confirm the deployment is serving correctly.
 
@@ -266,7 +266,7 @@ The `--dry-run` flag stops after preflight (no `wrangler` invocation), useful in
 agentback deploy cloudflare --dry-run
 ```
 
-The `--temporary` flag deploys to a **throwaway preview account** — no Cloudflare signup, account, or token. Wrangler provisions a temporary account on the fly (proof-of-work), deploys, and prints a claim URL; the deployment expires after 60 minutes unless claimed. It is the secretless way to run a *real* deploy in CI (the `--dry-run` doctor only proves the bundle is clean, not that the worker runs):
+The `--temporary` flag deploys to a **throwaway preview account** — no Cloudflare signup, account, or token. Wrangler provisions a temporary account on the fly (proof-of-work), deploys, and prints a claim URL; the deployment expires after 60 minutes unless claimed. It is the secretless way to run a _real_ deploy in CI (the `--dry-run` doctor only proves the bundle is clean, not that the worker runs):
 
 ```bash
 agentback deploy cloudflare --temporary

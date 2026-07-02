@@ -72,8 +72,7 @@ export class ConsolidationEnhancer implements OASEnhancer {
 
         // responses
         const responses = operation.responses as
-          | Record<string, ResponseObject>
-          | undefined;
+          Record<string, ResponseObject> | undefined;
         if (responses) {
           for (const code of Object.keys(responses)) {
             const r = responses[code];

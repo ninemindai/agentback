@@ -4,11 +4,7 @@
 
 import {describe, it, expect, beforeEach} from 'vitest';
 import type {FocusDescriptor} from '../../client/focus.js';
-import {
-  publishFocus,
-  subscribeFocus,
-  getFocus,
-} from '../../client/focus.js';
+import {publishFocus, subscribeFocus, getFocus} from '../../client/focus.js';
 
 describe('focus bus', () => {
   beforeEach(() => {
@@ -39,12 +35,19 @@ describe('focus bus', () => {
     publishFocus(null);
     unsub();
 
-    expect(received).toEqual([{kind: 'binding', id: 'services.MyService'}, null]);
+    expect(received).toEqual([
+      {kind: 'binding', id: 'services.MyService'},
+      null,
+    ]);
   });
 
   it('getFocus returns the current descriptor', () => {
     publishFocus({kind: 'route', id: 'GET /users', label: 'List users'});
-    expect(getFocus()).toEqual({kind: 'route', id: 'GET /users', label: 'List users'});
+    expect(getFocus()).toEqual({
+      kind: 'route',
+      id: 'GET /users',
+      label: 'List users',
+    });
   });
 
   it('getFocus returns null after publishFocus(null)', () => {

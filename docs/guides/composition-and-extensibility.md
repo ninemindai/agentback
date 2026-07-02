@@ -4,13 +4,13 @@ This is the guide that makes the "modular, extensible, composable" promise
 concrete. The framework gives you five tools, ordered here from "reach for
 first" to "deepest hook." Pick the lightest one that does the job.
 
-| Tool                                                       | Scope                     | Use for                                   |
-| ---------------------------------------------------------- | ------------------------- | ----------------------------------------- |
+| Tool                                                        | Scope                     | Use for                                   |
+| ----------------------------------------------------------- | ------------------------- | ----------------------------------------- |
 | [Components](#1-components--package-a-feature)              | a bundle of bindings      | shipping/reusing a whole feature          |
 | [Interceptors](#2-interceptors--wrap-method-calls)          | around method invocations | logging, caching, timing, tx, retries     |
 | [Middleware](#3-middleware--around-http-requests)           | around HTTP requests      | CORS, rate limit, probes, request tracing |
 | [Extension points](#4-extension-points--open-a-plugin-slot) | a registry others fill    | "any number of X" plugin surfaces         |
-| [Subclassing dispatch](#subclassing-the-dispatcher)        | the REST pipeline itself  | response envelopes, custom error shapes   |
+| [Subclassing dispatch](#subclassing-the-dispatcher)         | the REST pipeline itself  | response envelopes, custom error shapes   |
 
 Underneath all of them is the same principle: **add a binding, don't edit the
 core.** ([Why](../concepts/dependency-injection.md#why-this-matters-for-composition).)

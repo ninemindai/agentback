@@ -125,16 +125,16 @@ pnpm -F hello-hybrid start       # REST + MCP from one process, both UIs
 pnpm -F hello-client start       # the typed client calling hello-rest's schemas
 ```
 
-| Example                   | Demonstrates                               | Guide                                                                     |
-| ------------------------- | ------------------------------------------ | ------------------------------------------------------------------------- |
-| `examples/hello-rest`     | REST + auth + health + metrics + explorers | [REST](guides/build-a-rest-api.md)                                        |
-| `examples/hello-mcp`      | MCP tools over stdio                       | [MCP](guides/build-an-mcp-server.md)                                      |
-| `examples/hello-hybrid`   | REST + MCP in one process                  | [Hybrid](guides/build-a-hybrid-app.md)                                    |
-| `examples/hello-client`   | Schema-shared typed client                 | [Hybrid](guides/build-a-hybrid-app.md#a-type-safe-client-with-no-codegen) |
-| `examples/hello-mcp-apps` | MCP Apps `ui://` widget rendered by a host | [MCP Apps](guides/mcp-apps-widgets.md)                                    |
-| `examples/hello-actors`         | Addressable, serialized actors over REST                      | [Actor model](actor-model.md)                                             |
-| `examples/hello-agent-console`  | Introspection MCP + agent console dock (see + evolve)         | [Agent console security](guides/agent-console.md)                         |
-| `examples/hello-plugin`         | Declarative `loadPlugins` + imperative `loadPlugin` mounting  | [Composition](../packages/plugin/README.md)                               |
+| Example                        | Demonstrates                                                 | Guide                                                                     |
+| ------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| `examples/hello-rest`          | REST + auth + health + metrics + explorers                   | [REST](guides/build-a-rest-api.md)                                        |
+| `examples/hello-mcp`           | MCP tools over stdio                                         | [MCP](guides/build-an-mcp-server.md)                                      |
+| `examples/hello-hybrid`        | REST + MCP in one process                                    | [Hybrid](guides/build-a-hybrid-app.md)                                    |
+| `examples/hello-client`        | Schema-shared typed client                                   | [Hybrid](guides/build-a-hybrid-app.md#a-type-safe-client-with-no-codegen) |
+| `examples/hello-mcp-apps`      | MCP Apps `ui://` widget rendered by a host                   | [MCP Apps](guides/mcp-apps-widgets.md)                                    |
+| `examples/hello-actors`        | Addressable, serialized actors over REST                     | [Actor model](actor-model.md)                                             |
+| `examples/hello-agent-console` | Introspection MCP + agent console dock (see + evolve)        | [Agent console security](guides/agent-console.md)                         |
+| `examples/hello-plugin`        | Declarative `loadPlugins` + imperative `loadPlugin` mounting | [Composition](../packages/plugin/README.md)                               |
 
 ## Conventions in these docs
 

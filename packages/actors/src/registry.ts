@@ -107,11 +107,13 @@ export type ActorProxy<T> = {
     options?: ActorInvokeOptions,
   ) => Promise<CommandResult<T[K]>>;
 } & {
-  [K in keyof Omit<T, 'initialState'> as T[K] extends CommandShape
-    ? never
-    : T[K] extends QueryShape
-      ? K
-      : never]: (input: QueryInput<T[K]>) => Promise<QueryResult<T[K]>>;
+  [
+    K in keyof Omit<T, 'initialState'> as T[K] extends CommandShape
+      ? never
+      : T[K] extends QueryShape
+        ? K
+        : never
+  ]: (input: QueryInput<T[K]>) => Promise<QueryResult<T[K]>>;
 };
 
 /**

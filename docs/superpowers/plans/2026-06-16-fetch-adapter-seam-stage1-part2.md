@@ -12,20 +12,20 @@
 
 > **Build rule (CLAUDE.md):** vitest runs against built `dist/`. Always `pnpm -F @agentback/rest build` before `pnpm exec vitest run`.
 
-> **Scope — what Part 2 is, and where the rest goes.** Part 2 is the **core dispatch**: input bundle → Zod validation → DI resolution → invoke → output validation → Web `Response`, proven byte-identical to Express. The surrounding pipeline layers — **auth/authz, dispatch hooks, confirmation/idempotency** — are deliberately NOT reimplemented here. They already exist as `RestServer` methods, and reimplementing them standalone would duplicate cross-package contracts (the auth-strategy request shape, `RestDispatchInfo`'s `req`/`res`). The right composition is at **Part 3 cutover**: `RestServer` keeps owning auth/hooks/idempotency and delegates only the *core* to `RestHandler`, so those layers wrap the neutral core instead of being forked. **Streaming/SSE** and **file uploads/downloads** are Stage 2/3. Modules stay **unexported** from `index.ts` until Part 3.
+> **Scope — what Part 2 is, and where the rest goes.** Part 2 is the **core dispatch**: input bundle → Zod validation → DI resolution → invoke → output validation → Web `Response`, proven byte-identical to Express. The surrounding pipeline layers — **auth/authz, dispatch hooks, confirmation/idempotency** — are deliberately NOT reimplemented here. They already exist as `RestServer` methods, and reimplementing them standalone would duplicate cross-package contracts (the auth-strategy request shape, `RestDispatchInfo`'s `req`/`res`). The right composition is at **Part 3 cutover**: `RestServer` keeps owning auth/hooks/idempotency and delegates only the _core_ to `RestHandler`, so those layers wrap the neutral core instead of being forked. **Streaming/SSE** and **file uploads/downloads** are Stage 2/3. Modules stay **unexported** from `index.ts` until Part 3.
 
 ---
 
 ## File Structure
 
-| File | Responsibility |
-|---|---|
-| `packages/rest/src/validate-sections.ts` | Extracted neutral `parseSection(section, raw, schema)` — the per-section Zod validator, used by both Express `buildInputBundle` and the Web bundle builder. |
-| `packages/rest/src/rest.server.ts` | MODIFY: import `parseSection` from the new module instead of declaring it locally. |
-| `packages/rest/src/web/route-value.ts` | `RouteValue` — what the `Router` stores per route: `{ctor, methodName, schemas, successStatus}`. |
-| `packages/rest/src/web/rest-handler.ts` | `RestHandler` — `dispatch: Dispatch<RouteValue>` running the core pipeline → Web `Response`. |
-| `packages/rest/src/__tests__/unit/web-rest-handler.unit.ts` | Core dispatch tests (DI Context + controller, validation, error envelope). |
-| `packages/rest/src/__tests__/integration/web-parity.integration.ts` | Same controller through Express (supertest) AND RestHandler/FetchHost → identical envelopes. |
+| File                                                                | Responsibility                                                                                                                                              |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/rest/src/validate-sections.ts`                            | Extracted neutral `parseSection(section, raw, schema)` — the per-section Zod validator, used by both Express `buildInputBundle` and the Web bundle builder. |
+| `packages/rest/src/rest.server.ts`                                  | MODIFY: import `parseSection` from the new module instead of declaring it locally.                                                                          |
+| `packages/rest/src/web/route-value.ts`                              | `RouteValue` — what the `Router` stores per route: `{ctor, methodName, schemas, successStatus}`.                                                            |
+| `packages/rest/src/web/rest-handler.ts`                             | `RestHandler` — `dispatch: Dispatch<RouteValue>` running the core pipeline → Web `Response`.                                                                |
+| `packages/rest/src/__tests__/unit/web-rest-handler.unit.ts`         | Core dispatch tests (DI Context + controller, validation, error envelope).                                                                                  |
+| `packages/rest/src/__tests__/integration/web-parity.integration.ts` | Same controller through Express (supertest) AND RestHandler/FetchHost → identical envelopes.                                                                |
 
 ---
 
@@ -40,7 +40,11 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {standardParse, type ParseIssue, type SchemaLike} from '@agentback/openapi';
+import {
+  standardParse,
+  type ParseIssue,
+  type SchemaLike,
+} from '@agentback/openapi';
 import {invalidParameter} from './errors.js';
 
 /**
@@ -70,6 +74,7 @@ export function parseSection(
 pnpm -F @agentback/rest build
 pnpm exec vitest run packages/rest/dist
 ```
+
 Expected: all existing tests pass (118+). `parseSection` extraction is behavior-preserving.
 
 - [ ] **Step 4: Commit**
@@ -328,11 +333,41 @@ class GreetController {
 
 function harness() {
   const ctx = new Context('test');
-  ctx.bind('controllers.GreetController').toClass(GreetController).tag(CoreTags.CONTROLLER);
+  ctx
+    .bind('controllers.GreetController')
+    .toClass(GreetController)
+    .tag(CoreTags.CONTROLLER);
   const router = new Router<RouteValue>();
-  router.add({method: 'GET', template: '/hello/{name}', value: {ctor: GreetController, methodName: 'hello', schemas: {path: HelloPath, response: Greeting}, successStatus: 200}});
-  router.add({method: 'POST', template: '/echo', value: {ctor: GreetController, methodName: 'echo', schemas: {body: EchoBody}, successStatus: 201}});
-  router.add({method: 'GET', template: '/boom', value: {ctor: GreetController, methodName: 'boom', schemas: {}, successStatus: 200}});
+  router.add({
+    method: 'GET',
+    template: '/hello/{name}',
+    value: {
+      ctor: GreetController,
+      methodName: 'hello',
+      schemas: {path: HelloPath, response: Greeting},
+      successStatus: 200,
+    },
+  });
+  router.add({
+    method: 'POST',
+    template: '/echo',
+    value: {
+      ctor: GreetController,
+      methodName: 'echo',
+      schemas: {body: EchoBody},
+      successStatus: 201,
+    },
+  });
+  router.add({
+    method: 'GET',
+    template: '/boom',
+    value: {
+      ctor: GreetController,
+      methodName: 'boom',
+      schemas: {},
+      successStatus: 200,
+    },
+  });
   const handler = new RestHandler(ctx);
   return createFetchHost({router, dispatch: handler.dispatch});
 }
@@ -345,11 +380,13 @@ describe('RestHandler (core dispatch)', () => {
   });
 
   it('validates a JSON body and honors the success status', async () => {
-    const res = await harness().fetch(new Request('http://x/echo', {
-      method: 'POST',
-      headers: {'content-type': 'application/json'},
-      body: JSON.stringify({text: 'hi'}),
-    }));
+    const res = await harness().fetch(
+      new Request('http://x/echo', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({text: 'hi'}),
+      }),
+    );
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({echoed: 'hi'});
   });
@@ -362,13 +399,15 @@ describe('RestHandler (core dispatch)', () => {
   });
 
   it('rejects an invalid JSON body with a 400/422 envelope carrying issues', async () => {
-    const res = await harness().fetch(new Request('http://x/echo', {
-      method: 'POST',
-      headers: {'content-type': 'application/json'},
-      body: JSON.stringify({text: ''}),
-    }));
+    const res = await harness().fetch(
+      new Request('http://x/echo', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({text: ''}),
+      }),
+    );
     expect(res.status).toBeGreaterThanOrEqual(400);
-    const body = await res.json() as {code: string; issues?: unknown[]};
+    const body = (await res.json()) as {code: string; issues?: unknown[]};
     expect(typeof body.code).toBe('string');
     expect(body.issues?.length ?? 0).toBeGreaterThan(0);
   });
@@ -376,7 +415,7 @@ describe('RestHandler (core dispatch)', () => {
   it('maps a thrown AgentError to its status + code', async () => {
     const res = await harness().fetch(new Request('http://x/boom'));
     expect(res.status).toBe(400);
-    expect((await res.json() as {code: string}).code).toBe('invalid_input');
+    expect(((await res.json()) as {code: string}).code).toBe('invalid_input');
   });
 });
 ```
@@ -392,6 +431,7 @@ describe('RestHandler (core dispatch)', () => {
 **Files:** Create `packages/rest/src/__tests__/integration/web-parity.integration.ts`.
 
 Define ONE `@api` controller. Stand it up two ways and assert identical envelopes:
+
 1. **Express:** via `createTestApp` (`@agentback/testing`) → its supertest `http` client.
 2. **Web:** build a `Router<RouteValue>` + `RestHandler` over the SAME app context, drive via `createFetchHost`.
 

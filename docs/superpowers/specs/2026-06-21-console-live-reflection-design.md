@@ -8,8 +8,8 @@
 
 Phase 1 (`@agentback/introspection`) and Phase 2 (`@agentback/console-chat` ACP dock)
 shipped. The Phase 2 design listed **live reflection** as a Tier-2 follow-up:
-*"when the agent mutates state via a tool, the open explorer panels refresh so the
-human sees the change immediately."*
+_"when the agent mutates state via a tool, the open explorer panels refresh so the
+human sees the change immediately."_
 
 That original note conflated two different things. The dev-console explorers
 (`context-explorer`, `schema-explorer`, plus the embedded `rest-explorer` and
@@ -49,7 +49,7 @@ explorers; the explorers never depend on `console`.
 ### Components
 
 1. **`bootId` (server).** A single `crypto.randomUUID()` minted at module load in
-   the console feature. It is the process identity: a *new* value after a reconnect
+   the console feature. It is the process identity: a _new_ value after a reconnect
    means the app restarted.
 
 2. **`GET /console/live` SSE endpoint** (`@agentback/console`). Mounted **directly
@@ -64,7 +64,7 @@ explorers; the explorers never depend on `console`.
    pub/sub modeled on the existing `packages/console/src/client/focus.ts`. It opens
    the `/console/live` EventSource once when the console mounts, records the first
    `bootId`, and on reconnect compares: a reload is published **only when the
-   bootId changes**. A transient network blip reconnects to the *same* bootId and
+   bootId changes**. A transient network blip reconnects to the _same_ bootId and
    therefore does **not** trigger a refresh. Self-contained EventSource-with-
    reconnect logic (~30 lines, same shape as `packages/console-chat/src/client/sse.ts`,
    with the same fake-EventSource seam for tests).
@@ -133,6 +133,7 @@ real restart from a transient reconnect.
 ## File-level change map
 
 New:
+
 - `packages/console/src/live.ts` (or in `feature.ts`) — `bootId` + `/console/live`
   SSE handler, mounted on `server.expressApp`.
 - `packages/console/src/client/live.ts` — `liveBus` (open stream, bootId compare,
@@ -141,6 +142,7 @@ New:
   component tests.
 
 Modified:
+
 - `packages/console/src/feature.ts` — mount the SSE handler (alongside the existing
   console wiring).
 - `packages/console/src/client/App.tsx` — start the `liveBus` on mount; maintain

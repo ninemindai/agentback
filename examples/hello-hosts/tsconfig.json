@@ -7,9 +7,5 @@
     "composite": true
   },
   "include": ["src/**/*"],
-  "exclude": [
-    "dist",
-    "node_modules",
-    "src/bun.ts"
-  ]
+  "exclude": ["dist", "node_modules", "src/bun.ts"]
 }

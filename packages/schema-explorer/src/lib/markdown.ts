@@ -104,7 +104,8 @@ function parseInline(line: string): MdSpan[] {
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(line))) {
-    if (m.index > last) spans.push({kind: 'text', text: line.slice(last, m.index)});
+    if (m.index > last)
+      spans.push({kind: 'text', text: line.slice(last, m.index)});
     if (m[1] !== undefined) spans.push({kind: 'code', text: m[1]});
     else spans.push({kind: 'link', text: m[2]!, href: m[3]!});
     last = re.lastIndex;

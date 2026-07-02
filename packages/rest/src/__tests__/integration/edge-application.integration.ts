@@ -12,10 +12,7 @@
 import {describe, expect, it} from 'vitest';
 import {z} from 'zod';
 import {api, get} from '@agentback/openapi';
-import {
-  EdgeRestApplication,
-  RestApplication,
-} from '../../rest.application.js';
+import {EdgeRestApplication, RestApplication} from '../../rest.application.js';
 import type {RestServer} from '../../rest.server.js';
 
 const PingOut = z.object({pong: z.boolean()});

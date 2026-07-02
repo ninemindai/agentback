@@ -143,9 +143,7 @@ function applyExclude(
   inv: SchemaInventory,
   exclude: (s: SchemaSurfaceNode) => boolean,
 ): SchemaInventory {
-  const dropped = new Set(
-    inv.surfaces.filter(exclude).map(s => s.id),
-  );
+  const dropped = new Set(inv.surfaces.filter(exclude).map(s => s.id));
   if (!dropped.size) return inv;
 
   const surfaces = inv.surfaces.filter(s => !dropped.has(s.id));

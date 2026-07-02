@@ -86,7 +86,13 @@ export class Router<T> {
     }
     this.seen.add(key);
     const {regexp, paramNames} = compile(segments);
-    this.routes.push({method, segments, regexp, paramNames, value: record.value});
+    this.routes.push({
+      method,
+      segments,
+      regexp,
+      paramNames,
+      value: record.value,
+    });
     // Specificity order: at the first segment where two routes differ in kind,
     // a literal is more specific than a param. Stable sort keeps registration
     // order for equally-specific routes. So /users/me beats /users/{id}

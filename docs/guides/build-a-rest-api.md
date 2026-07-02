@@ -112,11 +112,7 @@ import {
   JWTAuthenticationComponent,
   JWTBindings,
 } from '@agentback/authentication-jwt';
-import {
-  SecurityBindings,
-  UserProfile,
-  securityId,
-} from '@agentback/security';
+import {SecurityBindings, UserProfile, securityId} from '@agentback/security';
 
 // wiring (before start)
 app.bind(JWTBindings.SECRET).to(process.env.JWT_SECRET ?? 'dev-secret');
@@ -169,10 +165,7 @@ Want to see the DI container itself? Mount the
 Health checks and Prometheus metrics are one-liners:
 
 ```ts
-import {
-  installHealth,
-  registerHealthCheck,
-} from '@agentback/extension-health';
+import {installHealth, registerHealthCheck} from '@agentback/extension-health';
 import {installMetrics} from '@agentback/extension-metrics';
 
 registerHealthCheck(app, 'health.checks.db', {

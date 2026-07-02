@@ -27,7 +27,9 @@ serve({fetch: hono.fetch, port: PORT}, info => {
   console.log(`\nTry:`);
   console.log(`  curl http://localhost:${info.port}/native`);
   console.log(`  curl http://localhost:${info.port}/greet/Ada`);
-  console.log(`  curl -X POST http://localhost:${info.port}/echo -H 'content-type: application/json' -d '{"message":"hi"}'`);
+  console.log(
+    `  curl -X POST http://localhost:${info.port}/echo -H 'content-type: application/json' -d '{"message":"hi"}'`,
+  );
   console.log(`  curl http://localhost:${info.port}/openapi.json\n`);
 });
 

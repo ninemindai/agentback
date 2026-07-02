@@ -431,13 +431,7 @@ export class RestServer implements Server {
 
         const handler = this.makeHandler(ctor, methodName, schemas);
         const expressVerb = verb as
-          | 'get'
-          | 'post'
-          | 'put'
-          | 'patch'
-          | 'delete'
-          | 'head'
-          | 'options';
+          'get' | 'post' | 'put' | 'patch' | 'delete' | 'head' | 'options';
         // A body with a `fileField()` gets a per-route multipart parser mounted
         // ahead of the handler: it streams files to the bound FileStore and
         // merges UploadedFile handles into req.body for Zod validation.
@@ -1343,8 +1337,7 @@ export class RestServer implements Server {
    * override. Used to fail loudly before binding the native listener.
    */
   private findExpressCoupledRoute():
-    | {ctor: Function; methodName: string; reason: string}
-    | undefined {
+    {ctor: Function; methodName: string; reason: string} | undefined {
     if (this.overridesExpressDispatchSeam()) {
       // A subclass took over the Express dispatch seam; no single route to name.
       return {

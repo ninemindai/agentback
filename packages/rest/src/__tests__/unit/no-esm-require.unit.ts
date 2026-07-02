@@ -30,6 +30,9 @@ describe('rest.server never createRequire()s an ESM @agentback package', () => {
     const src = readFileSync(restServerJs, 'utf8');
     // Any require('@agentback/...') / nodeRequire(...)('@agentback/...') is a bug.
     const bad = src.match(/require\w*\(\)?\(?\s*['"]@agentback\/[^'"]+['"]/g);
-    expect(bad, `found require() of an ESM @agentback pkg: ${bad?.join(', ')}`).toBeNull();
+    expect(
+      bad,
+      `found require() of an ESM @agentback pkg: ${bad?.join(', ')}`,
+    ).toBeNull();
   });
 });

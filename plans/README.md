@@ -7,14 +7,14 @@ maintaining this index.
 
 ## Execution order & status
 
-| Plan | Title                                                          | Priority | Effort | Depends on | Status |
-| ---- | -------------------------------------------------------------- | -------- | ------ | ---------- | ------ |
-| 001  | Require an explicit auth posture for the unified console       | P1       | M      | —          | DONE   |
-| 002  | Sanitize internal 5xx error messages in REST, MCP, and streams | P1       | M      | —          | DONE   |
-| 003  | Typecheck React client trees and gate the check in CI          | P1       | S/M    | —          | DONE   |
-| 004  | Make `multer` an optional peer dependency of `@agentback/rest` | P2       | S/M    | —          | DONE   |
-| 005  | Introduce `ExpressService`: DI-owned Express host RestServer injects | P2  | L      | —          | DONE   |
-| 006  | Phase 2: `EdgeRestApplication` / `ExpressRestApplication` split (edge installs drop `express`) | P3 | L (core) | 005 | DONE (P2.1-P2.3; P2.4 deferred) |
+| Plan | Title                                                                                          | Priority | Effort   | Depends on | Status                          |
+| ---- | ---------------------------------------------------------------------------------------------- | -------- | -------- | ---------- | ------------------------------- |
+| 001  | Require an explicit auth posture for the unified console                                       | P1       | M        | —          | DONE                            |
+| 002  | Sanitize internal 5xx error messages in REST, MCP, and streams                                 | P1       | M        | —          | DONE                            |
+| 003  | Typecheck React client trees and gate the check in CI                                          | P1       | S/M      | —          | DONE                            |
+| 004  | Make `multer` an optional peer dependency of `@agentback/rest`                                 | P2       | S/M      | —          | DONE                            |
+| 005  | Introduce `ExpressService`: DI-owned Express host RestServer injects                           | P2       | L        | —          | DONE                            |
+| 006  | Phase 2: `EdgeRestApplication` / `ExpressRestApplication` split (edge installs drop `express`) | P3       | L (core) | 005        | DONE (P2.1-P2.3; P2.4 deferred) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale: finding fixed independently or approach
@@ -35,8 +35,8 @@ abandoned)
   `@agentback/rest`'s `dependencies`) is **Phase 2**, gated on flipping the
   default listener to `'native'` — the `fetch-seam-root-cutover` spec's
   "item D / full demotion". Do not attempt Phase 2 inside 004/005.
-- **Key caveat carried in both plans:** DI / peer-deps fixes the npm *install*
-  graph, not the esbuild *bundle* graph. The dep must live in a module the edge
+- **Key caveat carried in both plans:** DI / peer-deps fixes the npm _install_
+  graph, not the esbuild _bundle_ graph. The dep must live in a module the edge
   build never statically imports (subpath imports, not the `@agentback/express`
   barrel), or it re-enters a Worker bundle. The bundle doctor on
   `packages/cli/fixtures/cf-app` (`{ok:true}`) is the gate for this in both.

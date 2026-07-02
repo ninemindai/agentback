@@ -58,10 +58,7 @@ describe('discoverFromDirs', () => {
 
 describe('resolvePackageDir (ESM exports-map regression)', () => {
   it('finds a package dir for a restrictive-exports dependency without ERR_PACKAGE_PATH_NOT_EXPORTED', async () => {
-    const dir = await resolvePackageDir(
-      '@agentback/core',
-      import.meta.url,
-    );
+    const dir = await resolvePackageDir('@agentback/core', import.meta.url);
     expect(dir).not.toBeNull();
     // Built indirectly so the test bundler (Vite) does not statically
     // pre-resolve and crash before the test runs; the runtime import still

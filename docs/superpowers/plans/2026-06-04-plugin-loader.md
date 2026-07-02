@@ -196,10 +196,7 @@ export interface PluginInfo {
 }
 
 export type PluginLoadErrorKind =
-  | 'import'
-  | 'missing-export'
-  | 'not-a-component'
-  | 'key-collision';
+  'import' | 'missing-export' | 'not-a-component' | 'key-collision';
 
 export interface PluginLoadError {
   package: string;
@@ -454,10 +451,7 @@ describe('readMarker', () => {
 describe('resolvePackageDir (ESM exports-map regression)', () => {
   it('finds a package dir for a restrictive-exports dependency without ERR_PACKAGE_PATH_NOT_EXPORTED', async () => {
     // @agentback/core is a real dependency and ships exports: { ".": ... } only.
-    const dir = await resolvePackageDir(
-      '@agentback/core',
-      import.meta.url,
-    );
+    const dir = await resolvePackageDir('@agentback/core', import.meta.url);
     expect(dir).not.toBeNull();
     // The naive approach we are deliberately NOT using must reject:
     await expect(
@@ -491,7 +485,7 @@ interface PackageJson {
   main?: string;
   exports?: unknown;
   dependencies?: Record<string, string>;
-  'AgentBack'?: Partial<PluginPackageMarker>;
+  AgentBack?: Partial<PluginPackageMarker>;
 }
 
 function readPackageJson(pkgDir: string): PackageJson | null {

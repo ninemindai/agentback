@@ -11,7 +11,9 @@ import {fromCdn} from '../../host/asset-source.js';
 
 describe('fromDisk', () => {
   let dir: string;
-  beforeEach(() => {dir = mkdtempSync(path.join(tmpdir(), 'asset-'));});
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(tmpdir(), 'asset-'));
+  });
   afterEach(() => rmSync(dir, {recursive: true, force: true}));
 
   it('serves an existing file with a content-type', async () => {
@@ -35,26 +37,41 @@ describe('fromCdn', () => {
     const calls: string[] = [];
     const fetchFn = (async (u: any) => {
       calls.push(String(u));
-      return new Response('body', {status: 200, headers: {'content-type': 'application/javascript'}});
+      return new Response('body', {
+        status: 200,
+        headers: {'content-type': 'application/javascript'},
+      });
     }) as unknown as typeof fetch;
-    const res = await fromCdn('https://cdn.example/npm/pkg@1/dist', fetchFn)('/main.js');
+    const res = await fromCdn(
+      'https://cdn.example/npm/pkg@1/dist',
+      fetchFn,
+    )('/main.js');
     expect(calls[0]).toBe('https://cdn.example/npm/pkg@1/dist/main.js');
     expect(res?.status).toBe(200);
     expect(await res?.text()).toBe('body');
   });
 
   it('returns undefined when the CDN 404s', async () => {
-    const fetchFn = (async () => new Response('', {status: 404})) as unknown as typeof fetch;
-    expect(await fromCdn('https://cdn.example/x', fetchFn)('/missing.js')).toBeUndefined();
+    const fetchFn = (async () =>
+      new Response('', {status: 404})) as unknown as typeof fetch;
+    expect(
+      await fromCdn('https://cdn.example/x', fetchFn)('/missing.js'),
+    ).toBeUndefined();
   });
 
   it('rejects a protocol-relative suffix and does not call fetch', async () => {
     const calls: string[] = [];
     const fetchFn = (async (u: any) => {
       calls.push(String(u));
-      return new Response('', {status: 200, headers: {'content-type': 'application/javascript'}});
+      return new Response('', {
+        status: 200,
+        headers: {'content-type': 'application/javascript'},
+      });
     }) as unknown as typeof fetch;
-    const res = await fromCdn('https://cdn.example/npm/pkg@1/dist', fetchFn)('//evil.com/x');
+    const res = await fromCdn(
+      'https://cdn.example/npm/pkg@1/dist',
+      fetchFn,
+    )('//evil.com/x');
     expect(res).toBeUndefined();
     expect(calls).toHaveLength(0);
   });
@@ -63,9 +80,15 @@ describe('fromCdn', () => {
     const calls: string[] = [];
     const fetchFn = (async (u: any) => {
       calls.push(String(u));
-      return new Response('', {status: 200, headers: {'content-type': 'application/javascript'}});
+      return new Response('', {
+        status: 200,
+        headers: {'content-type': 'application/javascript'},
+      });
     }) as unknown as typeof fetch;
-    const res = await fromCdn('https://cdn.example/npm/pkg@1/dist', fetchFn)('/a/../../etc/passwd');
+    const res = await fromCdn(
+      'https://cdn.example/npm/pkg@1/dist',
+      fetchFn,
+    )('/a/../../etc/passwd');
     expect(res).toBeUndefined();
     expect(calls).toHaveLength(0);
   });
@@ -74,14 +97,20 @@ describe('fromCdn', () => {
     const calls: string[] = [];
     const fetchFn = (async (u: any) => {
       calls.push(String(u));
-      return new Response('', {status: 200, headers: {'content-type': 'application/javascript'}});
+      return new Response('', {
+        status: 200,
+        headers: {'content-type': 'application/javascript'},
+      });
     }) as unknown as typeof fetch;
     // Construct a suffix that, when appended to the base, changes the origin.
     // URL parsing: new URL('https://cdn.example/npm/pkg@1/dist/x@evil.com/y')
     // keeps the same origin, so instead we test an encoded absolute URL embedded
     // as a path that resolves outside the base path via dot-segments.
     // Use encoded '..' to attempt bypass via URL resolution.
-    const res = await fromCdn('https://cdn.example/npm/pkg@1/dist', fetchFn)('/%2e%2e/%2e%2e/secret');
+    const res = await fromCdn(
+      'https://cdn.example/npm/pkg@1/dist',
+      fetchFn,
+    )('/%2e%2e/%2e%2e/secret');
     expect(res).toBeUndefined();
     expect(calls).toHaveLength(0);
   });
@@ -90,9 +119,15 @@ describe('fromCdn', () => {
     const calls: string[] = [];
     const fetchFn = (async (u: any) => {
       calls.push(String(u));
-      return new Response('<html></html>', {status: 200, headers: {'content-type': 'text/html; charset=utf-8'}});
+      return new Response('<html></html>', {
+        status: 200,
+        headers: {'content-type': 'text/html; charset=utf-8'},
+      });
     }) as unknown as typeof fetch;
-    const res = await fromCdn('https://cdn.example/npm/pkg@1/dist', fetchFn)('/index.html');
+    const res = await fromCdn(
+      'https://cdn.example/npm/pkg@1/dist',
+      fetchFn,
+    )('/index.html');
     expect(res).toBeUndefined();
     // fetch WAS called (blocked after response, not before)
     expect(calls).toHaveLength(1);

@@ -9,7 +9,7 @@
 A dev experience to **see and evolve the application with a coding agent.**
 Two verbs, cleanly separated: **see** = read-only introspection grounding (the
 agent understands the live app); **evolve** = the ACP coding agent edits the
-repo's source and you rebuild. Evolution happens through *source edits* (the
+repo's source and you rebuild. Evolution happens through _source edits_ (the
 agent's native capability), not through MCP mutation tools — so the introspection
 surface stays read-only forever and the two halves never contend over a mutation
 gate. "Evolve" is the point of the feature; "see" is the foundation that makes the
@@ -62,7 +62,7 @@ and is **Node-host-only** (it spawns a subprocess; not available on
    SSE; client→server (messages, permission responses) over POST. **No
    WebSocket** — it doesn't fall out of the Zod/OpenAPI/MCP projection thesis,
    fights edge portability, and isn't needed here. A raw-`upgrade` WS escape hatch
-   is a possible *future* Node-only addition, explicitly out of scope now.
+   is a possible _future_ Node-only addition, explicitly out of scope now.
 
 ## Phasing (CEO review, 2026-06-20 — SELECTIVE EXPANSION)
 
@@ -88,7 +88,7 @@ subprocess). The CEO review split them and sequenced delivery (Approach C):
   the framework does not add MCP mutation tools. The introspection MCP stays
   read-only. Node-host-only. (The earlier "metering/audit per mutation" cherry-
   pick is largely moot once mutation tools are dropped — source edits are
-  audited by git; if the app's *business* MCP tools are invoked by the agent,
+  audited by git; if the app's _business_ MCP tools are invoked by the agent,
   those already flow through the app's own auth + any metering it has.)
 
 Rationale: the durable primitive proves itself (and survives ACP protocol churn)
@@ -124,7 +124,7 @@ Follows the console's existing two-sided composition contract (a client
 - The shell gains a **right-dock region** alongside the left-nav + main-panel
   layout. The dock is owned by the shell; `console-chat` fills it. This is a
   deliberate, one-time shell capability — the README's "no shell changes to add a
-  panel" invariant still holds for *route* panels; the dock is a new, separate
+  panel" invariant still holds for _route_ panels; the dock is a new, separate
   extension point.
 - A small **navigation-focus context** (shared client event/store): each panel
   may publish a structured descriptor of what's currently focused, e.g.
@@ -146,7 +146,7 @@ Follows the console's existing two-sided composition contract (a client
   catalog for agents the built-in list doesn't know.
 - On request the server runs each descriptor's `detect` probe and returns the
   **present** agents as choices. Discovery is read-only and outside the
-  security-gated surface; only *launching* a chosen agent is gated.
+  security-gated surface; only _launching_ a chosen agent is gated.
 - The dock renders when **≥1 agent is discovered (or a custom one is
   configured)**. Zero → dock hidden (optionally an install hint in dev).
 
@@ -171,6 +171,7 @@ A `ConsoleFeature` that registers an `@api` controller owning the bridge and
 advertises the dock's config into `window.__CONSOLE__.chat`.
 
 Endpoints (all behind the console's existing `auth` middleware):
+
 - `GET  …/chat/agents` — discovered ACP agents (`{id, name}`) for the picker.
 - `GET  …/chat/stream` — SSE: server→client events (assistant deltas, tool
   activity, plan, permission requests, session lifecycle).
@@ -182,6 +183,7 @@ Endpoints (all behind the console's existing `auth` middleware):
   agents); `DELETE …/chat/session` stops it.
 
 **ACP session lifecycle:**
+
 1. On session start, resolve `agentId` to its catalog descriptor and **spawn** its
    `command` as a subprocess with `cwd` = project root (where source lives), then
    run the ACP `initialize` handshake.
@@ -190,8 +192,8 @@ Endpoints (all behind the console's existing `auth` middleware):
    `IntrospectionTools` surface (`inventory`/`get`/`get_okf_bundle`), because
    `IntrospectionTools` is mounted on the app's MCP surface via
    `app.service(IntrospectionTools)` — it is not a separate server.
-   *(Spec originally said "two MCP servers"; corrected to reflect what shipped
-   in Phase 1: one app mcp-http entry that carries both.)*
+   _(Spec originally said "two MCP servers"; corrected to reflect what shipped
+   in Phase 1: one app mcp-http entry that carries both.)_
 3. Inject the **OKF brief** (`GET /schema-explorer/api/okf`) as standing session
    context.
 4. Relay `session/prompt` → stream `session/update` back over SSE.
@@ -204,6 +206,7 @@ A dev-scoped MCP server wrapping the explorers' existing `@api` builders.
 **Phase 1 (read-only + redacted) — consolidated selector surface (CEO Tension B
 resolved):** three tools, not seven, so the surface is small, agent-legible, and
 doesn't duplicate the explorer models.
+
 - `inventory(kind?)` — unified node list across kinds (`binding` | `schema-entity`
   | `route` | `tool`); `kind` filters. Bindings are **metadata only** (key/scope/
   type/tags/source) via context-explorer's metadata-only builder — never a value.
@@ -223,7 +226,7 @@ through the **ACP coding agent editing source files** (its native capability,
 under its own permission model), not through framework-mediated MCP mutation.
 This dissolves the fake "permission UI gates MCP calls" problem (the ACP
 permission channel can't intercept MCP calls anyway) and the SSRF-shaped
-`call_route` shadow API. Intentional agent *actions* against the running app, if
+`call_route` shadow API. Intentional agent _actions_ against the running app, if
 ever wanted, go through the app's **existing business MCP** (its own auth), not a
 generic invoker. The audit trail for evolution is **git**, not the framework.
 
@@ -271,12 +274,17 @@ Extend `installConsole` options:
 installConsole(app, {
   // …existing…
   chat: {
-    enabled: true,        // gate the feature on (default: false)
-    cwd,                  // default: project root
-    introspection: true,  // default: true
-    agents: [             // OPTIONAL custom agents, added to the built-in catalog
-      {id: 'my-agent', name: 'My Agent',
-       detect: {bin: 'my-agent'}, command: ['my-agent', '--acp']},
+    enabled: true, // gate the feature on (default: false)
+    cwd, // default: project root
+    introspection: true, // default: true
+    agents: [
+      // OPTIONAL custom agents, added to the built-in catalog
+      {
+        id: 'my-agent',
+        name: 'My Agent',
+        detect: {bin: 'my-agent'},
+        command: ['my-agent', '--acp'],
+      },
     ],
     // business MCP (app's own mcp-http) auto-wired when mcp-http is installed
   },
@@ -290,6 +298,7 @@ bridge endpoints.
 ## Scope
 
 **Phase 1 — Introspection MCP (build first; standalone, read-only, edge-safe):**
+
 - Standalone introspection MCP package: read-only + redacted **selector surface**
   — `inventory(kind?)`, `get(selector)`, `get_okf_bundle()` — wrapping the
   explorers' existing builders. Bindings metadata-only. No value resolution, no
@@ -301,6 +310,7 @@ bridge endpoints.
   `get_binding`" assertion.
 
 **Phase 2 — ACP dock (build second; Node-only, on top of Phase 1):**
+
 - Agent discovery (built-in catalog + custom) + dock picker.
 - Shell dock slot + navigation-focus context.
 - ACP bridge over SSE+POST: spawn, initialize, prompt, streaming, permission
@@ -313,6 +323,7 @@ bridge endpoints.
 - On-ramp example booting the console with `chat.enabled`.
 
 **Tier 2 — later:**
+
 - Rich rendering: file-edit diffs; tool results that link back into the relevant
   console panel (a referenced entity → click into schema-explorer).
 - "Ask about this" affordances from each panel that seed a message into the dock.
@@ -323,6 +334,7 @@ bridge endpoints.
   existing `actors`/`messaging` event subscriptions rather than polling.
 
 **Tier 3 — later:**
+
 - Agent-driven console navigation (agent focuses a panel for you).
 - Multi-session / session history.
 
@@ -360,7 +372,7 @@ implementation; run a live `/design-review` once the dock is built.
 ## Developer experience (DX review, 2026-06-20)
 
 Persona: the **AgentBack app author** building their own service, using the
-console + agent to *see and evolve* it. TTHW that matters = **time-to-first-
+console + agent to _see and evolve_ it. TTHW that matters = **time-to-first-
 grounded-answer** (agent demonstrably knows the live app), target 2-5 min.
 
 - **F1 — One pinned reference adapter + doctor (Phase 2).** Support **one**
@@ -395,10 +407,10 @@ grounded-answer** (agent demonstrably knows the live app), target 2-5 min.
 ### Related / future (not this build)
 
 - **A2A agent-peer surface.** A separate, complementary direction: expose
-  AgentBack's *own* tools as an **A2A** (Agent2Agent) -callable peer so *other*
+  AgentBack's _own_ tools as an **A2A** (Agent2Agent) -callable peer so _other_
   agents can invoke this app (sibling to `mcp-host`/`mcp-connect`). Distinct from
-  console-chat, which is the **ACP** shape — *our console drives a local coding
-  agent*. A2A is *other agents call our app*. Noted because agent-native chose A2A
+  console-chat, which is the **ACP** shape — _our console drives a local coding
+  agent_. A2A is _other agents call our app_. Noted because agent-native chose A2A
   for its peer-coordination; it is not a reason to change console-chat's transport.
 
 ## Risks / open questions

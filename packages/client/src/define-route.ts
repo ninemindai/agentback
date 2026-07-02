@@ -125,8 +125,7 @@ export type StreamItem<S extends RouteSchemas> = S extends {
  * try/catch.
  */
 export type Result<T, E = ClientError> =
-  | {success: true; data: T}
-  | {success: false; error: E};
+  {success: true; data: T} | {success: false; error: E};
 
 export interface RouteCallOptions {
   /** Per-call extra headers, merged on top of defaults + schema headers. */

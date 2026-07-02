@@ -39,7 +39,7 @@ It **cannot** (framework invariants):
 The dock and all its bridge endpoints are **absent unless explicitly enabled**:
 
 ```ts
-chatConsoleFeature({enabled: true})
+chatConsoleFeature({enabled: true});
 ```
 
 With `enabled: false` (the default), `chatConsoleFeature().install()` returns
@@ -72,9 +72,10 @@ at two layers:
    Both the SSE stream (`GET /console/chat/stream`) and all `@api` POST/DELETE
    endpoints derive the principal from `req.auth` via the same
    `principalFromRequest` helper. Missing or empty `req.auth` → `401
-   unauthenticated`.
+unauthenticated`.
 
 The `principalFromRequest` helper accepts two `req.auth` shapes:
+
 - **`AuthInfo`** (from `@modelcontextprotocol/sdk`): reads `clientId`. This is
   what `frameworkAuthGuard` (from `@agentback/mcp-http`) produces.
 - **`UserProfile`** (from `@agentback/security`): reads `[securityId]`. Custom
@@ -227,20 +228,20 @@ surface. The read-only invariant is enforced in `IntrospectionTools` (see
 
 ## Summary checklist
 
-| Invariant | Enforced by |
-|-----------|-------------|
-| Off by default | `chatConsoleFeature({enabled: false})` (default) |
-| Dock hidden until agent discovered | Discovery probe in `feature.ts` |
-| All endpoints require auth | `auth` middleware + per-request `principalFromRequest` check |
-| No anonymous sessions | `401` when `req.auth` absent or yields no principal id |
-| `auth` middleware MUST set `req.auth` | `principalFromRequest` reads `AuthInfo.clientId` or `UserProfile[securityId]` |
-| Loopback-only without real auth | Operator configuration (dev loopback `auth` middleware) |
-| Permission prompts not bypassable | Bridge forces `default` mode via `session/set_mode`; dock UI (no config override) |
-| Permission scope is path + session only | Dock UI (no persistent grants) |
-| Node-host-only | `install()` no-ops (warning + return) on `listener:'native'` Edge hosts |
-| No orphaned subprocesses | `disposeAll()` on `app.onStop()` + creation-TTL + SSE-disconnect lease GC |
-| Introspection is read-only | `IntrospectionTools` (no invocation tools) |
-| ACP adapter-isolated | All ACP glue in `acp-session.ts` |
+| Invariant                               | Enforced by                                                                       |
+| --------------------------------------- | --------------------------------------------------------------------------------- |
+| Off by default                          | `chatConsoleFeature({enabled: false})` (default)                                  |
+| Dock hidden until agent discovered      | Discovery probe in `feature.ts`                                                   |
+| All endpoints require auth              | `auth` middleware + per-request `principalFromRequest` check                      |
+| No anonymous sessions                   | `401` when `req.auth` absent or yields no principal id                            |
+| `auth` middleware MUST set `req.auth`   | `principalFromRequest` reads `AuthInfo.clientId` or `UserProfile[securityId]`     |
+| Loopback-only without real auth         | Operator configuration (dev loopback `auth` middleware)                           |
+| Permission prompts not bypassable       | Bridge forces `default` mode via `session/set_mode`; dock UI (no config override) |
+| Permission scope is path + session only | Dock UI (no persistent grants)                                                    |
+| Node-host-only                          | `install()` no-ops (warning + return) on `listener:'native'` Edge hosts           |
+| No orphaned subprocesses                | `disposeAll()` on `app.onStop()` + creation-TTL + SSE-disconnect lease GC         |
+| Introspection is read-only              | `IntrospectionTools` (no invocation tools)                                        |
+| ACP adapter-isolated                    | All ACP glue in `acp-session.ts`                                                  |
 | Agent editing root is server-controlled | `CHAT_WORKSPACE_ROOT` (config.workspaceRoot); client POST body cannot override it |
 
 ---
@@ -250,20 +251,20 @@ surface. The read-only invariant is enforced in `IntrospectionTools` (see
 `chatConsoleFeature` accepts two distinct directory fields that are easy to
 conflate:
 
-| Field | Purpose | Who controls it |
-|-------|---------|----------------|
-| `cwd` | Adapter-discovery base dir — where `node_modules/.bin` is searched to find the `claude-agent-acp` bin at startup and at spawn | Server config |
-| `workspaceRoot` | The coding agent's working/editing root — the ACP `session/new` cwd, where the agent reads and edits source files | Server config |
+| Field           | Purpose                                                                                                                       | Who controls it |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| `cwd`           | Adapter-discovery base dir — where `node_modules/.bin` is searched to find the `claude-agent-acp` bin at startup and at spawn | Server config   |
+| `workspaceRoot` | The coding agent's working/editing root — the ACP `session/new` cwd, where the agent reads and edits source files             | Server config   |
 
 ### `workspaceRoot` — agent editing root (security boundary)
 
 `workspaceRoot` is passed directly to `AcpSession.open()` as the ACP
-`session/new` cwd.  It is the tree the agent can edit and is therefore a
-**security containment boundary**.  It is **server-controlled only** — the
+`session/new` cwd. It is the tree the agent can edit and is therefore a
+**security containment boundary**. It is **server-controlled only** — the
 client (browser dock's `POST /session` body) cannot set or override it.
 
 - **Default**: `process.cwd()` — the directory the server process was launched
-  from.  When launched from a monorepo root, this gives the agent visibility
+  from. When launched from a monorepo root, this gives the agent visibility
   into the full repo (app + framework packages it depends on).
 - **Standalone app**: set `workspaceRoot` to the app's own repo root so the
   agent is contained to the service's codebase.
@@ -273,17 +274,17 @@ client (browser dock's `POST /session` body) cannot set or override it.
 ```ts
 chatConsoleFeature({
   enabled: true,
-  cwd: import.meta.dirname,       // adapter-discovery: this example's dir
-  workspaceRoot: '/my/project',   // agent edits files here (server-controlled)
-})
+  cwd: import.meta.dirname, // adapter-discovery: this example's dir
+  workspaceRoot: '/my/project', // agent edits files here (server-controlled)
+});
 ```
 
 ### `cwd` — adapter-discovery base (spawn PATH)
 
 `cwd` is only used to augment `PATH` when probing for and spawning the ACP
-adapter binary.  When the adapter is a `devDependency` of your app package,
+adapter binary. When the adapter is a `devDependency` of your app package,
 set `cwd` to `import.meta.dirname` (the app's source dir) so pnpm's isolated
-`node_modules/.bin` is walked.  This has no effect on where the agent edits
+`node_modules/.bin` is walked. This has no effect on where the agent edits
 files.
 
 When both are needed, set them independently:
@@ -291,9 +292,9 @@ When both are needed, set them independently:
 ```ts
 chatConsoleFeature({
   enabled: true,
-  cwd: import.meta.dirname,         // adapter-discovery: finds the bin here
-  workspaceRoot: repoRoot,          // agent editing root: broader or narrower
-})
+  cwd: import.meta.dirname, // adapter-discovery: finds the bin here
+  workspaceRoot: repoRoot, // agent editing root: broader or narrower
+});
 ```
 
 ---
@@ -301,7 +302,7 @@ chatConsoleFeature({
 ## Installing the ACP adapter
 
 `claude-agent-acp` (from `@agentclientprotocol/claude-agent-acp`) is the
-blessed reference adapter.  You can install it in two ways:
+blessed reference adapter. You can install it in two ways:
 
 **Option A — Global install** (available to all projects on the machine):
 
@@ -321,7 +322,7 @@ Add it to your app's `package.json` `devDependencies`:
 }
 ```
 
-Then `pnpm install` (or `npm install`).  The discovery probe and the spawn
+Then `pnpm install` (or `npm install`). The discovery probe and the spawn
 both augment `PATH` with the local `node_modules/.bin` directories walked up
 from `process.cwd()`, so `claude-agent-acp` is found without a global install.
 pnpm may hoist the binary to the workspace root's `node_modules/.bin` or keep
@@ -329,7 +330,7 @@ it under the package's own `node_modules/.bin` — both are covered.
 
 **Doctor fix hint:** when the `GET /console/chat/agents` probe returns `{status:
 'missing'}`, the `fix` field contains `npm install -g
-@agentclientprotocol/claude-agent-acp`.  You can use the global form **or**
+@agentclientprotocol/claude-agent-acp`. You can use the global form **or**
 add the package as a devDependency in your project (Option B) — either makes
 the adapter discoverable at startup.
 
@@ -347,11 +348,11 @@ structure. No configuration: it is on whenever the console is mounted.
 
 How it works: the console serves a per-process boot id over a `GET
 <basePath>/live` SSE stream. The client keeps that stream open; when a
-reconnect returns a *new* boot id (the process restarted), the native explorers
+reconnect returns a _new_ boot id (the process restarted), the native explorers
 (`context-explorer`, `schema-explorer`) refetch in place — your current
 selection and filters are preserved — and the embedded panels (`rest-explorer`,
 `mcp-inspector`) remount with fresh data. A transient network blip reconnects to
-the *same* boot id and is ignored. A small "offline" indicator appears in the
+the _same_ boot id and is ignored. A small "offline" indicator appears in the
 sidebar while the stream is down. Node-host-only; SSE (no WebSocket).
 
 This closes the **evolve → see** loop in the agent console workflow: the coding

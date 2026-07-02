@@ -9,16 +9,16 @@ import {
   inject,
   Server,
 } from '@agentback/core';
-import {
-  HttpOptions,
-  HttpServer,
-  HttpsOptions,
-} from '@agentback/http-server';
+import {HttpOptions, HttpServer, HttpsOptions} from '@agentback/http-server';
 import {loggers} from '@agentback/common';
 import express from 'express';
 import {toExpressMiddleware} from '@agentback/middleware';
 import {BaseMiddlewareRegistry} from '@agentback/middleware';
-import {getMiddlewareContext, MiddlewareContext, type Request} from '@agentback/middleware';
+import {
+  getMiddlewareContext,
+  MiddlewareContext,
+  type Request,
+} from '@agentback/middleware';
 
 const log = loggers('loopback:middleware');
 

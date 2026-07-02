@@ -15,11 +15,11 @@ import {FILE_STORE} from '@agentback/files';
 
 const store = new S3FileStore({
   bucket: 'my-uploads',
-  keyPrefix: 'files/',                 // optional namespacing
+  keyPrefix: 'files/', // optional namespacing
   clientConfig: {region: 'us-east-1'}, // or pass an existing {client}
 });
 
-app.bind(FILE_STORE).to(store);        // the REST file recipe now uses S3
+app.bind(FILE_STORE).to(store); // the REST file recipe now uses S3
 ```
 
 - **`put`** streams the body to S3, recording `filename` in object metadata and

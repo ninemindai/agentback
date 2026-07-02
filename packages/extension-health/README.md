@@ -22,10 +22,7 @@ pnpm add @agentback/extension-health
 
 ```ts
 import {RestApplication} from '@agentback/rest';
-import {
-  installHealth,
-  registerHealthCheck,
-} from '@agentback/extension-health';
+import {installHealth, registerHealthCheck} from '@agentback/extension-health';
 import type {HealthCheck} from '@agentback/extension-health';
 
 const app = new RestApplication({rest: {port: 3000}});

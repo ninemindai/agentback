@@ -512,9 +512,7 @@ export class Context extends EventEmitter {
    */
   getScopedContext(
     scope:
-      | BindingScope.APPLICATION
-      | BindingScope.SERVER
-      | BindingScope.REQUEST,
+      BindingScope.APPLICATION | BindingScope.SERVER | BindingScope.REQUEST,
   ): Context | undefined {
     if (this.scope === scope) return this;
     if (this._parent) {

@@ -47,13 +47,7 @@ export {
 export type OpenApiSpec = OpenAPIObject;
 
 export type HttpVerb =
-  | 'get'
-  | 'post'
-  | 'put'
-  | 'patch'
-  | 'delete'
-  | 'head'
-  | 'options';
+  'get' | 'post' | 'put' | 'patch' | 'delete' | 'head' | 'options';
 
 export function isReferenceObject(
   obj: SchemaObject | ReferenceObject | undefined,

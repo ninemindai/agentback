@@ -46,8 +46,7 @@ export interface BindingFilter {
  * Select binding(s) by key or a filter function
  */
 export type BindingSelector<ValueType = unknown> =
-  | BindingAddress<ValueType>
-  | BindingFilter;
+  BindingAddress<ValueType> | BindingFilter;
 
 /**
  * Check if an object is a `BindingKey` by duck typing

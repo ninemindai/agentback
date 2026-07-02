@@ -52,7 +52,7 @@ export const pages = [
 The console's `esbuild` step bundles **one SPA** (`dist/client/main.js`) by
 following each tool's `./console` export to its client **source** (e.g.
 `@agentback/console-chat`'s `Dock.tsx`). So a panel or dock authored in another
-package is compiled *into the console's bundle*, not served from its own `dist/`.
+package is compiled _into the console's bundle_, not served from its own `dist/`.
 
 Consequence: **after editing another package's client code (a `ConsolePage`
 component, the chat `Dock`, etc.), you must rebuild `@agentback/console`** — not
@@ -70,7 +70,7 @@ Two related gotchas when verifying a change landed:
 - The React/JSX (aria-labels, button text) lives in the separate
   `/console/assets/main.js` bundle — **not** in the HTML returned by
   `curl /console`. Grep the bundle, not the shell HTML.
-- Component **CSS** and the `window.__CONSOLE__` config *are* inlined in the
+- Component **CSS** and the `window.__CONSOLE__` config _are_ inlined in the
   shell HTML (the theme CSS is server-injected via `THEME_CSS`), so those reflect
   a server restart without a console rebuild — which is why CSS-only and
   config-only changes can appear to work while a JSX edit silently doesn't.
@@ -127,9 +127,9 @@ structure. No configuration: it is on whenever the console is mounted.
 
 How it works: the console serves a per-process boot id over a `GET
 <basePath>/live` SSE stream. The client keeps that stream open; when a
-reconnect returns a *new* boot id (the process restarted), the native explorers
+reconnect returns a _new_ boot id (the process restarted), the native explorers
 (`context-explorer`, `schema-explorer`) refetch in place — your current
 selection and filters are preserved — and the embedded panels (`rest-explorer`,
 `mcp-inspector`) remount with fresh data. A transient network blip reconnects to
-the *same* boot id and is ignored. A small "offline" indicator appears in the
+the _same_ boot id and is ignored. A small "offline" indicator appears in the
 sidebar while the stream is down. Node-host-only; SSE (no WebSocket).

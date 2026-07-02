@@ -28,6 +28,7 @@
 ## File Structure
 
 **New files:**
+
 - `packages/create-agentback/src/capabilities.ts` — the registry + `applyCapability`/anchor helpers.
 - `packages/create-agentback/src/__tests__/capabilities.test.ts` — capability + host-option unit tests.
 - `packages/create-agentback/templates/_capabilities/drizzle/_shared/src/db/schema.ts`
@@ -40,6 +41,7 @@
 - `packages/create-agentback/templates/_capabilities/auth/_shared/.env.example`
 
 **Modified files:**
+
 - `packages/create-agentback/src/scaffold.ts` — registry-driven apply, host options, anchor strip; `--console` folded in.
 - `packages/create-agentback/src/cli.ts` — new flags + interactive mode.
 - `packages/create-agentback/templates/{hybrid,rest,mcp}/src/application.ts` — anchor comments.
@@ -52,6 +54,7 @@
 ## Task 1: Add wiring anchors to the base templates
 
 **Files:**
+
 - Modify: `packages/create-agentback/templates/rest/src/application.ts`
 - Modify: `packages/create-agentback/templates/hybrid/src/application.ts`
 - Modify: `packages/create-agentback/templates/mcp/src/application.ts`
@@ -150,6 +153,7 @@ git commit -m "feat(create-agentback): add wiring anchors to base templates"
 ## Task 2: Anchor fill/strip helpers + host options in `scaffold()`
 
 **Files:**
+
 - Modify: `packages/create-agentback/src/scaffold.ts`
 - Test: `packages/create-agentback/src/__tests__/capabilities.test.ts` (create)
 
@@ -198,7 +202,9 @@ describe('host options + anchor stripping', () => {
       host: {port: 8080, host: '0.0.0.0', basePath: '/api'},
     });
     const appTs = appFile(dir, 'src/application.ts');
-    expect(appTs).toContain("rest: {port: 8080, host: '0.0.0.0', basePath: '/api'}");
+    expect(appTs).toContain(
+      "rest: {port: 8080, host: '0.0.0.0', basePath: '/api'}",
+    );
     expect(appTs).not.toContain('{{agentback:');
   });
 
@@ -216,6 +222,7 @@ describe('host options + anchor stripping', () => {
 pnpm -F create-agentback build
 pnpm exec vitest run packages/create-agentback/dist/__tests__/capabilities.test.js
 ```
+
 Expected: FAIL — `super({})` still contains the anchor (`{{agentback:rest-config}}`) and `host` is not a known option.
 
 - [ ] **Step 3: Add host typing + anchor helpers to `scaffold.ts`**
@@ -263,7 +270,11 @@ function fillAnchor(
     return text.replace(re, insert);
   }
   const re = new RegExp(`([ \\t]*)// \\{\\{agentback:${tag}\\}\\}`);
-  return text.replace(re, (_m, indent: string) => `${indent}${insert}\n${indent}// {{agentback:${tag}}}`);
+  return text.replace(
+    re,
+    (_m, indent: string) =>
+      `${indent}${insert}\n${indent}// {{agentback:${tag}}}`,
+  );
 }
 
 /** Remove every remaining `{{agentback:*}}` anchor (line + inline forms). */
@@ -281,21 +292,22 @@ function stripAnchors(text: string): string {
 In `scaffold()`, after the `--console`/`main.console.ts` handling block and BEFORE the `{{name}}`/`{{version}}` substitution loop, insert:
 
 ```ts
-  // Host options → RestApplication config. Rejected for the stdio mcp template.
-  if (options.host && !REST_TEMPLATES.includes(template)) {
-    throw new Error(
-      `host options are not supported for the '${template}' template; it has ` +
-        `no HTTP server. Use --template ${REST_TEMPLATES.join(' or ')}.`,
-    );
-  }
-  const appTsPath = path.join(dir, 'src', 'application.ts');
-  if (existsSync(appTsPath)) {
-    let appTs = readFileSync(appTsPath, 'utf8');
-    const restConfig = renderRestConfig(options.host);
-    if (restConfig) appTs = fillAnchor(appTs, 'rest-config', restConfig, 'inline');
-    appTs = stripAnchors(appTs);
-    writeFileSync(appTsPath, appTs);
-  }
+// Host options → RestApplication config. Rejected for the stdio mcp template.
+if (options.host && !REST_TEMPLATES.includes(template)) {
+  throw new Error(
+    `host options are not supported for the '${template}' template; it has ` +
+      `no HTTP server. Use --template ${REST_TEMPLATES.join(' or ')}.`,
+  );
+}
+const appTsPath = path.join(dir, 'src', 'application.ts');
+if (existsSync(appTsPath)) {
+  let appTs = readFileSync(appTsPath, 'utf8');
+  const restConfig = renderRestConfig(options.host);
+  if (restConfig)
+    appTs = fillAnchor(appTs, 'rest-config', restConfig, 'inline');
+  appTs = stripAnchors(appTs);
+  writeFileSync(appTsPath, appTs);
+}
 ```
 
 - [ ] **Step 5: Run tests to verify they pass**
@@ -304,6 +316,7 @@ In `scaffold()`, after the `--console`/`main.console.ts` handling block and BEFO
 pnpm -F create-agentback build
 pnpm exec vitest run packages/create-agentback/dist/__tests__/capabilities.test.js
 ```
+
 Expected: PASS (3 tests).
 
 - [ ] **Step 6: Run the existing scaffold test suite (regression)**
@@ -311,6 +324,7 @@ Expected: PASS (3 tests).
 ```bash
 pnpm exec vitest run packages/create-agentback/dist/__tests__
 ```
+
 Expected: PASS — existing template/scaffold tests unaffected (base scaffolds now strip anchors transparently).
 
 - [ ] **Step 7: Commit**
@@ -325,6 +339,7 @@ git commit -m "feat(create-agentback): anchor fill/strip helpers + --port/--host
 ## Task 3: Capability registry + refactor `--console` into it
 
 **Files:**
+
 - Create: `packages/create-agentback/src/capabilities.ts`
 - Modify: `packages/create-agentback/src/scaffold.ts`
 - Test: `packages/create-agentback/src/__tests__/capabilities.test.ts`
@@ -353,7 +368,9 @@ describe('capability registry', () => {
       cwd,
       capabilities: ['console'],
     });
-    const pkg = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    const pkg = JSON.parse(
+      readFileSync(path.join(dir, 'package.json'), 'utf8'),
+    );
     expect(pkg.dependencies['@agentback/console']).toBeDefined();
     expect(pkg.dependencies['@agentback/rest-explorer']).toBeUndefined();
   });
@@ -371,6 +388,7 @@ describe('capability registry', () => {
 ```bash
 pnpm -F create-agentback build
 ```
+
 Expected: FAIL — `capabilities.ts` does not exist (build error / import failure).
 
 - [ ] **Step 3: Create `packages/create-agentback/src/capabilities.ts`**
@@ -436,7 +454,12 @@ function mergeDeps(dir: string, deps: Record<string, string>): void {
 }
 
 /** Copy `_capabilities/<name>/<sub>` into the app dir if it exists. */
-function copyOverlay(capRoot: string, name: string, sub: string, dir: string): void {
+function copyOverlay(
+  capRoot: string,
+  name: string,
+  sub: string,
+  dir: string,
+): void {
   const src = path.join(capRoot, name, sub);
   if (existsSync(src)) cpSync(src, dir, {recursive: true});
 }
@@ -475,18 +498,25 @@ export const CAPABILITIES: readonly Capability[] = [
     },
     wire: {
       rest: {
-        imports: "import {UsersController} from './controllers/users.controller.js';\nimport {USER_STORE, InMemoryUserStore} from './stores/user-store.js';\nimport {BindingScope} from '@agentback/core';",
-        components: 'this.bind(USER_STORE).toClass(InMemoryUserStore).inScope(BindingScope.SINGLETON);',
+        imports:
+          "import {UsersController} from './controllers/users.controller.js';\nimport {USER_STORE, InMemoryUserStore} from './stores/user-store.js';\nimport {BindingScope} from '@agentback/core';",
+        components:
+          'this.bind(USER_STORE).toClass(InMemoryUserStore).inScope(BindingScope.SINGLETON);',
         registrations: 'this.restController(UsersController);',
       },
       hybrid: {
-        imports: "import {UsersController} from './controllers/users.controller.js';\nimport {USER_STORE, InMemoryUserStore} from './stores/user-store.js';\nimport {BindingScope} from '@agentback/core';",
-        components: 'this.bind(USER_STORE).toClass(InMemoryUserStore).inScope(BindingScope.SINGLETON);',
-        registrations: 'this.restController(UsersController);\n    this.service(UsersController);',
+        imports:
+          "import {UsersController} from './controllers/users.controller.js';\nimport {USER_STORE, InMemoryUserStore} from './stores/user-store.js';\nimport {BindingScope} from '@agentback/core';",
+        components:
+          'this.bind(USER_STORE).toClass(InMemoryUserStore).inScope(BindingScope.SINGLETON);',
+        registrations:
+          'this.restController(UsersController);\n    this.service(UsersController);',
       },
       mcp: {
-        imports: "import {UsersTools} from './tools/users.tools.js';\nimport {USER_STORE, InMemoryUserStore} from './stores/user-store.js';\nimport {BindingScope} from '@agentback/core';",
-        components: 'this.bind(USER_STORE).toClass(InMemoryUserStore).inScope(BindingScope.SINGLETON);',
+        imports:
+          "import {UsersTools} from './tools/users.tools.js';\nimport {USER_STORE, InMemoryUserStore} from './stores/user-store.js';\nimport {BindingScope} from '@agentback/core';",
+        components:
+          'this.bind(USER_STORE).toClass(InMemoryUserStore).inScope(BindingScope.SINGLETON);',
         registrations: 'this.service(UsersTools);',
       },
     },
@@ -502,13 +532,17 @@ export const CAPABILITIES: readonly Capability[] = [
     },
     wire: {
       rest: {
-        imports: "import {AuthController} from './controllers/auth.controller.js';\nimport {JWTAuthenticationComponent, JWTBindings} from '@agentback/authentication-jwt';",
-        components: "this.bind(JWTBindings.SECRET).to(process.env.JWT_SECRET ?? 'dev-secret-change-me');\n    this.bind(JWTBindings.EXPIRES_IN).to('1h');\n    this.component(JWTAuthenticationComponent);",
+        imports:
+          "import {AuthController} from './controllers/auth.controller.js';\nimport {JWTAuthenticationComponent, JWTBindings} from '@agentback/authentication-jwt';",
+        components:
+          "this.bind(JWTBindings.SECRET).to(process.env.JWT_SECRET ?? 'dev-secret-change-me');\n    this.bind(JWTBindings.EXPIRES_IN).to('1h');\n    this.component(JWTAuthenticationComponent);",
         registrations: 'this.restController(AuthController);',
       },
       hybrid: {
-        imports: "import {AuthController} from './controllers/auth.controller.js';\nimport {JWTAuthenticationComponent, JWTBindings} from '@agentback/authentication-jwt';",
-        components: "this.bind(JWTBindings.SECRET).to(process.env.JWT_SECRET ?? 'dev-secret-change-me');\n    this.bind(JWTBindings.EXPIRES_IN).to('1h');\n    this.component(JWTAuthenticationComponent);",
+        imports:
+          "import {AuthController} from './controllers/auth.controller.js';\nimport {JWTAuthenticationComponent, JWTBindings} from '@agentback/authentication-jwt';",
+        components:
+          "this.bind(JWTBindings.SECRET).to(process.env.JWT_SECRET ?? 'dev-secret-change-me');\n    this.bind(JWTBindings.EXPIRES_IN).to('1h');\n    this.component(JWTAuthenticationComponent);",
         registrations: 'this.restController(AuthController);',
       },
     },
@@ -516,7 +550,9 @@ export const CAPABILITIES: readonly Capability[] = [
 ];
 
 export function capabilityNames(template: TemplateName): string[] {
-  return CAPABILITIES.filter(c => c.templates.includes(template)).map(c => c.name);
+  return CAPABILITIES.filter(c => c.templates.includes(template)).map(
+    c => c.name,
+  );
 }
 
 export function findCapability(name: string): Capability | undefined {
@@ -554,54 +590,62 @@ export function applyCapability(
 In `scaffold.ts`:
 
 1. Add `capabilities?: string[]` to `ScaffoldOptions` (after `host?`):
+
 ```ts
   /** Opt-in capability add-ons (e.g. 'drizzle', 'auth', 'console'). */
   capabilities?: string[];
 ```
+
 2. Add the import at top:
+
 ```ts
 import {applyCapability, capabilitiesRoot} from './capabilities.js';
 ```
+
 3. Replace the existing `main.console.ts` / `retargetDepsToConsole` / `retargetReadmeToConsole` block with a normalization that folds `console: true` into the capability list, then applies all capabilities. Insert this BEFORE the host-options block from Task 2:
 
 ```ts
-  // Normalize the legacy `console: true` flag into the capability list.
-  const caps = [...(options.capabilities ?? [])];
-  if (options.console && !caps.includes('console')) caps.push('console');
+// Normalize the legacy `console: true` flag into the capability list.
+const caps = [...(options.capabilities ?? [])];
+if (options.console && !caps.includes('console')) caps.push('console');
 
-  // Console-capable templates ship a `src/main.console.ts` overlay. Swap it in
-  // when console is selected; otherwise drop it.
-  const consoleEntry = path.join(dir, 'src', 'main.console.ts');
-  if (existsSync(consoleEntry)) {
-    if (caps.includes('console')) {
-      renameSync(consoleEntry, path.join(dir, 'src', 'main.ts'));
-    } else {
-      rmSync(consoleEntry);
-    }
+// Console-capable templates ship a `src/main.console.ts` overlay. Swap it in
+// when console is selected; otherwise drop it.
+const consoleEntry = path.join(dir, 'src', 'main.console.ts');
+if (existsSync(consoleEntry)) {
+  if (caps.includes('console')) {
+    renameSync(consoleEntry, path.join(dir, 'src', 'main.ts'));
+  } else {
+    rmSync(consoleEntry);
   }
+}
 
-  // Apply each capability: validate, merge deps, copy overlays, collect wiring.
-  const wirings = caps.map(name =>
-    applyCapability(name, {dir, template, capRoot: capabilitiesRoot()}),
-  );
+// Apply each capability: validate, merge deps, copy overlays, collect wiring.
+const wirings = caps.map(name =>
+  applyCapability(name, {dir, template, capRoot: capabilitiesRoot()}),
+);
 ```
+
 4. Update the host-options/anchor block (from Task 2) to also inject capability wiring. Replace the `if (existsSync(appTsPath))` body with:
 
 ```ts
-  if (existsSync(appTsPath)) {
-    let appTs = readFileSync(appTsPath, 'utf8');
-    const restConfig = renderRestConfig(options.host);
-    if (restConfig) appTs = fillAnchor(appTs, 'rest-config', restConfig, 'inline');
-    for (const w of wirings) {
-      if (!w) continue;
-      if (w.imports) appTs = fillAnchor(appTs, 'imports', w.imports);
-      if (w.components) appTs = fillAnchor(appTs, 'components', w.components);
-      if (w.registrations) appTs = fillAnchor(appTs, 'registrations', w.registrations);
-    }
-    appTs = stripAnchors(appTs);
-    writeFileSync(appTsPath, appTs);
+if (existsSync(appTsPath)) {
+  let appTs = readFileSync(appTsPath, 'utf8');
+  const restConfig = renderRestConfig(options.host);
+  if (restConfig)
+    appTs = fillAnchor(appTs, 'rest-config', restConfig, 'inline');
+  for (const w of wirings) {
+    if (!w) continue;
+    if (w.imports) appTs = fillAnchor(appTs, 'imports', w.imports);
+    if (w.components) appTs = fillAnchor(appTs, 'components', w.components);
+    if (w.registrations)
+      appTs = fillAnchor(appTs, 'registrations', w.registrations);
   }
+  appTs = stripAnchors(appTs);
+  writeFileSync(appTsPath, appTs);
+}
 ```
+
 5. Delete the now-unused `retargetDepsToConsole` and `retargetReadmeToConsole` functions and the `CONSOLE_TEMPLATES` export IF nothing else references them. Keep `CONSOLE_TEMPLATES` only if `cli.ts` still imports it (Task 5 updates cli.ts); simplest path: leave `CONSOLE_TEMPLATES` exported and have the console capability's `templates` reference it. To avoid churn, set in `capabilities.ts`: `templates: ['hybrid', 'rest']` literal (already done above) and remove `CONSOLE_TEMPLATES` from `scaffold.ts` after confirming Task 5 drops its cli.ts usage.
 
 > Note: the `imports` anchor sits at the very top of the file (line 1). `fillAnchor` re-emits it, so multiple capabilities stack their imports there; `stripAnchors` removes the final leftover.
@@ -612,6 +656,7 @@ import {applyCapability, capabilitiesRoot} from './capabilities.js';
 pnpm -F create-agentback build
 pnpm exec vitest run packages/create-agentback/dist/__tests__/capabilities.test.js
 ```
+
 Expected: PASS (all registry + console tests).
 
 - [ ] **Step 6: Commit**
@@ -626,6 +671,7 @@ git commit -m "feat(create-agentback): capability registry; refactor --console i
 ## Task 4: Drizzle capability overlay files
 
 **Files:**
+
 - Create: `templates/_capabilities/drizzle/_shared/src/db/schema.ts`
 - Create: `templates/_capabilities/drizzle/_shared/src/stores/user-store.ts`
 - Create: `templates/_capabilities/drizzle/_shared/.env.example`
@@ -647,11 +693,15 @@ describe('drizzle capability', () => {
       cwd,
       capabilities: ['drizzle'],
     });
-    const pkg = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    const pkg = JSON.parse(
+      readFileSync(path.join(dir, 'package.json'), 'utf8'),
+    );
     expect(pkg.dependencies['@agentback/drizzle']).toBeDefined();
     expect(pkg.dependencies['drizzle-orm']).toBe('^0.45.2');
     expect(appFile(dir, 'src/db/schema.ts')).toContain('pgTable');
-    expect(appFile(dir, 'src/controllers/users.controller.ts')).toContain('@mcpServer');
+    expect(appFile(dir, 'src/controllers/users.controller.ts')).toContain(
+      '@mcpServer',
+    );
     const appTs = appFile(dir, 'src/application.ts');
     expect(appTs).toContain('this.restController(UsersController)');
     expect(appTs).toContain('this.service(UsersController)');
@@ -680,6 +730,7 @@ describe('drizzle capability', () => {
 pnpm -F create-agentback build
 pnpm exec vitest run packages/create-agentback/dist/__tests__/capabilities.test.js
 ```
+
 Expected: FAIL — overlay files missing (`ENOENT` on `src/db/schema.ts`).
 
 - [ ] **Step 3: Create `_shared/src/db/schema.ts`**
@@ -842,6 +893,7 @@ export class UsersTools {
 pnpm -F create-agentback build
 pnpm exec vitest run packages/create-agentback/dist/__tests__/capabilities.test.js
 ```
+
 Expected: PASS (drizzle tests).
 
 - [ ] **Step 10: Commit**
@@ -856,6 +908,7 @@ git commit -m "feat(create-agentback): drizzle capability overlay (table + store
 ## Task 5: Auth (JWT) capability overlay files
 
 **Files:**
+
 - Create: `templates/_capabilities/auth/_shared/src/controllers/auth.controller.ts`
 - Create: `templates/_capabilities/auth/_shared/.env.example`
 - Test: `packages/create-agentback/src/__tests__/capabilities.test.ts`
@@ -871,10 +924,14 @@ describe('auth capability', () => {
       cwd,
       capabilities: ['auth'],
     });
-    const pkg = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    const pkg = JSON.parse(
+      readFileSync(path.join(dir, 'package.json'), 'utf8'),
+    );
     expect(pkg.dependencies['@agentback/authentication-jwt']).toBeDefined();
     expect(pkg.dependencies['jsonwebtoken']).toBe('^9.0.2');
-    expect(appFile(dir, 'src/controllers/auth.controller.ts')).toContain('@authenticate');
+    expect(appFile(dir, 'src/controllers/auth.controller.ts')).toContain(
+      '@authenticate',
+    );
     const appTs = appFile(dir, 'src/application.ts');
     expect(appTs).toContain('JWTAuthenticationComponent');
     expect(appTs).toContain('this.restController(AuthController)');
@@ -895,6 +952,7 @@ describe('auth capability', () => {
 pnpm -F create-agentback build
 pnpm exec vitest run packages/create-agentback/dist/__tests__/capabilities.test.js
 ```
+
 Expected: FAIL — `auth.controller.ts` missing.
 
 - [ ] **Step 3: Create `auth/_shared/src/controllers/auth.controller.ts`**
@@ -907,7 +965,10 @@ import {authenticate} from '@agentback/authentication';
 import {JWTBindings, JWTService} from '@agentback/authentication-jwt';
 import {securityId, type UserProfile} from '@agentback/security';
 
-const LoginIn = z.object({username: z.string().min(1), password: z.string().min(1)});
+const LoginIn = z.object({
+  username: z.string().min(1),
+  password: z.string().min(1),
+});
 const TokenOut = z.object({token: z.string()});
 const MeOut = z.object({id: z.string(), name: z.string().optional()});
 
@@ -917,7 +978,9 @@ export class AuthController {
   constructor(@inject(JWTBindings.SERVICE) private jwt: JWTService) {}
 
   @post('/auth/login', {body: LoginIn, response: TokenOut})
-  async login(input: {body: z.infer<typeof LoginIn>}): Promise<z.infer<typeof TokenOut>> {
+  async login(input: {
+    body: z.infer<typeof LoginIn>;
+  }): Promise<z.infer<typeof TokenOut>> {
     // DEMO ONLY: accept any non-empty credentials. Verify real credentials here.
     const profile: UserProfile = {
       [securityId]: `user-${input.body.username}`,
@@ -951,6 +1014,7 @@ JWT_SECRET=dev-secret-change-me
 pnpm -F create-agentback build
 pnpm exec vitest run packages/create-agentback/dist/__tests__/capabilities.test.js
 ```
+
 Expected: PASS (auth tests). The full compile-against-framework check happens in Task 7 (validate-templates). If `securityId` injection doesn't compile there, fix `me()` per the Step 3 note and re-run.
 
 - [ ] **Step 6: Commit**
@@ -965,6 +1029,7 @@ git commit -m "feat(create-agentback): auth (jwt) capability overlay (login + pr
 ## Task 6: CLI flags + interactive mode (`@clack/prompts`)
 
 **Files:**
+
 - Modify: `packages/create-agentback/package.json`
 - Modify: `packages/create-agentback/src/cli.ts`
 
@@ -983,6 +1048,7 @@ Then install:
 ```bash
 pnpm install
 ```
+
 Expected: resolves cleanly. If pnpm 11 rejects it for the supply-chain age policy (`ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`), pin one patch older and note why in the commit.
 
 - [ ] **Step 2: Rewrite `cli.ts` with new flags + interactive mode**
@@ -1051,7 +1117,8 @@ for (let i = 0; i < args.length; i++) {
   } else if (a === '--with') {
     for (const c of (args[++i] ?? '').split(',').filter(Boolean)) caps.add(c);
   } else if (a.startsWith('--with=')) {
-    for (const c of a.slice('--with='.length).split(',').filter(Boolean)) caps.add(c);
+    for (const c of a.slice('--with='.length).split(',').filter(Boolean))
+      caps.add(c);
   } else if (a === '--drizzle') {
     caps.add('drizzle');
   } else if (a === '--auth') {
@@ -1114,7 +1181,8 @@ async function interactive(): Promise<void> {
     const iPort = await p.text({
       message: 'Port (blank for default 3000)',
       placeholder: '3000',
-      validate: v => (!v || /^\d+$/.test(v) ? undefined : 'Port must be a number'),
+      validate: v =>
+        !v || /^\d+$/.test(v) ? undefined : 'Port must be a number',
     });
     if (p.isCancel(iPort)) return cancel();
     if (iPort) host.port = Number(iPort);
@@ -1155,10 +1223,14 @@ async function run(): Promise<void> {
     console.log('Next steps:');
     console.log(`  cd ${dirName}`);
     console.log(`  ${pm} install`);
-    console.log(`  ${runCmd} build && ${pm === 'npm' ? 'npm start' : `${pm} start`}`);
+    console.log(
+      `  ${runCmd} build && ${pm === 'npm' ? 'npm start' : `${pm} start`}`,
+    );
     console.log(`  ${pm} test\n`);
     if (caps.has('drizzle')) {
-      console.log('Drizzle: copy .env.example → .env and set DATABASE_URL for Postgres.\n');
+      console.log(
+        'Drizzle: copy .env.example → .env and set DATABASE_URL for Postgres.\n',
+      );
     }
     if (caps.has('auth')) {
       console.log('Auth: set JWT_SECRET in .env before deploying.\n');
@@ -1178,6 +1250,7 @@ pnpm -F create-agentback build
 node packages/create-agentback/dist/cli.js --help
 node packages/create-agentback/dist/cli.js smoke-app --template rest --drizzle --port 8080 < /dev/null
 ```
+
 Expected: help shows both npm/pnpm forms + new options; the second command scaffolds `smoke-app/` (note `< /dev/null` makes stdin non-TTY so interactive mode is skipped). Then clean up:
 
 ```bash
@@ -1189,6 +1262,7 @@ rm -rf smoke-app
 ```bash
 pnpm exec vitest run packages/create-agentback/dist/__tests__
 ```
+
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -1203,6 +1277,7 @@ git commit -m "feat(create-agentback): capability flags + @clack/prompts interac
 ## Task 7: Extend validate-templates with a capability combo + docs
 
 **Files:**
+
 - Modify: `scripts/validate-templates.mjs`
 - Modify: `packages/create-agentback/README.md` (if present)
 
@@ -1211,6 +1286,7 @@ git commit -m "feat(create-agentback): capability flags + @clack/prompts interac
 ```bash
 sed -n '25,120p' scripts/validate-templates.mjs
 ```
+
 Note how `apps` is built and how each app is scaffolded + deps rewritten to `workspace:*`. The combo app must rewrite the NEW capability deps (`drizzle-orm`, `drizzle-zod`, `jsonwebtoken`) to real versions too — those are public npm deps, not `@agentback/*`, so the existing `workspace:*` rewrite (which only touches `@agentback/*`) already leaves them intact. Confirm the rewrite only retargets `@agentback/*`.
 
 - [ ] **Step 2: Add a combo app to the matrix**
@@ -1239,6 +1315,7 @@ Then find the scaffold invocation (the `run(...)` call that runs the CLI) and ap
 ```js
 run('node', [CLI, app.name, '--template', app.template], ...);
 ```
+
 change it to:
 
 ```js
@@ -1251,6 +1328,7 @@ run('node', [CLI, app.name, '--template', app.template, ...app.extraArgs], ...);
 pnpm build
 node scripts/validate-templates.mjs
 ```
+
 Expected: all base templates + the `tmpl-check-caps` combo scaffold, build, and test green. If the auth `me()` route fails to compile, fix it per the Task 5 / Step 3 note and re-run. Script self-cleans temp apps + restores the lockfile.
 
 - [ ] **Step 4: Document the new flags in the README**
@@ -1267,11 +1345,11 @@ npm create agentback my-api -- --template hybrid --drizzle --auth
 pnpm create agentback my-api --template hybrid --drizzle --auth
 ```
 
-| Flag        | Templates      | Adds                                                        |
-| ----------- | -------------- | ---------------------------------------------------------- |
-| `--drizzle` | all            | Example `users` table + store + REST route / MCP tool      |
-| `--auth`    | rest, hybrid   | JWT login + a `@authenticate('jwt')`-protected route       |
-| `--console` | rest, hybrid   | Unified dev console at `/console`                          |
+| Flag        | Templates    | Adds                                                  |
+| ----------- | ------------ | ----------------------------------------------------- |
+| `--drizzle` | all          | Example `users` table + store + REST route / MCP tool |
+| `--auth`    | rest, hybrid | JWT login + a `@authenticate('jwt')`-protected route  |
+| `--console` | rest, hybrid | Unified dev console at `/console`                     |
 
 ## HTTP host options (rest, hybrid)
 
@@ -1306,6 +1384,7 @@ git commit -m "test(create-agentback): validate drizzle+auth combo; document cap
 ```bash
 pnpm verify
 ```
+
 Expected: `build` + `typecheck:client` + `test` + `validate-templates` all green. (Note: `pnpm verify` includes `validate-templates`, so it re-runs Task 7's combo.)
 
 - [ ] **Step 2: Lint**
@@ -1313,6 +1392,7 @@ Expected: `build` + `typecheck:client` + `test` + `validate-templates` all green
 ```bash
 pnpm lint
 ```
+
 Expected: clean. Run `pnpm lint:fix` if prettier/eslint flags formatting in the new files.
 
 - [ ] **Step 3: Final commit (only if lint:fix changed anything)**

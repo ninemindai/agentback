@@ -11,10 +11,7 @@
 // because drizzle-zod is an optional peer dep).
 
 import {pgTable, serial, text, timestamp} from 'drizzle-orm/pg-core';
-import {
-  createInsertSchema,
-  createSelectSchema,
-} from '@agentback/drizzle/zod';
+import {createInsertSchema, createSelectSchema} from '@agentback/drizzle/zod';
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
