@@ -38,6 +38,7 @@ tracked in the doc headers.
 | --- | ------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | E-1 | [Chat channels](chat-channels.md)     | `@agentback/chat` — chat platforms (Slack/Discord/…) as a third inbound surface via Vercel's Chat SDK |
 | E-2 | [Circuit breaker](circuit-breaker.md) | `@agentback/extension-circuit-breaker` — outbound fault tolerance; the dual of `extension-rate-limit` |
+| E-3 | [Agent harness](harness.md)           | `@agentback/harness` — opt-in AI SDK agent/harness wiring; projects `@tool` classes as host tools     |
 
 ## Sequencing constraints (from eng review)
 
