@@ -22,4 +22,14 @@ export namespace MeteringBindings {
   export const TRACE_ID_PROVIDER = BindingKey.create<() => string | undefined>(
     'metering.traceIdProvider',
   );
+  /**
+   * Optional correlation id for the current logical operation (e.g. an agent
+   * turn id bound into a turn-scoped context by `@agentback/agents`). The MCP
+   * dispatch hook reads it through the context chain at record time and
+   * stamps `meta.correlationId`, so one turn's `'agent'` event and its N
+   * `'mcp'` tool events share a join key.
+   */
+  export const CORRELATION_ID = BindingKey.create<string>(
+    'metering.correlationId',
+  );
 }

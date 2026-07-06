@@ -42,6 +42,7 @@
     {"path": "packages/files-s3"},
     {"path": "packages/files-sdk"},
     {"path": "packages/metering"},
+    {"path": "packages/agents"},
     {"path": "packages/payments"},
     {"path": "packages/messaging-bullmq"},
     {"path": "packages/drizzle"},
@@ -66,6 +67,7 @@
     {"path": "examples/hello-chat"},
     {"path": "examples/hello-uploads"},
     {"path": "examples/hello-mcp-apps"},
-    {"path": "examples/hello-plugin"}
+    {"path": "examples/hello-plugin"},
+    {"path": "examples/hello-agents"}
   ]
 }

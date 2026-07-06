@@ -127,4 +127,31 @@ describe('createMeteringMcpHook', () => {
       id: '$anonymous',
     });
   });
+
+  it('falls back to the pipeline-bound principal (in-process callTool)', async () => {
+    const {app, sink} = givenApp();
+    const hook = createMeteringMcpHook(app);
+    const info = mcpInfo(app); // no REQUEST_AUTH
+    await hook(info, async () => {
+      // bindRequestPrincipals binds USER inside the wrapped pipeline — the
+      // explicit callTool {principal} path lands here.
+      info.ctx.bind(SecurityBindings.USER).to({[securityId]: 'agent-user'});
+      return 'x';
+    });
+    expect(sink.all()[0].principal).toEqual({kind: 'user', id: 'agent-user'});
+  });
+
+  // REGRESSION (test 8 in the plan matrix): transport auth still wins and
+  // the fallback never fires when REQUEST_AUTH is present.
+  it('REGRESSION: REQUEST_AUTH attribution is unchanged by the fallback', async () => {
+    const {app, sink} = givenApp();
+    const hook = createMeteringMcpHook(app);
+    const info = mcpInfo(app, 'svc-1');
+    await hook(info, async () => {
+      // Even if the pipeline binds a different USER, transport auth wins.
+      info.ctx.bind(SecurityBindings.USER).to({[securityId]: 'someone-else'});
+      return 'x';
+    });
+    expect(sink.all()[0].principal).toEqual({kind: 'client', id: 'svc-1'});
+  });
 });

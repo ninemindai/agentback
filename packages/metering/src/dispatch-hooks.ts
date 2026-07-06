@@ -54,7 +54,10 @@ export function createMeteringRestHook(appCtx: Context): RestDispatchHook {
  * MCP dispatch hook: emits one usage event per tool call. Replaces the
  * former `MeteredMCPServer` subclass. The principal comes from the
  * per-request `MCPBindings.REQUEST_AUTH` (deposited by the mcp-http
- * framework-auth guard / OAuth verifier).
+ * framework-auth guard / OAuth verifier); when no transport auth is bound
+ * (an in-process `callTool` — e.g. an `@agentback/agents` host-tool call),
+ * it falls back to the principal the pipeline bound into the request
+ * context, resolved via a record-time thunk exactly like the REST hook.
  */
 export function createMeteringMcpHook(appCtx: Context): McpDispatchHook {
   return async (info, next) => {
@@ -68,16 +71,30 @@ export function createMeteringMcpHook(appCtx: Context): McpDispatchHook {
       info.tool.meta.methodName,
     );
     return meter.observe(
-      {
-        surface: 'mcp' as const,
-        operation: info.tool.meta.name,
-        principal: principalFromAuthInfo(auth),
-        ...(priceSpec
-          ? {
-              units: priceSpec.units ?? 1,
-              cost: {amount: priceSpec.amount, currency: priceSpec.currency},
-            }
-          : {}),
+      () => {
+        // Turn correlation: an agent turn binds its id into the turn-scoped
+        // parent context; the chain walk finds it from the request child.
+        const correlationId = info.ctx.getSync(
+          MeteringBindings.CORRELATION_ID,
+          {optional: true},
+        );
+        return {
+          surface: 'mcp' as const,
+          operation: info.tool.meta.name,
+          // Transport auth wins; otherwise read the request context after the
+          // wrapped pipeline ran (bindRequestPrincipals binds USER inside it,
+          // including an explicit callTool {principal}).
+          principal: auth
+            ? principalFromAuthInfo(auth)
+            : principalFromContext(info.ctx),
+          ...(correlationId ? {meta: {correlationId}} : {}),
+          ...(priceSpec
+            ? {
+                units: priceSpec.units ?? 1,
+                cost: {amount: priceSpec.amount, currency: priceSpec.currency},
+              }
+            : {}),
+        };
       },
       next,
     );

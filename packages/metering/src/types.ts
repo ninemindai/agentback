@@ -12,10 +12,10 @@ export interface PrincipalRef {
   id: string;
 }
 
-/** What was called — a REST route or an MCP tool. */
+/** What was called — a REST route, an MCP tool, or an agent turn. */
 export interface UsageDescriptor {
-  surface: 'rest' | 'mcp';
-  /** Route id (`Controller.method`) or tool name. */
+  surface: 'rest' | 'mcp' | 'agent';
+  /** Route id (`Controller.method`), tool name, or agent id. */
   operation: string;
   principal: PrincipalRef;
   /** Billable units; defaults to 1 (one call). */

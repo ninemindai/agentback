@@ -10,7 +10,9 @@ description: >-
   voters, rate limiting, MCP-over-HTTP auth, the agent runtime, or actors (stateful entities behind a stable address). Triggers on
   @agentback/core, RestApplication, MCPApplication, @api, @get, @tool,
   @mcpServer, installMcpHttp, @authenticate, @authorize, @actor, @actorCommand,
-  @actorQuery, ActorRegistry, @injectActor, z.infer, or building a
+  @actorQuery, ActorRegistry, @injectActor, z.infer, toHostTools, installAgent,
+  running a Vercel AI SDK ToolLoopAgent/HarnessAgent with the app's own @tool
+  classes as host tools (@agentback/agents), or building a
   hybrid REST+MCP app where both ends share the same Zod schemas. Also covers
   scaffolding a new app with `npm create agentback` / the `create-agentback`
   CLI (rest | mcp | hybrid templates).
@@ -53,6 +55,9 @@ ESM-only, Node 22.13+, TypeScript 6, pnpm workspaces. **Relative imports use
 9. **Add an agent chat dock to the developer console so a coding agent can see
    AND evolve the app (source edits + permission prompts)?** → Agent console
    ([agent-console.md](references/agent-console.md))
+10. **Run an AI SDK agent (ToolLoopAgent / HarnessAgent) whose tools ARE the
+    app's own `@tool` classes — per-turn identity, quota, metering?** →
+    Agents ([agents.md](references/agents.md))
 
 ## Getting Started: scaffold a new app
 

@@ -55,6 +55,7 @@ Read top-to-bottom the first time; jump around afterwards.
 | [Testing](guides/testing.md)                                           | `createTestApp` and the four client surfaces: typed calls, supertest, in-memory MCP, DI assertions.          |
 | [Secure MCP over HTTP](guides/secure-mcp-over-http.md)                 | Auth modes (strategies vs OAuth 2.1 resource server), scope-gated tools, DNS-rebinding, rate limits.         |
 | [Agent console security](guides/agent-console.md)                      | Security model for the ACP agent dock: off by default, loopback-only, auth requirements, permission scoping. |
+| [Run AI SDK agents](guides/agents.md)                                  | An agent whose tools ARE your `@tool` classes: projection, per-turn identity, quota preflight, usage events. |
 | [HTTP hosts](guides/deploy-to-edge.md)                                 | Run REST + MCP on Node, Fastify, Hono, Bun, Deno, or Workers from one `fetchHandler()`. The native listener. |
 | [Deploy to production](guides/deploy-to-production.md)                 | Containers, validated config, K8s probes, metrics/tracing, graceful shutdown, multi-instance checklist.      |
 
@@ -134,6 +135,7 @@ pnpm -F hello-client start       # the typed client calling hello-rest's schemas
 | `examples/hello-mcp-apps`      | MCP Apps `ui://` widget rendered by a host                   | [MCP Apps](guides/mcp-apps-widgets.md)                                    |
 | `examples/hello-actors`        | Addressable, serialized actors over REST                     | [Actor model](actor-model.md)                                             |
 | `examples/hello-agent-console` | Introspection MCP + agent console dock (see + evolve)        | [Agent console security](guides/agent-console.md)                         |
+| `examples/hello-agents`        | AI SDK agent calling the app's own tools (mock model)        | [Run AI SDK agents](guides/agents.md)                                     |
 | `examples/hello-plugin`        | Declarative `loadPlugins` + imperative `loadPlugin` mounting | [Composition](../packages/plugin/README.md)                               |
 
 ## Conventions in these docs
