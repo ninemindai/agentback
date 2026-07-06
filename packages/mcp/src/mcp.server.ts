@@ -72,6 +72,33 @@ export interface ToolBinding {
   meta: ToolMetadata;
 }
 
+/**
+ * Options for a direct (in-process) {@link MCPServer.callTool} invocation —
+ * the seam `@agentback/agents` projects host tools through.
+ */
+export interface CallToolOptions {
+  /**
+   * Principal the call runs as, when the in-process caller (an agent turn,
+   * a job worker, a test) already knows it. Precedence: a transport-bound
+   * `MCPBindings.REQUEST_AUTH` still wins (real authentication is never
+   * overridden); the explicit principal pre-empts only the
+   * `config.localPrincipal` fallback; with neither, the call is anonymous.
+   */
+  principal?: UserProfile;
+  /**
+   * Parent for the per-call request child context — e.g. an agent turn's
+   * context carrying a turn id. Bindings on it stay visible to dispatch
+   * hooks and method-level `@inject`s via the context chain walk.
+   */
+  ctx?: Context;
+  /**
+   * Pre-resolved tool binding (from {@link MCPServer.listTools}), skipping
+   * the per-call container scan + linear name search. Sound while tool
+   * registration is static after boot.
+   */
+  binding?: ToolBinding;
+}
+
 export class MCPServer implements Server {
   private mcp: McpServer;
   private _listening = false;
@@ -162,15 +189,21 @@ export class MCPServer implements Server {
   /**
    * Invoke a tool by name with the given input object. Runs the same Zod
    * validation + dispatch path as the SDK-registered handler. Used by the
-   * mcp-inspector UI to exercise tools without going through MCP transport.
+   * mcp-inspector UI to exercise tools without going through MCP transport,
+   * and by `@agentback/agents` to project tools as AI SDK host tools —
+   * `opts` carries the per-turn principal/context/pre-resolved binding for
+   * that path (see {@link CallToolOptions}).
    */
   async callTool(
     name: string,
     input: Record<string, unknown>,
+    opts?: CallToolOptions,
   ): Promise<unknown> {
-    const tool = this.collectAllTools().find(t => t.meta.name === name);
+    const tool =
+      opts?.binding ?? this.collectAllTools().find(t => t.meta.name === name);
     if (!tool) throw new Error(`Unknown tool: ${name}`);
-    return this.dispatchTool(tool, input);
+    const reqCtx = new Context(opts?.ctx ?? this.context, 'mcp.request');
+    return this.dispatchTool(tool, input, reqCtx, {principal: opts?.principal});
   }
 
   /**
@@ -296,6 +329,7 @@ export class MCPServer implements Server {
     tool: ToolBinding,
     input: unknown,
     ctx: Context = this.context,
+    call?: Pick<CallToolOptions, 'principal'>,
   ): Promise<unknown> {
     // Per-request context guarantee: request-scoped state (principals, auth
     // info) must never be bound into the shared app context — that would leak
@@ -304,7 +338,8 @@ export class MCPServer implements Server {
     // here.
     const reqCtx =
       ctx === this.context ? new Context(this.context, 'mcp.request') : ctx;
-    const run = (): Promise<unknown> => this.invokeTool(tool, input, reqCtx);
+    const run = (): Promise<unknown> =>
+      this.invokeTool(tool, input, reqCtx, call?.principal);
 
     const hooks = await this.resolveDispatchHooks();
     if (hooks.length === 0) return run();
@@ -345,8 +380,9 @@ export class MCPServer implements Server {
     tool: ToolBinding,
     input: unknown,
     reqCtx: Context,
+    explicitPrincipal?: UserProfile,
   ): Promise<unknown> {
-    const user = await this.bindRequestPrincipals(reqCtx);
+    const user = await this.bindRequestPrincipals(reqCtx, explicitPrincipal);
 
     // Authorization before input validation — same order as REST dispatch, so
     // unauthorized callers learn nothing about a tool's schema.
@@ -655,13 +691,20 @@ export class MCPServer implements Server {
    */
   protected async bindRequestPrincipals(
     reqCtx: Context,
+    // Explicit caller-supplied principal (an in-process `callTool`). Real
+    // transport auth (`REQUEST_AUTH`) always wins; the explicit principal
+    // pre-empts only the `localPrincipal` config fallback.
+    explicit?: UserProfile,
   ): Promise<UserProfile | undefined> {
     const authInfo = await reqCtx.get(MCPBindings.REQUEST_AUTH, {
       optional: true,
     });
     const {user, clientApplication} = authInfo
       ? authInfoToPrincipals(authInfo)
-      : {user: this.config.localPrincipal, clientApplication: undefined};
+      : {
+          user: explicit ?? this.config.localPrincipal,
+          clientApplication: undefined,
+        };
     if (user) reqCtx.bind(SecurityBindings.USER).to(user);
     if (clientApplication) {
       reqCtx.bind(SecurityBindings.CLIENT_APPLICATION).to(clientApplication);

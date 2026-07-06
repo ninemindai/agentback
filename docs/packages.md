@@ -47,7 +47,8 @@ Each package also ships its own `README.md` under [`packages/`](../packages/).
 | `@agentback/extension-metrics`     | Prometheus `/metrics` endpoint and HTTP timing                                                                                        |
 | `@agentback/extension-otel`        | OpenTelemetry spans across REST, MCP, and jobs                                                                                        |
 | `@agentback/extension-rate-limit`  | In-memory or Redis-backed rate limiting                                                                                               |
-| `@agentback/metering`              | Per-principal REST/MCP usage events, audit sinks, and quota                                                                           |
+| `@agentback/metering`              | Per-principal REST/MCP/agent usage events, audit sinks, and quota                                                                     |
+| `@agentback/agents`                | Opt-in AI SDK agent wiring — `@tool` classes projected as host-executed agent tools, per-turn identity, sessions, metering            |
 | `@agentback/payments`              | x402/MPP/Stripe payment authorization and billing seams                                                                               |
 | `@agentback/messaging`             | Zod-typed JobQueue/EventBus/Scheduler ports with in-memory adapter                                                                    |
 | `@agentback/messaging-bullmq`      | BullMQ + Redis Streams durable adapter for messaging ports                                                                            |
