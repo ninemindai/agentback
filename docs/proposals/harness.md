@@ -38,7 +38,10 @@ export async function toHostTools(
   const mcp = await app.get(MCPBindings.SERVER);
   const tools: ToolSet = {};
   // filterTools THROWS on duplicate/ambiguous tool names (the mcp-host
-  // collision convention): an ambiguous projection is a misconfiguration.
+  // collision convention) AND on include/exclude entries matching no
+  // registered tool, naming the unmatched entries + available tools
+  // (eng review 2A): a typo'd include list must fail at projection time,
+  // not surface as "the model ignores my tool".
   for (const t of filterTools(mcp.listTools(), opts)) {
     tools[t.meta.name] = tool({
       description: t.meta.description,
@@ -48,15 +51,49 @@ export async function toHostTools(
       inputSchema: t.meta.input ?? jsonSchema({type: 'object'}),
       // Identity is PER-TURN, never baked at projection time (outside-voice
       // D21): the turn's principal rides the AI SDK per-call tool context
-      // into callTool's optional third arg. execute returns the UNWRAPPED
-      // tool result (structured output when an output: schema exists) —
-      // never an MCP content envelope (D22).
+      // (runtimeContext/toolsContext) into callTool's options. execute
+      // returns the UNWRAPPED tool result (structured output when an
+      // output: schema exists) — never an MCP content envelope (D22).
+      // `binding: t` is captured at projection time so callTool skips the
+      // per-call container scan + linear name search (eng review 4A;
+      // sound because tool registration is static after boot).
       execute: (input, callCtx) =>
-        mcp.callTool(t.meta.name, input, {principal: principalFrom(callCtx)}),
+        mcp.callTool(t.meta.name, input, {
+          principal: principalFrom(callCtx),
+          binding: t,
+        }),
     });
   }
   return tools;
 }
+```
+
+```
+Agent turn — data flow (one loop step with one tool call)
+
+controller/@chatBot/job                 @agentback/agents            @agentback/mcp
+        │                                       │                          │
+        │ agent.generate({prompt,               │                          │
+        │   runtimeContext: {principal}})       │                          │
+        ├──────────────────────────────────────►│                          │
+        │                    AI SDK loop: model picks tool                 │
+        │                                       │ execute(input, callCtx)  │
+        │                                       ├─────────────────────────►│
+        │                                       │   callTool(name, input,  │
+        │                                       │     {principal, binding})│
+        │                                       │                          ├─ dispatch hooks (metering:
+        │                                       │                          │    'mcp' event, principal via
+        │                                       │                          │    param → principalFromContext)
+        │                                       │                          ├─ invokeTool: principal honored
+        │                                       │                          │    → @authorize voters → Zod in
+        │                                       │                          │    → @inject weave → method
+        │                                       │                          │    → Zod out (UNWRAPPED result)
+        │                                       │◄─────────────────────────┤
+        │                 result fed back to model; loop continues/stops   │
+        │◄──────────────────────────────────────┤                          │
+        │  result.text / result.steps           │ turn 'agent' UsageEvent  │
+        │                                       │ (preflight quota was     │
+        │                                       │  checked before step 1)  │
 ```
 
 The `{include, exclude}` filter is **v1 scope, not future work** (DX review D14): a 30-tool app must not hand the agent 30 tools by default — context cost per turn (`toolCostReport()` prices it) and least privilege both demand an explicit list, and the quickstart example shows `{include: [...]}` so the safe pattern is the copied one.
@@ -65,8 +102,14 @@ Consequences of routing through `callTool` instead of calling instances directly
 
 - **Policy is uniform.** An agent-invoked tool passes the same `@authorize` voters and metering hooks as an MCP `tools/call`. No privileged side door.
 - **Coherence is structural.** If `dispatchTool` semantics evolve (hooks, confirmation tools, progress), the projection inherits them.
-- **The principal seam lands with v1, and identity is per-turn** (DX review D13, reshaped by outside-voice D21). `callTool(name, input)` takes no request context, so direct calls run as the **anonymous** principal — meaning every `@authorize`-guarded tool would 403 the app's own agent on a secured app's first run. Fix: an optional third argument (`{ctx}` or `{principal}`) on `callTool`, threaded to `dispatchTool(tool, input, ctx)` — small and backward-compatible. Crucially, the principal is **not** a `toHostTools` option (tools are built once; principals arrive per request): it flows per-turn through the AI SDK's per-call tool context (or a request-scoped `AgentPort` resolution). The spike must prove this with an `@authorize`-guarded tool.
-- **The execute contract is explicit** (outside-voice D22): `execute` returns the unwrapped tool result — the method's return value, structured when an `output:` schema exists — never an MCP `content`/`structuredContent` envelope. And `toHostTools` must work **before `app.start()`** (the README snippet's ordering) or the ordering constraint gets documented; both are spike criteria.
+- **The principal seam lands with v1, is per-turn, and is an explicit parameter** (DX D13 → outside-voice D21 → eng review 1A, verified against the code). `callTool(name, input)` runs `dispatchTool` with a fresh child context, and `bindRequestPrincipals` (mcp.server.ts:656-670) derives the user **only** from `MCPBindings.REQUEST_AUTH` or `config.localPrincipal` — a principal pre-bound into a passed ctx never reaches `authorizeTool`, and the metering MCP hook resolves via `principalFromAuthInfo(REQUEST_AUTH)` only. So the seam is: `callTool(name, input, {principal?, ctx?, binding?})`; when `principal` is provided, `invokeTool` honors it (pre-empting the `localPrincipal` fallback, binding it as `SecurityBindings.USER` in the request child), and the metering MCP hook gains a `principalFromContext` fallback mirroring the REST hook (dispatch-hooks.ts:40). The principal is **not** a `toHostTools` option (tools are built once; principals arrive per request): it flows per-turn through the AI SDK's per-call tool context (`runtimeContext`/`toolsContext`). Three regression tests are mandatory: no-principal → existing localPrincipal/anonymous behavior unchanged; transport `REQUEST_AUTH` still wins; existing metering attribution unchanged.
+- **The execute contract is verified, not assumed** (outside-voice D22, confirmed by eng review): `invokeTool` returns the raw, output-validated method result (mcp.server.ts:438) — the MCP envelope is added at the SDK-handler layer, so `callTool` already returns unwrapped results. `collectAllTools` scans the container at call time, so `toHostTools` works **before `app.start()`**. Both remain spike/package tests as regression guards, but they are confirmations, not open risks.
+- **No per-call container scan** (eng review 4A): `callTool` currently does `collectAllTools().find(...)` per invocation; under agent turns that is per tool call × per loop step. `toHostTools` captures each `ToolBinding` at projection time and passes it via `{binding}` (registration is static after boot — one comment line says so); `callTool` uses it when present and keeps the by-name scan for ad-hoc callers (inspector).
+- **The per-turn carrier is concrete** (eng-review outside voice, D6): the AI SDK delivers per-call state to `execute` via each tool's `contextSchema`/`toolsContext` — not via `runtimeContext` — so `toHostTools` generates a **uniform `contextSchema`** for every projected tool, and `installAgent` binds a **request-scoped `AgentPort` wrapper** around the dev's singleton agent: resolved per request, it reads `SecurityBindings.USER` from its resolution context and supplies `toolsContext` (principal + turn id) on every `generate`/`stream`. The controller example works as printed; explicit per-call `toolsContext` remains the escape hatch. The wrapper also creates a **turn-scoped child `Context`** (turn id + principal bound) passed via `callTool`'s `{ctx}` — that context is what the metering hook reads, making the shared-turn-id claim implementable rather than asserted.
+- **Scope parity** (outside voice D7): `listTools()` returns every registered tool regardless of `mcpScopes` — scope filtering happens later at `registerAllOn(scopes)` — so naive projection would show the model tool names/descriptions a scoped MCP client would never see. `filterTools` accepts the same scope gate (`{scopes}`) and applies it before include/exclude.
+- **`confirm:` tools are excluded from projection in v1** (outside voice D7): the confirmation token is injected into the emitted MCP JSON schema at registration time, not into `meta.input`, so a projected confirm tool could never complete the confirmation round-trip. `filterTools` throws if an include list names one, pointing at the approval-flows open question.
+- **Tool-name constraints** (outside voice D7): MCP tool names are not validated against provider tool-call naming rules (`^[a-zA-Z0-9_-]{1,64}$` class); projection validates and fails loudly at projection time with the offending name — same doctrine as the include-typo throw.
+- **Peer-dep isolation is structural, not aspirational** (outside voice D7): `host-tools.ts` loads `ai` via dynamic import (or a dedicated subpath export), so an `installAgent`-only consumer without the optional peer never crashes at barrel load — consistent with the Errors section's lazy-import commitment.
 
 ## Shape (mirrors `@agentback/chat`)
 
@@ -135,8 +178,9 @@ The chat reply-brain (the known delta vs CopilotKit OpenTag) falls out as ~15 li
 
 - **Turn attribution:** `installAgent` reads `SecurityBindings.USER` where the turn is initiated (the controller/handler's request context) and stamps the resulting `UsageEvent`. Turn-level LLM usage comes from the AI SDK result's `usage`.
 - **Surface union:** `UsageDescriptor.surface` is currently `'rest' | 'mcp'`; add `'agent'` (one-line union extension in `@agentback/metering`).
-- **Tool-call metering rides the dispatch hooks — verify, don't assume** (outside-voice D24): host tool calls go through `callTool` → the existing MCP dispatch hooks, so they should meter as `mcp` events — but an in-process synthetic call has no transport metadata/request info, so the spike verifies the hooks behave (it is not assumed "free").
-- **Ordering semantics, defined up front** (outside-voice D24): one logical turn emits one `'agent'` event plus N `'mcp'` tool events. Quota is checked **preflight per turn** (before the LLM call spends money); usage is charged **post-turn**; tool-call `'mcp'` events are attributed to the same principal + a shared turn id so sinks can group or dedupe — no double-charging, no mid-turn blocks.
+- **Tool-call metering rides the dispatch hooks — now verified** (outside-voice D24, confirmed by eng review): the MCP metering hook needs only `info.ctx` (dispatch-hooks.ts:59-84) — no transport metadata — so synthetic in-process calls meter correctly once the hook gains the `principalFromContext` fallback (1A). The spike test remains as a regression guard.
+- **Ordering semantics, defined up front — with a named enforcement point** (outside-voice D24 + eng-review D7): one logical turn emits one `'agent'` event plus N `'mcp'` tool events. The **turn wrapper inside the request-scoped `AgentPort`** is the contract: it calls `QuotaService.consume(principal)` **preflight** (before the LLM call spends money), runs the turn, and records usage via `Meter` **post-turn** — the `'agent'` surface union alone is not the mechanism. Tool-call `'mcp'` events are attributed to the same principal + the turn id carried by the turn-scoped context — no double-charging, no mid-turn blocks.
+- **Streaming turns finalize deterministically** (eng-review D7): `stream()` usage is only knowable at completion or cancellation, so the wrapper finalizes the `'agent'` event and destroys the session on stream completion **and** on abort (client disconnect); partial/cancelled turns meter whatever usage the SDK reports.
 - **Quota:** per-principal quota from `@agentback/metering` applies to `'agent'` events like any other — an agent turn becomes a governed operation, not an unmetered side channel.
 
 ## Config & secrets
@@ -188,7 +232,7 @@ Diagnostics use `loggers('agentback:agents')` (documented in the README: `DEBUG=
 - **"Do I need `installAgent`?"** — a when-you-need-it box: not for a one-off `generate()`; yes for DI injection, session lifecycle, metering.
 - **Streaming a turn from a route** — a documented raw-SSE recipe via `RestBindings.HTTP_RESPONSE` now; typed streaming upgrades when p0-2 lands.
 - **Degraded MCP features under host-tool invocation** — a small table: `MCPBindings.PROGRESS` → no-op, `REQUEST_EXTRA` → undefined, elicitation → unavailable; tools relying on them still run, silently degraded.
-- **Security posture** (outside-voice D24) — a README section on handing an LLM host-executed tools: recommend read-only/idempotent tools in the `include` list for v1, the `confirm:` tool pattern for side-effecting ones, per-principal quota as the blast-radius limiter, and the prompt-injection boundary (tool results are model inputs — a tool that returns untrusted content can steer the loop).
+- **Security posture** (outside-voice D24, amended by eng-review D7) — a README section on handing an LLM host-executed tools: recommend **read-only/idempotent tools in the `include` list + per-principal quota** as the v1 blast-radius limiters, and the prompt-injection boundary (tool results are model inputs — a tool that returns untrusted content can steer the loop). `confirm:` tools are **excluded from projection** in v1 (their confirmation round-trip doesn't survive projection — see the keystone consequences); side-effecting tools wait for the approval-flows design.
 - **Harness-support honesty** (outside-voice D24) — the sandbox-harness section is labeled **"recipe — manually verified per release"**, not "supported", until CI covers it; the tested-with matrix states which adapter versions the recipe was last verified against.
 
 ### Documentation surfaces (v1 ship checklist) + upgrade policy
@@ -222,6 +266,29 @@ Proceed in three steps (chat's spike→package flow, with the spike split so the
 3. **Package** — extract the validated seam into `@agentback/agents` (port + `toHostTools` with `{include/exclude}` + registry + `installAgent` + metering), plus the small `callTool` principal seam in `@agentback/mcp`, honoring every item in "Developer experience — v1 commitments" (quickstart contract, `examples/hello-agents`, peer matrix, errors, security section, docs checklist).
 
 **v1 acceptance criteria (DX review D20, baseline honesty per D23):** (1) a stopwatch run of the README quickstart **starting from `examples/hello-mcp`** (the persona's real starting point: an app that already has tools) lands **≤ 5 minutes**, recorded in the v1 PR description; (2) the metering `'agent'` surface is the adoption signal — `UsageEvent`s with `surface: 'agent'` prove turns run in real apps (no new telemetry; the post-ship `/devex-review` boomerang measures against both).
+
+### v1 test matrix (eng review 3A — 100% of planned paths, `createTestApp` + mock model)
+
+**`@agentback/agents`** (`packages/agents/src/__tests__/`):
+
+1. `host-tools.unit` — include/exclude filtering (happy path); **unmatched include/exclude name throws naming the entries + available tools (2A)**; duplicate tool name throws; `confirm:` tool in an include list throws (D7); provider-illegal tool name throws (D7); scope gate applied before include/exclude (D7); Zod `input` passthrough vs `jsonSchema` fallback when a tool declares no input; captured `binding` passed to `callTool` (4A).
+2. `host-tools.integration` — `execute` returns the unwrapped, output-validated result (no MCP envelope); per-turn principal from the generated `contextSchema`/`toolsContext` reaches `callTool` (D6); a `streamOf` (async-iterable) tool is drained and returns the collected array.
+3. `install.unit` — `AgentBindings.AGENT` resolvable via DI; the **request-scoped wrapper** supplies principal + turn id from its resolution context and falls back cleanly outside a request scope (D6); `app.stop()` destroys every live session in the registry; barrel import without `ai` installed does not crash an `installAgent`-only consumer (D7).
+4. `metering.integration` — one `'agent'` turn event with preflight quota checked **before** the model call (quota-exceeded blocks the turn, no LLM spend); post-turn usage charge; tool-call `'mcp'` events attributed to the turn principal and sharing a turn id.
+
+**`@agentback/mcp`** (`callTool` seam — **3 regression tests are CRITICAL**, existing behavior is being modified):
+
+5. `call-tool-principal.integration` — `{principal}` honored: an `@authorize`-guarded tool authorizes under the passed principal.
+6. **REGRESSION** — `callTool` with no options keeps the existing `localPrincipal`/anonymous behavior byte-for-byte.
+7. **REGRESSION** — a transport-driven call (`REQUEST_AUTH` bound) still derives principals from `authInfoToPrincipals`, unaffected by the new parameter.
+
+**`@agentback/metering`**:
+
+8. **REGRESSION** — existing `REQUEST_AUTH` attribution and the REST hook are unchanged by the `principalFromContext` fallback; the fallback fires only when `REQUEST_AUTH` is absent.
+
+**`examples/hello-agents`** (CI, mock model — no network, no key):
+
+9. End-to-end: a `ToolLoopAgent` turn calls the app's own `@tool` and the step log records it — the quickstart's magical moment, executable in CI.
 
 Ship the **tool projection + DI + lifecycle + identity/metering + config**; leave the **loop, the harness choice, and the exposure surface** to the dev.
 
@@ -269,6 +336,7 @@ All four residual confusions addressed (D17): provider choice paralysis → one 
 
 ### NOT in scope (considered, deferred)
 
+- **`confirm:` tool projection / approval flows** (eng review D7) — the confirmation round-trip doesn't survive projection; excluded (throw) until the approval-flows open question gets its own design.
 - **Console playground tab** (type a prompt in `/console`, watch a turn hit your tools) — Stripe-Shell-tier wow, but a big scope add that conceptually collides with `console-chat`'s dock; revisit only after v1 demand signals.
 - **`create-agentback --template agent` scaffold** — Champion-tier (<2 min) TTHW play; premature for an exploratory package wrapping an experimental SDK.
 - **CI coverage of the sandbox `HarnessAgent` path** — deliberately manual (spike) so experimental deps stay out of the lockfile; accepted risk.
@@ -276,7 +344,9 @@ All four residual confusions addressed (D17): provider choice paralysis → one 
 
 ### What already exists (reuse, don't rebuild)
 
-- `MCPServer.listTools()` / `callTool()` — the full dispatch pipeline the projection wraps (mcp.server.ts:126/167).
+- `MCPServer.listTools()` / `callTool()` — the full dispatch pipeline the projection wraps (mcp.server.ts:126/167). Eng review verified: `dispatchTool` already accepts a per-request `ctx` (:295), `invokeTool` returns the unwrapped output-validated result (:438), `collectAllTools` works pre-`start()`, and the metering MCP hook needs only `info.ctx` (dispatch-hooks.ts:59-84).
+- `bindRequestPrincipals` (mcp.server.ts:656-670) — the principal derivation the 1A seam extends (it currently ignores pre-bound `SecurityBindings.USER`; hence the explicit `{principal}` parameter).
+- `principalFromContext` (metering/principal.ts) — the exact fallback the MCP hook needs; the REST hook already uses it (dispatch-hooks.ts:40).
 - `AgentError` (+ `.statusCode` property quirk, agent-error.ts:17) and `loggers()` — the error/diagnostics machinery the Errors section commits to.
 - `toolCostReport()` — prices the tool-surface context cost the `{include}` filter manages.
 - `createTestApp` (@agentback/testing) — the harness for `hello-agents`'s mock-model CI test.
@@ -284,15 +354,15 @@ All four residual confusions addressed (D17): provider choice paralysis → one 
 
 ## GSTACK REVIEW REPORT
 
-| Review        | Trigger               | Why                             | Runs | Status         | Findings                                                                             |
-| ------------- | --------------------- | ------------------------------- | ---- | -------------- | ------------------------------------------------------------------------------------ |
-| CEO Review    | `/plan-ceo-review`    | Scope & strategy                | 0    | —              | —                                                                                    |
-| Outside Voice | `codex exec` (plan)   | Independent 2nd opinion         | 1    | RAN (codex)    | ~20 challenges; 4 accepted as amendments (D21–D24), 2 noted as context-miss/settled  |
-| Eng Review    | `/plan-eng-review`    | Architecture & tests (required) | 0    | — (stale >7d)  | prior eng reviews (2026-06) covered other proposals                                  |
-| Design Review | `/plan-design-review` | UI/UX gaps                      | 0    | —              | —                                                                                    |
-| DX Review     | `/plan-devex-review`  | Developer experience gaps       | 1    | CLEAR (POLISH) | score: 4/10 → 8.5/10, TTHW: 20-30 min → ≤5 min target; 25 decisions (D1–D25), 0 open |
+| Review        | Trigger               | Why                             | Runs | Status         | Findings                                                                                                                                                     |
+| ------------- | --------------------- | ------------------------------- | ---- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| CEO Review    | `/plan-ceo-review`    | Scope & strategy                | 0    | —              | —                                                                                                                                                            |
+| Outside Voice | `codex exec` (plan)   | Independent 2nd opinion         | 2    | RAN (codex)    | pass 1: ~20 challenges, 4 folded (D21–D24); pass 2 (post-eng): 9 residual, all folded (D6–D7)                                                                |
+| Eng Review    | `/plan-eng-review`    | Architecture & tests (required) | 1    | CLEAR (PLAN)   | 6 issues, 0 critical gaps — 1A principal param, 2A filter throws, 3A 16-path test matrix, 4A binding capture, D6 request-scoped carrier, D7 seven hardenings |
+| Design Review | `/plan-design-review` | UI/UX gaps                      | 0    | —              | —                                                                                                                                                            |
+| DX Review     | `/plan-devex-review`  | Developer experience gaps       | 1    | CLEAR (POLISH) | score: 4/10 → 8.5/10, TTHW: 20-30 min → ≤5 min target; 25 decisions (D1–D25), 0 open                                                                         |
 
-**CROSS-MODEL:** Codex confirmed the review's structural direction (package seam, callTool reuse, no auto endpoint) and overturned one implementation sketch: per-request principal cannot be a boot-time `toHostTools` option (D21 accepted). Codex's CLAUDE.md/AGENTS.md doc-surface objection was a repo-context miss (this repo's checklist genuinely lives in CLAUDE.md + skills/agentback); its "package too thin" challenge re-litigates the settled package-vs-recipe decision — both noted, not actioned.
-**VERDICT:** DX CLEARED — design amended and hardened; eng review required before implementation (run `/plan-eng-review` on this proposal; the June eng-review entries are stale and covered other plans).
+**CROSS-MODEL:** Codex pass 1 overturned the boot-time principal option (folded as D21); the eng review then verified the seam against real code (`bindRequestPrincipals` ignores pre-bound USER; metering hook reads `REQUEST_AUTH` only) and landed the explicit `{principal, ctx, binding}` parameter. Codex pass 2 confirmed the structure and surfaced 9 residual gaps — the per-turn carrier (request-scoped `AgentPort` wrapper + generated `contextSchema`, D6) and seven hardenings (turn-id carrier, quota contract, scope parity, `confirm:` exclusion, peer-dep isolation, stream finalization, tool-name validation, D7) — all folded. Earlier context-misses (CLAUDE.md surfaces, package-vs-recipe) remain noted, not actioned.
+**VERDICT:** DX + ENG CLEARED — ready to implement (spike phase 1 first, per Recommendation).
 
 NO UNRESOLVED DECISIONS
