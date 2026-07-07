@@ -3,11 +3,12 @@
 // License text available at https://opensource.org/license/mit/
 
 import {loggers} from '@agentback/common';
-import type {Context} from '@agentback/context';
+import {Context} from '@agentback/context';
 import {
   MCPBindings,
   selectTools,
   type MCPServer,
+  type ProgressFn,
   type SelectToolsOptions,
   type ToolBinding,
 } from '@agentback/mcp';
@@ -147,11 +148,27 @@ export async function buildCli(
       if (log.debug.enabled)
         log.debug('command %s input %o', top.command, input);
 
+      // Stream a `streamOf`/async-generator tool incrementally as NDJSON: bind
+      // a PROGRESS handler on the turn context (callTool fires it per yielded
+      // item — mcp.server.ts). This keeps the invariant that every invocation
+      // still routes through callTool; the collected array it returns is then
+      // suppressed so the stream isn't also re-printed. A non-streaming tool
+      // never fires PROGRESS, so `streamed` stays false and it prints normally.
+      let streamed = false;
+      const turnCtx = new Context(app, 'command.turn');
+      const progress: ProgressFn = async p => {
+        streamed = true;
+        if (p.message !== undefined) out(p.message + '\n');
+      };
+      turnCtx.bind(MCPBindings.PROGRESS.key).to(progress);
+
       const result = await mcp.callTool(top.command, input, {
         principal,
+        ctx: turnCtx,
         binding: tool, // captured at build time — skip the by-name scan
       });
 
+      if (streamed) return 0; // NDJSON already emitted item-by-item
       out(await serializeResult(result, top.format ?? detectFormat()));
       return 0;
     } catch (e) {

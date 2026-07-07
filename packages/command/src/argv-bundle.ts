@@ -22,6 +22,8 @@ interface JsonSchema {
   properties?: Record<string, JsonSchema>;
   items?: JsonSchema;
   enum?: unknown[];
+  /** A field marked `.meta({positional:true})` — consumed by position, not a flag. */
+  positional?: boolean;
 }
 
 /** The effective scalar/array kind, resolving nullable `type: [...]` unions. */
@@ -71,8 +73,15 @@ export function argvToBundle(
   // finding 2 — arity requires the schema).
   if (!props) return {};
 
+  // Positional fields (declaration order) are consumed by position, not as
+  // flags — so they are NOT registered as parseArgs options.
+  const positionalNames = Object.entries(props)
+    .filter(([, spec]) => spec.positional)
+    .map(([name]) => name);
+
   const options: NonNullable<ParseArgsConfig['options']> = {};
   for (const [name, spec] of Object.entries(props)) {
+    if (spec.positional) continue;
     const kind = jsonKind(spec);
     if (kind === 'boolean') options[name] = {type: 'boolean'};
     else if (kind === 'array') options[name] = {type: 'string', multiple: true};
@@ -92,12 +101,13 @@ export function argvToBundle(
   }
 
   let values: Record<string, unknown>;
+  let positionals: string[];
   try {
-    ({values} = parseArgs({
+    ({values, positionals} = parseArgs({
       args: cleaned,
       options,
       strict: true,
-      allowPositionals: false,
+      allowPositionals: positionalNames.length > 0,
     }));
   } catch (err) {
     bad(`command: ${(err as Error).message}`);
@@ -114,5 +124,17 @@ export function argvToBundle(
     }
   }
   for (const name of negated) out[name] = false;
+
+  // Map bare positionals onto the positional fields, in declaration order.
+  if (positionals.length > positionalNames.length) {
+    bad(
+      `too many arguments: expected ${positionalNames.length} ` +
+        `(${positionalNames.join(', ') || 'none'}), got ${positionals.length}`,
+    );
+  }
+  positionalNames.forEach((name, i) => {
+    if (i < positionals.length)
+      out[name] = coerceScalar(positionals[i], props[name], name);
+  });
   return out;
 }

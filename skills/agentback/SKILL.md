@@ -58,6 +58,9 @@ ESM-only, Node 22.13+, TypeScript 6, pnpm workspaces. **Relative imports use
 10. **Run an AI SDK agent (ToolLoopAgent / HarnessAgent) whose tools ARE the
     app's own `@tool` classes — per-turn identity, quota, metering?** →
     Agents ([agents.md](references/agents.md))
+11. **Turn the app's `@tool` classes into a runnable command-line tool
+    (`my-svc forecast --city Tokyo`) for a human operator or a shell script?** →
+    Operator CLI ([command.md](references/command.md))
 
 ## Getting Started: scaffold a new app
 

@@ -59,8 +59,14 @@ $ my-svc --llms                    # machine-readable manifest of the selected t
 type before `callTool` re-validates with the tool's own Zod. This matters: your
 `@tool` inputs are authored `z.number()`/`z.boolean()` for typed JSON bodies —
 argv delivers strings, so the adapter coerces `"3"` → `3` rather than letting
-Zod reject it. Booleans are flags (`--verbose`, `--no-verbose`); arrays repeat
-(`--tag a --tag b`).
+Zod reject it.
+
+- Booleans are flags: `--verbose` (true), `--no-verbose` (false).
+- Arrays repeat: `--tag a --tag b` → `['a','b']`.
+- Mark a field `z.string().meta({positional: true})` to make it a **positional
+  arg** (`my-svc geocode "Mt Fuji"`) instead of `--query`.
+- A **streaming** (`streamOf`/async-generator) tool emits **NDJSON**, one item
+  per line, incrementally.
 
 ## Output & errors
 
@@ -87,11 +93,11 @@ observers, and `app.stop()` is a no-op without `start()`. Your `bin` owns
 `start()`/`stop()` (see Quickstart). This pays observer startup per invocation;
 that is the honest cost of a per-process CLI.
 
-## Not in scope (v1)
+## Not in scope
 
-`confirm:` tools (excluded, parity with `@agentback/agents`), positional args,
-`streamOf:` tools stream incrementally (they deliver buffered), nested
-subcommand trees, and interactive prompts. See the proposal's "NOT in scope".
+`confirm:` tools (excluded, parity with `@agentback/agents`), nested subcommand
+trees, and interactive prompts. See the proposal's "NOT in scope". Positional
+args and incremental `streamOf` streaming shipped in v1.1.
 
 ## Exports
 

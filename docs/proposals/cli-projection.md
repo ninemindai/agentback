@@ -7,13 +7,14 @@
 > _commands_); alternatives `@agentback/cli-tools`, `@agentback/argv`. Decision
 > deferred to the naming open question below; this file keeps a concept path.
 
-**Status:** **v1 SHIPPED (2026-07-06)** — `@agentback/command` implemented TDD
-per this design (30 package tests + the `selectTools` extraction; agents' 16
+**Status:** **v1.1 SHIPPED (2026-07-06)** — `@agentback/command` implemented TDD
+per this design (37 package tests + the `selectTools` extraction; agents' 16
 tests green through the refactor). Eng-reviewed first (report at the bottom;
 five decisions locked, audience reframed from agent-first to operator-first
-after the outside voice). Deviations: none material — `--format toon` ships as
-an optional-peer lazy load; `--skill`/OKF `--llms` enrichment and positional
-args stayed v2 per "NOT in scope". Prompted by
+after the outside voice). v1.1 added the two former v2 items: **positional args**
+(`.meta({positional:true})`) and **incremental `streamOf` streaming** (NDJSON via
+the `callTool` PROGRESS seam — no core change), plus a real `--format toon`
+round-trip. Still deferred: `--skill`/OKF `--llms` enrichment. Prompted by
 [goke](https://github.com/remorses/goke) ("build CLIs like you'd build an API")
 and [incur](https://github.com/wevm/incur) ("CLIs for agents and humans") — two
 TypeScript frameworks that arrive at AgentBack's own thesis from the CLI side.
