@@ -21,8 +21,13 @@ const ForecastOut = z.object({
   summary: z.string(),
 });
 
-const GeocodeIn = z.object({query: z.string().min(1).describe('Place to look up')});
+const GeocodeIn = z.object({
+  // A positional arg: `hello-weather geocode "Mt Fuji"` (no --query flag).
+  query: z.string().min(1).meta({positional: true}).describe('Place to look up'),
+});
 const GeocodeOut = z.object({lat: z.number(), lon: z.number()});
+
+const CountIn = z.object({to: z.number().int().min(1).max(20).describe('Count up to')});
 
 @mcpServer()
 export class WeatherTools {
@@ -49,5 +54,11 @@ export class WeatherTools {
     // Deterministic stub so the example runs with zero external calls.
     const h = [...input.query].reduce((a, c) => a + c.charCodeAt(0), 0);
     return {lat: (h % 180) - 90, lon: (h % 360) - 180};
+  }
+
+  // A streaming tool: yields items that the CLI prints incrementally as NDJSON.
+  @tool('count', {description: 'Count up to a number, one line at a time.', input: CountIn})
+  async *count(input: z.infer<typeof CountIn>) {
+    for (let n = 1; n <= input.to; n++) yield {n};
   }
 }

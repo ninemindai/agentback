@@ -9,7 +9,12 @@ interface JsonSchema {
   type?: string | string[];
   properties?: Record<
     string,
-    {type?: string | string[]; description?: string; default?: unknown}
+    {
+      type?: string | string[];
+      description?: string;
+      default?: unknown;
+      positional?: boolean;
+    }
   >;
   required?: string[];
 }
@@ -48,16 +53,37 @@ export function toolHelp(tool: ToolBinding): string {
   const props = schema?.properties;
   if (props) {
     const required = new Set(schema!.required ?? []);
-    lines.push('Flags:');
-    for (const [name, spec] of Object.entries(props)) {
-      // A field with a default is optional from the caller's side, even though
-      // Zod v4 keeps it in the schema's `required` array.
-      const optional = spec.default !== undefined || !required.has(name);
-      const req = optional ? '' : ' (required)';
-      const def =
-        spec.default !== undefined ? ` (default: ${JSON.stringify(spec.default)})` : '';
-      const desc = spec.description ? ` — ${spec.description}` : '';
-      lines.push(`  --${name} <${scalarType(spec.type)}>${req}${def}${desc}`);
+    const entries = Object.entries(props);
+    const positionals = entries.filter(([, s]) => s.positional);
+    const flags = entries.filter(([, s]) => !s.positional);
+
+    // Usage line shows positionals before flags.
+    const usageArgs = positionals.map(([n]) => `<${n}>`).join(' ');
+    lines[0] =
+      `${tool.meta.name}${usageArgs ? ` ${usageArgs}` : ''} [--flags]` +
+      (tool.meta.description ? `   ${tool.meta.description}` : '');
+
+    if (positionals.length) {
+      lines.push('Arguments:');
+      for (const [name, spec] of positionals)
+        lines.push(
+          `  ${name} <${scalarType(spec.type)}>${spec.description ? ` — ${spec.description}` : ''}`,
+        );
+    }
+    if (flags.length) {
+      lines.push('Flags:');
+      for (const [name, spec] of flags) {
+        // A field with a default is optional from the caller's side, even
+        // though Zod v4 keeps it in the schema's `required` array.
+        const optional = spec.default !== undefined || !required.has(name);
+        const req = optional ? '' : ' (required)';
+        const def =
+          spec.default !== undefined
+            ? ` (default: ${JSON.stringify(spec.default)})`
+            : '';
+        const desc = spec.description ? ` — ${spec.description}` : '';
+        lines.push(`  --${name} <${scalarType(spec.type)}>${req}${def}${desc}`);
+      }
     }
   } else {
     lines.push('(no flags — this command takes no input)');

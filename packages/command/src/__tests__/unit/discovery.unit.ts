@@ -37,6 +37,21 @@ describe('toolHelp', () => {
   it('reports no flags for an input-less tool', () => {
     expect(toolHelp(bind('ping'))).toMatch(/no flags/);
   });
+
+  it('renders a positional field in the usage line and an Arguments section', () => {
+    const t = bind('forecast', {
+      input: z.object({
+        city: z.string().meta({positional: true}).describe('City name'),
+        days: z.number().default(1),
+      }),
+    });
+    const help = toolHelp(t);
+    expect(help).toMatch(/forecast <city> \[--flags\]/);
+    expect(help).toMatch(/Arguments:/);
+    expect(help).toMatch(/city <string> — City name/);
+    // city is positional, so it must NOT appear as a --flag
+    expect(help).not.toMatch(/--city/);
+  });
 });
 
 describe('usage', () => {

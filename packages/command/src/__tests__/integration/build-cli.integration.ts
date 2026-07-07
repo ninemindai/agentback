@@ -41,6 +41,14 @@ class WeatherTools {
   secret() {
     return {ok: true};
   }
+
+  @tool('count', {
+    description: 'Count up to n (a streaming tool).',
+    input: z.object({to: z.number()}),
+  })
+  async *count(input: {to: number}) {
+    for (let i = 1; i <= input.to; i++) yield {n: i};
+  }
 }
 
 async function givenStartedApp(): Promise<Application> {
@@ -123,6 +131,19 @@ describe('buildCli — cross-surface identity (eng review T4)', () => {
       cap.io,
     );
     expect(code).toBe(1);
+    await app.stop();
+  });
+
+  it('streams a streamOf tool incrementally as NDJSON, not one buffered array', async () => {
+    const app = await givenStartedApp();
+    const run = await buildCli(app, {include: ['count']});
+    const cap = capture();
+    const code = await run(['count', '--to', '3'], cap.io);
+    expect(code).toBe(0);
+    const lines = cap.stdout().trim().split('\n');
+    expect(lines).toHaveLength(3); // one JSON object per line, not a single array
+    expect(JSON.parse(lines[0])).toEqual({n: 1});
+    expect(JSON.parse(lines[2])).toEqual({n: 3});
     await app.stop();
   });
 

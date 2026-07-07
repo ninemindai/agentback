@@ -76,6 +76,51 @@ describe('argvToBundle — arrays via repeated flags', () => {
   });
 });
 
+describe('argvToBundle — positional fields (.meta({positional:true}))', () => {
+  const schema = {
+    type: 'object',
+    properties: {
+      city: {type: 'string', positional: true},
+      days: {type: 'number'},
+    },
+  };
+
+  it('maps a bare arg to the positional field, flags still work', () => {
+    expect(argvToBundle(['Tokyo', '--days', '3'], schema)).toEqual({
+      city: 'Tokyo',
+      days: 3,
+    });
+  });
+
+  it('coerces a positional by its declared type', () => {
+    const s = {type: 'object', properties: {n: {type: 'number', positional: true}}};
+    expect(argvToBundle(['42'], s)).toEqual({n: 42});
+  });
+
+  it('maps multiple positionals in declaration order', () => {
+    const s = {
+      type: 'object',
+      properties: {
+        a: {type: 'string', positional: true},
+        b: {type: 'string', positional: true},
+      },
+    };
+    expect(argvToBundle(['x', 'y'], s)).toEqual({a: 'x', b: 'y'});
+  });
+
+  it('rejects more positionals than declared', () => {
+    const s = {
+      type: 'object',
+      properties: {city: {type: 'string', positional: true}},
+    };
+    expect(() => argvToBundle(['Tokyo', 'extra'], s)).toThrow(AgentError);
+  });
+
+  it('an omitted positional is left unset so a default/optional applies', () => {
+    expect(argvToBundle(['--days', '3'], schema)).toEqual({days: 3});
+  });
+});
+
 describe('argvToBundle — nullable types and errors', () => {
   it('picks the non-null branch of a nullable type', () => {
     const schema = {

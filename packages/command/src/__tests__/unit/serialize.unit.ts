@@ -21,10 +21,14 @@ describe('serializeResult', () => {
     expect(JSON.parse(s)).toEqual({a: 1});
   });
 
-  it('toon without the optional peer dep gives an install hint', async () => {
-    await expect(serializeResult({a: 1}, 'toon')).rejects.toThrow(
-      /@toon-format\/toon/,
-    );
+  it('toon encodes a uniform array without JSON quotes/braces, and round-trips', async () => {
+    const data = [{a: 1}, {a: 2}, {a: 3}];
+    const encoded = await serializeResult(data, 'toon');
+    // TOON drops the per-row quoted keys JSON repeats (tabular header instead).
+    expect(encoded).not.toContain('"a"');
+    expect(encoded).toContain('[3]{a}:'); // one header, then bare rows
+    const {decode} = await import('@toon-format/toon');
+    expect(decode(encoded.trim())).toEqual(data);
   });
 });
 
