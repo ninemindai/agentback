@@ -182,6 +182,24 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
 
+  examples/hello-command:
+    dependencies:
+      '@agentback/command':
+        specifier: workspace:*
+        version: link:../../packages/command
+      '@agentback/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@agentback/mcp':
+        specifier: workspace:*
+        version: link:../../packages/mcp
+      tslib:
+        specifier: ^2.8.1
+        version: 2.8.1
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+
   examples/hello-console:
     dependencies:
       '@agentback/console':
@@ -852,6 +870,46 @@ importers:
       zod:
         specifier: ^4.4.3
         version: 4.4.3
+
+  packages/command:
+    dependencies:
+      '@agentback/common':
+        specifier: workspace:~
+        version: link:../common
+      '@agentback/context':
+        specifier: workspace:~
+        version: link:../context
+      '@agentback/core':
+        specifier: workspace:~
+        version: link:../core
+      '@agentback/introspection':
+        specifier: workspace:~
+        version: link:../introspection
+      '@agentback/mcp':
+        specifier: workspace:~
+        version: link:../mcp
+      '@agentback/openapi':
+        specifier: workspace:~
+        version: link:../openapi
+      '@agentback/security':
+        specifier: workspace:~
+        version: link:../security
+      tslib:
+        specifier: ^2.8.1
+        version: 2.8.1
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@agentback/authorization':
+        specifier: workspace:~
+        version: link:../authorization
+      '@agentback/testing':
+        specifier: workspace:~
+        version: link:../testing
+      vitest:
+        specifier: ~4.1.9
+        version: 4.1.9(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(vite@8.0.13(@types/node@24.13.2)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
 
   packages/common:
     dependencies:

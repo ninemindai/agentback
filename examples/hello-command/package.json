@@ -1,0 +1,27 @@
+{
+  "name": "hello-command",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.js",
+  "bin": {
+    "hello-weather": "dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node dist/main.js",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@agentback/command": "workspace:*",
+    "@agentback/core": "workspace:*",
+    "@agentback/mcp": "workspace:*",
+    "tslib": "^2.8.1",
+    "zod": "^4.4.3"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "homepage": "https://agentback.dev",
+  "bugs": "https://github.com/ninemindai/agentback/issues"
+}

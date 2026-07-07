@@ -7,9 +7,13 @@
 > _commands_); alternatives `@agentback/cli-tools`, `@agentback/argv`. Decision
 > deferred to the naming open question below; this file keeps a concept path.
 
-**Status:** Exploratory (E-4, 2026-07-06). **Eng-reviewed 2026-07-06** — see the
-GSTACK REVIEW REPORT at the bottom; five decisions locked, audience reframed
-from agent-first to operator-first after the outside voice. Prompted by
+**Status:** **v1 SHIPPED (2026-07-06)** — `@agentback/command` implemented TDD
+per this design (30 package tests + the `selectTools` extraction; agents' 16
+tests green through the refactor). Eng-reviewed first (report at the bottom;
+five decisions locked, audience reframed from agent-first to operator-first
+after the outside voice). Deviations: none material — `--format toon` ships as
+an optional-peer lazy load; `--skill`/OKF `--llms` enrichment and positional
+args stayed v2 per "NOT in scope". Prompted by
 [goke](https://github.com/remorses/goke) ("build CLIs like you'd build an API")
 and [incur](https://github.com/wevm/incur) ("CLIs for agents and humans") — two
 TypeScript frameworks that arrive at AgentBack's own thesis from the CLI side.
