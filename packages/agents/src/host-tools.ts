@@ -7,8 +7,9 @@ import type {Context} from '@agentback/context';
 import type {UserProfile} from '@agentback/security';
 import {
   MCPBindings,
-  requiredScopesForTool,
+  selectTools,
   type MCPServer,
+  type SelectToolsOptions,
   type ToolBinding,
 } from '@agentback/mcp';
 import {z} from 'zod';
@@ -49,86 +50,22 @@ export const AgentToolContextSchema = z
   })
   .optional();
 
-export interface HostToolsOptions {
-  /** Only these tools are projected. Least privilege: the quickstart pattern. */
-  include?: string[];
-  /** Registered tools to leave out. */
-  exclude?: string[];
-  /**
-   * Scope gate, mirroring `buildServer({scopes})` visibility semantics: when
-   * set, a tool requiring scopes is projected only if every required scope is
-   * present. Omit for the trusted in-process default (everything visible).
-   */
-  scopes?: string[];
-}
+export type HostToolsOptions = SelectToolsOptions;
 
 /**
- * Validate + filter the registered tool bindings for projection. Throws at
- * projection time — never let a misconfiguration surface as "the model
- * ignores my tool":
- *
- * - duplicate tool names (ambiguous projection),
- * - include/exclude entries matching no visible tool,
- * - `confirm:` tools named in an include list (their confirmation
- *   round-trip does not survive projection — excluded from v1),
- * - surviving names that violate provider tool-calling constraints.
+ * Filter the registered tool bindings for AI SDK projection. Delegates the
+ * transport-neutral selection (dedup, scope gate, include/exclude validation,
+ * `confirm:` exclusion) to `selectTools` in `@agentback/mcp` (shared with the
+ * CLI projection — eng review T3), then applies the one AI-provider-specific
+ * rule that does NOT belong in mcp core: the OpenAI/Anthropic tool-name regex.
+ * Throws at projection time so a misconfiguration never surfaces as "the model
+ * ignores my tool".
  */
 export function filterTools(
   all: ToolBinding[],
   opts: HostToolsOptions = {},
 ): ToolBinding[] {
-  const byName = new Map<string, ToolBinding>();
-  const dupes = new Set<string>();
-  for (const t of all) {
-    if (byName.has(t.meta.name)) dupes.add(t.meta.name);
-    else byName.set(t.meta.name, t);
-  }
-  if (dupes.size) {
-    throw new Error(
-      `toHostTools: duplicate tool name(s): ${[...dupes].join(', ')} — ` +
-        `an ambiguous projection is a misconfiguration.`,
-    );
-  }
-
-  // Scope gate first: include/exclude are validated against what a caller
-  // holding these scopes could actually see.
-  const visible = [...byName.values()].filter(t => {
-    if (!opts.scopes) return true;
-    const required = requiredScopesForTool(t.ctor, t.meta);
-    return required.every(s => opts.scopes!.includes(s));
-  });
-  const visibleNames = new Set(visible.map(t => t.meta.name));
-
-  const unmatched = [...(opts.include ?? []), ...(opts.exclude ?? [])].filter(
-    n => !visibleNames.has(n),
-  );
-  if (unmatched.length) {
-    throw new Error(
-      `toHostTools: include/exclude name(s) match no ` +
-        `${opts.scopes ? 'visible' : 'registered'} tool: ` +
-        `${unmatched.join(', ')}. Available: ` +
-        `${[...visibleNames].join(', ') || '(none)'}.`,
-    );
-  }
-
-  for (const n of opts.include ?? []) {
-    if (byName.get(n)!.meta.confirm) {
-      throw new Error(
-        `toHostTools: tool '${n}' is a confirm: tool — the confirmation ` +
-          `round-trip does not survive projection, so confirm: tools are ` +
-          `excluded from host-tool projection (see the approval-flows open ` +
-          `question in docs/proposals/harness.md).`,
-      );
-    }
-  }
-
-  const out = visible.filter(
-    t =>
-      !t.meta.confirm &&
-      (!opts.include || opts.include.includes(t.meta.name)) &&
-      !(opts.exclude ?? []).includes(t.meta.name),
-  );
-
+  const out = selectTools(all, opts);
   const badNames = out.filter(t => !TOOL_NAME_RE.test(t.meta.name));
   if (badNames.length) {
     throw new Error(

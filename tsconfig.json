@@ -51,6 +51,7 @@
     {"path": "packages/testing"},
     {"path": "packages/create-agentback"},
     {"path": "packages/cli"},
+    {"path": "packages/command"},
     {"path": "packages/cli/fixtures/cf-app"},
     {"path": "examples/hello-rest"},
     {"path": "examples/hello-agent-console"},
@@ -68,6 +69,7 @@
     {"path": "examples/hello-uploads"},
     {"path": "examples/hello-mcp-apps"},
     {"path": "examples/hello-plugin"},
-    {"path": "examples/hello-agents"}
+    {"path": "examples/hello-agents"},
+    {"path": "examples/hello-command"}
   ]
 }
