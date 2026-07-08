@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>One framework, multi-faced agentic access | AgentBack Blog</title>
+    <meta
+      name="description"
+      content="One @tool class, authored once, is now a REST route, an MCP tool, an AI SDK agent's host tool, an operator CLI command, and a read-only introspection surface — every face sharing one validation, authorization, and metering pipeline."
+    />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="../index.html">AgentBack blog</a>
+        <div class="nav-links">
+          <a href="../../README.md">Docs</a>
+          <a href="../../../README.md">Repo README</a>
+          <a href="../diagrams/agent-native-framework.html">Diagram</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="post-layout">
+      <article class="post-body">
+        <p class="post-meta">July 7, 2026</p>
+        <h1>One framework, multi-faced agentic access</h1>
+        <p class="lede">
+          A service usually gives an agent one way in. AgentBack gives the same
+          authored surface many faces — REST, MCP, an in-app agent's own tools,
+          an operator CLI, and a read-only introspection feed — each sharing one
+          validation, authorization, and metering pipeline.
+        </p>
+
+        <p>
+          The recurring claim on this blog is that a service should have one
+          source of truth — a Zod schema on a decorator — and that everything an
+          agent or a human touches should be a projection of it, not a
+          re-description of it. REST was the first projection. MCP was the
+          second. The <code>v0.7.0</code> release adds three more, and the point
+          isn't the count. It's that they all reach the domain through the
+          <em>same</em> door.
+        </p>
+
+        <p>
+          You already wrote the hard part — a registered <code>@tool</code> class
+          with an input schema, an output schema, and a body:
+        </p>
+
+        <pre><code class="language-ts">@tool('forecast', {input: ForecastIn, output: ForecastOut})
+async forecast(input: z.infer&lt;typeof ForecastIn&gt;) { … }</code></pre>
+
+        <p>
+          That one declaration is a REST route and an MCP tool. In 0.7 it is also
+          an AI agent's tool, a command-line command, and a node in a live
+          introspection feed. Five faces, one author.
+        </p>
+
+        <h2>The agent runs your tools</h2>
+        <p>
+          The usual way to "add an agent" bolts a model onto your service from
+          the outside — it calls your REST API like any other client, and now you
+          have two authorization stories to keep in sync.
+          <code>@agentback/agents</code> inverts that. It projects your
+          registered <code>@tool</code> classes <em>into</em> the agent as
+          host-executed tools:
+        </p>
+
+        <pre><code class="language-ts">const tools = toHostTools(app, {include: ['forecast', 'book_trip']});
+// each tool's execute() routes through MCPServer.callTool —
+// Zod validation, @authorize voters, metering, output validation</code></pre>
+
+        <p>
+          The model chooses; the framework executes through the identical seam
+          your REST and MCP callers already use. Identity is read per turn (a
+          transport's authenticated principal always wins), quota is preflighted
+          before the model spends a token, and each turn emits one usage event
+          with its tool calls correlated underneath. You bring the model and the
+          credentials; AgentBack brings the pipeline. There is no auto-projected
+          <code>/agent/run</code> — where a turn runs is your call.
+        </p>
+
+        <h2>The same tool, from a shell</h2>
+        <p>
+          A human operator doesn't want an agent — they want to run the thing
+          once, by hand, and read the result. <code>@agentback/command</code>
+          makes the <code>@tool</code> a command:
+        </p>
+
+        <pre><code class="language-bash">my-svc forecast --city Tokyo --days 3
+my-svc forecast --city Tokyo --format json   # for scripts and pipes</code></pre>
+
+        <p>
+          There is no <code>.command()</code> builder to learn. The flags
+          <em>are</em> the input schema — <code>argvToBundle</code> coerces the
+          string argv off the emitted JSON Schema (booleans become
+          <code>--verbose</code>/<code>--no-verbose</code>, arrays repeat) before
+          <code>callTool</code> re-validates. The bare result goes to stdout, the
+          exit code carries success or failure, and an
+          <code>AgentError</code> envelope goes to stderr — a well-behaved Unix
+          citizen that still ran through the same voters and meter as everything
+          else.
+        </p>
+
+        <h2>The face that only reads</h2>
+        <p>
+          The fifth face doesn't invoke anything. <code>@agentback/introspection</code>
+          is a read-only MCP server that projects the <em>live</em> app — what's
+          bound, the real schema graph, the routes and tools — so a coding agent
+          grounds itself in the running instance instead of guessing from stale
+          source:
+        </p>
+
+        <pre><code class="language-ts">app.service(IntrospectionTools);  // inventory(), get(), get_okf_bundle()
+await installMcpHttp(app);         // point your agent's MCP client at /mcp</code></pre>
+
+        <p>
+          It never invokes a route or tool and never resolves a secret-bearing
+          binding — the one thing it reads is a schema-tagged binding's Zod
+          object, because schemas are not secrets. It's the "see" half of a
+          see-and-evolve loop; the new console <em>agent dock</em>
+          (<code>@agentback/console-chat</code>) wires it to an ACP coding agent
+          so the agent reads the live app before it edits the source.
+        </p>
+
+        <h2>Why the shared pipeline is the whole point</h2>
+        <p>
+          It would be easy to build these as five adapters, each with its own
+          argument parsing, its own auth check, its own idea of an error. That is
+          how surfaces normally drift: the CLI forgets a permission the REST
+          layer enforces; the agent path skips the meter; the third client
+          validates a field the other two don't. Every face becomes a place a
+          bug can hide.
+        </p>
+
+        <p>
+          AgentBack routes all of them through one function —
+          <code>MCPServer.callTool</code>. Validation, <code>@authorize</code>
+          voters, metering, and output validation happen once, in one place, and
+          every face inherits them. Add a voter and it guards the REST route, the
+          MCP tool, the agent's tool call, and the CLI command in the same edit.
+          The faces are thin on purpose: argv in, or a model's tool call, or an
+          HTTP request — different skins over the same muscle.
+        </p>
+
+        <p>
+          That's what "multi-faced agentic access" means here. Not five ways to
+          write the same logic five times, but one authored surface an agent can
+          reach however it happens to be shaped today — and a promise that the
+          contract it depends on is the same one every other caller sees.
+        </p>
+
+        <div class="post-actions">
+          <a class="button" href="../../guides/agents.md">Read the agents guide</a>
+          <a class="button secondary" href="../../../examples/hello-command"
+            >Try the CLI example</a
+          >
+        </div>
+      </article>
+
+      <aside class="aside" aria-label="Post links">
+        <h2>Related</h2>
+        <a href="tools-are-not-endpoints.html">Tools are not endpoints</a>
+        <a href="one-handler-every-runtime.html">One handler, every runtime</a>
+        <a href="boundary-coherence.html">Boundary coherence is the product</a>
+      </aside>
+    </main>
+  </body>
+</html>
