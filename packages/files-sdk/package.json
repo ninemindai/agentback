@@ -1,6 +1,6 @@
 {
   "name": "@agentback/files-sdk",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "FileStore adapter bridging @agentback/files to files-sdk (one port, 40+ storage backends)",
   "type": "module",
   "main": "dist/index.js",
