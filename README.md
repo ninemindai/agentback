@@ -66,7 +66,7 @@ REST controllers and MCP tool classes are just bindings the respective servers
 find by tag — so adding a route or a tool is adding a class, not editing a
 router file, an OpenAPI document, and a tool manifest.
 
-- **ESM-only**, Node 22.13+, TypeScript 6.0
+- **ESM-only**, Node 22.13+, TypeScript 7.0
 - **`Context` + `Binding` DI** with `@inject`, providers, interceptors, extensions, lifecycle observers
 - **Zod-first** schemas; decorators accept `ZodType` directly
 - **OpenAPI 3.1.1** emission via Zod v4's native `z.toJSONSchema`
