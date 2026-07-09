@@ -28,7 +28,7 @@ input/output, and the rendered docs — simultaneously.** Change the schema and
 every contract changes in one edit; disagreements surface as a TypeScript error
 at the decorator, a startup throw, or a failing test.
 
-ESM-only, Node 22.13+, TypeScript 6, pnpm workspaces. **Relative imports use
+ESM-only, Node 22.13+, TypeScript 7, pnpm workspaces. **Relative imports use
 `.js` extensions.** This is a slim modern subset — no LB4 sequences/actions, no
 `@loopback/repository`, no per-parameter `@param`/`@requestBody`.
 

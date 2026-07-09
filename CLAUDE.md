@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-ESM/Zod/MCP fork of LoopBack 4 — a slim modern subset of `@loopback/core` + REST for building HTTP and MCP services out of the same DI container. ESM-only, Node 22.13+, TypeScript 6.0, pnpm 11 workspaces. Alpha (v0.7.0 published to npm — all `@agentback/*` packages + the `create-agentback` scaffolder); API still settling. Scaffold a new app with `npm create agentback my-service [--template rest|mcp|hybrid]`.
+ESM/Zod/MCP fork of LoopBack 4 — a slim modern subset of `@loopback/core` + REST for building HTTP and MCP services out of the same DI container. ESM-only, Node 22.13+, TypeScript 7.0, pnpm 11 workspaces. Alpha (v0.7.0 published to npm — all `@agentback/*` packages + the `create-agentback` scaffolder); API still settling. Scaffold a new app with `npm create agentback my-service [--template rest|mcp|hybrid]`.
 
 For the framework's design thesis (boundary coherence between Zod, OpenAPI, MCP, and DI — and why that matters for AI-led development), see [docs/agent-ergonomics.md](docs/agent-ergonomics.md). Read it before adding a feature that might introduce a second source of truth alongside the Zod schemas.
 
@@ -171,13 +171,14 @@ Default policy: **bump everything to the latest** with `ncu -ws --root -u` (mono
 Exceptions to "latest", and why:
 
 - **`@types/node`** — pinned to the latest **even** major (Node LTS line). `ncu` will pick odd majors like 25; reset to `^24.x` (or the next even after 24) by hand after running it.
+- **`typescript` is on `~7` (the native Go compiler)**, and TS 7 **no longer ships the JS compiler API**: `exports['.']` resolves to `lib/version.cjs`, so `require('typescript')` yields only `{version, versionMajorMinor}` — no `createProgram`, no `tsserver.js`. The API moved to `./unstable/*` subpaths. Consequences: **`pnpm lint`'s `eslint` step is broken** — `@typescript-eslint` reads `ts.ModuleKind.Cjs` at module load and dies with `TypeError: Cannot read properties of undefined (reading 'Cjs')`; every published version through `8.63.0` (and its canary) still declares `peer typescript: >=4.8.4 <6.1.0`. Restore it by bumping `@typescript-eslint/*` once they support TS 7 — nothing else is needed. `prettier` (vendors its parser) and `konsistent` (declares its own `typescript@^5.7` dep) are unaffected, and **neither `pnpm verify` nor CI runs `eslint`**, so the pipeline stays green. Don't try to force a TS 6 copy into the eslint packages via `packageExtensions` — `typescript` is a **peer** there, and peer resolution wins over an injected dependency.
 - **`express` is on `^5`** (migrated from `^4`). The migration was low-risk because `RestServer.toExpressPath` only emits simple `:name` params (never `*`/`:name?`/regex paths — the path-to-regexp v8 breakages), `req.query` is only read, and error flow already uses explicit `catch → next(err)`. `multer@^2` + `body-parser@^2` are already v5-ready. Keep new framework routes free of bare-wildcard paths (`app.get('*')` must be `app.get('/*splat')` under path-to-regexp v8).
 
 When `ncu` produces a result that won't build, prefer pinning back the offender (with a one-line reason in the commit message) over patching code, unless the upgrade was the goal.
 
 ### pnpm 11 quirks worth knowing
 
-- **Supply-chain age policy**: pnpm 11 rejects lockfile entries published within a recent window (currently ~24h). If install fails with `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`, pin the offending dep one patch/minor older.
+- **Supply-chain age policy**: pnpm 11 rejects lockfile entries published within a recent window (currently ~24h). If install fails with `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`, pin the offending dep one patch/minor older. When you deliberately want a just-published version, `pnpm add` appends it (and every optional platform binary it pulls in) to `minimumReleaseAgeExclude` in `pnpm-workspace.yaml` — commit those entries, or CI's `pnpm install --frozen-lockfile` will trip the same check. They become no-ops once the version ages past the window.
 - **`pnpm-workspace.yaml` `allowBuilds`**: pnpm 11 requires per-package opt-in for postinstall scripts. The first install on a fresh machine writes `allowBuilds: { '<pkg>': set this to true or false }` placeholders into `pnpm-workspace.yaml`; replace `set this to ...` with `true` or `false` and rerun. Don't commit placeholders.
 - **`verify-deps-before-run=false`** is set in `.npmrc` — pnpm 11 otherwise re-runs `pnpm install` before each `pnpm <script>`, which fails on the supply-chain check inside scripts that don't need re-resolution.
 
