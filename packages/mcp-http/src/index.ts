@@ -302,8 +302,14 @@ export function mountMcpHttp(
     );
   }
 
+  // `auth` is set by our own middleware (and the SDK's bearer-auth middleware).
+  // Read it via a local cast rather than the SDK's `express-serve-static-core`
+  // module augmentation, which only merges when a single version of that type
+  // package is installed — matching how the rest of this package reads it.
+  const authOf = (req: Request): AuthInfo | undefined =>
+    (req as Request & {auth?: AuthInfo}).auth;
   const principalOf = (req: Request): string | undefined =>
-    (req.auth as AuthInfo | undefined)?.clientId;
+    authOf(req)?.clientId;
   // A request may only touch a session owned by its own principal. Only
   // enforced when auth is on (otherwise there is no principal to pin).
   const ownsSession = (req: Request, id: string): boolean =>
@@ -421,7 +427,7 @@ export function mountMcpHttp(
         // a single live transport at a time. When auth is on, the session only
         // sees tools whose `scope` is covered by the caller's granted scopes.
         const scopes = authEnabled
-          ? ((req.auth as AuthInfo | undefined)?.scopes ?? [])
+          ? (authOf(req)?.scopes ?? [])
           : undefined;
 
         // If anything in session setup throws (binder, schema lowering, connect),
