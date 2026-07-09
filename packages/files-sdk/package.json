@@ -27,8 +27,8 @@
     "files-sdk": "^2.0.0"
   },
   "devDependencies": {
-    "files-sdk": "^2.0.0",
-    "vitest": "~4.1.9"
+    "files-sdk": "^2.1.0",
+    "vitest": "~4.1.10"
   },
   "engines": {
     "node": ">=22.13"

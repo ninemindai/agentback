@@ -38,11 +38,11 @@
   },
   "devDependencies": {
     "@agentback/testlab": "workspace:~",
-    "@opentelemetry/core": "^2.8.0",
-    "@opentelemetry/sdk-trace-base": "^2.8.0",
+    "@opentelemetry/core": "^2.9.0",
+    "@opentelemetry/sdk-trace-base": "^2.9.0",
     "@types/supertest": "^7.2.0",
     "supertest": "^7.2.2",
-    "vitest": "~4.1.9",
+    "vitest": "~4.1.10",
     "zod": "^4.4.3"
   },
   "license": "MIT",
