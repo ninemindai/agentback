@@ -21,3 +21,9 @@ build
 # `agentback deploy` generated artifacts (worker entry + merged wrangler config)
 .agentback/
 packages/cli/fixtures/cf-app/wrangler.toml
+
+# Local, pre-release marketing/social drafts — kept out of git until release.
+# Real blog posts live in docs/blog/posts/; only loose drafts here are ignored.
+/AGENTS.md
+/docs/blog/*-agentback-post.html
+/docs/wechat-moments-agentback.txt
