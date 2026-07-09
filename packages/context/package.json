@@ -30,7 +30,7 @@
   "devDependencies": {
     "@agentback/testlab": "workspace:~",
     "@types/uuid": "^11.0.0",
-    "vitest": "~4.1.9"
+    "vitest": "~4.1.10"
   },
   "engines": {
     "node": ">=22.13"

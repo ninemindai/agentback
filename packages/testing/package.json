@@ -48,7 +48,7 @@
     "@agentback/openapi": "workspace:~",
     "@agentback/security": "workspace:~",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "vitest": "~4.1.9",
+    "vitest": "~4.1.10",
     "zod": "^4.4.3"
   },
   "license": "MIT",

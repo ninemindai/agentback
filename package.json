@@ -7,7 +7,7 @@
   "engines": {
     "node": ">=22.13"
   },
-  "packageManager": "pnpm@11.9.0",
+  "packageManager": "pnpm@11.10.0",
   "scripts": {
     "build": "tsc -b && pnpm -r run build:client",
     "build:watch": "tsc -b --watch",
@@ -26,16 +26,16 @@
     ]
   },
   "devDependencies": {
-    "@types/node": "^24.13.2",
-    "@typescript-eslint/eslint-plugin": "~8.62.0",
-    "@typescript-eslint/parser": "~8.62.0",
+    "@types/node": "^24.13.3",
+    "@typescript-eslint/eslint-plugin": "~8.63.0",
+    "@typescript-eslint/parser": "~8.63.0",
     "eslint": "~10.6.0",
-    "konsistent": "1.0.0-beta.1",
+    "konsistent": "1.0.0-beta.3",
     "marked": "^18.0.5",
-    "prettier": "^3.9.0",
+    "prettier": "^3.9.5",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "@typescript/native": "npm:typescript@~7.0.2",
-    "vitest": "~4.1.9"
+    "vitest": "~4.1.10"
   },
   "license": "MIT",
   "copyright.owner": "NineMind, Inc.",

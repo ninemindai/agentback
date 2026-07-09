@@ -41,8 +41,8 @@
   },
   "devDependencies": {
     "@agentback/authorization": "workspace:~",
-    "ai": "~7.0.15",
-    "vitest": "~4.1.9"
+    "ai": "~7.0.18",
+    "vitest": "~4.1.10"
   },
   "license": "MIT",
   "repository": {
