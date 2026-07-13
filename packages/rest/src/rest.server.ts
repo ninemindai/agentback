@@ -1271,15 +1271,32 @@ export class RestServer implements Server {
       await this.startNativeListener();
       return;
     }
-    await new Promise<void>(resolve => {
-      this.httpServer = this.ensureExpressApp().listen(
-        this.config.port,
-        this.config.host,
-        () => {
-          this._listening = true;
-          resolve();
-        },
-      );
+    this.httpServer = this.ensureExpressApp().listen(
+      this.config.port,
+      this.config.host,
+    );
+    await this.awaitBind(this.httpServer);
+  }
+
+  /**
+   * Resolve once `server` has actually bound; reject if the bind fails
+   * (`EADDRINUSE`, `EACCES`, …). Gates on the real `'listening'`/`'error'`
+   * events rather than the `listen(...cb)` callback: Express 5's `app.listen`
+   * fires that callback even on a failed bind (with `address()` still `null`)
+   * and only *then* emits `'error'`, so resolving on the callback would report
+   * a listener that never bound — the caller prints "listening" and the process
+   * exits 0 with no error. The startup `'error'` listener is removed once bound
+   * so later runtime socket errors surface as usual rather than being swallowed.
+   */
+  private awaitBind(server: HttpServer): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const onError = (err: Error) => reject(err);
+      server.once('error', onError);
+      server.once('listening', () => {
+        server.removeListener('error', onError);
+        this._listening = true;
+        resolve();
+      });
     });
   }
 
@@ -1302,16 +1319,11 @@ export class RestServer implements Server {
         getBuiltinModule(id: string): unknown;
       }
     ).getBuiltinModule('node:http') as typeof import('http');
-    await new Promise<void>(resolve => {
-      this.httpServer = createHttpServer(listener).listen(
-        this.config.port,
-        this.config.host,
-        () => {
-          this._listening = true;
-          resolve();
-        },
-      );
-    });
+    this.httpServer = createHttpServer(listener).listen(
+      this.config.port,
+      this.config.host,
+    );
+    await this.awaitBind(this.httpServer);
   }
 
   /**
