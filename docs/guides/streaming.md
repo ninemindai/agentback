@@ -86,9 +86,10 @@ stream that lies about its item type must not keep lying.
 **Mid-stream errors use the same envelope as unary errors.** Once headers are
 flushed the status code can't change (inherent to streaming), so a handler
 throw becomes a terminal error frame built by `buildErrorEnvelope`. The usual
-error rules apply unchanged: a plain `Error` is redacted to a generic 500
-`internal_error` — its message never reaches the caller; throw an
-`AgentError` (from `@agentback/openapi`) when the message should.
+[error rules](../concepts/errors.md) apply unchanged: a plain `Error` is
+redacted to a generic 500 `internal_error` — its message never reaches the
+caller; throw an `AgentError` (from `@agentback/openapi`) when the message
+should.
 
 **Client disconnect releases your resources.** When the client goes away, the
 server calls the iterator's `return()`, so a generator's `finally` block (or
