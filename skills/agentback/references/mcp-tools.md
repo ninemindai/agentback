@@ -6,6 +6,7 @@
 - [Defining an MCP Server Class](#defining-an-mcp-server-class)
 - [The `@tool` Decorator](#the-tool-decorator)
 - [Resources and Prompts](#resources-and-prompts)
+- [MCP Apps Widgets (ui:)](#mcp-apps-widgets-ui)
 - [Transport: stdio (MCPApplication)](#transport-stdio-mcpapplication)
 - [Transport: HTTP (installMcpHttp)](#transport-http-installmcphttp)
 - [Scope-Gated Tools](#scope-gated-tools)
@@ -92,6 +93,8 @@ surface goes dark.
 | `description` | `string`    | no       | Shown in tools/list                               |
 | `title`       | `string`    | no       | Human-readable display name                       |
 | `scope`       | `string`    | no       | OAuth scope required to see/call the tool         |
+| `confirm`     | `boolean \| {ttlMs?}` | no | Dangerous tool: first call → `confirmation_required` error + single-use token; identical retry with the `confirmationToken` input executes |
+| `ui`          | `{resourceUri, visibility?}` | no | MCP Apps (SEP-1865) widget link, emitted as `_meta.ui` — see [MCP Apps Widgets](#mcp-apps-widgets-ui) |
 
 ### Slot 0 = `z.infer<typeof input>` when input is declared
 
@@ -135,6 +138,34 @@ A mismatch throws (unlike REST, which only logs). The SDK additionally surfaces
 `structuredContent` alongside the text frame for clients that consume typed
 payloads.
 
+### `confirm:` — dangerous tools
+
+`confirm: true` (or `{ttlMs}`) gates a destructive tool behind a two-phase
+round-trip. The first call is refused with a `confirmation_required` error
+carrying a single-use token; retrying the **identical** call with that token
+in the `confirmationToken` input property executes it. The property is added
+to the advertised `inputSchema` automatically (don't declare it in `input:`),
+and it is stripped before schema validation, so the handler never sees it.
+
+```ts
+@tool('delete_dataset', {input: DatasetRef, confirm: true})
+async deleteDataset(input: z.infer<typeof DatasetRef>) { … }
+```
+
+- The token is bound to a fingerprint of the exact input — a retry whose
+  arguments differ, an expired token, or a reused token fails with
+  `confirmation_invalid`. Default lifetime 5 minutes; `{ttlMs}` overrides.
+- The REST twin is the `confirm:` route option (`x-confirmation-token`
+  header) — see
+  [rest-and-openapi.md](rest-and-openapi.md#confirmation-and-idempotency).
+- The token store defaults to in-memory; for multi-instance HTTP deploys bind
+  a shared `ConfirmationStore` (port in `@agentback/common`) to
+  `MCPBindings.CONFIRMATION_STORE`.
+- Projections that cannot carry the round-trip **exclude** `confirm:` tools
+  entirely: `@agentback/agents` (host-tool projection) and the operator CLI
+  refuse to project them — see [agents.md](agents.md) and
+  [command.md](command.md).
+
 ## Resources and Prompts
 
 `@resource` and `@prompt` follow the same class-decoration pattern.
@@ -165,6 +196,59 @@ class WeatherTools {
 
 Resources and prompts have no Zod validation on their return values; the
 framework JSON-serializes any non-string result.
+
+## MCP Apps Widgets (`ui:`)
+
+`@tool(..., {ui})` links an interactive HTML widget (**MCP Apps**, SEP-1865)
+that a conformant host (Claude Desktop, Goose, VS Code) renders inline for the
+tool's result instead of raw JSON. It composes the primitives above — a
+`@tool` plus a `@resource` — with one option:
+
+```ts
+import {MCP_APP_MIME_TYPE, mcpServer, resource, tool} from '@agentback/mcp';
+
+const UI_URI = 'ui://weather/forecast';
+
+@mcpServer()
+class WeatherTools {
+  @tool('get_forecast', {
+    input: ForecastInput,
+    output: ForecastOutput, // REQUIRED in practice: feeds the widget
+    ui: {resourceUri: UI_URI, visibility: ['model', 'app']},
+  })
+  async getForecast(input: z.infer<typeof ForecastInput>) { … }
+
+  @resource(UI_URI, {name: 'forecast-widget', mimeType: MCP_APP_MIME_TYPE})
+  forecastWidget(): string {
+    return WIDGET_HTML;
+  }
+}
+```
+
+- **`ui: {resourceUri, visibility?}`** is emitted as `_meta.ui` on the
+  `tools/list` entry — that's the entire framework seam (no new capability
+  flag; `resources` is already advertised). `visibility`: `'model'` lets the
+  model reference the widget, `'app'` lets the host surface it in its UI;
+  omit to defer to host policy. Types `ToolUiMeta`/`ToolUiVisibility` and
+  `MCP_APP_MIME_TYPE` (`text/html;profile=mcp-app`) export from
+  `@agentback/mcp`.
+- **Declare `output:`** — the host feeds the tool result's
+  `structuredContent` to the widget; without an output schema there is
+  nothing typed to bind.
+- **The widget MUST connect through the official
+  `@modelcontextprotocol/ext-apps` `App` bridge** (versioned `ui/initialize`
+  handshake). A hand-rolled raw-`postMessage` widget renders **blank** in
+  real hosts. Register `app.ontoolresult` **before** `app.connect()` — the
+  host pushes the initiating tool result right after the handshake.
+- Since the widget imports an npm package, **bundle it** (esbuild) and inline
+  the bundle into the served HTML — an inline `<script>` can't resolve the
+  import.
+- The wire shape is testable in-process with the in-memory MCP client (no
+  host): assert `tool._meta.ui.resourceUri`, the resource `mimeType`, and
+  `structuredContent` on `tools/call`.
+
+Full walkthrough: `docs/guides/mcp-apps-widgets.md`; runnable example:
+`examples/hello-mcp-apps` (bundles the widget at server startup).
 
 ## Transport: stdio (MCPApplication)
 
@@ -382,17 +466,24 @@ it uses in-memory storage. Store failures fail open.
 
 For each `tools/call` the SDK delivers to `MCPServer`:
 
-1. **Parse input** — `input.safeParse(rawInput)` if an `input` schema is
+1. **Confirmation gate** — for `confirm:` tools, `enforceConfirmation` runs
+   first: no/invalid `confirmationToken` → `confirmation_required` /
+   `confirmation_invalid`; a valid token is verified against the input
+   fingerprint and stripped before validation.
+2. **Parse input** — `input.safeParse(rawInput)` if an `input` schema is
    declared; throws with Zod issue details on failure.
-2. **Build per-request context** — when `authInfo` is present on the SDK `extra`
+3. **Build per-request context** — when `authInfo` is present on the SDK `extra`
    object, a child `Context` is created and `MCPBindings.REQUEST_AUTH` is bound
    into it.
-3. **Weave `@inject` arguments** — `resolveInjectedArguments` resolves slots 1+
+4. **Weave `@inject` arguments** — `resolveInjectedArguments` resolves slots 1+
    against the (possibly per-request) context; the parsed input occupies slot 0.
-4. **Invoke the method** — `instance[methodName].apply(instance, args)`.
-5. **Validate output** — `output.safeParse(result)` if an `output` schema is
+5. **Invoke the method** — `instance[methodName].apply(instance, args)`. A
+   returned async iterable is drained: each item relays as a progress
+   notification and the collected array becomes the result (declare `output:`
+   as the collected shape, e.g. `z.array(Item)`).
+6. **Validate output** — `output.safeParse(result)` if an `output` schema is
    declared; throws on mismatch.
-6. **Serialize** — non-string results are `JSON.stringify`-ed into a `{type:
+7. **Serialize** — non-string results are `JSON.stringify`-ed into a `{type:
 'text', text}` content frame. When `output` is declared, the raw object is
    also surfaced as `structuredContent` for clients that consume typed payloads.
 
@@ -423,6 +514,12 @@ are declared via `@api`-decorated REST controllers registered in the DI containe
   slot 1+. Violation throws at decoration time.
 - **No `input`** → tool takes no validated input; all slots free for `@inject`.
 - **`output` validation throws** on mismatch (unlike REST, which logs).
+- **`confirm:` tools need a two-phase call** — first call returns a
+  `confirmation_required` token, the identical retry with `confirmationToken`
+  executes. Agents/CLI projections exclude such tools.
+- **MCP Apps widgets must use the `@modelcontextprotocol/ext-apps` `App`
+  bridge** — a hand-rolled raw-`postMessage` widget renders blank in real
+  hosts. Bundle the widget and inline it into the `ui://` resource's HTML.
 - **Stdio stdout is the transport wire** — all logging after `app.start()` must
   go to `stderr`.
 - **HTTP transport = per-session servers** built by `buildServer({scopes})`;

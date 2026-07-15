@@ -7,6 +7,8 @@
 - [Verb Decorators and Route Options](#verb-decorators-and-route-options)
 - [Slot-0: The Input Bundle](#slot-0-the-input-bundle)
 - [Response Validation and Status Codes](#response-validation-and-status-codes)
+- [Streaming Routes (streamOf)](#streaming-routes-streamof)
+- [Confirmation and Idempotency](#confirmation-and-idempotency)
 - [URL Placeholders and Header Keys](#url-placeholders-and-header-keys)
 - [Request Pipeline](#request-pipeline)
 - [OpenAPI 3.1 Emission](#openapi-31-emission)
@@ -85,8 +87,12 @@ All accept a `RouteOptions` object as their second argument:
 | `query`       | `ZodObject`                               | Query string values; exposed as `input.query`                         |
 | `headers`     | `ZodObject`                               | Request headers (lowercase keys); exposed as `input.headers`          |
 | `response`    | `ZodType`                                 | Success response schema; constrains return type; validated at runtime |
+| `streamOf`    | `ZodType`                                 | Per-item schema for a streaming route; handler returns `AsyncIterable`; mutually exclusive with `response` |
+| `format`      | `'sse' \| 'jsonl'`                        | Wire format for a `streamOf` route (default `'sse'`)                  |
 | `responses`   | `Record<number, {schema?, description?}>` | Additional documented status codes                                    |
 | `status`      | `number`                                  | Success status code (default `200`; `204` returns empty body)         |
+| `confirm`     | `boolean \| {ttlMs?}`                     | Dangerous operation: first call → 409 + single-use token; identical retry with `x-confirmation-token` executes |
+| `idempotency` | `boolean \| {required?, ttlMs?}`          | Honor the `idempotency-key` header: replaying a key returns the original result without re-executing |
 | `description` | `string`                                  | OpenAPI operation description                                         |
 | `summary`     | `string`                                  | OpenAPI operation summary                                             |
 | `tags`        | `string[]`                                | OpenAPI operation tags                                                |
@@ -211,6 +217,104 @@ Document additional status codes without altering runtime behavior via `response
 })
 async create(input: {body: z.infer<typeof NewItem>}) { ... }
 ```
+
+## Streaming Routes (`streamOf`)
+
+`streamOf:` replaces `response:` for routes that emit a typed sequence — SSE
+(`text/event-stream`) by default, newline-delimited JSON (`application/jsonl`)
+with `format: 'jsonl'`. The handler must return an `AsyncIterable` of the item
+type (an async generator is the natural shape); the decorator enforces this at
+compile time exactly like `response:` does for unary routes.
+
+```ts
+const OrderPath = z.object({id: z.string().min(1)});
+const OrderEvent = z.object({id: z.string(), status: z.string(), at: z.string()});
+
+@get('/orders/{id}/events', {path: OrderPath, streamOf: OrderEvent})
+async *events(input: {path: z.infer<typeof OrderPath>}) {
+  const sub = this.orderEvents.subscribe(input.path.id);
+  try {
+    for await (const e of sub) yield e; // each item validated against OrderEvent
+  } finally {
+    sub.close(); // also runs on client disconnect
+  }
+}
+```
+
+Rules and runtime behaviors:
+
+- **Exclusivity** — `streamOf` + `response` throws at decoration time (a stream
+  has one success shape: the item), and so does `streamOf` + `idempotency` (a
+  stream cannot be replayed from a cache).
+- **First item is pulled before headers flush**, so an error thrown before the
+  first `yield` (auth, not-found) still surfaces with a proper HTTP status.
+  Slow producers should yield an initial item promptly.
+- **Every item is validated against `streamOf`** before it is written; a
+  failing item terminates the stream with a terminal error frame.
+- **Mid-stream errors** become a terminal error frame — SSE `event: error` /
+  JSONL `{"error":{…}}` line — carrying the standard envelope
+  (`{statusCode, code, message, details?}`). `AgentError` semantics apply
+  unchanged: a plain `Error` is redacted to 500 `internal_error`.
+- **Client disconnect** calls the iterator's `return()`, so upstream cleanup
+  belongs in a `finally` block.
+- **Heartbeat** (SSE only): `{rest: {sse: {pingMs: 15_000}}}` writes `: ping`
+  comment lines to defeat idle proxies. Off by default; ignored for JSONL.
+- **OpenAPI**: the item schema emits as `x-itemSchema` under the stream media
+  type on the `200` response (promoted to `itemSchema` when emission moves to
+  OpenAPI 3.2).
+- **Typed client**: `defineRoute('GET', path, {streamOf, format?})` then
+  `route.stream(client, input, {signal})` yields items validated against the
+  same schema; a terminal error frame throws `ClientError`
+  ([schema-sharing-and-client.md](schema-sharing-and-client.md)).
+- **Over MCP**: the same async generator on a `@tool` is drained — each item
+  relays as a progress notification and the collected array becomes the tool
+  result, so `output:` describes the collected shape (`z.array(Item)`).
+- **Bring-your-own stream library**: the contract is the platform
+  `AsyncIterable`, so `Stream.toAsyncIterable(…)` (Effect) or
+  `eachValueFrom(obs$)` (rxjs-for-await) plug in at the return boundary.
+
+Full walkthrough: `docs/guides/streaming.md`.
+
+## Confirmation and Idempotency
+
+Two opt-in safety rails for mutating routes, both transport-neutral (identical
+behavior on the Express and Web/edge hosts) and both surfaced to agents in the
+emitted OpenAPI (the header parameters are declared on the operation).
+
+**`confirm:` — two-phase execution for dangerous operations.** The first call
+is refused with a 409 `confirmation_required` error carrying a single-use
+token; retrying the **identical** request with that token in the
+`x-confirmation-token` header executes it. The token is bound to a fingerprint
+of the exact payload (method, path, params, query, body), so a confirmed call
+cannot differ from the proposed one — a mismatched or expired token throws 409
+`confirmation_invalid`. `{ttlMs}` overrides the 5-minute token lifetime.
+
+```ts
+@del('/{id}', {path: ItemId, confirm: true, status: 204})
+async remove(input: {path: z.infer<typeof ItemId>}): Promise<void> { ... }
+```
+
+**`idempotency:` — replay protection for retried mutations.** When the client
+sends an `idempotency-key` header, replaying the same key within the window
+returns the original result without re-executing the handler (the response
+carries `idempotency-replayed: true`). Errors are **not** cached — a failed
+call may be retried with the same key. `{required: true}` rejects keyless
+requests with 400 `idempotency_key_required`; `{ttlMs}` overrides the 24-hour
+replay window. Mutually exclusive with `streamOf` (a stream cannot replay).
+
+```ts
+@post('/orders', {body: NewOrder, response: Order, idempotency: {required: true}})
+async create(input: {body: z.infer<typeof NewOrder>}) { ... }
+```
+
+Both default to in-process, in-memory stores. For multi-instance deploys bind
+shared implementations to `RestBindings.CONFIRMATION_STORE` /
+`RestBindings.IDEMPOTENCY_STORE` (the `ConfirmationStore` / `IdempotencyStore`
+ports are in `@agentback/common`).
+
+Note: `confirm:` also exists on MCP `@tool`s, where projections that cannot
+carry the round-trip (agents, the operator CLI) **exclude** confirm-gated
+tools entirely — see [agents.md](agents.md) and [command.md](command.md).
 
 ## URL Placeholders and Header Keys
 
@@ -576,3 +680,7 @@ await app.start();
    (`app.middleware()` / `app.expressMiddleware()`) or by subclassing
    `RestServer` and overriding `dispatch`, `makeHandler`, `sendResult`, or
    `sendError`.
+
+8. **`streamOf:` streams a typed sequence.** The handler returns an
+   `AsyncIterable`; items are validated per-item; mutually exclusive with
+   `response` and `idempotency`; SSE by default, `format: 'jsonl'` for NDJSON.

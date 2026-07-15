@@ -12,7 +12,8 @@ description: >-
   @mcpServer, installMcpHttp, @authenticate, @authorize, @actor, @actorCommand,
   @actorQuery, ActorRegistry, @injectActor, z.infer, toHostTools, installAgent,
   running a Vercel AI SDK ToolLoopAgent/HarnessAgent with the app's own @tool
-  classes as host tools (@agentback/agents), or building a
+  classes as host tools (@agentback/agents), rendering an MCP Apps (SEP-1865)
+  ui:// widget for a tool result (@tool({ui})), or building a
   hybrid REST+MCP app where both ends share the same Zod schemas. Also covers
   scaffolding a new app with `npm create agentback` / the `create-agentback`
   CLI (rest | mcp | hybrid templates).
@@ -37,10 +38,12 @@ ESM-only, Node 22.13+, TypeScript 7, pnpm workspaces. **Relative imports use
 1. **DI container, bindings, components, lifecycle?** → Dependency injection &
    components ([dependency-injection.md](references/dependency-injection.md)).
    (Same model as `@loopback/core`; this layer is a faithful port.)
-2. **HTTP/REST API with validation + OpenAPI?** → Zod-first REST
+2. **HTTP/REST API with validation + OpenAPI (incl. typed SSE/JSONL streaming
+   via `streamOf`)?** → Zod-first REST
    ([rest-and-openapi.md](references/rest-and-openapi.md))
 3. **Tools / resources / prompts for MCP clients (Claude, Cursor, agents),
-   over stdio or HTTP?** → MCP tools ([mcp-tools.md](references/mcp-tools.md))
+   over stdio or HTTP — incl. MCP Apps `ui://` widgets rendered inline by the
+   host?** → MCP tools ([mcp-tools.md](references/mcp-tools.md))
 4. **Share schemas/types between server and a typed client (no codegen)?** →
    Schema sharing & client ([schema-sharing-and-client.md](references/schema-sharing-and-client.md))
 5. **Authentication, authorization, scopes, rate limiting (REST or MCP/HTTP)?**
@@ -223,11 +226,12 @@ vercel|cloudflare` (`@agentback/cli`). The schema-typed `client` depends on
   observers, tag-based discovery.
 - **Zod-first REST**:
   [references/rest-and-openapi.md](references/rest-and-openapi.md) — `@api` +
-  verb decorators, the input bundle, response/status, OpenAPI emission, Swagger,
-  CORS/middleware, subclassing dispatch.
+  verb decorators, the input bundle, response/status, streaming (`streamOf`,
+  SSE/JSONL), OpenAPI emission, Swagger, CORS/middleware, subclassing dispatch.
 - **MCP tools**: [references/mcp-tools.md](references/mcp-tools.md) —
-  `@mcpServer`/`@tool`/`@resource`/`@prompt`, dispatch, stdio vs HTTP transport,
-  scope-gated tools, the inspector.
+  `@mcpServer`/`@tool`/`@resource`/`@prompt`, dispatch, `confirm:` gating, MCP
+  Apps widgets (`ui:`), stdio vs HTTP transport, scope-gated tools, the
+  inspector.
 - **Schema sharing & client**:
   [references/schema-sharing-and-client.md](references/schema-sharing-and-client.md)
   — one schema for both ends, `defineRoute`/`routeGroup`/`safeCall`, no codegen.

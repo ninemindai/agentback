@@ -50,6 +50,7 @@ Read top-to-bottom the first time; jump around afterwards.
 | [Build a REST API](guides/build-a-rest-api.md)                         | A Zod-validated REST service with auto-emitted OpenAPI 3.1 and Swagger UI.                                   |
 | [Build an MCP server](guides/build-an-mcp-server.md)                   | Tools, resources, and prompts an MCP client (or Claude) can call, with an inspector UI.                      |
 | [Build a hybrid app](guides/build-a-hybrid-app.md)                     | REST + MCP from a single process and a single set of schemas, plus a type-safe HTTP client.                  |
+| [Typed streaming (SSE & JSONL)](guides/streaming.md)                   | `streamOf:` routes: per-item Zod validation, typed client `for await`, MCP progress, bring-your-own streams. |
 | [Render a widget with MCP Apps](guides/mcp-apps-widgets.md)            | An interactive `ui://` widget a host (Claude Desktop) renders inline for a tool's result (SEP-1865).         |
 | [Composition & extensibility](guides/composition-and-extensibility.md) | The modular toolkit: components, middleware, interceptors, extension points, and subclassing the dispatcher. |
 | [Testing](guides/testing.md)                                           | `createTestApp` and the four client surfaces: typed calls, supertest, in-memory MCP, DI assertions.          |
