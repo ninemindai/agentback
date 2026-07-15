@@ -15,6 +15,13 @@ export const HelloPath = z.object({name: z.string().min(1).max(64)});
 export const EchoIn = z.object({text: z.string().min(1).max(280)});
 export const EchoOut = z.object({echoed: z.string(), at: z.string()});
 
+// Per-item schema for the SSE stream route (`streamOf:`).
+export const GreetingTick = z.object({
+  seq: z.number().int().min(1),
+  greeting: z.string(),
+  at: z.string(),
+});
+
 export const LoginIn = z.object({
   username: z.string().min(1),
   roles: z.array(z.string()).optional(),

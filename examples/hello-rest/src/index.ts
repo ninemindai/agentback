@@ -41,10 +41,12 @@ import {
   SecurityBindings,
   UserProfile,
 } from '@agentback/security';
+import {setTimeout as sleep} from 'node:timers/promises';
 import {
   EchoIn,
   EchoOut,
   Greeting,
+  GreetingTick,
   HelloPath,
   LoginIn,
   LoginOut,
@@ -72,6 +74,27 @@ class GreetingController {
     body: z.infer<typeof EchoIn>;
   }): Promise<z.infer<typeof EchoOut>> {
     return {echoed: input.body.text, at: new Date().toISOString()};
+  }
+
+  /**
+   * Typed SSE stream (`streamOf:`): five greetings, one every 500ms — watch
+   * with `curl -N`. Each yielded item is validated against `GreetingTick`
+   * before it hits the wire; the item schema lands in `/openapi.json` as
+   * `x-itemSchema`. On client disconnect the server calls the generator's
+   * `return()`, so a `try`/`finally` here is where upstream cleanup would go.
+   */
+  @get('/stream/{name}', {path: HelloPath, streamOf: GreetingTick})
+  async *stream(input: {
+    path: z.infer<typeof HelloPath>;
+  }): AsyncGenerator<z.infer<typeof GreetingTick>> {
+    for (let seq = 1; seq <= 5; seq++) {
+      yield {
+        seq,
+        greeting: `Hello, ${input.path.name}! (${seq}/5)`,
+        at: new Date().toISOString(),
+      };
+      if (seq < 5) await sleep(500);
+    }
   }
 }
 
@@ -236,6 +259,7 @@ async function main() {
   console.log(`  REST:`);
   console.log(`    GET  ${server.url}/greet/hello/world`);
   console.log(`    POST ${server.url}/greet/echo`);
+  console.log(`    GET  ${server.url}/greet/stream/world   (SSE — curl -N)`);
   console.log(`    POST ${server.url}/auth/login`);
   console.log(`    GET  ${server.url}/auth/me      (auth)`);
   console.log(`    GET  ${server.url}/auth/secret  (auth + admin role)`);

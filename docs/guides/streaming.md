@@ -8,6 +8,8 @@ typed client consumer, and the same generator streaming progress over MCP.
 
 > Prerequisites: [Build a REST API](build-a-rest-api.md) and
 > [Schema-first decorators](../concepts/schema-first-decorators.md).
+> Working example: [`examples/hello-rest`](../../examples/hello-rest)'s
+> `GET /greet/stream/{name}` (`curl -N` to watch).
 > Design rationale: [proposal P0-2](../proposals/p0-2-typed-streaming.md).
 
 ## 1. Declare a stream route with `streamOf`

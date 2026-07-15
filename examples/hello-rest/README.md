@@ -24,6 +24,7 @@ pnpm -F hello-rest start
 | ----------------------------------------- | ------------------------------------------------------ |
 | `GET /hello/{name}`                       | path-schema validation                                 |
 | `POST /echo`                              | body-schema validation                                 |
+| `GET /stream/{name}`                      | typed SSE stream (`streamOf:` + per-item validation)   |
 | `POST /login` → `GET /me` / `GET /secret` | JWT auth + role-based access                           |
 | `GET /ping` / `GET /data`                 | anonymous & api-key strategies                         |
 | `GET /orders`                             | client-credentials + scope governance                  |
