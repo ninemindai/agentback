@@ -725,12 +725,10 @@ export class MCPServer implements Server {
       ctx.bind(MCPBindings.REQUEST_AUTH).to(extra.http.authInfo);
     }
     if (extra.http?.req) {
-      // v2 hands a Web `Request`; REQUEST_INFO's contract is a plain header
-      // record, so flatten `Headers` (already case-insensitive, and it joins
-      // repeated headers per RFC 9110).
-      ctx.bind(MCPBindings.REQUEST_INFO).to({
-        headers: Object.fromEntries(extra.http.req.headers),
-      });
+      // The Web `Request` as the SDK hands it over — no flattening. Callers
+      // read `info.headers.get(name)` (case-insensitive) and also get the URL
+      // and method, which the old header-record shape threw away.
+      ctx.bind(MCPBindings.REQUEST_INFO).to(extra.http.req);
     }
     ctx.bind(MCPBindings.REQUEST_EXTRA).to(extra);
     ctx.bind(MCPBindings.PROGRESS).to(progressFnFor(extra));

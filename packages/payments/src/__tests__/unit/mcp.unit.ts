@@ -140,11 +140,15 @@ describe('PaidMCPServer', () => {
     appCtx.bind(PaymentMcpBindings.OPTIONS).to({railFor: () => inspectRail});
     const server = new TestPaidMCPServer(appCtx);
 
-    // Simulate what mcp-http binds per request from the transport headers.
+    // Simulate what mcp-http binds per request: the transport's Web `Request`.
+    // `X-PAYMENT` is deliberately capitalized — `Headers.get` must find it.
     const reqCtx = new Context(appCtx, 'req');
-    reqCtx.bind(MCPBindings.REQUEST_INFO).to({
-      headers: {'X-PAYMENT': 'pay-blob', 'x-mpp-session': 'sess-9'},
-    });
+    reqCtx.bind(MCPBindings.REQUEST_INFO).to(
+      new Request('http://test.local/mcp', {
+        method: 'POST',
+        headers: {'X-PAYMENT': 'pay-blob', 'x-mpp-session': 'sess-9'},
+      }),
+    );
     await server.call('paid', reqCtx);
 
     expect(seen?.paymentHeader).toBe('pay-blob'); // case-insensitive header read

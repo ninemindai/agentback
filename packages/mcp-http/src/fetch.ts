@@ -4,8 +4,7 @@
 
 import {
   isInitializeRequest,
-  OAuthError,
-  OAuthErrorCode,
+  requireBearerAuth,
   WebStandardStreamableHTTPServerTransport,
 } from '@modelcontextprotocol/server';
 import type {
@@ -29,92 +28,39 @@ const DEFAULT_PATH = '/mcp';
 const PROTECTED_RESOURCE_PATH = '/.well-known/oauth-protected-resource';
 
 /**
- * Verify the `Authorization: Bearer` token on a Web `Request` using the
- * configured OAuth verifier — the runtime-neutral mirror of the SDK's
- * `requireBearerAuth` Express middleware (RFC 6750/9728). Returns the verified
- * {@link AuthInfo} on success, or a 401/403/4xx Web `Response` carrying the
- * `WWW-Authenticate` challenge on failure.
+ * CORS headers for the public RFC 9728 discovery document. Open by design —
+ * the metadata is unauthenticated and browser MCP clients must read it
+ * cross-origin. Mirrors what SDK v1's `metadataHandler` got from `cors()`.
  */
-async function verifyBearerFetch(
-  req: Request,
-  verifier: {verifyAccessToken(token: string): Promise<AuthInfo>},
-  requiredScopes: string[],
+export const PUBLIC_DISCOVERY_CORS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': '*',
+  'Access-Control-Max-Age': '86400',
+};
+
+/**
+ * Verify the `Authorization: Bearer` token on a Web `Request` (RFC 6750/9728),
+ * returning the verified {@link AuthInfo} or a 401/403/5xx `Response` carrying
+ * the `WWW-Authenticate` challenge.
+ *
+ * This is the SDK's own runtime-neutral guard. SDK v1 shipped `requireBearerAuth`
+ * only as Express middleware, so this file hand-rolled a fetch-shaped equivalent;
+ * v2 ships one with an identical `Request -> AuthInfo | Response` contract, so
+ * the hand-rolled copy is gone. Note the verifier must throw the v2 `OAuthError`
+ * — the guard classifies by that class, and anything else becomes a 500 rather
+ * than a 401.
+ */
+function bearerGuard(
+  auth: NonNullable<McpHttpOptions['auth']>,
   resourceMetadataUrl: string,
-): Promise<AuthInfo | Response> {
-  const buildHeader = (errorCode: string, message: string): string => {
-    let header = `Bearer error="${errorCode}", error_description="${message}"`;
-    if (requiredScopes.length > 0)
-      header += `, scope="${requiredScopes.join(' ')}"`;
-    header += `, resource_metadata="${resourceMetadataUrl}"`;
-    return header;
-  };
-  try {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader) throw invalidToken('Missing Authorization header');
-    const [type, token] = authHeader.split(' ');
-    if (type?.toLowerCase() !== 'bearer' || !token) {
-      throw invalidToken(
-        "Invalid Authorization header format, expected 'Bearer TOKEN'",
-      );
-    }
-    const authInfo = await verifier.verifyAccessToken(token);
-    if (
-      requiredScopes.length > 0 &&
-      !requiredScopes.every(s => authInfo.scopes.includes(s))
-    ) {
-      throw new OAuthError(
-        OAuthErrorCode.InsufficientScope,
-        'Insufficient scope',
-      );
-    }
-    if (typeof authInfo.expiresAt !== 'number' || isNaN(authInfo.expiresAt)) {
-      throw invalidToken('Token has no expiration time');
-    }
-    if (authInfo.expiresAt < Date.now() / 1000) {
-      throw invalidToken('Token has expired');
-    }
-    return authInfo;
-  } catch (error) {
-    // v2 consolidates the OAuth error hierarchy into one `OAuthError`, so the
-    // status is selected from `error.code` rather than the error's class.
-    if (error instanceof OAuthError) {
-      if (error.code === OAuthErrorCode.InvalidToken) {
-        return Response.json(error.toResponseObject(), {
-          status: 401,
-          headers: {
-            'WWW-Authenticate': buildHeader(error.code, error.message),
-          },
-        });
-      }
-      if (error.code === OAuthErrorCode.InsufficientScope) {
-        return Response.json(error.toResponseObject(), {
-          status: 403,
-          headers: {
-            'WWW-Authenticate': buildHeader(error.code, error.message),
-          },
-        });
-      }
-      if (error.code === OAuthErrorCode.ServerError) {
-        return Response.json(error.toResponseObject(), {status: 500});
-      }
-      return Response.json(error.toResponseObject(), {status: 400});
-    }
-    return Response.json(
-      serverError('Internal Server Error').toResponseObject(),
-      {
-        status: 500,
-      },
-    );
-  }
+): (req: Request) => Promise<AuthInfo | Response> {
+  return requireBearerAuth({
+    verifier: auth.verifier,
+    ...(auth.requiredScopes ? {requiredScopes: auth.requiredScopes} : {}),
+    resourceMetadataUrl,
+  });
 }
-
-/** An RFC 6750 `invalid_token` error. */
-const invalidToken = (message: string) =>
-  new OAuthError(OAuthErrorCode.InvalidToken, message);
-
-/** An OAuth `server_error`. */
-const serverError = (message: string) =>
-  new OAuthError(OAuthErrorCode.ServerError, message);
 
 /** JSON-RPC error as a Web Response. */
 function rpcError(status: number, message: string): Response {
@@ -186,7 +132,7 @@ function defaultScopes(auth: AuthenticationResult): string[] {
  * Each session gets its own SDK server + transport, keyed by `Mcp-Session-Id`,
  * with the same per-principal session pinning and `perSession` DI-context
  * support as the Express mount. Full auth parity: OAuth resource-server bearer
- * (`options.auth`, via {@link verifyBearerFetch} + the
+ * (`options.auth`, via {@link bearerGuard} + the
  * `/.well-known/oauth-protected-resource` metadata route) and `strategyAuth`
  * (via the neutral {@link fromWebRequest} seam) are both honored.
  */
@@ -210,6 +156,10 @@ export function mountMcpHttpFetch(
   const resourceMetadataUrl = oauth
     ? new URL(PROTECTED_RESOURCE_PATH, oauth.resource).toString()
     : '';
+  // Built once: the guard closes over the verifier and challenge metadata.
+  const verifyBearer = oauth
+    ? bearerGuard(oauth, resourceMetadataUrl)
+    : undefined;
 
   if (perSession && !options.appContext) {
     throw new Error(
@@ -236,12 +186,7 @@ export function mountMcpHttpFetch(
     // when configured; otherwise strategy-based auth. Either can gate the call.
     let authInfo: AuthInfo | undefined;
     if (oauth) {
-      const verified = await verifyBearerFetch(
-        req,
-        oauth.verifier,
-        oauth.requiredScopes ?? [],
-        resourceMetadataUrl,
-      );
+      const verified = await verifyBearer!(req);
       if (verified instanceof Response) return verified; // 401/403/4xx challenge
       authInfo = verified;
     } else if (strategyAuth) {
@@ -353,8 +298,17 @@ export function mountMcpHttpFetch(
         ? {scopes_supported: oauth.scopesSupported}
         : {}),
     };
+    // The discovery document is public by spec and browser-hosted MCP clients
+    // fetch it cross-origin with a custom `MCP-Protocol-Version` header, which
+    // forces a preflight — so OPTIONS must answer with the CORS headers too.
     server.addFetchHandler('GET', PROTECTED_RESOURCE_PATH, async () =>
-      Response.json(metadata),
+      Response.json(metadata, {headers: PUBLIC_DISCOVERY_CORS}),
+    );
+    server.addFetchHandler(
+      'OPTIONS',
+      PROTECTED_RESOURCE_PATH,
+      async () =>
+        new Response(null, {status: 204, headers: PUBLIC_DISCOVERY_CORS}),
     );
   }
 

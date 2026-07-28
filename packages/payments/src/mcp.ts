@@ -83,16 +83,6 @@ export async function gateMcpToolPayment(
   return paymentRequiredToolResult(verdict.challenge);
 }
 
-/** First value of a possibly-array header, case-insensitively. */
-function header(
-  headers: Record<string, string | string[] | undefined>,
-  name: string,
-): string | undefined {
-  const key = Object.keys(headers).find(k => k.toLowerCase() === name);
-  const value = key ? headers[key] : undefined;
-  return Array.isArray(value) ? value[0] : value;
-}
-
 /**
  * Default {@link PaidToolOptions.contextFor}. Prefers an explicit proof bound at
  * {@link PaymentMcpBindings.REQUEST_PAYMENT}; otherwise reads `X-PAYMENT` /
@@ -115,13 +105,14 @@ export async function defaultContextFor(
       sessionId: explicit.sessionId,
     };
   }
+  // REQUEST_INFO is the transport's Web `Request`; `Headers.get` is already
+  // case-insensitive, so the casing the caller sent does not matter.
   const info = await ctx.get(MCPBindings.REQUEST_INFO, {optional: true});
-  const headers = info?.headers ?? {};
   return {
     method: 'tools/call',
     resource: toolName,
-    paymentHeader: header(headers, 'x-payment'),
-    sessionId: header(headers, 'x-mpp-session'),
+    paymentHeader: info?.headers.get('x-payment') ?? undefined,
+    sessionId: info?.headers.get('x-mpp-session') ?? undefined,
   };
 }
 

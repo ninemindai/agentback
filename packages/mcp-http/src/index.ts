@@ -35,7 +35,7 @@ import {
   toolRateLimitMiddleware,
   type McpToolRateLimitOptions,
 } from './tool-rate-limit.js';
-import {mountMcpHttpFetch} from './fetch.js';
+import {mountMcpHttpFetch, PUBLIC_DISCOVERY_CORS} from './fetch.js';
 
 export {InMemoryEventStore} from './event-store.js';
 export {
@@ -335,10 +335,27 @@ export function mountMcpHttp(
     // RFC 9728 Protected Resource Metadata. The v2 SDK has no drop-in for v1's
     // `metadataHandler` (its `mcpAuthMetadataRouter` also serves RFC 8414
     // Authorization Server metadata, which a pure resource server does not
-    // have), so serve the document directly. It is public by spec, hence the
-    // open CORS header — that is what v1's `cors()` default did.
+    // have), so serve the document directly.
+    //
+    // OPTIONS is handled explicitly, not left to Express's default: browser MCP
+    // clients fetch this cross-origin with a custom `MCP-Protocol-Version`
+    // header, which forces a preflight, and Express's built-in OPTIONS reply
+    // carries `Allow:` but no CORS headers — so the preflight fails and
+    // discovery breaks. v1 got this for free from `metadataHandler`'s `cors()`.
+    const sendDiscoveryCors = (res: Response) => {
+      for (const [k, v] of Object.entries(PUBLIC_DISCOVERY_CORS)) {
+        res.setHeader(k, v);
+      }
+    };
+    expressApp.options(
+      PROTECTED_RESOURCE_PATH,
+      (_req: Request, res: Response) => {
+        sendDiscoveryCors(res);
+        res.status(204).end();
+      },
+    );
     expressApp.get(PROTECTED_RESOURCE_PATH, (_req: Request, res: Response) => {
-      res.setHeader('Access-Control-Allow-Origin', '*');
+      sendDiscoveryCors(res);
       res.status(200).json(metadata);
     });
     guards.push(
