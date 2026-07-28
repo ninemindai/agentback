@@ -22,16 +22,14 @@ import type {MCPServer, ToolBinding} from './mcp.server.js';
 export type ToolRequestExtra = ServerContext;
 
 /**
- * Transport request metadata surfaced to tools at
- * {@link MCPBindings.REQUEST_INFO}. Deliberately AgentBack's own type rather
- * than an SDK one: SDK v2 replaced v1's `RequestInfo` with a Web `Request`, and
- * this binding's contract (case-insensitive header reads off a plain record) is
- * part of AgentBack's public surface. {@link MCPBindings.REQUEST_EXTRA} exposes
- * the underlying Web `Request` for callers who need more than headers.
+ * The transport's HTTP request, surfaced to tools at
+ * {@link MCPBindings.REQUEST_INFO}. SDK v2 hands a Web `Request` on both hosts
+ * (the Node/Express transport converts `IncomingMessage` for you), so this is
+ * the standard global type — not an AgentBack shim. Read headers with
+ * `info.headers.get('x-payment')`; `Headers` lookups are case-insensitive, so
+ * the casing a client sent does not matter.
  */
-export interface McpRequestInfo {
-  headers: Record<string, string | string[] | undefined>;
-}
+export type McpRequestInfo = Request;
 
 /**
  * Per-request progress reporter for `@tool` methods. Relays
