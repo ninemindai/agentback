@@ -76,7 +76,7 @@ unauthenticated`.
 
 The `principalFromRequest` helper accepts two `req.auth` shapes:
 
-- **`AuthInfo`** (from `@modelcontextprotocol/sdk`): reads `clientId`. This is
+- **`AuthInfo`** (from `@modelcontextprotocol/server`): reads `clientId`. This is
   what `frameworkAuthGuard` (from `@agentback/mcp-http`) produces.
 - **`UserProfile`** (from `@agentback/security`): reads `[securityId]`. Custom
   middleware may set this shape.

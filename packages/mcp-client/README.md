@@ -2,7 +2,7 @@
 
 Connect to a remote MCP server over Streamable HTTP — including OAuth-protected
 ones — and get the SDK `Client` back. A thin, dependency-light wrapper over the
-official `@modelcontextprotocol/sdk` client transport, with bearer-token
+official `@modelcontextprotocol/client` transport, with bearer-token
 injection and transparent 401 refresh-retry.
 
 ## Usage

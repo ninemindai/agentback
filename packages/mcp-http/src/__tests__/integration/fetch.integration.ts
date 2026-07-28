@@ -2,11 +2,14 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import {OAuthError, OAuthErrorCode} from '@modelcontextprotocol/server';
+import {
+  Client,
+  StreamableHTTPClientTransport,
+} from '@modelcontextprotocol/client';
+
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {z} from 'zod';
-import {Client} from '@modelcontextprotocol/sdk/client/index.js';
-import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import {InvalidTokenError} from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import {RestApplication, type RestServer} from '@agentback/rest';
 import {
   MCPComponent,
@@ -196,7 +199,7 @@ const verifier = {
     const expiresAt = Math.floor(Date.now() / 1000) + 3600;
     if (token === 'good')
       return {token, clientId: 'cli', scopes: [], expiresAt};
-    throw new InvalidTokenError('invalid token');
+    throw new OAuthError(OAuthErrorCode.InvalidToken, 'invalid token');
   },
 };
 

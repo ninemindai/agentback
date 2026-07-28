@@ -25,7 +25,9 @@
     "@agentback/mcp": "workspace:~",
     "@agentback/rest": "workspace:~",
     "@agentback/security": "workspace:~",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/express": "^2.0.0",
+    "@modelcontextprotocol/node": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
     "@types/express": "^5.0.6",
     "express": "^5.2.1",
     "rate-limiter-flexible": "~11.2.0",
@@ -36,6 +38,7 @@
   },
   "devDependencies": {
     "@agentback/testlab": "workspace:~",
+    "@modelcontextprotocol/client": "^2.0.0",
     "vitest": "~4.1.10",
     "zod": "^4.4.3"
   },

@@ -3,6 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 import type {Request, RequestHandler, Response} from 'express';
+import type {AuthInfo} from '@modelcontextprotocol/server';
 import type {Context} from '@agentback/core';
 import {
   fromExpressRequest,
@@ -15,7 +16,6 @@ import {
   type ClientApplication,
   type UserProfile,
 } from '@agentback/security';
-import type {AuthInfo} from '@modelcontextprotocol/sdk/server/auth/types.js';
 
 export interface McpStrategyAuthOptions {
   /**

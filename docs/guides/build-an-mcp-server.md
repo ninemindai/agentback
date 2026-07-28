@@ -6,7 +6,8 @@ decorator-on-a-class, schema-on-the-decorator shape as REST, so if you've read
 the [REST guide](build-a-rest-api.md) this will feel familiar.
 
 > Package: [`@agentback/mcp`](../../packages/mcp). Built on the official
-> [`@modelcontextprotocol/sdk`](https://github.com/modelcontextprotocol).
+> MCP TypeScript SDK v2
+> ([`@modelcontextprotocol/server`](https://github.com/modelcontextprotocol/typescript-sdk)).
 > Working examples: [`examples/hello-mcp`](../../examples/hello-mcp) (stdio) and
 > [`examples/hello-hybrid`](../../examples/hello-hybrid) (REST + MCP).
 
@@ -131,8 +132,10 @@ Each client session gets its own isolated server instance (keyed by the
 `StreamableHTTPClientTransport`:
 
 ```ts
-import {Client} from '@modelcontextprotocol/sdk/client/index.js';
-import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import {
+  Client,
+  StreamableHTTPClientTransport,
+} from '@modelcontextprotocol/client';
 
 const client = new Client({name: 'my-client', version: '1.0.0'});
 await client.connect(
@@ -162,7 +165,7 @@ resolving the instance through its own binding, so constructor `@inject` works.
 graph LR
   D["@mcpServer() class"] -->|"app.service()"| B["binding [extensionFor: MCP_SERVERS]"]
   B -->|"start(): extensionFilter"| M["MCPServer"]
-  M -->|reflect @tool/@resource/@prompt| SDK["@modelcontextprotocol/sdk"]
+  M -->|reflect @tool/@resource/@prompt| SDK["@modelcontextprotocol/server"]
 ```
 
 Consequence: adding a tool is adding a method (or a class + `app.service`).

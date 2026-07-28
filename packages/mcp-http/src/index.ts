@@ -2,6 +2,16 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import {requireBearerAuth} from '@modelcontextprotocol/express';
+import type {OAuthTokenVerifier} from '@modelcontextprotocol/express';
+import {isInitializeRequest} from '@modelcontextprotocol/server';
+import type {
+  AuthInfo,
+  EventStore,
+  OAuthProtectedResourceMetadata,
+} from '@modelcontextprotocol/server';
+import {NodeStreamableHTTPServerTransport} from '@modelcontextprotocol/node';
+
 import {randomUUID} from 'node:crypto';
 import express, {
   type Express,
@@ -9,14 +19,6 @@ import express, {
   type RequestHandler,
   type Response,
 } from 'express';
-import {StreamableHTTPServerTransport} from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import type {EventStore} from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import {isInitializeRequest} from '@modelcontextprotocol/sdk/types.js';
-import {requireBearerAuth} from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
-import {metadataHandler} from '@modelcontextprotocol/sdk/server/auth/handlers/metadata.js';
-import type {OAuthTokenVerifier} from '@modelcontextprotocol/sdk/server/auth/provider.js';
-import type {AuthInfo} from '@modelcontextprotocol/sdk/server/auth/types.js';
-import type {OAuthProtectedResourceMetadata} from '@modelcontextprotocol/sdk/shared/auth.js';
 import {MCPBindings, MCPServer} from '@agentback/mcp';
 import {BindingScope, Context} from '@agentback/core';
 import {loggers} from '@agentback/common';
@@ -277,7 +279,7 @@ export function mountMcpHttp(
   const enableDnsRebindingProtection =
     options.enableDnsRebindingProtection ??
     (options.allowedHosts != null || options.allowedOrigins != null);
-  const transports: Record<string, StreamableHTTPServerTransport> = {};
+  const transports: Record<string, NodeStreamableHTTPServerTransport> = {};
   // For per-session servers: the principal that owns each session, so a later
   // request on the same session id can't be served to a different principal.
   const sessionOwners: Record<string, string | undefined> = {};
@@ -330,9 +332,15 @@ export function mountMcpHttp(
       bearer_methods_supported: ['header'],
       ...(auth.scopesSupported ? {scopes_supported: auth.scopesSupported} : {}),
     };
-    // metadataHandler returns a Router whose route is `/`, so it must be
-    // mounted with `use` (which strips the prefix), not `get`.
-    expressApp.use(PROTECTED_RESOURCE_PATH, metadataHandler(metadata));
+    // RFC 9728 Protected Resource Metadata. The v2 SDK has no drop-in for v1's
+    // `metadataHandler` (its `mcpAuthMetadataRouter` also serves RFC 8414
+    // Authorization Server metadata, which a pure resource server does not
+    // have), so serve the document directly. It is public by spec, hence the
+    // open CORS header — that is what v1's `cors()` default did.
+    expressApp.get(PROTECTED_RESOURCE_PATH, (_req: Request, res: Response) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.status(200).json(metadata);
+    });
     guards.push(
       requireBearerAuth({
         verifier: auth.verifier,
@@ -401,7 +409,7 @@ export function mountMcpHttp(
         // own MCPServer resolved from a child context the binder populates
         // (principal + user-specific tools). Closed on every teardown path.
         let sessionCtx: Context | undefined;
-        transport = new StreamableHTTPServerTransport({
+        transport = new NodeStreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           enableDnsRebindingProtection,
           ...(options.allowedHosts ? {allowedHosts: options.allowedHosts} : {}),
@@ -426,9 +434,7 @@ export function mountMcpHttp(
         // A fresh SDK server per session — one McpServer can only be connected to
         // a single live transport at a time. When auth is on, the session only
         // sees tools whose `scope` is covered by the caller's granted scopes.
-        const scopes = authEnabled
-          ? (authOf(req)?.scopes ?? [])
-          : undefined;
+        const scopes = authEnabled ? (authOf(req)?.scopes ?? []) : undefined;
 
         // If anything in session setup throws (binder, schema lowering, connect),
         // close the orphaned context — onclose won't fire on an unconnected

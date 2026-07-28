@@ -2,11 +2,15 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import type {JSONRPCMessage} from '@modelcontextprotocol/server';
+import {OAuthError, OAuthErrorCode} from '@modelcontextprotocol/server';
+import {
+  Client,
+  StreamableHTTPClientTransport,
+} from '@modelcontextprotocol/client';
+
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {z} from 'zod';
-import {Client} from '@modelcontextprotocol/sdk/client/index.js';
-import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import {InvalidTokenError} from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import {inject} from '@agentback/core';
 import {RestApplication} from '@agentback/rest';
 import {
@@ -19,7 +23,6 @@ import {
   tool,
 } from '@agentback/mcp';
 import type {AuthInfo} from '@agentback/mcp-http';
-import type {JSONRPCMessage} from '@modelcontextprotocol/sdk/types.js';
 import {installMcpHttp, InMemoryEventStore} from '../../index.js';
 
 const EchoIn = z.object({text: z.string().min(1)});
@@ -82,7 +85,7 @@ const verifier = {
     if (token === 'user')
       return {token, clientId: 'cli', scopes: [], expiresAt};
     // An OAuth error maps to a 401 (a plain Error would be a 500).
-    throw new InvalidTokenError('invalid token');
+    throw new OAuthError(OAuthErrorCode.InvalidToken, 'invalid token');
   },
 };
 

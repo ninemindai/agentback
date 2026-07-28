@@ -17,6 +17,16 @@ import {
   type AuthorizationMetadata,
 } from '@agentback/authorization';
 import {SecurityBindings, type UserProfile} from '@agentback/security';
+import {StdioServerTransport} from '@modelcontextprotocol/server/stdio';
+import {
+  McpServer,
+  ProtocolError,
+  ProtocolErrorCode,
+} from '@modelcontextprotocol/server';
+import type {
+  CallToolResult,
+  ListToolsResult,
+} from '@modelcontextprotocol/server';
 import {extensionFilter, Server} from '@agentback/core';
 import {MetadataAccessor, MetadataInspector} from '@agentback/metadata';
 import {
@@ -27,15 +37,6 @@ import {
   type ParseIssue,
   type SchemaLike,
 } from '@agentback/openapi';
-import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
-import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
-import {
-  CallToolRequestSchema,
-  ErrorCode,
-  ListToolsRequestSchema,
-  McpError,
-  type CallToolResult,
-} from '@modelcontextprotocol/sdk/types.js';
 import {
   InMemoryConfirmationStore,
   loggers,
@@ -719,11 +720,17 @@ export class MCPServer implements Server {
    */
   protected requestContextFor(extra: ToolRequestExtra): Context {
     const ctx = new Context(this.context, 'mcp.request');
-    if (extra.authInfo) {
-      ctx.bind(MCPBindings.REQUEST_AUTH).to(extra.authInfo);
+    // SDK v2 nests the transport extras under `ctx.http` (undefined on stdio).
+    if (extra.http?.authInfo) {
+      ctx.bind(MCPBindings.REQUEST_AUTH).to(extra.http.authInfo);
     }
-    if (extra.requestInfo) {
-      ctx.bind(MCPBindings.REQUEST_INFO).to(extra.requestInfo);
+    if (extra.http?.req) {
+      // v2 hands a Web `Request`; REQUEST_INFO's contract is a plain header
+      // record, so flatten `Headers` (already case-insensitive, and it joins
+      // repeated headers per RFC 9110).
+      ctx.bind(MCPBindings.REQUEST_INFO).to({
+        headers: Object.fromEntries(extra.http.req.headers),
+      });
     }
     ctx.bind(MCPBindings.REQUEST_EXTRA).to(extra);
     ctx.bind(MCPBindings.PROGRESS).to(progressFnFor(extra));
@@ -880,17 +887,28 @@ export class MCPServer implements Server {
     }
 
     const server = target.server;
-    server.setRequestHandler(ListToolsRequestSchema, async () => ({
-      tools: Array.from(visible.values(), v => v.entry),
+    server.setRequestHandler('tools/list', async () => ({
+      // SDK v2 types handler returns from the method name, and its `Tool` type
+      // requires a literal `type: 'object'` inputSchema. Ours is JSON Schema
+      // *emitted* from a Standard Schema, so it is only `Record<string,
+      // unknown>` statically — the registration-time guard above (which throws
+      // unless the schema lowered to an object root) is what actually upholds
+      // the invariant, hence the assertion here.
+      tools: Array.from(
+        visible.values(),
+        v => v.entry,
+      ) as ListToolsResult['tools'],
     }));
     server.setRequestHandler(
-      CallToolRequestSchema,
+      'tools/call',
+      // The SDK v2 handler context stays named `extra` here: `ctx` is already
+      // the per-request DI child context built below.
       async (request, extra): Promise<CallToolResult> => {
         try {
           const found = visible.get(request.params.name);
           if (!found) {
-            throw new McpError(
-              ErrorCode.InvalidParams,
+            throw new ProtocolError(
+              ProtocolErrorCode.InvalidParams,
               `Tool ${request.params.name} not found`,
             );
           }
@@ -1043,12 +1061,12 @@ export class MCPServer implements Server {
  * otherwise return the shared no-op so tool code never branches.
  */
 export function progressFnFor(
-  extra: Pick<ToolRequestExtra, 'sendNotification' | '_meta'>,
+  extra: Pick<ToolRequestExtra, 'mcpReq'>,
 ): ProgressFn {
-  const progressToken = extra._meta?.progressToken;
+  const progressToken = extra.mcpReq?._meta?.progressToken;
   if (progressToken === undefined) return noopProgress;
   return async p => {
-    await extra.sendNotification({
+    await extra.mcpReq.notify({
       method: 'notifications/progress',
       params: {progressToken, ...p},
     });

@@ -2,16 +2,17 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {WebStandardStreamableHTTPServerTransport} from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import {isInitializeRequest} from '@modelcontextprotocol/sdk/types.js';
-import type {AuthInfo} from '@modelcontextprotocol/sdk/server/auth/types.js';
 import {
-  InsufficientScopeError,
-  InvalidTokenError,
+  isInitializeRequest,
   OAuthError,
-  ServerError,
-} from '@modelcontextprotocol/sdk/server/auth/errors.js';
-import type {OAuthProtectedResourceMetadata} from '@modelcontextprotocol/sdk/shared/auth.js';
+  OAuthErrorCode,
+  WebStandardStreamableHTTPServerTransport,
+} from '@modelcontextprotocol/server';
+import type {
+  AuthInfo,
+  OAuthProtectedResourceMetadata,
+} from '@modelcontextprotocol/server';
+
 import {
   fromWebRequest,
   normalizeAuthResult,
@@ -49,11 +50,10 @@ async function verifyBearerFetch(
   };
   try {
     const authHeader = req.headers.get('authorization');
-    if (!authHeader)
-      throw new InvalidTokenError('Missing Authorization header');
+    if (!authHeader) throw invalidToken('Missing Authorization header');
     const [type, token] = authHeader.split(' ');
     if (type?.toLowerCase() !== 'bearer' || !token) {
-      throw new InvalidTokenError(
+      throw invalidToken(
         "Invalid Authorization header format, expected 'Bearer TOKEN'",
       );
     }
@@ -62,46 +62,59 @@ async function verifyBearerFetch(
       requiredScopes.length > 0 &&
       !requiredScopes.every(s => authInfo.scopes.includes(s))
     ) {
-      throw new InsufficientScopeError('Insufficient scope');
+      throw new OAuthError(
+        OAuthErrorCode.InsufficientScope,
+        'Insufficient scope',
+      );
     }
     if (typeof authInfo.expiresAt !== 'number' || isNaN(authInfo.expiresAt)) {
-      throw new InvalidTokenError('Token has no expiration time');
+      throw invalidToken('Token has no expiration time');
     }
     if (authInfo.expiresAt < Date.now() / 1000) {
-      throw new InvalidTokenError('Token has expired');
+      throw invalidToken('Token has expired');
     }
     return authInfo;
   } catch (error) {
-    if (error instanceof InvalidTokenError) {
-      return Response.json(error.toResponseObject(), {
-        status: 401,
-        headers: {
-          'WWW-Authenticate': buildHeader(error.errorCode, error.message),
-        },
-      });
-    }
-    if (error instanceof InsufficientScopeError) {
-      return Response.json(error.toResponseObject(), {
-        status: 403,
-        headers: {
-          'WWW-Authenticate': buildHeader(error.errorCode, error.message),
-        },
-      });
-    }
-    if (error instanceof ServerError) {
-      return Response.json(error.toResponseObject(), {status: 500});
-    }
+    // v2 consolidates the OAuth error hierarchy into one `OAuthError`, so the
+    // status is selected from `error.code` rather than the error's class.
     if (error instanceof OAuthError) {
+      if (error.code === OAuthErrorCode.InvalidToken) {
+        return Response.json(error.toResponseObject(), {
+          status: 401,
+          headers: {
+            'WWW-Authenticate': buildHeader(error.code, error.message),
+          },
+        });
+      }
+      if (error.code === OAuthErrorCode.InsufficientScope) {
+        return Response.json(error.toResponseObject(), {
+          status: 403,
+          headers: {
+            'WWW-Authenticate': buildHeader(error.code, error.message),
+          },
+        });
+      }
+      if (error.code === OAuthErrorCode.ServerError) {
+        return Response.json(error.toResponseObject(), {status: 500});
+      }
       return Response.json(error.toResponseObject(), {status: 400});
     }
     return Response.json(
-      new ServerError('Internal Server Error').toResponseObject(),
+      serverError('Internal Server Error').toResponseObject(),
       {
         status: 500,
       },
     );
   }
 }
+
+/** An RFC 6750 `invalid_token` error. */
+const invalidToken = (message: string) =>
+  new OAuthError(OAuthErrorCode.InvalidToken, message);
+
+/** An OAuth `server_error`. */
+const serverError = (message: string) =>
+  new OAuthError(OAuthErrorCode.ServerError, message);
 
 /** JSON-RPC error as a Web Response. */
 function rpcError(status: number, message: string): Response {

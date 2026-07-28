@@ -2,14 +2,21 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import {
+  InMemoryTransport,
+  McpServer,
+  ProtocolError,
+  ProtocolErrorCode,
+  ResourceTemplate,
+} from '@modelcontextprotocol/server';
+import {
+  Client,
+  ProtocolError as ClientProtocolError,
+  ProtocolErrorCode as ClientProtocolErrorCode,
+} from '@modelcontextprotocol/client';
+
 import {afterEach, describe, expect, it} from 'vitest';
 import {z} from 'zod';
-import {Client} from '@modelcontextprotocol/sdk/client/index.js';
-import {InMemoryTransport} from '@modelcontextprotocol/sdk/inMemory.js';
-import {
-  McpServer,
-  ResourceTemplate,
-} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
   compileUriTemplate,
   createMcpHost,
@@ -34,7 +41,7 @@ function makeUpstreamA() {
   const s = new McpServer({name: 'a-srv', version: '0.0.0'});
   s.registerTool(
     'add',
-    {inputSchema: {a: z.number(), b: z.number()}},
+    {inputSchema: z.object({a: z.number(), b: z.number()})},
     async ({a, b}) => ({content: [{type: 'text', text: String(a + b)}]}),
   );
   s.registerPrompt('greet', {description: 'a greeting'}, async () => ({
@@ -60,9 +67,13 @@ function makeUpstreamA() {
 /** Upstream B: a tool, the same prompt name as A, a resource, a narrower template. */
 function makeUpstreamB() {
   const s = new McpServer({name: 'b-srv', version: '0.0.0'});
-  s.registerTool('echo', {inputSchema: {text: z.string()}}, async ({text}) => ({
-    content: [{type: 'text', text}],
-  }));
+  s.registerTool(
+    'echo',
+    {inputSchema: z.object({text: z.string()})},
+    async ({text}) => ({
+      content: [{type: 'text', text}],
+    }),
+  );
   s.registerPrompt('greet', {description: 'b greeting'}, async () => ({
     messages: [
       {
@@ -276,5 +287,24 @@ describe('compileUriTemplate', () => {
     expect(compileUriTemplate('k://x/{b}').literalLength).toBeGreaterThan(
       compileUriTemplate('k://{a}/{b}').literalLength,
     );
+  });
+});
+
+describe('SDK cross-package error branding', () => {
+  // mcp-host is a dual-role process: errors are raised by a `Client` (from
+  // @modelcontextprotocol/client) but `emptyOnMethodNotFound` classifies them
+  // with `ProtocolError` imported from @modelcontextprotocol/server. The two
+  // packages bundle *separate* copies of the class, so this only works because
+  // v2 brand-matches via `Symbol.hasInstance`. The SDK docs warn the brand
+  // degrades to plain prototype `instanceof` if either copy predates the
+  // brand-aware release — which would silently turn "upstream has no prompts"
+  // into a thrown error and break aggregation of tools-only upstreams. Pin it.
+  it('matches a client-raised ProtocolError against the server class', () => {
+    const raised = new ClientProtocolError(
+      ClientProtocolErrorCode.MethodNotFound,
+      'Method not found',
+    );
+    expect(raised instanceof ProtocolError).toBe(true);
+    expect(raised.code).toBe(ProtocolErrorCode.MethodNotFound);
   });
 });
