@@ -6,8 +6,8 @@ import type {
   EventStore,
   EventId,
   StreamId,
-} from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import type {JSONRPCMessage} from '@modelcontextprotocol/sdk/types.js';
+  JSONRPCMessage,
+} from '@modelcontextprotocol/server';
 
 /**
  * A simple in-memory {@link EventStore} enabling **resumable** Streamable HTTP

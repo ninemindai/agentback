@@ -21,7 +21,7 @@
 class, annotate it with `@mcpServer()`, declare tools/resources/prompts with
 method decorators, and hand the class to the DI container. `MCPServer` discovers
 every tagged class at startup, registers its surface with the official
-`@modelcontextprotocol/sdk`, and connects a transport.
+`@modelcontextprotocol/server`, and connects a transport.
 
 The two layers are independent: REST and MCP share the same `Application` and DI
 container but have no runtime dependency on each other. Both use the same

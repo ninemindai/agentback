@@ -103,9 +103,11 @@ export class RemoteSource {
   }
 
   callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
-    return this.client.callTool({name, arguments: args}, undefined, {
-      timeout: REQUEST_TIMEOUT,
-    });
+    // SDK v2 drops the result-schema argument: `callTool(params, options?)`.
+    return this.client.callTool(
+      {name, arguments: args},
+      {timeout: REQUEST_TIMEOUT},
+    );
   }
 
   /** Remote resources are addressed by URI. */

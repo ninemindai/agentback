@@ -84,7 +84,7 @@ router file, an OpenAPI document, and a tool manifest.
 - **Policy, auth, metering, payments, messaging, and observability** as DI components
 - **Actors**: stateful entities at a stable `{type, id}` address — serialized turns,
   idempotent retries, lease-free queries, and an optional event log
-- Built on the official `@modelcontextprotocol/sdk`
+- Built on the official MCP TypeScript SDK v2 (`@modelcontextprotocol/server` / `@modelcontextprotocol/client`)
 
 Status: **alpha**. End-to-end examples and tests pass; the API surface is
 stabilizing but may still change between alpha releases.

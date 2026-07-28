@@ -2,10 +2,10 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import {Client, InMemoryTransport} from '@modelcontextprotocol/client';
+
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {z} from 'zod';
-import {Client} from '@modelcontextprotocol/sdk/client/index.js';
-import {InMemoryTransport} from '@modelcontextprotocol/sdk/inMemory.js';
 import {RestApplication} from '@agentback/rest';
 import {MCPComponent, MCPServer, mcpServer, tool} from '@agentback/mcp';
 import {installMcpHttp} from '@agentback/mcp-http';

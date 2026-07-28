@@ -64,7 +64,7 @@ For a non-`RestApplication` Express app, use `mountMcpHttp(mcpServer, expressApp
 ## How sessions work
 
 Each MCP session gets its **own** underlying SDK server (`mcp.buildServer()`)
-connected to one `StreamableHTTPServerTransport`, keyed by the `Mcp-Session-Id`
+connected to one `NodeStreamableHTTPServerTransport`, keyed by the `Mcp-Session-Id`
 header. This is required because a single `McpServer` can only be connected to
 one live transport at a time; per-session servers keep concurrent clients
 isolated (all exposing the same tool surface). A `POST` with an unknown session
@@ -73,8 +73,10 @@ id returns `404`; an initialize request (no session) mints a new one.
 ## Connecting a client
 
 ```ts
-import {Client} from '@modelcontextprotocol/sdk/client/index.js';
-import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import {
+  Client,
+  StreamableHTTPClientTransport,
+} from '@modelcontextprotocol/client';
 
 const client = new Client({name: 'my-client', version: '1.0.0'});
 await client.connect(

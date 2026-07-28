@@ -2,13 +2,14 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import type {AuthInfo} from '@modelcontextprotocol/server';
+
 import {getAuthorizationMetadata} from '@agentback/authorization';
 import {
   securityId,
   type ClientApplication,
   type UserProfile,
 } from '@agentback/security';
-import type {AuthInfo} from '@modelcontextprotocol/sdk/server/auth/types.js';
 import type {ToolMetadata} from './keys.js';
 
 /**

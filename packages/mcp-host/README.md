@@ -80,6 +80,6 @@ upstream notification plumbing — tracked, not blocking.
 ## Exposing the gateway over HTTP
 
 The aggregated `host.server` is the same `Server` type the SDK transports
-accept, so you can connect it to a `StreamableHTTPServerTransport` to re-serve
+accept, so you can connect it to a `NodeStreamableHTTPServerTransport` to re-serve
 the merged surface — add OAuth resource-server protection in front exactly as
 `@agentback/mcp-http` does for the in-process server.

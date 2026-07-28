@@ -3,12 +3,11 @@
 // License text available at https://opensource.org/license/mit/
 
 import {describe, expect, it, vi} from 'vitest';
+import {Client, InMemoryTransport} from '@modelcontextprotocol/client';
+import type {JSONRPCMessage} from '@modelcontextprotocol/client';
 import {z} from 'zod';
 import {inject} from '@agentback/context';
 import {Application} from '@agentback/core';
-import {Client} from '@modelcontextprotocol/sdk/client/index.js';
-import {InMemoryTransport} from '@modelcontextprotocol/sdk/inMemory.js';
-import type {JSONRPCMessage} from '@modelcontextprotocol/sdk/types.js';
 import {MCPComponent} from '../../mcp.component.js';
 import {MCPServer, progressFnFor} from '../../mcp.server.js';
 import {mcpServer, tool} from '../../decorators/index.js';
@@ -39,7 +38,7 @@ class ExtraTools {
     @inject(MCPBindings.REQUEST_EXTRA, {optional: true})
     extra?: ToolRequestExtra,
   ) {
-    return {hasExtra: !!extra, requestId: extra?.requestId ?? null};
+    return {hasExtra: !!extra, requestId: extra?.mcpReq.id ?? null};
   }
 }
 
@@ -80,13 +79,12 @@ const progressOf = (sent: JSONRPCMessage[]) =>
 
 describe('progressFnFor', () => {
   it('relays notifications/progress when a progressToken is present', async () => {
-    const sendNotification = vi.fn().mockResolvedValue(undefined);
+    const notify = vi.fn().mockResolvedValue(undefined);
     const fn = progressFnFor({
-      sendNotification,
-      _meta: {progressToken: 'tok-1'},
+      mcpReq: {notify, _meta: {progressToken: 'tok-1'}},
     } as unknown as ToolRequestExtra);
     await fn({progress: 2, total: 5, message: 'halfway-ish'});
-    expect(sendNotification).toHaveBeenCalledExactlyOnceWith({
+    expect(notify).toHaveBeenCalledExactlyOnceWith({
       method: 'notifications/progress',
       params: {
         progressToken: 'tok-1',
@@ -98,14 +96,13 @@ describe('progressFnFor', () => {
   });
 
   it('returns the shared no-op when no progressToken was sent', async () => {
-    const sendNotification = vi.fn();
+    const notify = vi.fn();
     const fn = progressFnFor({
-      sendNotification,
-      _meta: {},
+      mcpReq: {notify, _meta: {}},
     } as unknown as ToolRequestExtra);
     expect(fn).toBe(noopProgress);
     await fn({progress: 1});
-    expect(sendNotification).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
   });
 });
 
@@ -116,7 +113,6 @@ describe('PROGRESS injection over a transport', () => {
     const progresses: unknown[] = [];
     const result = await client.callTool(
       {name: 'long_job', arguments: {steps: 3}},
-      undefined,
       {onprogress: p => progresses.push(p)},
     );
     expect(result.isError).toBeFalsy();

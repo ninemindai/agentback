@@ -1,6 +1,6 @@
 # @agentback/mcp
 
-> Decorator-driven MCP server: `@mcpServer`, `@tool`, `@resource`, `@prompt` — Zod schemas on the decorator, `@inject` inside the method, official `@modelcontextprotocol/sdk` on the wire.
+> Decorator-driven MCP server: `@mcpServer`, `@tool`, `@resource`, `@prompt` — Zod schemas on the decorator, `@inject` inside the method, the official MCP TypeScript SDK v2 (`@modelcontextprotocol/server`) on the wire.
 
 Define an MCP server as a plain DI-managed class. The `MCPServer` discovers every class tagged `mcpServer` at startup, registers its tools/resources/prompts with the SDK, and connects a stdio transport by default. For HTTP transport see `@agentback/mcp-http`.
 
@@ -130,6 +130,6 @@ Notes:
 
 ## Layering
 
-Depends on: `@agentback/context`, `@agentback/core`, `@agentback/metadata`, `@modelcontextprotocol/sdk`, `zod`.
+Depends on: `@agentback/context`, `@agentback/core`, `@agentback/metadata`, `@modelcontextprotocol/server`, `zod`.
 
 Sits between the DI container (`context`/`core`) and the MCP SDK. The REST layer has no dependency on this package; the two servers coexist independently on the same `Application`.

@@ -2,10 +2,14 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {Client} from '@modelcontextprotocol/sdk/client/index.js';
-import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import type {OAuthClientProvider} from '@modelcontextprotocol/sdk/client/auth.js';
-import type {FetchLike} from '@modelcontextprotocol/sdk/shared/transport.js';
+import {
+  Client,
+  StreamableHTTPClientTransport,
+} from '@modelcontextprotocol/client';
+import type {
+  OAuthClientProvider,
+  FetchLike,
+} from '@modelcontextprotocol/client';
 
 export {Client, StreamableHTTPClientTransport};
 export type {OAuthClientProvider, FetchLike};
