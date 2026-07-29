@@ -282,18 +282,28 @@ Each step is independently shippable and independently revertable.
 | **S4a** | ~~`protocol: 'stateless'` on the fetch host, opt-in~~ — **SHIPPED** | S1–S3      |
 | **S4b** | ~~Express host + per-request DI context (D7)~~ — **SHIPPED**        | S4a        |
 | **S5**  | ~~`serveStdio`~~ — **SHIPPED** (`protocol: 'both'`, opt-in)         | S4         |
-| **S6**  | MRTR: migrate the hand-rolled `confirm:` flow to `inputRequired`    | S4         |
-| **S7**  | Flip the default; deprecate the old mounts                          | S4–S6      |
+| **S6**  | MRTR for `confirm:` — **ENHANCEMENT, not a blocker** (see below)    | S4         |
+| **S7**  | Flip the default; deprecate the old mounts                          | S4, S5, D3 |
 
 S1–S3 are pure refactors with no wire change and could land any time. S4 is the
 first commit that changes bytes on the wire.
 
-**S6 is a genuine simplification worth calling out.** AgentBack's `confirm:`
-flow (issue a token in a `confirmation_required` error, client retries with it)
-is a hand-rolled multi-round-trip request. MRTR is the same shape done at the
-protocol layer, and `requestState` is _exactly_ the right tool for it — this is
-the one place the earlier "perSession → requestState" instinct was pointing at
-something real, just attached to the wrong feature.
+**S6 was reclassified after testing, not reasoning.** This document originally
+listed it as a prerequisite for flipping the default, on the assumption that
+`confirm:` would have to move to native MRTR first. It does not: `confirm:` is
+implemented entirely in userland — a tool error carrying a single-use token plus
+a `confirmationToken` input property — so it has no era-specific machinery.
+Verified end to end on a modern-era stateless endpoint, including the
+tampered-payload rejection: the flow round-trips across _separate requests_
+because the confirmation store lives on the application, not the per-request
+context.
+
+So S7 depends on **S4, S5 and D3 only**. Migrating `confirm:` to MRTR remains
+worth doing — it is the one place the early "perSession → requestState"
+instinct was pointing at something real, just attached to the wrong feature, and
+a conformant host can render a native confirmation prompt for it. But it is an
+enhancement, and it is **modern-only**, so it would have to run alongside the
+existing token dance for as long as the legacy era is served.
 
 ---
 
