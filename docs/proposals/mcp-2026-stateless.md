@@ -250,7 +250,7 @@ Each step is independently shippable and independently revertable.
 | ------ | --------------------------------------------------------------------------- | ---------- |
 | **S1** | ~~Memoize schema emission in `MCPServer`~~ — **SHIPPED**, see §4            | —          |
 | **S2** | `perSession` → `perRequest` binder, adapter kept for one minor              | —          |
-| **S3** | Modern-era test harness (see §8)                                            | —          |
+| **S3** | ~~Modern-era test harness~~ — **SHIPPED**, see §10                          | —          |
 | **S4** | `createMcpHandler` behind an opt-in flag, `legacy: 'stateless'`, both hosts | S1–S3      |
 | **S5** | `serveStdio`                                                                | S4         |
 | **S6** | MRTR: migrate the hand-rolled `confirm:` flow to `inputRequired`            | S4         |
@@ -320,15 +320,47 @@ push back on "transport follow-up" framing.
 
 ---
 
-## 10. What would change this design
+## 10. What the spike proved
 
-Honest uncertainty, so a future reader knows what was and wasn't proven:
+§2-3 were originally written from the SDK's emitted types. They have now been
+executed against a real `createMcpHandler` serving AgentBack's own `MCPServer`,
+in-process, in
+`packages/mcp-http/src/__tests__/integration/modern-era.integration.ts`.
 
-- §2 and §3 are verified against emitted v2 types. **Not** verified by building a
-  running `createMcpHandler` server in this repo — S4 is where that gets proven,
-  and a spike could still surface something that reshapes §5.
-- §4 is measured here, but on synthetic tools with one schema shape. Real apps
-  with heterogeneous schemas may differ in magnitude (not in direction).
-- The `subscriptions/listen` replacement for `list_changed` is understood from
-  types only. AgentBack publishes no `list_changed` today, so it is not on the
-  critical path — but D1's "one endpoint" answer assumes that stays true.
+**Confirmed:**
+
+| Claim                                                 | Result                                                              |
+| ----------------------------------------------------- | ------------------------------------------------------------------- |
+| The factory runs once per HTTP request                | 4 requests -> **4** invocations (incl. the `server/discover` probe) |
+| `era` is reported per construction                    | all `'modern'` on a negotiated modern connection                    |
+| `requestInfo` (the Web `Request`) reaches the factory | present on **every** HTTP invocation                                |
+| `authInfo` is strict pass-through                     | reaches the factory verbatim; the SDK verifies nothing              |
+| Per-request discovery replaces `perSession`           | `admin` sees `[echo, secret]`, unscoped sees `[echo]`               |
+| One factory + one endpoint serves both eras           | a `legacy`-pinned client is served, `era: 'legacy'`                 |
+
+So §3's central claim — that `perSession` maps to **per-request discovery driven
+by the validated principal**, not to `requestState` — is no longer an inference.
+Scope-gated visibility computed inside the factory works exactly as the
+transport mounts do today.
+
+It also re-validates §4: a trivial four-request session is four `buildServer()`
+calls, so un-memoized at 100 tools that alone would have been ~24ms of CPU.
+
+**Still assumed, not proven:**
+
+- **§5's host convergence.** The spike drives `handler.fetch` directly. Wiring
+  it behind the Express host via `toNodeHandler` — and deleting the session
+  machinery — is S4 and remains unexercised.
+- **`subscriptions/listen`.** Understood from types only. AgentBack publishes no
+  `list_changed` today, so it is off the critical path; D1's "one endpoint"
+  answer assumes that stays true.
+- **`serveStdio`.** Untouched (S5).
+- **The `@agentback/testing` harness.** The spike proves the _pattern_;
+  productizing it into `createTestApp().mcp` is a public-API change gated on
+  D6 below.
+
+**D6 — what era does `createTestApp().mcp` default to?** The in-process client
+must pick one. **Recommendation: keep `legacy` as the default while the shipped
+transports are 2025-era, and add an opt-in `{era: 'modern'}`** — flipping the
+default silently would change what every existing app test exercises. Revisit
+when S7 flips the serving default.
