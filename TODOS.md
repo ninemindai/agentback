@@ -70,6 +70,8 @@ Also unresolved, and all cheaper to decide before implementation than during it:
 - **Testing.** `InMemoryTransport.createLinkedPair()` is 2025-era only and there is no in-memory serving entry for 2026. Modern-era coverage must drive `createMcpHandler.fetch` through a `StreamableHTTPClientTransport` with a custom `fetch`. `@agentback/testing`'s `createTestApp().mcp` is public API, so this is a user-visible change.
 - **MCP Apps.** `@modelcontextprotocol/ext-apps` still peer-deps SDK v1. Needs a compatibility decision, not a footnote, since 2026-07-28 makes extensions first-class.
 
+**Design doc:** [`docs/proposals/mcp-2026-stateless.md`](docs/proposals/mcp-2026-stateless.md) — verified against the v2 emitted types, with a measured per-request cost budget and a 7-step sequence. Read it before starting; the notes below are the summary it expands.
+
 **Effort:** L (scope it as an API redesign, not a transport port — it deletes the primitive `perSession`, session pinning, resumable SSE and DELETE are all built on)
 **Priority:** P3
 **Depends on:** Phase 1 shipped (done). Not blocked by anything external.

@@ -32,6 +32,12 @@ tracked in the doc headers.
 | ---- | -------------------------------------------- | ----------------------------------------------------------------- |
 | P2-1 | [Publish pipeline](p2-1-publish-pipeline.md) | Manual all-at-once release workflow; gates P0-4's `npm create` UX |
 
+## Platform upkeep — protocol and dependency tracks
+
+| #    | Proposal                                                     | One-liner                                                                                                     |
+| ---- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| PU-1 | [MCP `2026-07-28` stateless](mcp-2026-stateless.md)          | Adopt the stateless protocol revision: `createMcpHandler`, per-request tool discovery, MRTR — **design**       |
+
 ## Exploratory — not part of the reviewed roadmap
 
 | #   | Proposal                              | One-liner                                                                                              |
