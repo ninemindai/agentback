@@ -105,6 +105,23 @@ instead of today's `(req as Request & {auth?: AuthInfo}).auth` cast — a small
 security improvement, since the binder can no longer accidentally key off a
 spoofable header.
 
+**Shipped (S2), and it fixed a live bug.** The binder now takes a Web `Request`
+on _both_ hosts and reads the principal from the DI context it is handed
+(`MCPBindings.REQUEST_AUTH`), through one shared `resolveSessionServer` seam.
+
+Before this, each mount had its own copy of the session-context construction and
+they disagreed about the binder's second argument: the Express mount passed an
+Express `req` while the fetch mount passed a Web `Request` behind a
+`as unknown as` cast, and the exported `SessionBinder` type claimed the Express
+shape. The documented example read `req.auth` — which does not exist on a Web
+`Request` — so a binder written to the published signature silently broke on the
+edge host. `perSession` had **zero** fetch-host coverage, which is why it
+survived. Both hosts are now covered by the same parity tests.
+
+Reading identity from the context rather than the request is also the shape S4
+needs: the factory hands over `{authInfo, requestInfo}`, which bind into the
+child context exactly the same way.
+
 **Session-pinning disappears, correctly.** `ownsSession` exists today because a
 session id outlives the request that created it and must never serve another
 tenant. With no session, every request re-authenticates and the whole class of
@@ -249,7 +266,7 @@ Each step is independently shippable and independently revertable.
 | Step   | Scope                                                                       | Depends on |
 | ------ | --------------------------------------------------------------------------- | ---------- |
 | **S1** | ~~Memoize schema emission in `MCPServer`~~ — **SHIPPED**, see §4            | —          |
-| **S2** | `perSession` → `perRequest` binder, adapter kept for one minor              | —          |
+| **S2** | ~~Host-neutral session binder~~ — **SHIPPED**, see §3                       | —          |
 | **S3** | ~~Modern-era test harness~~ — **SHIPPED**, see §10                          | —          |
 | **S4** | `createMcpHandler` behind an opt-in flag, `legacy: 'stateless'`, both hosts | S1–S3      |
 | **S5** | `serveStdio`                                                                | S4         |

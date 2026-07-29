@@ -10,7 +10,10 @@ import type {
   EventStore,
   OAuthProtectedResourceMetadata,
 } from '@modelcontextprotocol/server';
-import {NodeStreamableHTTPServerTransport} from '@modelcontextprotocol/node';
+import {
+  NodeStreamableHTTPServerTransport,
+  toWebRequest,
+} from '@modelcontextprotocol/node';
 
 import {randomUUID} from 'node:crypto';
 import express, {
@@ -20,7 +23,7 @@ import express, {
   type Response,
 } from 'express';
 import {MCPBindings, MCPServer} from '@agentback/mcp';
-import {BindingScope, Context} from '@agentback/core';
+import {Context} from '@agentback/core';
 import {loggers} from '@agentback/common';
 import {
   AX_SECTION_TAG,
@@ -36,6 +39,7 @@ import {
   type McpToolRateLimitOptions,
 } from './tool-rate-limit.js';
 import {mountMcpHttpFetch, PUBLIC_DISCOVERY_CORS} from './fetch.js';
+import {resolveSessionServer, type SessionBinder} from './session.js';
 
 export {InMemoryEventStore} from './event-store.js';
 export {
@@ -48,6 +52,7 @@ export {
 } from './tool-rate-limit.js';
 // Fetch-native MCP HTTP mount (runtime-neutral host path: native/Bun/Fastify).
 export {mountMcpHttpFetch} from './fetch.js';
+export {type SessionBinder} from './session.js';
 // Re-export so callers can implement a verifier/store without deep SDK imports.
 export type {AuthInfo, OAuthTokenVerifier, EventStore};
 
@@ -111,10 +116,14 @@ export interface McpHttpOptions {
    * session id (a resumed session reuses its context). Keep it cheap, or cache
    * keyed on the authenticated principal.
    *
-   * ⚠️ **Security:** key the binder off `req.auth` (set by the `auth` /
-   * `strategyAuth` guards, which run before this), **never** off a raw header —
-   * a spoofable header means cross-tenant tool exposure. The binder must only
-   * mutate `sessionCtx`; never reach up to the application context.
+   * ⚠️ **Security:** key the binder off the principal bound at
+   * {@link MCPBindings.REQUEST_AUTH} (set by the `auth` / `strategyAuth`
+   * guards, which run before this), **never** off a raw header — a spoofable
+   * header means cross-tenant tool exposure. The binder must only mutate
+   * `sessionCtx`; never reach up to the application context.
+   *
+   * The second argument is a Web `Request` on **every** host, so one binder
+   * works under both the Express and fetch/edge mounts.
    *
    * The session context is `close()`d when its transport closes, and all
    * outstanding sessions are closed when the application stops.
@@ -124,8 +133,9 @@ export interface McpHttpOptions {
    * @example
    *   await installMcpHttp(app, {
    *     strategyAuth: {...},
-   *     perSession(ctx, req) {
-   *       const principal = req.auth as AuthInfo | undefined; // validated by the guard
+   *     async perSession(ctx) {
+   *       // Validated by the guard and bound before the binder runs.
+   *       const principal = await ctx.get(MCPBindings.REQUEST_AUTH, {optional: true});
    *       if (!principal) return;                             // anonymous -> shared set only
    *       for (const ToolClass of entitlements.toolsFor(principal.clientId)) {
    *         addTool(ctx, ToolClass);                          // mirrors app.service(ToolClass)
@@ -141,19 +151,6 @@ export interface McpHttpOptions {
    */
   appContext?: Context;
 }
-
-/**
- * Populate a per-session DI context before its `MCPServer` is resolved. Bind the
- * authenticated principal (from `req.auth`) and any user-specific `@mcpServer`
- * tool classes (via `addTool(sessionCtx, ToolClass)`) so they are discovered
- * only for this session/user. May be async (e.g. an entitlement lookup).
- *
- * Mutate **only** `sessionCtx`. See {@link McpHttpOptions.perSession}.
- */
-export type SessionBinder = (
-  sessionCtx: Context,
-  req: Request,
-) => void | Promise<void>;
 
 export interface McpHttpAuthOptions {
   /**
@@ -459,18 +456,18 @@ export function mountMcpHttp(
         try {
           let sessionMcp = mcp;
           if (perSession) {
-            // Parent on the app context; SINGLETON binding OWNED by sessionCtx
-            // resolves against sessionCtx, so `@inject.context()` hands the new
-            // server THIS context — its tool discovery then walks
-            // sessionCtx -> app (app config still resolves up the chain), one
-            // server per session.
-            sessionCtx = new Context(options.appContext!, 'mcp.session');
-            await perSession(sessionCtx, req);
-            sessionCtx
-              .bind(MCPBindings.SERVER.key)
-              .toClass(MCPServer)
-              .inScope(BindingScope.SINGLETON);
-            sessionMcp = await sessionCtx.get(MCPBindings.SERVER);
+            // Hand the binder a Web `Request` so one binder works on both
+            // hosts. `req.body` is already parsed by express.json() above, so
+            // pass it through rather than letting the conversion re-read a
+            // consumed stream. Once per session, not per request.
+            const resolved = await resolveSessionServer({
+              appContext: options.appContext!,
+              binder: perSession,
+              request: await toWebRequest(req, req.body),
+              ...(authOf(req) ? {authInfo: authOf(req)!} : {}),
+            });
+            sessionCtx = resolved.sessionCtx;
+            sessionMcp = resolved.mcp;
           }
           await sessionMcp.buildServer({scopes}).connect(transport);
         } catch (err) {

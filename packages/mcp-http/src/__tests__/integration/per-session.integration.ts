@@ -14,17 +14,21 @@ import {
 // `perSession` binder) is discovered ONLY for that session, while app-level
 // tools stay shared. The binder keys off the AUTHENTICATED principal
 // (`req.auth.clientId`, set by the OAuth resource-server guard) — never a raw
-// header. Covers: discovery isolation, dispatch, composition with scope
-// filtering, session→principal pinning, and per-session context disposal.
+// header — it is bound at MCPBindings.REQUEST_AUTH before the binder runs, so
+// the binder never digs through a host-specific request object. Covers:
+// discovery isolation, dispatch, composition with scope filtering,
+// session→principal pinning, per-session context disposal, and that ONE binder
+// behaves identically on the Express and fetch/edge hosts.
 
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {z} from 'zod';
 import {Context} from '@agentback/core';
 import {RestApplication} from '@agentback/rest';
 import {
-  addTool,
+  MCPBindings,
   MCPComponent,
   MCPServer,
+  addTool,
   mcpServer,
   tool,
 } from '@agentback/mcp';
@@ -111,10 +115,14 @@ describe('mcp-http (per-session tool discovery)', () => {
         resource: 'https://example.test/mcp',
         authorizationServers: ['https://as.example.test'],
       },
-      // Key off the VALIDATED principal, never a header.
-      perSession(ctx, req) {
+      // Key off the VALIDATED principal, never a header. It is bound at
+      // REQUEST_AUTH before the binder runs — host-neutral, and the only
+      // spoof-proof source (the request object is not one).
+      async perSession(ctx) {
         lastSessionCtx = ctx;
-        const principal = req.auth as AuthInfo | undefined;
+        const principal = await ctx.get(MCPBindings.REQUEST_AUTH, {
+          optional: true,
+        });
         if (principal?.clientId === 'alice') addTool(ctx, AliceTools);
       },
     });
@@ -236,4 +244,108 @@ describe('mcp-http (per-session tool discovery)', () => {
     expect(closeSpy).toHaveBeenCalled();
     // afterEach calls app.stop() again — idempotent.
   });
+});
+
+// The binder used to receive a different, incompatible `req` on each host: the
+// Express mount passed an Express request while the fetch mount passed a Web
+// Request behind a cast, and the shared `SessionBinder` type claimed the Express
+// shape. A binder written to the documented signature (`req.auth`) therefore
+// broke on the edge host — and no test caught it, because `perSession` had no
+// fetch-host coverage at all. Both hosts now share one seam; this pins it.
+describe('perSession host parity', () => {
+  const verifier = {
+    async verifyAccessToken(token: string) {
+      if (token === 'alice' || token === 'bob')
+        return {
+          token,
+          clientId: token,
+          scopes: [],
+          expiresAt: Math.floor(Date.now() / 1000) + 3600,
+        };
+      throw new OAuthError(OAuthErrorCode.InvalidToken, 'bad token');
+    },
+  };
+
+  for (const listener of ['express', 'native'] as const) {
+    describe(`${listener} host`, () => {
+      let app: RestApplication;
+      let mcpUrl: URL;
+      const seen: Array<{isWebRequest: boolean; clientId?: string}> = [];
+
+      beforeEach(async () => {
+        seen.length = 0;
+        app = new RestApplication(
+          listener === 'native' ? {rest: {listener: 'native'}} : {},
+        );
+        app.configure('servers.RestServer').to({
+          port: 0,
+          host: '127.0.0.1',
+          ...(listener === 'native' ? {listener: 'native'} : {}),
+        });
+        app.component(MCPComponent);
+        app.configure('servers.MCPServer').to({
+          name: 'parity',
+          version: '0.0.0',
+          transports: {stdio: false},
+        });
+        app.service(SharedTools);
+        await app.get<MCPServer>('servers.MCPServer');
+        await installMcpHttp(app, {
+          auth: {
+            verifier,
+            resource: 'https://example.test/mcp',
+            authorizationServers: ['https://as.example.test'],
+          },
+          async perSession(ctx, request) {
+            const principal = await ctx.get(MCPBindings.REQUEST_AUTH, {
+              optional: true,
+            });
+            seen.push({
+              // The one assertion that would have caught the original bug.
+              isWebRequest: typeof request?.headers?.get === 'function',
+              ...(principal ? {clientId: principal.clientId} : {}),
+            });
+            if (principal?.clientId === 'alice') addTool(ctx, AliceTools);
+          },
+        });
+        await app.start();
+        mcpUrl = new URL((await app.restServer).url + '/mcp');
+      });
+
+      afterEach(async () => app.stop());
+
+      async function connectAs(token: string) {
+        const client = new Client({name: 'c', version: '0.0.0'});
+        const transport = new StreamableHTTPClientTransport(mcpUrl, {
+          requestInit: {headers: {authorization: `Bearer ${token}`}},
+        });
+        await client.connect(transport);
+        return client;
+      }
+
+      it('hands the binder a Web Request and the validated principal', async () => {
+        const client = await connectAs('alice');
+        await client.listTools();
+        await client.close();
+
+        expect(seen).toHaveLength(1);
+        expect(seen[0].isWebRequest).toBe(true);
+        expect(seen[0].clientId).toBe('alice');
+      });
+
+      it('isolates session-local tools by principal', async () => {
+        const alice = await connectAs('alice');
+        const aliceTools = (await alice.listTools()).tools.map(t => t.name);
+        await alice.close();
+
+        const bob = await connectAs('bob');
+        const bobTools = (await bob.listTools()).tools.map(t => t.name);
+        await bob.close();
+
+        expect(aliceTools).toContain('alice-secret');
+        expect(bobTools).not.toContain('alice-secret');
+        expect(bobTools).toContain('echo'); // shared app-level tool
+      });
+    });
+  }
 });
