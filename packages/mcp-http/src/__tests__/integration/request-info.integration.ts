@@ -19,7 +19,11 @@ import {
   tool,
   type McpRequestInfo,
 } from '@agentback/mcp';
-import {installMcpHttp, mountMcpHttpFetch, type McpHttpHandle} from '../../index.js';
+import {
+  installMcpHttp,
+  mountMcpHttpFetch,
+  type McpHttpHandle,
+} from '../../index.js';
 
 // MCPBindings.REQUEST_INFO is what `@agentback/payments` reads the x402
 // `X-PAYMENT` / `X-MPP-SESSION` headers from, and SDK v2 changed where it comes
@@ -221,7 +225,9 @@ describe('protected-resource metadata CORS preflight', () => {
         });
         expect(res.status).toBeLessThan(300);
         expect(res.headers.get('access-control-allow-origin')).toBe('*');
-        expect(res.headers.get('access-control-allow-methods')).toContain('GET');
+        expect(res.headers.get('access-control-allow-methods')).toContain(
+          'GET',
+        );
       });
     });
   }
