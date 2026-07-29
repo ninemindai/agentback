@@ -19,10 +19,11 @@ import {
   type AuthenticationResult,
 } from '@agentback/authentication';
 import {securityId} from '@agentback/security';
-import {BindingScope, Context} from '@agentback/core';
-import {MCPBindings, MCPServer} from '@agentback/mcp';
+import {Context} from '@agentback/core';
+import {MCPServer} from '@agentback/mcp';
 import type {RestServer} from '@agentback/rest';
 import type {McpHttpOptions, McpHttpHandle} from './index.js';
+import {resolveSessionServer} from './session.js';
 
 const DEFAULT_PATH = '/mcp';
 const PROTECTED_RESOURCE_PATH = '/.well-known/oauth-protected-resource';
@@ -254,21 +255,16 @@ export function mountMcpHttpFetch(
       try {
         let sessionMcp = mcp;
         if (perSession) {
-          sessionCtx = new Context(options.appContext!, 'mcp.session');
-          // On the fetch path the binder receives the Web `Request` (it has
-          // `.headers.get(...)`), not an Express req — the shared SessionBinder
-          // type is Express-typed, so cast. Binders targeting native hosts read
-          // the Web Request.
-          const bind = perSession as unknown as (
-            ctx: Context,
-            req: Request,
-          ) => void | Promise<void>;
-          await bind(sessionCtx, req);
-          sessionCtx
-            .bind(MCPBindings.SERVER.key)
-            .toClass(MCPServer)
-            .inScope(BindingScope.SINGLETON);
-          sessionMcp = await sessionCtx.get(MCPBindings.SERVER);
+          // No cast: the binder takes a Web `Request` on every host, which is
+          // what this path already had natively.
+          const resolved = await resolveSessionServer({
+            appContext: options.appContext!,
+            binder: perSession,
+            request: req,
+            ...(authInfo ? {authInfo} : {}),
+          });
+          sessionCtx = resolved.sessionCtx;
+          sessionMcp = resolved.mcp;
         }
         await sessionMcp.buildServer({scopes}).connect(transport);
       } catch (err) {
