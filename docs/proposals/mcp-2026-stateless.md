@@ -243,10 +243,18 @@ with a documented security contract. **Recommendation: keep it for one minor,
 adapting it to `perRequest` with a deprecation warning**, since the binder body
 is usually reusable verbatim.
 
-**D3 — Caching entitlement lookups.** `perSession` is documented as "keep it
-cheap, or cache keyed on the authenticated principal." Under per-request that
-advice becomes mandatory. **Recommendation: ship a small principal-keyed TTL
-cache in the framework** rather than leaving every app to rediscover it.
+**D3 — Caching entitlement lookups. RESOLVED.** `cachedPerPrincipal` ships in
+`@agentback/mcp-http`. Under stateless serving the binder runs on every request,
+so an entitlement lookup inside it becomes a per-request query — a quiet load
+multiplier rather than an error, which is exactly why the framework supplies
+this instead of leaving each app to rediscover it.
+
+Only the **lookup** is cached; `apply` runs fresh per request against that
+request's own context. A `Context` is never cached — it is closed when its
+request ends. Keyed on `clientId` + granted scopes so a re-issued, narrower
+token cannot reuse a wider answer; TTL-bounded (the entitlement-revocation
+window); failed lookups are not pinned; concurrent cold requests share one
+in-flight lookup.
 
 **D4 — stdio.** `serveStdio(factory)` replaces
 `server.connect(new StdioServerTransport())` and is connection-pinned. Low risk,

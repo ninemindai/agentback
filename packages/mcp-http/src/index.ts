@@ -61,6 +61,11 @@ export {
 // Fetch-native MCP HTTP mount (runtime-neutral host path: native/Bun/Fastify).
 export {mountMcpHttpFetch} from './fetch.js';
 export {type SessionBinder} from './session.js';
+// Keeps a per-request binder cheap under `protocol: 'stateless'`.
+export {
+  cachedPerPrincipal,
+  type PrincipalCacheOptions,
+} from './binder-cache.js';
 // Re-export so callers can implement a verifier/store without deep SDK imports.
 export type {AuthInfo, OAuthTokenVerifier, EventStore};
 
