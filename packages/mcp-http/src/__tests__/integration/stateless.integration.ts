@@ -8,11 +8,11 @@ import {
   StreamableHTTPClientTransport,
 } from '@modelcontextprotocol/client';
 
-import {afterEach, describe, expect, it} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {z} from 'zod';
 import {RestApplication, type RestServer} from '@agentback/rest';
 import {MCPComponent, MCPServer, mcpServer, tool} from '@agentback/mcp';
-import {installMcpHttp, mountMcpHttpFetch} from '../../index.js';
+import {installMcpHttp} from '../../index.js';
 
 // `protocol: 'stateless'` serves the 2026-07-28 revision — and 2025-era traffic
 // from the same endpoint — with no session at all. Unlike modern-era
@@ -172,28 +172,87 @@ describe("mcp-http protocol: 'stateless' (fetch host)", () => {
   });
 });
 
-describe("protocol: 'stateless' guards", () => {
-  it('refuses perSession rather than silently dropping tenant gating', async () => {
-    // Failing loudly matters here: silently ignoring perSession would expose
-    // every tenant's tools to every caller.
-    const app = new RestApplication({rest: {listener: 'native'}});
-    app.component(MCPComponent);
-    app.configure('servers.MCPServer').to({
-      name: 's',
-      version: '0.0.0',
-      transports: {stdio: false},
-    });
-    app.service(DemoTools);
-    const mcp = await app.get<MCPServer>('servers.MCPServer');
-    const server = await app.get<RestServer>('servers.RestServer');
+// S4b: per-request DI contexts, on both hosts. Disposal rides the SDK's own
+// lifetime signal — it closes the per-request server when the exchange
+// completes, AFTER any streamed progress and before the body finishes draining,
+// so `onclose` is the correct release point. Closing when `fetch()` resolves
+// would be far too early: fetch() returns before the tool does any work.
+describe("protocol: 'stateless' per-request DI contexts", () => {
+  for (const listener of ['express', 'native'] as const) {
+    describe(`${listener} host`, () => {
+      let app: RestApplication;
+      let mcpUrl: URL;
+      const opened: Array<{closed: boolean}> = [];
 
-    expect(() =>
-      mountMcpHttpFetch(mcp, server, {
-        protocol: 'stateless',
-        appContext: app,
-        perSession: () => {},
-      }),
-    ).toThrow(/does not support .*perSession/s);
-    await app.stop();
-  });
+      beforeEach(async () => {
+        opened.length = 0;
+        app = new RestApplication(
+          listener === 'native' ? {rest: {listener: 'native'}} : {},
+        );
+        app.configure('servers.RestServer').to({
+          port: 0,
+          host: '127.0.0.1',
+          ...(listener === 'native' ? {listener: 'native'} : {}),
+        });
+        app.component(MCPComponent);
+        app.configure('servers.MCPServer').to({
+          name: 'per-request',
+          version: '0.0.0',
+          transports: {stdio: false},
+        });
+        app.service(DemoTools);
+        await app.get<MCPServer>('servers.MCPServer');
+        await installMcpHttp(app, {
+          protocol: 'stateless',
+          perSession(ctx) {
+            // Track disposal without reaching into Context internals: close()
+            // is idempotent and observable through the subscription it drops.
+            const record = {closed: false};
+            opened.push(record);
+            const original = ctx.close.bind(ctx);
+            ctx.close = () => {
+              record.closed = true;
+              original();
+            };
+          },
+        });
+        await app.start();
+        mcpUrl = new URL(
+          (await app.get<RestServer>('servers.RestServer')).url + '/mcp',
+        );
+      });
+
+      afterEach(async () => app?.stop());
+
+      it('builds one context per request and disposes every one', async () => {
+        const client = new Client(
+          {name: 'c', version: '0.0.0'},
+          {versionNegotiation: {mode: 'auto' as const}},
+        );
+        await client.connect(new StreamableHTTPClientTransport(mcpUrl));
+        await client.listTools();
+        await client.callTool({name: 'echo', arguments: {text: 'x'}});
+        await client.close();
+
+        // One per HTTP request (discovery probe + list + call), all released.
+        expect(opened.length).toBeGreaterThanOrEqual(2);
+        expect(opened.every(o => o.closed)).toBe(true);
+      });
+
+      it('leaks nothing across many sequential requests', async () => {
+        const client = new Client(
+          {name: 'c', version: '0.0.0'},
+          {versionNegotiation: {mode: 'auto' as const}},
+        );
+        await client.connect(new StreamableHTTPClientTransport(mcpUrl));
+        for (let i = 0; i < 5; i++) {
+          await client.callTool({name: 'echo', arguments: {text: `n${i}`}});
+        }
+        await client.close();
+
+        expect(opened.length).toBeGreaterThanOrEqual(5);
+        expect(opened.filter(o => !o.closed)).toEqual([]);
+      });
+    });
+  }
 });
