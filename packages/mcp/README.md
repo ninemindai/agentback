@@ -133,3 +133,24 @@ Notes:
 Depends on: `@agentback/context`, `@agentback/core`, `@agentback/metadata`, `@modelcontextprotocol/server`, `zod`.
 
 Sits between the DI container (`context`/`core`) and the MCP SDK. The REST layer has no dependency on this package; the two servers coexist independently on the same `Application`.
+
+## Protocol eras over stdio
+
+`protocol` selects which protocol revisions stdio speaks. Default `'legacy'`.
+
+```ts
+app.configure('servers.MCPServer').to({protocol: 'both'});
+```
+
+- `'legacy'` (default) — the 2025-era `initialize` handshake only.
+- `'both'` — served through the SDK's `serveStdio`: the **opening exchange**
+  selects the era and one instance is pinned for the connection's lifetime, so a
+  2026-07-28 client and a 2025-era client are both served by the same binary.
+
+On a 2026-pinned connection there is no `initialize`, so the SDK's
+`getClientCapabilities()` / `getClientVersion()` return `undefined`. Per-request
+identity lives in `ctx.mcpReq.envelope` instead.
+
+The HTTP counterpart is [`@agentback/mcp-http`](../mcp-http/README.md)'s
+`protocol: 'stateless'`. See
+[docs/proposals/mcp-2026-stateless.md](../../docs/proposals/mcp-2026-stateless.md).

@@ -9,6 +9,7 @@
 - [MCP Apps Widgets (ui:)](#mcp-apps-widgets-ui)
 - [Transport: stdio (MCPApplication)](#transport-stdio-mcpapplication)
 - [Transport: HTTP (installMcpHttp)](#transport-http-installmcphttp)
+- [Stateless serving (2026-07-28)](#stateless-serving-2026-07-28)
 - [Scope-Gated Tools](#scope-gated-tools)
 - [Auth and Rate Limiting over HTTP](#auth-and-rate-limiting-over-http)
 - [Tool Dispatch Flow](#tool-dispatch-flow)
@@ -86,15 +87,15 @@ surface goes dark.
 
 `options` fields:
 
-| field         | type        | required | meaning                                           |
-| ------------- | ----------- | -------- | ------------------------------------------------- |
-| `input`       | `ZodObject` | no       | Zod schema for slot 0; drives the SDK inputSchema |
-| `output`      | `ZodObject` | no       | Zod schema for the return; validated at runtime   |
-| `description` | `string`    | no       | Shown in tools/list                               |
-| `title`       | `string`    | no       | Human-readable display name                       |
-| `scope`       | `string`    | no       | OAuth scope required to see/call the tool         |
-| `confirm`     | `boolean \| {ttlMs?}` | no | Dangerous tool: first call → `confirmation_required` error + single-use token; identical retry with the `confirmationToken` input executes |
-| `ui`          | `{resourceUri, visibility?}` | no | MCP Apps (SEP-1865) widget link, emitted as `_meta.ui` — see [MCP Apps Widgets](#mcp-apps-widgets-ui) |
+| field         | type                         | required | meaning                                                                                                                                    |
+| ------------- | ---------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `input`       | `ZodObject`                  | no       | Zod schema for slot 0; drives the SDK inputSchema                                                                                          |
+| `output`      | `ZodObject`                  | no       | Zod schema for the return; validated at runtime                                                                                            |
+| `description` | `string`                     | no       | Shown in tools/list                                                                                                                        |
+| `title`       | `string`                     | no       | Human-readable display name                                                                                                                |
+| `scope`       | `string`                     | no       | OAuth scope required to see/call the tool                                                                                                  |
+| `confirm`     | `boolean \| {ttlMs?}`        | no       | Dangerous tool: first call → `confirmation_required` error + single-use token; identical retry with the `confirmationToken` input executes |
+| `ui`          | `{resourceUri, visibility?}` | no       | MCP Apps (SEP-1865) widget link, emitted as `_meta.ui` — see [MCP Apps Widgets](#mcp-apps-widgets-ui)                                      |
 
 ### Slot 0 = `z.infer<typeof input>` when input is declared
 
@@ -313,6 +314,59 @@ await app.start();
 
 `installMcpHttp` throws if no MCP server is bound — add `MCPComponent` first.
 For a non-`RestApplication` Express app use `mountMcpHttp(mcpServer, expressApp, opts)`.
+
+### Stateless serving (`2026-07-28`)
+
+`protocol: 'stateless'` swaps the session machinery for the SDK's
+`createMcpHandler`, which serves the **2026-07-28** revision **and** 2025-era
+traffic from the same endpoint. Opt-in; the default is unchanged.
+
+```ts
+await installMcpHttp(app, {protocol: 'stateless'});
+```
+
+There is no session: no `Mcp-Session-Id`, `GET`/`DELETE` answer `405`, and each
+request builds its own server — so the endpoint scales behind a plain
+round-robin load balancer with no shared storage. Works on both hosts (the
+Express mount adapts the handler via `toNodeHandler`).
+
+Consequences to know before enabling:
+
+- **`perSession` becomes per-request.** Same binder contract, but it now runs on
+  every request instead of once per session. Wrap an expensive lookup in
+  `cachedPerPrincipal` (below) or it tracks request volume.
+- **`eventStore` does not apply.** Resumable SSE replay is a session feature;
+  setting it warns.
+- **`confirm:` is unaffected** — it is userland (tool error + input property), so
+  it round-trips across separate stateless requests unchanged.
+
+Stdio has its own switch: `protocol: 'both'` on the `MCPServer` config routes it
+through `serveStdio`, pinning the era per connection.
+
+```ts
+app.configure('servers.MCPServer').to({protocol: 'both'});
+```
+
+### Caching a per-request binder
+
+```ts
+import {cachedPerPrincipal} from '@agentback/mcp-http';
+import {addTool} from '@agentback/mcp';
+
+await installMcpHttp(app, {
+  protocol: 'stateless',
+  perSession: cachedPerPrincipal(
+    principal => entitlements.toolsFor(principal?.clientId), // cached
+    (ctx, classes) => classes.forEach(C => addTool(ctx, C)), // every request
+    {ttlMs: 60_000},
+  ),
+});
+```
+
+Only the lookup is cached; `apply` runs fresh per request. **Never cache a
+`Context`** — it is closed when its request ends. `ttlMs` is the
+entitlement-revocation window; entries key on `clientId` + granted scopes so a
+re-issued narrower token cannot reuse a wider answer.
 
 ### Resumable sessions
 
