@@ -149,8 +149,26 @@ handler binding                                          closure over reqCtx
 
 Everything expensive is deterministic per tool and does not vary by caller.
 Only visibility (scopes/entitlements) and the DI context are per-request, and
-both are cheap. This should take the 100-tool case from ~6 ms to well under
-0.1 ms.
+both are cheap.
+
+**Shipped.** Compilation is memoized per `(class, method)` in a module-level
+`WeakMap` — module-level and not an instance field precisely because every
+session (and, later, every request) resolves its own `MCPServer`, so an instance
+cache would miss the case that matters. Measured after:
+
+| tools | before  | after       | speedup |
+| ----- | ------- | ----------- | ------- |
+| 1     | 0.082ms | 0.022ms     | 3.7x    |
+| 10    | 0.342ms | 0.034ms     | 10x     |
+| 25    | 1.145ms | 0.053ms     | 22x     |
+| 50    | 2.044ms | 0.054ms     | 38x     |
+| 100   | 6.036ms | **0.096ms** | **63x** |
+
+Cost is now near-flat in tool count rather than superlinear, and the implied
+single-core construction ceiling at 100 tools goes from ~166 req/s to
+~10,400 req/s. The guard in CI is `tool-compile-cache.unit.ts`, which asserts
+the cache by counting a schema's own emissions — deterministic, where a timing
+assertion would be flaky on shared runners.
 
 **This is a `@agentback/mcp` change, and it is independently useful** — it makes
 today's per-session path faster too. It should land _before_ the transport
@@ -230,7 +248,7 @@ Each step is independently shippable and independently revertable.
 
 | Step   | Scope                                                                       | Depends on |
 | ------ | --------------------------------------------------------------------------- | ---------- |
-| **S1** | Memoize schema emission in `MCPServer`; keep the bench as a regression test | —          |
+| **S1** | ~~Memoize schema emission in `MCPServer`~~ — **SHIPPED**, see §4            | —          |
 | **S2** | `perSession` → `perRequest` binder, adapter kept for one minor              | —          |
 | **S3** | Modern-era test harness (see §8)                                            | —          |
 | **S4** | `createMcpHandler` behind an opt-in flag, `legacy: 'stateless'`, both hosts | S1–S3      |

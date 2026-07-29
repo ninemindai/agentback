@@ -73,6 +73,166 @@ export interface ToolBinding {
   meta: ToolMetadata;
 }
 
+/** One tool's `tools/list` entry, as published to clients. */
+interface ToolListEntry {
+  name: string;
+  title?: string;
+  description?: string;
+  inputSchema: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
+  _meta?: Record<string, unknown>;
+}
+
+/**
+ * A tool's registration data that cannot vary by caller: the published
+ * `tools/list` entry (including emitted JSON Schema) and the scopes that gate
+ * it. Only *visibility* varies per caller, and that is a cheap array check
+ * against these scopes.
+ */
+interface CompiledTool {
+  entry: ToolListEntry;
+  requiredScopes: string[];
+}
+
+/**
+ * Compiled-tool cache, keyed `ctor -> methodName`.
+ *
+ * **Why those keys:** `collectMembers` rebuilds the `{ctor, meta}` binding and
+ * spreads `meta` into a fresh object on every call, so neither the binding nor
+ * the metadata is a stable identity to key on. The class constructor plus the
+ * method name is, and everything compiled here is fixed at decoration time.
+ *
+ * **Why module-level, not a field:** every session already resolves its *own*
+ * `MCPServer` under `perSession`, and the 2026-07-28 stateless revision builds
+ * one per *request* (see docs/proposals/mcp-2026-stateless.md). An instance
+ * cache would miss in exactly the cases that matter. A `WeakMap` on the ctor
+ * keeps this GC-safe: when a tool class becomes unreachable, so does its entry.
+ */
+const compiledTools = new WeakMap<Function, Map<string, CompiledTool>>();
+
+/** Recursively freeze a compiled entry — it is shared across every caller. */
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const v of Object.values(value)) deepFreeze(v);
+  }
+  return value;
+}
+
+/**
+ * Build (or reuse) a tool's caller-invariant registration data.
+ *
+ * JSON Schema emission is the expensive half of registering a tool and is
+ * deterministic per tool, so it is computed once per `(class, method)` for the
+ * life of the process. A failure is deliberately **not** cached: the object-root
+ * guard below must keep throwing on every `buildServer()`, so a bad schema still
+ * fails at `app.start()` rather than at the first `tools/list`.
+ */
+function compileTool(t: ToolBinding): CompiledTool {
+  const methodName = t.meta.methodName as string;
+  let perClass = compiledTools.get(t.ctor);
+  const hit = perClass?.get(methodName);
+  if (hit) return hit;
+
+  // JSON Schema emission happens EAGERLY so a schema that can validate but not
+  // describe itself (no native emission, no registered converter) fails at
+  // registration time (`app.start()` / `buildServer`), not at `tools/list`.
+  const inputSchema = t.meta.input
+    ? (schemaToOpenApiSchema(t.meta.input) as Record<string, unknown>)
+    : {type: 'object'};
+  // MCP requires inputSchema to be an object with named properties at the
+  // root. A union/intersection/primitive lowers to anyOf/oneOf/allOf or a
+  // scalar `type` — which has no `properties`, breaks tools/list, and would
+  // be corrupted further by the confirmation-token injection below. Reject
+  // it loudly at registration rather than emit a malformed schema. Note a
+  // `.refine()` on a z.object() is fine (it lowers to the object schema),
+  // but the refinement itself is validated at runtime only — it is NOT
+  // reflected in the published inputSchema.
+  if (t.meta.input && inputSchema.type !== 'object') {
+    throw new Error(
+      `MCP tool '${t.meta.name}': input schema must be an object ` +
+        `(z.object(...)), but it lowered to ${describeNonObjectRoot(
+          inputSchema,
+        )}. MCP tool inputs need named properties at the root — a ` +
+        `top-level union/intersection/primitive can't be expressed. ` +
+        `Use a single z.object(); for cross-field rules add .refine() ` +
+        `(validated at runtime, but not reflected in inputSchema).`,
+    );
+  }
+  if (t.meta.confirm) {
+    // Advertise the confirmation flow in the inputSchema so callers
+    // discover it from tools/list, not from the first error.
+    inputSchema.properties = {
+      ...((inputSchema.properties as object | undefined) ?? {}),
+      confirmationToken: {
+        type: 'string',
+        description:
+          'This tool requires confirmation. Call once without this ' +
+          'property to receive a single-use token in a ' +
+          "'confirmation_required' error, then retry the identical " +
+          'call with the token here.',
+      },
+    };
+  }
+  const outputSchema = t.meta.output
+    ? (schemaToOpenApiSchema(t.meta.output) as Record<string, unknown>)
+    : undefined;
+  // Guarded: the argument formatting below is not free, and this used to run
+  // per tool on every buildServer() whether or not debug logging was on.
+  if (log.debug.enabled) {
+    log.debug(
+      'compiled tool %s%s%s',
+      t.meta.name,
+      t.meta.input
+        ? ` with input keys ${JSON.stringify(
+            Object.keys((inputSchema.properties as object | undefined) ?? {}),
+          )}`
+        : ' (no input)',
+      outputSchema
+        ? ` output keys ${JSON.stringify(
+            Object.keys((outputSchema.properties as object | undefined) ?? {}),
+          )}`
+        : '',
+    );
+  }
+
+  const compiled: CompiledTool = {
+    requiredScopes: requiredScopesForTool(t.ctor, t.meta),
+    // Frozen because this object is now shared by every session/request that
+    // lists the tool — an accidental downstream mutation would leak across
+    // callers. Freezing turns that into a loud throw instead of silent bleed.
+    entry: deepFreeze({
+      name: t.meta.name,
+      ...(t.meta.title !== undefined ? {title: t.meta.title} : {}),
+      ...(t.meta.description !== undefined
+        ? {description: t.meta.description}
+        : {}),
+      inputSchema,
+      ...(outputSchema ? {outputSchema} : {}),
+      // MCP Apps (SEP-1865): link the tool to its ui:// widget so a
+      // conformant host renders the resource for this tool's results.
+      ...(t.meta.ui
+        ? {
+            _meta: {
+              ui: {
+                resourceUri: t.meta.ui.resourceUri,
+                ...(t.meta.ui.visibility
+                  ? {visibility: t.meta.ui.visibility}
+                  : {}),
+              },
+            },
+          }
+        : {}),
+    }),
+  };
+  if (!perClass) {
+    perClass = new Map();
+    compiledTools.set(t.ctor, perClass);
+  }
+  perClass.set(methodName, compiled);
+  return compiled;
+}
+
 /**
  * Options for a direct (in-process) {@link MCPServer.callTool} invocation —
  * the seam `@agentback/agents` projects host tools through.
@@ -162,18 +322,19 @@ export class MCPServer implements Server {
    * {@link formatToolCostReport}.
    */
   toolCostReport(): ToolCostReport {
+    // Reuses the compiled entries rather than re-emitting: this used to be a
+    // second, duplicate JSON Schema emission site for the whole tool surface.
     return toolCostReport(
-      this.collectAllTools().map(t => ({
-        name: t.meta.name,
-        title: t.meta.title,
-        description: t.meta.description,
-        inputSchema: t.meta.input
-          ? schemaToOpenApiSchema(t.meta.input)
-          : {type: 'object'},
-        outputSchema: t.meta.output
-          ? schemaToOpenApiSchema(t.meta.output)
-          : undefined,
-      })),
+      this.collectAllTools().map(t => {
+        const {entry} = compileTool(t);
+        return {
+          name: entry.name,
+          title: entry.title,
+          description: entry.description,
+          inputSchema: entry.inputSchema,
+          outputSchema: entry.outputSchema,
+        };
+      }),
     );
   }
 
@@ -766,23 +927,19 @@ export class MCPServer implements Server {
     // input/output framework-side (`standardParse` in `dispatchTool`)
     // supports any Standard Schema vendor. Resources/prompts keep the
     // high-level registration below.
-    interface ToolListEntry {
-      name: string;
-      title?: string;
-      description?: string;
-      inputSchema: Record<string, unknown>;
-      outputSchema?: Record<string, unknown>;
-      _meta?: Record<string, unknown>;
-    }
     const visible = new Map<
       string,
       {tool: ToolBinding; entry: ToolListEntry}
     >();
     for (const t of this.collectAllTools()) {
+      // The expensive, caller-invariant half (JSON Schema emission, entry
+      // construction, required scopes) is memoized per (class, method); only
+      // the visibility check below varies by caller.
+      const compiled = compileTool(t);
       // Visibility: scopes from `@authorize({scopes})` (or the legacy
       // `@tool(..., {scope})`) gate registration on authenticated transports.
       // Roles/voter-gated tools stay visible and are denied at call time.
-      const required = requiredScopesForTool(t.ctor, t.meta);
+      const required = compiled.requiredScopes;
       if (
         scopes &&
         required.length &&
@@ -796,92 +953,7 @@ export class MCPServer implements Server {
         continue;
       }
       this.warnOnClassLevelGating(t);
-      // JSON Schema emission happens EAGERLY so a schema that can validate
-      // but not describe itself (no native emission, no registered
-      // converter) fails at registration time (`app.start()` /
-      // `buildServer`), not at `tools/list`.
-      const inputSchema = t.meta.input
-        ? (schemaToOpenApiSchema(t.meta.input) as Record<string, unknown>)
-        : {type: 'object'};
-      // MCP requires inputSchema to be an object with named properties at the
-      // root. A union/intersection/primitive lowers to anyOf/oneOf/allOf or a
-      // scalar `type` — which has no `properties`, breaks tools/list, and would
-      // be corrupted further by the confirmation-token injection below. Reject
-      // it loudly at registration rather than emit a malformed schema. Note a
-      // `.refine()` on a z.object() is fine (it lowers to the object schema),
-      // but the refinement itself is validated at runtime only — it is NOT
-      // reflected in the published inputSchema.
-      if (t.meta.input && inputSchema.type !== 'object') {
-        throw new Error(
-          `MCP tool '${t.meta.name}': input schema must be an object ` +
-            `(z.object(...)), but it lowered to ${describeNonObjectRoot(
-              inputSchema,
-            )}. MCP tool inputs need named properties at the root — a ` +
-            `top-level union/intersection/primitive can't be expressed. ` +
-            `Use a single z.object(); for cross-field rules add .refine() ` +
-            `(validated at runtime, but not reflected in inputSchema).`,
-        );
-      }
-      if (t.meta.confirm) {
-        // Advertise the confirmation flow in the inputSchema so callers
-        // discover it from tools/list, not from the first error.
-        inputSchema.properties = {
-          ...((inputSchema.properties as object | undefined) ?? {}),
-          confirmationToken: {
-            type: 'string',
-            description:
-              'This tool requires confirmation. Call once without this ' +
-              'property to receive a single-use token in a ' +
-              "'confirmation_required' error, then retry the identical " +
-              'call with the token here.',
-          },
-        };
-      }
-      const outputSchema = t.meta.output
-        ? (schemaToOpenApiSchema(t.meta.output) as Record<string, unknown>)
-        : undefined;
-      log.debug(
-        'registering tool %s%s%s',
-        t.meta.name,
-        t.meta.input
-          ? ` with input keys ${JSON.stringify(
-              Object.keys((inputSchema.properties as object | undefined) ?? {}),
-            )}`
-          : ' (no input)',
-        outputSchema
-          ? ` output keys ${JSON.stringify(
-              Object.keys(
-                (outputSchema.properties as object | undefined) ?? {},
-              ),
-            )}`
-          : '',
-      );
-      visible.set(t.meta.name, {
-        tool: t,
-        entry: {
-          name: t.meta.name,
-          ...(t.meta.title !== undefined ? {title: t.meta.title} : {}),
-          ...(t.meta.description !== undefined
-            ? {description: t.meta.description}
-            : {}),
-          inputSchema,
-          ...(outputSchema ? {outputSchema} : {}),
-          // MCP Apps (SEP-1865): link the tool to its ui:// widget so a
-          // conformant host renders the resource for this tool's results.
-          ...(t.meta.ui
-            ? {
-                _meta: {
-                  ui: {
-                    resourceUri: t.meta.ui.resourceUri,
-                    ...(t.meta.ui.visibility
-                      ? {visibility: t.meta.ui.visibility}
-                      : {}),
-                  },
-                },
-              }
-            : {}),
-        },
-      });
+      visible.set(t.meta.name, {tool: t, entry: compiled.entry});
     }
 
     const server = target.server;
