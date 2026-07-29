@@ -254,17 +254,26 @@ but it changes `MCPServer.start()`. Note that on a 2026-pinned connection
 `getClientCapabilities()` returns `undefined` — nothing in AgentBack reads it
 today, but that should be re-checked before the switch.
 
-**D7 — per-request DI context lifetime (blocks `perSession` under stateless).**
-Surfaced by S4a. A session context is disposed on transport close; a stateless
-request has no such event. Closing it when `fetch()` resolves would cut
-streaming responses short, and not closing it leaks a `Context` per request.
-`protocol: 'stateless'` therefore **throws** if `perSession` is set, rather than
-silently dropping per-tenant tool gating — the failure mode there is exposing
-every tenant's tools to every caller, so it must be loud.
-**Recommendation: tie disposal to the response body's completion** (wrap the
-returned `Response` so the context closes when its stream ends or errors), which
-covers both the buffered and streaming cases. Needs its own increment with a
-leak test.
+**D7 — per-request DI context lifetime. RESOLVED (S4b), and more cheaply than
+this proposal predicted.** The recommendation here was to wrap the returned
+`Response` so the context closes when its body stream ends. That is not needed:
+the SDK already owns the per-request server's lifetime and signals it. Probed
+against a streaming tool, the order is
+
+```
+fetch() resolves -> tick0 -> tick1 -> tick2 -> server.onclose -> body drained
+```
+
+so `onclose` fires _after_ all streamed work and _before_ the body finishes —
+exactly the right release point. `perRequestFactory` chains the context's
+`close()` onto it (chained, never replacing any teardown the SDK installed).
+
+Two assumptions that did **not** survive contact, worth recording so nobody
+re-derives them: `ctx.requestInfo` is **not** the same object as the `Request`
+passed to `fetch()` (the SDK reconstructs it), so a `WeakMap` keyed on the
+outbound request silently misses and leaks every time; and closing when
+`fetch()` resolves would truncate every streaming tool, because `fetch()`
+returns _before_ the tool has done any work.
 
 **D5 — MCP Apps.** `@modelcontextprotocol/ext-apps` still peer-deps SDK v1.
 Needs a compatibility answer before Phase 2 ships, not a footnote.
@@ -275,16 +284,16 @@ Needs a compatibility answer before Phase 2 ships, not a footnote.
 
 Each step is independently shippable and independently revertable.
 
-| Step    | Scope                                                                  | Depends on |
-| ------- | ---------------------------------------------------------------------- | ---------- |
-| **S1**  | ~~Memoize schema emission in `MCPServer`~~ — **SHIPPED**, see §4       | —          |
-| **S2**  | ~~Host-neutral session binder~~ — **SHIPPED**, see §3                  | —          |
-| **S3**  | ~~Modern-era test harness~~ — **SHIPPED**, see §10                     | —          |
-| **S4a** | ~~`protocol: 'stateless'` on the fetch host, opt-in~~ — **SHIPPED**    | S1–S3      |
-| **S4b** | Express host via `toNodeHandler`; per-request DI context lifetime (D7) | S4a        |
-| **S5**  | `serveStdio`                                                           | S4         |
-| **S6**  | MRTR: migrate the hand-rolled `confirm:` flow to `inputRequired`       | S4         |
-| **S7**  | Flip the default; deprecate the old mounts                             | S4–S6      |
+| Step    | Scope                                                               | Depends on |
+| ------- | ------------------------------------------------------------------- | ---------- |
+| **S1**  | ~~Memoize schema emission in `MCPServer`~~ — **SHIPPED**, see §4    | —          |
+| **S2**  | ~~Host-neutral session binder~~ — **SHIPPED**, see §3               | —          |
+| **S3**  | ~~Modern-era test harness~~ — **SHIPPED**, see §10                  | —          |
+| **S4a** | ~~`protocol: 'stateless'` on the fetch host, opt-in~~ — **SHIPPED** | S1–S3      |
+| **S4b** | ~~Express host + per-request DI context (D7)~~ — **SHIPPED**        | S4a        |
+| **S5**  | `serveStdio`                                                        | S4         |
+| **S6**  | MRTR: migrate the hand-rolled `confirm:` flow to `inputRequired`    | S4         |
+| **S7**  | Flip the default; deprecate the old mounts                          | S4–S6      |
 
 S1–S3 are pure refactors with no wire change and could land any time. S4 is the
 first commit that changes bytes on the wire.

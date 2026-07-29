@@ -11,7 +11,6 @@ import {
 import type {
   AuthInfo,
   McpHttpHandler,
-  McpRequestContext,
   OAuthProtectedResourceMetadata,
 } from '@modelcontextprotocol/server';
 
@@ -27,7 +26,7 @@ import {Context} from '@agentback/core';
 import {MCPServer} from '@agentback/mcp';
 import type {RestServer} from '@agentback/rest';
 import type {McpHttpOptions, McpHttpHandle} from './index.js';
-import {resolveSessionServer} from './session.js';
+import {perRequestFactory, resolveSessionServer} from './session.js';
 
 const log = loggers('agentback:mcp-http:fetch');
 
@@ -173,15 +172,6 @@ export function mountMcpHttpFetch(
   // pinning (every request re-authenticates above) and no GET/DELETE session
   // ops — the SDK answers those 405.
   const stateless = options.protocol === 'stateless';
-  if (stateless && perSession) {
-    throw new Error(
-      "@agentback/mcp-http: `protocol: 'stateless'` does not support " +
-        '`perSession` yet. A stateless request has no transport-close event to ' +
-        'dispose its DI child context, and closing it when fetch() resolves ' +
-        'would cut streaming responses short. Use the default ' +
-        "`protocol: 'sessions'` for per-tenant tool gating until that lands.",
-    );
-  }
   if (stateless && options.eventStore) {
     log.warn(
       "protocol: 'stateless' ignores `eventStore` — resumable SSE replay is a " +
@@ -189,12 +179,12 @@ export function mountMcpHttpFetch(
     );
   }
   const statelessHandler: McpHttpHandler | undefined = stateless
-    ? createMcpHandler((ctx: McpRequestContext) =>
-        // Scope-gate from the principal the caller verified and passed through,
-        // exactly as the session path does — this is per-request discovery.
-        mcp.buildServer(
-          ctx.authInfo ? {scopes: ctx.authInfo.scopes ?? []} : {},
-        ),
+    ? createMcpHandler(
+        perRequestFactory({
+          mcp,
+          ...(perSession ? {binder: perSession} : {}),
+          ...(options.appContext ? {appContext: options.appContext} : {}),
+        }),
       )
     : undefined;
 

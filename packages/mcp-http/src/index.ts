@@ -4,7 +4,10 @@
 
 import {requireBearerAuth} from '@modelcontextprotocol/express';
 import type {OAuthTokenVerifier} from '@modelcontextprotocol/express';
-import {isInitializeRequest} from '@modelcontextprotocol/server';
+import {
+  createMcpHandler,
+  isInitializeRequest,
+} from '@modelcontextprotocol/server';
 import type {
   AuthInfo,
   EventStore,
@@ -12,6 +15,7 @@ import type {
 } from '@modelcontextprotocol/server';
 import {
   NodeStreamableHTTPServerTransport,
+  toNodeHandler,
   toWebRequest,
 } from '@modelcontextprotocol/node';
 
@@ -39,7 +43,11 @@ import {
   type McpToolRateLimitOptions,
 } from './tool-rate-limit.js';
 import {mountMcpHttpFetch, PUBLIC_DISCOVERY_CORS} from './fetch.js';
-import {resolveSessionServer, type SessionBinder} from './session.js';
+import {
+  perRequestFactory,
+  resolveSessionServer,
+  type SessionBinder,
+} from './session.js';
 
 export {InMemoryEventStore} from './event-store.js';
 export {
@@ -159,11 +167,15 @@ export interface McpHttpOptions {
    * Opt-in while the ecosystem catches up — see
    * [docs/proposals/mcp-2026-stateless.md](../../docs/proposals/mcp-2026-stateless.md).
    *
-   * ⚠️ `'stateless'` currently has no session lifecycle, so
-   * {@link McpHttpOptions.eventStore} (resumable SSE) and
-   * {@link McpHttpOptions.perSession} do not apply; setting `perSession`
-   * alongside it throws at mount time rather than silently ignoring your
-   * per-tenant tool gating. Fetch/edge host only for now.
+   * Works on both hosts. {@link McpHttpOptions.perSession} applies and becomes
+   * per-**request** discovery: each request gets its own DI child context,
+   * released when the SDK closes that request's server (after any streamed
+   * progress). Keep the binder cheap, or cache it keyed on the principal —
+   * it now runs on every request rather than once per session.
+   *
+   * ⚠️ {@link McpHttpOptions.eventStore} does not apply: resumable SSE replay
+   * is a session feature and the stateless era has no sessions. Setting it
+   * warns. GET/DELETE are session operations and answer `405`.
    */
   protocol?: 'sessions' | 'stateless';
   /**
@@ -409,6 +421,48 @@ export function mountMcpHttp(
     res
       .status(status)
       .json({jsonrpc: '2.0', error: {code: -32000, message}, id: null});
+
+  // Stateless serving (2026-07-28 + 2025 from one endpoint). The SDK's handler
+  // is web-standards-only, so the Express host adapts it once with
+  // `toNodeHandler`; `authInfo` still comes from the guards above (strict
+  // pass-through — the handler verifies nothing itself). GET/DELETE are session
+  // operations the SDK answers 405, so they are not mounted.
+  const stateless = options.protocol === 'stateless';
+  if (stateless && options.eventStore) {
+    log.warn(
+      "protocol: 'stateless' ignores `eventStore` — resumable SSE replay is a " +
+        'session feature and the stateless era has no sessions.',
+    );
+  }
+  const statelessHandler = stateless
+    ? createMcpHandler(
+        perRequestFactory({
+          mcp,
+          ...(perSession ? {binder: perSession} : {}),
+          ...(options.appContext ? {appContext: options.appContext} : {}),
+        }),
+      )
+    : undefined;
+  if (statelessHandler) {
+    const node = toNodeHandler(statelessHandler);
+    expressApp.all(
+      path,
+      ...guards,
+      express.json(),
+      ...toolRateLimit,
+      (req: Request, res: Response) =>
+        // `toNodeHandler` forwards `req.auth` (set by the guards above) as the
+        // handler's `authInfo`, so the principal carries through without extra
+        // wiring. `express.json()` already consumed the body, so pass it rather
+        // than let the adapter re-read a spent stream.
+        node(req, res, req.body),
+    );
+    return {
+      async closeAll() {
+        await statelessHandler.close();
+      },
+    };
+  }
 
   // POST: client → server JSON-RPC. A request with no session must be an
   // `initialize`, which spins up a fresh per-session SDK server + transport.

@@ -2,7 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import type {AuthInfo} from '@modelcontextprotocol/server';
+import type {AuthInfo, McpRequestContext} from '@modelcontextprotocol/server';
 import {BindingScope, Context} from '@agentback/core';
 import {MCPBindings, MCPServer} from '@agentback/mcp';
 
@@ -76,4 +76,46 @@ export async function resolveSessionServer(options: {
     sessionCtx.close();
     throw err;
   }
+}
+
+/**
+ * Build the `McpServerFactory` that stateless serving hands to
+ * `createMcpHandler` — one server per HTTP request, scope-gated by the
+ * principal the caller already verified.
+ *
+ * When a binder is configured, each request also gets its own DI child context
+ * (per-request tool discovery, the stateless successor to per-session
+ * discovery). **Disposal rides the SDK's own lifetime signal:** it closes the
+ * per-request server when the exchange completes — after any streamed progress,
+ * and before the response body finishes draining — so `onclose` is the correct
+ * point to release the context. Closing when `fetch()` resolves would be far too
+ * early: `fetch()` returns before the tool has done any work.
+ *
+ * The existing handler is chained rather than replaced, so this never clobbers
+ * teardown the SDK installed itself.
+ */
+export function perRequestFactory(options: {
+  mcp: MCPServer;
+  binder?: SessionBinder;
+  appContext?: Context;
+}) {
+  return async (ctx: McpRequestContext) => {
+    const scoped = ctx.authInfo ? {scopes: ctx.authInfo.scopes ?? []} : {};
+    if (!options.binder || !ctx.requestInfo) {
+      return options.mcp.buildServer(scoped);
+    }
+    const {sessionCtx, mcp} = await resolveSessionServer({
+      appContext: options.appContext!,
+      binder: options.binder,
+      request: ctx.requestInfo,
+      ...(ctx.authInfo ? {authInfo: ctx.authInfo} : {}),
+    });
+    const server = mcp.buildServer(scoped);
+    const previous = server.server.onclose;
+    server.server.onclose = () => {
+      previous?.();
+      sessionCtx.close();
+    };
+    return server;
+  };
 }
