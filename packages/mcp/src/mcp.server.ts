@@ -17,7 +17,11 @@ import {
   type AuthorizationMetadata,
 } from '@agentback/authorization';
 import {SecurityBindings, type UserProfile} from '@agentback/security';
-import {StdioServerTransport} from '@modelcontextprotocol/server/stdio';
+import {
+  serveStdio,
+  StdioServerTransport,
+  type StdioServerHandle,
+} from '@modelcontextprotocol/server/stdio';
 import {
   McpServer,
   ProtocolError,
@@ -264,6 +268,7 @@ export class MCPServer implements Server {
   private mcp: McpServer;
   private _listening = false;
   private stdioTransport?: StdioServerTransport;
+  private stdioHandle?: StdioServerHandle;
   /** Tools already reported as class-level-gated (one log line per tool). */
   private warnedClassGated = new Set<string>();
   readonly config: Required<
@@ -1108,14 +1113,27 @@ export class MCPServer implements Server {
     this.registerAllOn(this.mcp);
 
     if (this.config.transports.stdio !== false) {
-      this.stdioTransport = new StdioServerTransport();
-      await this.mcp.connect(this.stdioTransport);
-      log.debug('mcp stdio transport connected');
+      if (this.config.protocol === 'both') {
+        // `serveStdio` owns the era decision: the opening exchange selects it
+        // and ONE instance from the factory is pinned for the connection's
+        // lifetime. Unlike HTTP there is no per-request construction here, so
+        // the factory hands back a freshly built server per connection.
+        this.stdioHandle = serveStdio(() => this.buildServer());
+        log.debug('mcp stdio serving both protocol eras');
+      } else {
+        this.stdioTransport = new StdioServerTransport();
+        await this.mcp.connect(this.stdioTransport);
+        log.debug('mcp stdio transport connected');
+      }
     }
     this._listening = true;
   }
 
   async stop(): Promise<void> {
+    if (this.stdioHandle) {
+      await this.stdioHandle.close();
+      this.stdioHandle = undefined;
+    }
     if (this.stdioTransport) {
       await this.mcp.close();
       this.stdioTransport = undefined;
