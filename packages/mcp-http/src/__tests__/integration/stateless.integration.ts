@@ -35,6 +35,16 @@ class DemoTools {
   }
 }
 
+const DeployIn = z.object({env: z.enum(['prod', 'staging'])});
+
+@mcpServer()
+class DangerTools {
+  @tool('deploy', {input: DeployIn, confirm: true})
+  deploy(input: z.infer<typeof DeployIn>) {
+    return {deployed: input.env};
+  }
+}
+
 const verifier = {
   async verifyAccessToken(token: string) {
     const expiresAt = Math.floor(Date.now() / 1000) + 3600;
@@ -255,4 +265,97 @@ describe("protocol: 'stateless' per-request DI contexts", () => {
       });
     });
   }
+});
+
+// The `confirm:` flow is implemented entirely in userland — a tool error
+// carrying a single-use token, and a `confirmationToken` input property — so it
+// has no era-specific machinery. This test exists to establish that, because
+// the migration plan assumed `confirm:` would have to move to the protocol's
+// native multi-round-trip requests (MRTR) before the default could flip. If it
+// already works unchanged on the modern era, that migration is an ENHANCEMENT
+// rather than a prerequisite, and S7 is not blocked on it.
+describe('confirm: tools on the modern era', () => {
+  let app: RestApplication;
+  let mcpUrl: URL;
+
+  beforeEach(async () => {
+    app = new RestApplication({rest: {listener: 'native'}});
+    app.configure('servers.RestServer').to({
+      port: 0,
+      host: '127.0.0.1',
+      listener: 'native',
+    });
+    app.component(MCPComponent);
+    app.configure('servers.MCPServer').to({
+      name: 'confirm',
+      version: '0.0.0',
+      transports: {stdio: false},
+    });
+    app.service(DangerTools);
+    await app.get<MCPServer>('servers.MCPServer');
+    await installMcpHttp(app, {protocol: 'stateless'});
+    await app.start();
+    mcpUrl = new URL(
+      (await app.get<RestServer>('servers.RestServer')).url + '/mcp',
+    );
+  });
+
+  afterEach(async () => app?.stop());
+
+  const errorOf = (r: {content: unknown}) =>
+    JSON.parse((r.content as {type: string; text: string}[])[0].text).error;
+
+  it('round-trips confirmation across separate stateless requests', async () => {
+    // Each call is its own request with its own server instance — the token
+    // must survive that, which it does because the confirmation store lives on
+    // the application, not the per-request context.
+    const client = new Client(
+      {name: 'c', version: '0.0.0'},
+      {versionNegotiation: {mode: 'auto' as const}},
+    );
+    await client.connect(new StreamableHTTPClientTransport(mcpUrl));
+    expect(client.getProtocolEra()).toBe('modern');
+
+    const first = await client.callTool({
+      name: 'deploy',
+      arguments: {env: 'prod'},
+    });
+    expect(first.isError).toBe(true);
+    const err = errorOf(first);
+    expect(err.code).toBe('confirmation_required');
+    expect(err.confirmationToken).toBeTruthy();
+
+    const confirmed = await client.callTool({
+      name: 'deploy',
+      arguments: {env: 'prod', confirmationToken: err.confirmationToken},
+    });
+    expect(confirmed.isError).toBeFalsy();
+    expect(
+      JSON.parse((confirmed.content as {type: string; text: string}[])[0].text),
+    ).toEqual({deployed: 'prod'});
+
+    await client.close();
+  });
+
+  it('still refuses a valid token against a tampered payload', async () => {
+    const client = new Client(
+      {name: 'c', version: '0.0.0'},
+      {versionNegotiation: {mode: 'auto' as const}},
+    );
+    await client.connect(new StreamableHTTPClientTransport(mcpUrl));
+
+    const first = await client.callTool({
+      name: 'deploy',
+      arguments: {env: 'prod'},
+    });
+    const tampered = await client.callTool({
+      name: 'deploy',
+      arguments: {
+        env: 'staging',
+        confirmationToken: errorOf(first).confirmationToken,
+      },
+    });
+    expect(errorOf(tampered).code).toBe('confirmation_invalid');
+    await client.close();
+  });
 });
