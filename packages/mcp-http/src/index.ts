@@ -145,6 +145,28 @@ export interface McpHttpOptions {
    */
   perSession?: SessionBinder;
   /**
+   * How the endpoint serves MCP.
+   *
+   * - `'sessions'` (default) — the 2025-era Streamable HTTP transport: an
+   *   `initialize` handshake mints an `Mcp-Session-Id`, and GET (SSE) / DELETE
+   *   operate on that session. Resumable when an `eventStore` is set.
+   * - `'stateless'` — the SDK's `createMcpHandler`, which serves the
+   *   **2026-07-28** revision and, from the same endpoint, 2025-era traffic
+   *   through the established stateless idiom. There is no session: every
+   *   request builds and tears down its own server, so the endpoint scales
+   *   behind a plain round-robin load balancer with no shared storage.
+   *
+   * Opt-in while the ecosystem catches up — see
+   * [docs/proposals/mcp-2026-stateless.md](../../docs/proposals/mcp-2026-stateless.md).
+   *
+   * ⚠️ `'stateless'` currently has no session lifecycle, so
+   * {@link McpHttpOptions.eventStore} (resumable SSE) and
+   * {@link McpHttpOptions.perSession} do not apply; setting `perSession`
+   * alongside it throws at mount time rather than silently ignoring your
+   * per-tenant tool gating. Fetch/edge host only for now.
+   */
+  protocol?: 'sessions' | 'stateless';
+  /**
    * DI root each per-session context is parented on (the application).
    * {@link installMcpHttp} fills this in automatically; only direct
    * {@link mountMcpHttp} callers using {@link perSession} must supply it.

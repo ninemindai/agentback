@@ -3,12 +3,15 @@
 // License text available at https://opensource.org/license/mit/
 
 import {
+  createMcpHandler,
   isInitializeRequest,
   requireBearerAuth,
   WebStandardStreamableHTTPServerTransport,
 } from '@modelcontextprotocol/server';
 import type {
   AuthInfo,
+  McpHttpHandler,
+  McpRequestContext,
   OAuthProtectedResourceMetadata,
 } from '@modelcontextprotocol/server';
 
@@ -18,12 +21,15 @@ import {
   resolveStrategy,
   type AuthenticationResult,
 } from '@agentback/authentication';
+import {loggers} from '@agentback/common';
 import {securityId} from '@agentback/security';
 import {Context} from '@agentback/core';
 import {MCPServer} from '@agentback/mcp';
 import type {RestServer} from '@agentback/rest';
 import type {McpHttpOptions, McpHttpHandle} from './index.js';
 import {resolveSessionServer} from './session.js';
+
+const log = loggers('agentback:mcp-http:fetch');
 
 const DEFAULT_PATH = '/mcp';
 const PROTECTED_RESOURCE_PATH = '/.well-known/oauth-protected-resource';
@@ -162,6 +168,36 @@ export function mountMcpHttpFetch(
     ? bearerGuard(oauth, resourceMetadataUrl)
     : undefined;
 
+  // Stateless (2026-07-28 + 2025 from one endpoint): one handler, built once,
+  // which calls the factory per REQUEST. There is no session map, no principal
+  // pinning (every request re-authenticates above) and no GET/DELETE session
+  // ops — the SDK answers those 405.
+  const stateless = options.protocol === 'stateless';
+  if (stateless && perSession) {
+    throw new Error(
+      "@agentback/mcp-http: `protocol: 'stateless'` does not support " +
+        '`perSession` yet. A stateless request has no transport-close event to ' +
+        'dispose its DI child context, and closing it when fetch() resolves ' +
+        'would cut streaming responses short. Use the default ' +
+        "`protocol: 'sessions'` for per-tenant tool gating until that lands.",
+    );
+  }
+  if (stateless && options.eventStore) {
+    log.warn(
+      "protocol: 'stateless' ignores `eventStore` — resumable SSE replay is a " +
+        'session feature and the stateless era has no sessions.',
+    );
+  }
+  const statelessHandler: McpHttpHandler | undefined = stateless
+    ? createMcpHandler((ctx: McpRequestContext) =>
+        // Scope-gate from the principal the caller verified and passed through,
+        // exactly as the session path does — this is per-request discovery.
+        mcp.buildServer(
+          ctx.authInfo ? {scopes: ctx.authInfo.scopes ?? []} : {},
+        ),
+      )
+    : undefined;
+
   if (perSession && !options.appContext) {
     throw new Error(
       '@agentback/mcp-http: options.appContext is required when `perSession` ' +
@@ -201,6 +237,14 @@ export function mountMcpHttpFetch(
         return rpcError(401, 'Unauthorized');
       }
     }
+    if (statelessHandler) {
+      // `authInfo` is strict pass-through: the SDK verifies nothing itself, so
+      // the guard above stays the only authority.
+      return statelessHandler.fetch(req, {
+        ...(authInfo ? {authInfo} : {}),
+      });
+    }
+
     const principal = authInfo?.clientId;
 
     const sessionId = req.headers.get('mcp-session-id') ?? undefined;
@@ -310,6 +354,7 @@ export function mountMcpHttpFetch(
 
   return {
     async closeAll() {
+      await statelessHandler?.close();
       await Promise.all(
         Object.values(transports).map(t => t.close().catch(() => {})),
       );
