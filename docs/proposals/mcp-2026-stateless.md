@@ -256,32 +256,14 @@ token cannot reuse a wider answer; TTL-bounded (the entitlement-revocation
 window); failed lookups are not pinned; concurrent cold requests share one
 in-flight lookup.
 
-**D4 — stdio.** `serveStdio(factory)` replaces
-`server.connect(new StdioServerTransport())` and is connection-pinned. Low risk,
-but it changes `MCPServer.start()`. Note that on a 2026-pinned connection
-`getClientCapabilities()` returns `undefined` — nothing in AgentBack reads it
-today, but that should be re-checked before the switch.
-
-**D7 — per-request DI context lifetime. RESOLVED (S4b), and more cheaply than
-this proposal predicted.** The recommendation here was to wrap the returned
-`Response` so the context closes when its body stream ends. That is not needed:
-the SDK already owns the per-request server's lifetime and signals it. Probed
-against a streaming tool, the order is
-
-```
-fetch() resolves -> tick0 -> tick1 -> tick2 -> server.onclose -> body drained
-```
-
-so `onclose` fires _after_ all streamed work and _before_ the body finishes —
-exactly the right release point. `perRequestFactory` chains the context's
-`close()` onto it (chained, never replacing any teardown the SDK installed).
-
-Two assumptions that did **not** survive contact, worth recording so nobody
-re-derives them: `ctx.requestInfo` is **not** the same object as the `Request`
-passed to `fetch()` (the SDK reconstructs it), so a `WeakMap` keyed on the
-outbound request silently misses and leaks every time; and closing when
-`fetch()` resolves would truncate every streaming tool, because `fetch()`
-returns _before_ the tool has done any work.
+**D4 — stdio. RESOLVED (S5).** `MCPServerConfig.protocol: 'both'` routes stdio
+through `serveStdio`, where the opening exchange selects the era and one
+instance is pinned for the connection (unlike HTTP, which constructs per
+request). Default stays `'legacy'`. The caveat was re-checked before wiring:
+nothing in AgentBack reads `getClientCapabilities()` / `getClientVersion()`,
+which return `undefined` on a 2026-pinned connection. Covered by spawning real
+child processes — the only honest way to test stdio, since the transport _is_
+the process's stdin/stdout.
 
 **D5 — MCP Apps.** `@modelcontextprotocol/ext-apps` still peer-deps SDK v1.
 Needs a compatibility answer before Phase 2 ships, not a footnote.
@@ -299,7 +281,7 @@ Each step is independently shippable and independently revertable.
 | **S3**  | ~~Modern-era test harness~~ — **SHIPPED**, see §10                  | —          |
 | **S4a** | ~~`protocol: 'stateless'` on the fetch host, opt-in~~ — **SHIPPED** | S1–S3      |
 | **S4b** | ~~Express host + per-request DI context (D7)~~ — **SHIPPED**        | S4a        |
-| **S5**  | `serveStdio`                                                        | S4         |
+| **S5**  | ~~`serveStdio`~~ — **SHIPPED** (`protocol: 'both'`, opt-in)         | S4         |
 | **S6**  | MRTR: migrate the hand-rolled `confirm:` flow to `inputRequired`    | S4         |
 | **S7**  | Flip the default; deprecate the old mounts                          | S4–S6      |
 
