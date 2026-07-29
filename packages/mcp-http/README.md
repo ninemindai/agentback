@@ -61,6 +61,67 @@ For a localhost-only server, set `allowedHosts: ['127.0.0.1:PORT', 'localhost:PO
 `installMcpHttp` throws if no MCP server is bound (add `MCPComponent` first).
 For a non-`RestApplication` Express app, use `mountMcpHttp(mcpServer, expressApp, opts)`.
 
+## Protocol: sessions or stateless
+
+`protocol` picks how the endpoint serves MCP. The default is unchanged.
+
+|                              | `'sessions'` (default) | `'stateless'`                        |
+| ---------------------------- | ---------------------- | ------------------------------------ |
+| Protocol revision            | 2025-era only          | **2026-07-28 + 2025, same endpoint** |
+| `Mcp-Session-Id`             | minted on `initialize` | none                                 |
+| `GET` / `DELETE` on `/mcp`   | SSE stream / terminate | `405` (session ops)                  |
+| Server instance              | one per session        | one per **request**                  |
+| `eventStore` (resumable SSE) | supported              | not applicable — warns               |
+| `perSession` binder          | once per session       | once per **request** (see below)     |
+| Scaling                      | needs session affinity | plain round-robin, no shared storage |
+
+```ts
+await installMcpHttp(app, {protocol: 'stateless'});
+```
+
+Both hosts support it: the Express mount adapts the SDK's web-standards-only
+handler with `toNodeHandler`, the fetch/edge mount uses it directly. Clients that
+speak either era are served from the same URL, so this is safe to turn on before
+your clients have migrated.
+
+Under `'stateless'` each request builds its own server and its own DI context,
+released when the SDK closes that request's server — after any streamed
+progress, so streaming tools are unaffected.
+
+⚠️ **`perSession` now runs on every request.** If your binder does an
+entitlement lookup, wrap it in [`cachedPerPrincipal`](#caching-a-per-request-binder)
+or that lookup tracks request volume.
+
+Stdio has its own switch — see [`@agentback/mcp`](../mcp/README.md)'s
+`protocol: 'both'`.
+
+## Caching a per-request binder
+
+`cachedPerPrincipal` caches the expensive **lookup**, not the context:
+
+```ts
+import {cachedPerPrincipal} from '@agentback/mcp-http';
+import {addTool} from '@agentback/mcp';
+
+await installMcpHttp(app, {
+  protocol: 'stateless',
+  perSession: cachedPerPrincipal(
+    principal => entitlements.toolsFor(principal?.clientId), // cached per principal
+    (ctx, classes) => classes.forEach(C => addTool(ctx, C)), // every request
+    {ttlMs: 60_000},
+  ),
+});
+```
+
+`apply` runs fresh per request against that request's own context. **Never cache
+a `Context`** — it is closed when its request ends.
+
+`ttlMs` is your **entitlement-revocation window**, not a latency knob: a revoked
+principal keeps the old answer until the entry expires. Entries are keyed on
+`clientId` **plus granted scopes**, so a re-issued narrower token cannot reuse a
+wider answer. Failed lookups are not cached, and concurrent cold requests for one
+principal share a single in-flight lookup.
+
 ## How sessions work
 
 Each MCP session gets its **own** underlying SDK server (`mcp.buildServer()`)
