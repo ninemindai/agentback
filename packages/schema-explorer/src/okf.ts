@@ -114,6 +114,7 @@ export function inventoryToOkf(
     content: renderTierIndex('Schemas', nodes, n => ({
       label: n.name,
       href: `./${base(schemaPath.get(n.id)!)}`,
+      description: describeSchema(n),
     })),
   });
   files.push({
@@ -121,6 +122,7 @@ export function inventoryToOkf(
     content: renderTierIndex('Surfaces', surfaces, s => ({
       label: s.ref,
       href: `./${base(surfacePath.get(s.id)!)}`,
+      description: describeSurface(s),
     })),
   });
 
@@ -160,6 +162,37 @@ function applyExclude(
 
 // ---- Renderers --------------------------------------------------------------
 
+/**
+ * One-line `description` for a schema concept. Shared by the document's own
+ * frontmatter and by the index entry that links to it, because OKF §8 says an
+ * index entry SHOULD carry the linked concept's description — if these two
+ * drifted, the bundle would contradict itself.
+ */
+export function describeSchema(n: SchemaNode): string {
+  if (n.origin?.table) {
+    return `Domain schema backed by Drizzle table \`${n.origin.table}\`, used by ${usagePhrase(n)}.`;
+  }
+  return `Domain schema used by ${usagePhrase(n)}.`;
+}
+
+/** One-line `description` for a surface concept. */
+export function describeSurface(s: SchemaSurfaceNode): string {
+  return `${s.surface.toUpperCase()} surface \`${s.ref}\`, served by ${s.controller}.${s.method}.`;
+}
+
+function plural(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? '' : 's'}`;
+}
+
+function usagePhrase(n: SchemaNode): string {
+  const count = n.usages.length;
+  if (count === 0) return 'no surface yet';
+  const surfaces = [...new Set(n.usages.map(u => u.surface))]
+    .sort()
+    .join(' + ');
+  return `${count} ${count === 1 ? 'surface' : 'surfaces'} (${surfaces})`;
+}
+
 function renderSchemaDoc(
   n: SchemaNode,
   surfacePath: Map<string, string>,
@@ -167,6 +200,8 @@ function renderSchemaDoc(
   const tags = [...new Set(n.usages.map(u => u.surface))].sort();
   const fm = frontmatter({
     type: n.origin?.table ? 'table' : 'reference',
+    title: n.name,
+    description: describeSchema(n),
     tags,
   });
 
@@ -199,7 +234,12 @@ function renderSurfaceDoc(
   nodes: SchemaNode[],
   schemaPath: Map<string, string>,
 ): string {
-  const fm = frontmatter({type: 'reference', tags: [s.surface]});
+  const fm = frontmatter({
+    type: 'reference',
+    title: s.ref,
+    description: describeSurface(s),
+    tags: [s.surface],
+  });
   const out: string[] = [
     fm,
     `# ${s.ref}`,
@@ -231,15 +271,20 @@ function renderRootIndex(
   nodes: SchemaNode[],
   surfaces: SchemaSurfaceNode[],
 ): string {
-  const fm = frontmatter({type: 'index'});
+  // OKF §8: index files carry NO frontmatter, with exactly one exception —
+  // the bundle-root index MAY declare `okf_version` (§12). That is the only
+  // key permitted here.
   return [
-    fm,
+    '---',
+    `okf_version: '${OKF_VERSION}'`,
+    '---',
+    '',
     '# Knowledge Bundle',
     '',
     'Derived from the application schema graph (REST + MCP + Drizzle).',
     '',
-    `- [Schemas](./schemas/index.md) — ${nodes.length}`,
-    `- [Surfaces](./surfaces/index.md) — ${surfaces.length}`,
+    `- [Schemas](./schemas/index.md) — ${plural(nodes.length, 'schema concept')}`,
+    `- [Surfaces](./surfaces/index.md) — ${plural(surfaces.length, 'surface concept')}`,
     '',
   ].join('\n');
 }
@@ -247,13 +292,14 @@ function renderRootIndex(
 function renderTierIndex<T>(
   title: string,
   items: T[],
-  link: (item: T) => {label: string; href: string},
+  link: (item: T) => {label: string; href: string; description: string},
 ): string {
-  const fm = frontmatter({type: 'index'});
-  const out = [fm, `# ${title}`, ''];
+  // No frontmatter: OKF §8 permits it only on the bundle-root index.
+  const out = [`# ${title}`, ''];
   for (const it of items) {
-    const {label, href} = link(it);
-    out.push(`- [${label}](${href})`);
+    const {label, href, description} = link(it);
+    // §8: entries SHOULD carry the linked concept's description.
+    out.push(`- [${label}](${href}) — ${description}`);
   }
   out.push('');
   return out.join('\n');
@@ -313,13 +359,65 @@ function refName(ref: string): string {
 // ---- Helpers ----------------------------------------------------------------
 
 /** Render a minimal, deterministic YAML frontmatter block (no timestamps). */
-function frontmatter(meta: {type: string; tags?: string[]}): string {
-  const lines = ['---', `type: ${meta.type}`];
+/** OKF revision this emitter targets (declared on the bundle-root index). */
+export const OKF_VERSION = '0.2';
+
+/**
+ * The actor recorded as this bundle's producer, per the OKF actor convention
+ * (§7): `process:<id>` for an automated process. Deliberately NOT a `human:`
+ * prefix — consumers key trust classification off that, and nothing here is
+ * hand-authored.
+ */
+const GENERATED_BY = 'process:agentback-schema-explorer';
+
+/**
+ * Concept-document frontmatter (OKF v0.2 §4.1).
+ *
+ * `type` is the only REQUIRED key; `title` and `description` are recommended
+ * and are what make an index useful to an agent, so they are always emitted.
+ *
+ * `generated.by` is emitted but `generated.at` deliberately is NOT: `at` is a
+ * wall-clock timestamp and this emitter is contractually deterministic (the
+ * same app must always produce the same bytes, so bundles diff cleanly and
+ * tests can assert on them). `by` is the key the spec requires within
+ * `generated`; `at` is optional, so omitting it stays conformant.
+ */
+function frontmatter(meta: {
+  type: string;
+  title: string;
+  description: string;
+  tags?: string[];
+}): string {
+  const lines = [
+    '---',
+    `type: ${meta.type}`,
+    `title: ${yamlScalar(meta.title)}`,
+    `description: ${yamlScalar(meta.description)}`,
+  ];
   if (meta.tags && meta.tags.length) {
     lines.push(`tags: [${meta.tags.join(', ')}]`);
   }
-  lines.push('---', '');
+  lines.push(`generated: {by: ${GENERATED_BY}}`, '---', '');
   return lines.join('\n');
+}
+
+/**
+ * Quote a YAML scalar when it would otherwise change meaning. Schema and route
+ * names carry `:`, `#`, `{`, quotes and leading indicators often enough that
+ * emitting them bare would produce a document a consumer parses differently
+ * than we wrote it.
+ */
+function yamlScalar(value: string): string {
+  const v = value.replace(/\r?\n/g, ' ').trim();
+  if (v === '') return "''";
+  if (
+    /^[-?:,[\]{}#&*!|>'"%@`]/.test(v) ||
+    /:\s|\s#/.test(v) ||
+    /["']/.test(v)
+  ) {
+    return `'${v.replace(/'/g, "''")}'`;
+  }
+  return v;
 }
 
 function slugify(s: string): string {
@@ -349,4 +447,93 @@ function byUsage(
   b: {surface: string; role: string; ref: string},
 ): number {
   return cmp(a.surface + a.role + a.ref, b.surface + b.role + b.ref);
+}
+
+/** One entry in an {@link OkfSummary}: enough to choose a file without reading it. */
+export interface OkfFileSummary {
+  path: string;
+  /** Frontmatter `title`, or the document's first `#` heading for index files. */
+  title: string;
+  /** Frontmatter `description`. Empty for index files, which carry no frontmatter. */
+  description: string;
+  /** Concept `type`, absent on index files. */
+  type?: string;
+  /** Byte length of the document, so a consumer can budget before fetching. */
+  bytes: number;
+}
+
+/**
+ * A bundle's table of contents: paths, titles and descriptions, without the
+ * bodies.
+ *
+ * The full bundle is a heavy payload for an agent to pull on every call —
+ * progressive disclosure is what OKF's index files exist for (§8), and this is
+ * the same idea in structured form. An agent reads the summary, picks the two
+ * or three concepts it needs, and fetches only those.
+ */
+export interface OkfSummary {
+  okfVersion: string;
+  files: OkfFileSummary[];
+  /** Total bytes of the full bundle, so a consumer can decide to just take it all. */
+  totalBytes: number;
+}
+
+/**
+ * Summarize a bundle by reading the frontmatter this emitter writes.
+ *
+ * Reads `title`/`description` from frontmatter rather than parsing the body,
+ * which is exactly what those recommended fields are for — pulling a title out
+ * of a `#` heading would be the bespoke translation OKF exists to eliminate.
+ * Index files legitimately have no frontmatter (§8), so their title falls back
+ * to the heading.
+ */
+export function summarizeOkfBundle(bundle: OkfBundle): OkfSummary {
+  return {
+    okfVersion: OKF_VERSION,
+    totalBytes: bundle.files.reduce((n, f) => n + byteLength(f.content), 0),
+    files: bundle.files.map(f => {
+      const fm = parseFrontmatter(f.content);
+      return {
+        path: f.path,
+        title: fm.title ?? headingOf(f.content) ?? f.path,
+        description: fm.description ?? '',
+        ...(fm.type ? {type: fm.type} : {}),
+        bytes: byteLength(f.content),
+      };
+    }),
+  };
+}
+
+/** Byte length, not character count — an agent's budget is bytes/tokens. */
+function byteLength(s: string): number {
+  return Buffer.byteLength(s, 'utf8');
+}
+
+/**
+ * Read the flat scalar keys of a frontmatter block. Deliberately not a YAML
+ * parser: this reads back only what {@link frontmatter} wrote, and a bundle
+ * whose frontmatter this cannot read is one this emitter did not produce.
+ */
+function parseFrontmatter(content: string): Record<string, string> {
+  if (!content.startsWith('---\n')) return {};
+  const end = content.indexOf('\n---', 4);
+  if (end === -1) return {};
+  const out: Record<string, string> = {};
+  for (const line of content.slice(4, end).split('\n')) {
+    const m = /^([a-z_]+): (.*)$/.exec(line);
+    if (!m) continue;
+    out[m[1]] = unquoteYamlScalar(m[2]);
+  }
+  return out;
+}
+
+function unquoteYamlScalar(v: string): string {
+  const t = v.trim();
+  return t.startsWith("'") && t.endsWith("'") && t.length >= 2
+    ? t.slice(1, -1).replace(/''/g, "'")
+    : t;
+}
+
+function headingOf(content: string): string | undefined {
+  return /^# (.+)$/m.exec(content)?.[1];
 }

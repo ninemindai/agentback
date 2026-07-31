@@ -7,7 +7,7 @@ import {CoreBindings, inject, type Context} from '@agentback/core';
 import {loggers} from '@agentback/common';
 import {AgentError} from '@agentback/openapi';
 import {mcpServer, tool} from '@agentback/mcp';
-import {buildOkfBundle} from '@agentback/schema-explorer';
+import {buildOkfBundle, summarizeOkfBundle} from '@agentback/schema-explorer';
 import {
   IntrospectionKind,
   IntrospectionNode,
@@ -64,6 +64,35 @@ const OkfOutput = z.object({
   files: z.array(z.object({path: z.string(), content: z.string()})),
 });
 
+const OkfListOutput = z.object({
+  okfVersion: z.string(),
+  totalBytes: z
+    .number()
+    .describe('Total bytes of the full bundle, for budgeting before fetching.'),
+  files: z.array(
+    z.object({
+      path: z.string(),
+      title: z.string(),
+      description: z.string(),
+      type: z.string().optional(),
+      bytes: z.number(),
+    }),
+  ),
+});
+
+const OkfFilesInput = z.object({
+  paths: z
+    .array(z.string())
+    .min(1)
+    .describe(
+      'Paths from list_okf_files, e.g. ["schemas/user.md"]. Batch them: one ' +
+        'call for everything you need beats one call per file.',
+    ),
+});
+const OkfFilesOutput = z.object({
+  files: z.array(z.object({path: z.string(), content: z.string()})),
+});
+
 /**
  * Read-only introspection of the running app, for an agent to ground itself in
  * the live instance. NEVER invokes a route or tool and NEVER resolves a
@@ -109,9 +138,49 @@ export class IntrospectionTools {
     };
   }
 
+  @tool('list_okf_files', {
+    description:
+      "Table of contents for the app's OKF knowledge bundle: every document's path, title, description and size, without the bodies. Start here, then fetch only what you need with get_okf_files. Cheaper than get_okf_bundle on any non-trivial app.",
+    input: OkfInput,
+    output: OkfListOutput,
+  })
+  async listOkfFiles(
+    _input: z.infer<typeof OkfInput>,
+  ): Promise<z.infer<typeof OkfListOutput>> {
+    return tryBuild('OKF summary', () =>
+      summarizeOkfBundle(buildOkfBundle(this.app)),
+    );
+  }
+
+  @tool('get_okf_files', {
+    description:
+      'Fetch specific OKF documents by path, as listed by list_okf_files. Batch every path you need into one call.',
+    input: OkfFilesInput,
+    output: OkfFilesOutput,
+  })
+  async getOkfFiles(
+    input: z.infer<typeof OkfFilesInput>,
+  ): Promise<z.infer<typeof OkfFilesOutput>> {
+    const bundle = tryBuild('OKF bundle', () => buildOkfBundle(this.app));
+    const byPath = new Map(bundle.files.map(f => [f.path, f]));
+    const missing = input.paths.filter(p => !byPath.has(p));
+    if (missing.length) {
+      // Name what exists rather than just what failed: an agent that guessed a
+      // path can correct itself from the error instead of re-listing.
+      throw new AgentError(`Unknown OKF path(s): ${missing.join(', ')}.`, {
+        status: 404,
+        code: 'okf_path_not_found',
+        hint: `Use list_okf_files. Available: ${bundle.files
+          .map(f => f.path)
+          .join(', ')}`,
+      });
+    }
+    return {files: input.paths.map(p => byPath.get(p)!)};
+  }
+
   @tool('get_okf_bundle', {
     description:
-      'Return the OKF knowledge bundle: a portable, schema-indexed snapshot of the whole app for an agent to ingest verbatim. Returns the full bundle (large apps may produce a sizable payload — see the summary/on-demand TODO).',
+      "Return the app's whole OKF knowledge bundle for verbatim ingestion. Prefer list_okf_files + get_okf_files unless you genuinely want everything — this returns every document in full.",
     input: OkfInput,
     output: OkfOutput,
   })

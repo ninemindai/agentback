@@ -216,3 +216,91 @@ describe('inventoryToOkf', () => {
     expect(doc).toContain('../schemas/user.md');
   });
 });
+
+// Conformance with the OKF v0.2 spec (GoogleCloudPlatform/knowledge-catalog,
+// okf/SPEC.md). These pin the rules the emitter previously got wrong or
+// omitted — the existing tests above cover structure and determinism, and all
+// of them passed while the bundle carried frontmatter on its index files,
+// which §8 forbids. Format rules need format assertions.
+describe('OKF v0.2 conformance', () => {
+  /** Return the frontmatter block of a file, or undefined when it has none. */
+  function frontmatterOf(content: string): string | undefined {
+    if (!content.startsWith('---\n')) return undefined;
+    const end = content.indexOf('\n---', 4);
+    return end === -1 ? undefined : content.slice(4, end);
+  }
+
+  const bundle = () => inventoryToOkf(userInventory());
+  const isIndex = (p: string) => p === 'index.md' || p.endsWith('/index.md');
+
+  it('§8: no index file carries frontmatter except the bundle root', () => {
+    for (const f of bundle().files) {
+      if (!isIndex(f.path) || f.path === 'index.md') continue;
+      expect(
+        frontmatterOf(f.content),
+        `${f.path} must have no frontmatter`,
+      ).toBe(undefined);
+    }
+  });
+
+  it('§12: the bundle-root index declares okf_version and nothing else', () => {
+    const root = bundle().files.find(f => f.path === 'index.md')!;
+    const fm = frontmatterOf(root.content);
+    expect(fm).toBeDefined();
+    // The ONLY key permitted in an index frontmatter block.
+    expect(fm!.trim()).toBe("okf_version: '0.2'");
+  });
+
+  it('§4.1: every concept document carries type, title and description', () => {
+    const concepts = bundle().files.filter(f => !isIndex(f.path));
+    expect(concepts.length).toBeGreaterThan(0);
+    for (const f of concepts) {
+      const fm = frontmatterOf(f.content);
+      expect(fm, `${f.path} must have frontmatter`).toBeDefined();
+      expect(fm, f.path).toMatch(/^type: \S+/m);
+      expect(fm, f.path).toMatch(/^title: .+/m);
+      expect(fm, f.path).toMatch(/^description: .+/m);
+    }
+  });
+
+  it('§7: generated.by uses the actor convention and is not a human', () => {
+    // Consumers classify trust off the `human:` prefix, so a generator must
+    // never claim one.
+    for (const f of bundle().files.filter(f => !isIndex(f.path))) {
+      const fm = frontmatterOf(f.content)!;
+      expect(fm, f.path).toMatch(/^generated: \{by: process:[\w-]+\}$/m);
+      expect(fm, f.path).not.toMatch(/human:/);
+    }
+  });
+
+  it('§5.2: omits generated.at, keeping the emitter deterministic', () => {
+    // `at` is optional within `generated`; emitting a wall clock would break
+    // the byte-for-byte determinism the bundle contract depends on.
+    for (const f of bundle().files) expect(f.content).not.toMatch(/\bat:/);
+    expect(inventoryToOkf(userInventory())).toEqual(bundle());
+  });
+
+  it('§8: index entries carry the linked concept description', () => {
+    const files = bundle().files;
+    const schemaIndex = files.find(f => f.path === 'schemas/index.md')!;
+    const userDoc = files.find(f => f.path === 'schemas/user.md')!;
+    const description = frontmatterOf(userDoc.content)!
+      .split('\n')
+      .find(l => l.startsWith('description: '))!
+      .slice('description: '.length);
+
+    // The index must not contradict the document it links to.
+    expect(schemaIndex.content).toContain(`](./user.md) — ${description}`);
+  });
+
+  it('quotes a YAML scalar that would otherwise change meaning', () => {
+    const inv = userInventory();
+    inv.nodes[0].name = 'weird: name #with [indicators]';
+    const doc = inventoryToOkf(inv).files.find(
+      f => f.path.startsWith('schemas/') && !f.path.endsWith('/index.md'),
+    )!;
+    // Unquoted, `weird: name #with ...` would parse as a nested mapping plus a
+    // comment rather than as the title string we wrote.
+    expect(doc.content).toMatch(/^title: '.*'$/m);
+  });
+});

@@ -16,18 +16,6 @@
 
 ## Introspection (Phase 1 follow-ups)
 
-### OKF summary + on-demand fetch in `@agentback/introspection`
-
-**What:** `get_okf_bundle` returns the full OKF bundle on every call. Add a summarized inventory (paths + titles) plus a full-fetch-by-path path so an agent pulls only what it needs.
-
-**Why:** For large apps the full bundle is a heavy agent-token payload on every call. A summary keeps the agent's context cheap and lets it drill in selectively.
-
-**Context:** Phase 1 ships the full bundle deliberately (the target app is the dev's own, usually small). The tool description carries a size caveat. Revisit once there's real usage to size against. `buildOkfBundle(ctx)` already returns `{files: {path, content}[]}` — a summary is `files.map(f => f.path)` plus a `get_okf_file(path)` accessor.
-
-**Effort:** S
-**Priority:** P2
-**Depends on:** Phase 1 (`@agentback/introspection`) shipped.
-
 ### Session caching of introspection builders
 
 **What:** Memoize `buildModel`/`buildSchemaInventory`/`buildOkfBundle` per session/process with invalidation when the container's bindings change.
@@ -54,28 +42,58 @@
 
 ## MCP SDK v2 (Phase 2 and follow-ups)
 
-### Adopt MCP protocol revision `2026-07-28` (stateless core)
+### Finish MCP protocol revision `2026-07-28` (S6, S7)
 
-**What:** Move `@agentback/mcp-http` onto the SDK v2 `createMcpHandler` entry point, which serves the `2026-07-28` stateless era and the 2025 era from one endpoint. Retire the session map, `Mcp-Session-Id` pinning, the GET-SSE and DELETE routes, and rework `perSession`.
+**What:** Two steps remain: migrate the hand-rolled `confirm:` flow to native
+multi-round-trip requests (S6), and flip `protocol` to `'both'` by default then
+retire the session machinery (S7).
 
-**Why:** `2026-07-28` removes the `initialize` handshake and the protocol session entirely, so a server can scale behind a plain round-robin load balancer with no shared session storage. SDK v1 is on security/bugfix support for ~6 months from the v2 release (2026-07-28); the 2025 era itself has a 12-month deprecation window. This is not urgent, but it is not optional forever.
+**Why:** The 2025 era has a 12-month deprecation window and SDK v1 is on
+security-only support. Nothing is on the clock, but the default should
+eventually be the era the ecosystem is moving to.
 
-**Context:** Phase 1 (the v1→v2 package swap, zero wire change) shipped on `feat/mcp-sdk-v2` — commits `d5c87146`, `3b9b80a`. v2 speaks the 2025 era by default, so nothing is on the clock yet.
+**Context — most of this is DONE.** Shipped and on `main`:
 
-**`perSession` does NOT map to `requestState`** — this was corrected by the `/plan-eng-review` outside voice (Codex) and is the single most important note here. `perSession` decides tool _discovery_ (which tools appear in `tools/list`) and must therefore be resolvable on a first call. `requestState` only round-trips during a multi-round-trip (MRTR) exchange, after the server has already answered `resultType: "input_required"` — it is absent on a first call and structurally cannot drive visibility. The real destination is **per-request discovery computed from the authenticated principal**, with `createMcpHandler`'s per-request factory building the DI child context. `requestState` is for MRTR flow-state only, and is client-echoed untrusted input: HMAC (`createRequestStateCodec`) gives integrity, not authority — it does not address replay, entitlement revocation, or stale tenant config, so bind it to principal + expiry and re-check authority on re-entry.
+| step    | what landed                                                          |
+| ------- | -------------------------------------------------------------------- |
+| S1      | memoized tool compilation (63x faster `buildServer` at 100 tools)    |
+| S2      | host-neutral `perSession` binder; fixed a live cross-host type bug   |
+| S3      | modern-era test harness; proved the design against a running handler |
+| S4a/S4b | `protocol: 'both'` on **both** hosts, per-request DI contexts        |
+| S5      | `serveStdio` for stdio (`protocol: 'both'` on `MCPServerConfig`)     |
+| D3      | `cachedPerPrincipal` — keeps a per-request binder cheap              |
 
-Also unresolved, and all cheaper to decide before implementation than during it:
+Resolved along the way, so do **not** re-litigate: `perSession` maps to
+per-request discovery from the authenticated principal (**not** `requestState`,
+which is MRTR flow-state and absent on a first call); `tools/list` cannot
+split-brain because discovery is per-request on both eras; `MCPBindings.PROGRESS`
+is unaffected (progress is **not** deprecated in 2026-07-28 — verified); the
+modern-era test harness exists.
 
-- **`tools/list` split-brain.** One endpoint serving both eras can hand a legacy client a session-scoped tool list and a modern client a per-request one. Decide whether the two eras may ever disagree for the same principal; "no" probably means per-request discovery everywhere, including the legacy path.
-- **`MCPBindings.PROGRESS`.** `@tool` async generators currently relay `notifications/progress`. 2026 deprecates server-initiated flows; decide what progress means on a modern connection before the generator path silently no-ops.
-- **Testing.** `InMemoryTransport.createLinkedPair()` is 2025-era only and there is no in-memory serving entry for 2026. Modern-era coverage must drive `createMcpHandler.fetch` through a `StreamableHTTPClientTransport` with a custom `fetch`. `@agentback/testing`'s `createTestApp().mcp` is public API, so this is a user-visible change.
-- **MCP Apps.** `@modelcontextprotocol/ext-apps` still peer-deps SDK v1. Needs a compatibility decision, not a footnote, since 2026-07-28 makes extensions first-class.
+**S6 is an ENHANCEMENT, not a blocker** — `confirm:` was proven to work unchanged
+on the modern era, because it is userland (a tool error plus an input property)
+with no era-specific machinery. Migrating it to `inputRequired` would give
+conformant hosts a native confirmation prompt, but MRTR is modern-only, so it
+must run alongside the token dance for as long as the legacy era is served.
 
-**Design doc:** [`docs/proposals/mcp-2026-stateless.md`](docs/proposals/mcp-2026-stateless.md) — verified against the v2 emitted types, with a measured per-request cost budget and a 7-step sequence. Read it before starting; the notes below are the summary it expands.
+**S7 is a release decision, not engineering work.** Flip the default in a minor,
+with a deprecation warning one release earlier; delete the session machinery
+(~138 refs, the GET/DELETE routes, `event-store.ts`) a release **later**, so the
+flip stays reversible while `'legacy'` still works. Gated on the compatibility
+matrix below.
 
-**Effort:** L (scope it as an API redesign, not a transport port — it deletes the primitive `perSession`, session pinning, resumable SSE and DELETE are all built on)
+**Still open:** MCP Apps. `@modelcontextprotocol/ext-apps` still peer-deps SDK
+v1, which pnpm auto-installs into that subtree for `examples/hello-mcp-apps` —
+the only remaining v1 copy in the tree. Needs a compatibility decision before
+S7, not a footnote.
+
+**Design doc:** [`docs/proposals/mcp-2026-stateless.md`](docs/proposals/mcp-2026-stateless.md)
+— carries the measured cost budget, the resolved decisions (D1–D7) and what the
+spike proved vs what is still assumed.
+
+**Effort:** S6 M / S7 S (the work is sequencing and comms, not code)
 **Priority:** P3
-**Depends on:** Phase 1 shipped (done). Not blocked by anything external.
+**Depends on:** S7's deletion step is blocked by the compatibility matrix below.
 
 ### Document and test browser CORS for the `/mcp` endpoint itself
 
