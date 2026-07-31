@@ -119,3 +119,39 @@ export function perRequestFactory(options: {
     return server;
   };
 }
+
+/**
+ * Normalize configured `Host` / `Origin` allowlist entries to bare hostnames.
+ *
+ * The two APIs disagree, and forwarding one to the other fails closed but
+ * silently. `McpHttpOptions.allowedOrigins` is documented as *Origin header
+ * values* (`https://app.example.com`) because that is what the SDK's
+ * transport option took. The SDK's standalone validators instead parse the
+ * INCOMING header down to a hostname and compare against a list of
+ * **hostnames** — so handing them `https://app.example.com` compares
+ * `app.example.com` against `['https://app.example.com']`, never matches, and
+ * rejects every request.
+ *
+ * Accepts either form so a user's existing config keeps working:
+ * `https://app.example.com`, `mcp.example.com:8080` and `mcp.example.com` all
+ * normalize to their hostname. Unparseable entries pass through untouched
+ * rather than being dropped — an entry that never matches is safer than one
+ * silently removed from an allowlist.
+ */
+export function toHostnames(values: string[]): string[] {
+  return values.map(value => {
+    // Already a URL (has a scheme) — take its hostname.
+    try {
+      if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value))
+        return new URL(value).hostname;
+    } catch {
+      return value;
+    }
+    // Bare host, possibly with a port.
+    try {
+      return new URL(`http://${value}`).hostname;
+    } catch {
+      return value;
+    }
+  });
+}

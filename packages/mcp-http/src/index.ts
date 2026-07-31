@@ -2,7 +2,11 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {requireBearerAuth} from '@modelcontextprotocol/express';
+import {
+  hostHeaderValidation,
+  originValidation,
+  requireBearerAuth,
+} from '@modelcontextprotocol/express';
 import type {OAuthTokenVerifier} from '@modelcontextprotocol/express';
 import {
   createMcpHandler,
@@ -46,6 +50,7 @@ import {mountMcpHttpFetch, PUBLIC_DISCOVERY_CORS} from './fetch.js';
 import {
   perRequestFactory,
   resolveSessionServer,
+  toHostnames,
   type SessionBinder,
 } from './session.js';
 
@@ -439,6 +444,25 @@ export function mountMcpHttp(
         'session feature and the stateless era has no sessions.',
     );
   }
+  // DNS-rebinding protection. On the session path the transport enforces this
+  // from its own options; `createMcpHandler` has no equivalent (its options are
+  // only legacy/onerror/responseMode/bus/maxSubscriptions/keepAliveMs), so the
+  // stateless path mounts the SDK's standalone validators instead. Without
+  // this, configuring `allowedHosts`/`allowedOrigins` and then switching to
+  // stateless silently drops the protection.
+  const rebindingGuards: RequestHandler[] = [];
+  if (stateless && enableDnsRebindingProtection) {
+    if (options.allowedHosts) {
+      rebindingGuards.push(
+        hostHeaderValidation(toHostnames(options.allowedHosts)),
+      );
+    }
+    if (options.allowedOrigins) {
+      rebindingGuards.push(
+        originValidation(toHostnames(options.allowedOrigins)),
+      );
+    }
+  }
   const statelessHandler = stateless
     ? createMcpHandler(
         perRequestFactory({
@@ -452,6 +476,7 @@ export function mountMcpHttp(
     const node = toNodeHandler(statelessHandler);
     expressApp.all(
       path,
+      ...rebindingGuards,
       ...guards,
       express.json(),
       ...toolRateLimit,

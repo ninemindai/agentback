@@ -106,9 +106,15 @@ import {addTool} from '@agentback/mcp';
 await installMcpHttp(app, {
   protocol: 'stateless',
   perSession: cachedPerPrincipal(
-    principal => entitlements.toolsFor(principal?.clientId), // cached per principal
+    principal => entitlements.toolsFor(principal?.extra?.sub), // cached
     (ctx, classes) => classes.forEach(C => addTool(ctx, C)), // every request
-    {ttlMs: 60_000},
+    {
+      // REQUIRED. This key is a security boundary, so the framework will not
+      // guess it. Do NOT use `clientId`: under OAuth that is the client
+      // APPLICATION id, shared by every end user of that app.
+      keyOf: p => `${p?.extra?.sub ?? 'anon'}|${[...(p?.scopes ?? [])].sort()}`,
+      ttlMs: 60_000,
+    },
   ),
 });
 ```
@@ -116,10 +122,15 @@ await installMcpHttp(app, {
 `apply` runs fresh per request against that request's own context. **Never cache
 a `Context`** — it is closed when its request ends.
 
+`keyOf` is **required**, deliberately: the key decides which tools a caller
+sees, so it is a security boundary the framework will not guess. Do **not** key
+on `AuthInfo.clientId` — under OAuth that is the client _application_ id, shared
+by every end user signing in through it, so two users would share one entry.
+Key on the claim your IdP uses for the subject (often `extra.sub`), plus granted
+scopes so a re-issued narrower token cannot reuse a wider answer.
+
 `ttlMs` is your **entitlement-revocation window**, not a latency knob: a revoked
-principal keeps the old answer until the entry expires. Entries are keyed on
-`clientId` **plus granted scopes**, so a re-issued narrower token cannot reuse a
-wider answer. Failed lookups are not cached, and concurrent cold requests for one
+principal keeps the old answer until the entry expires. Failed lookups are not cached, and concurrent cold requests for one
 principal share a single in-flight lookup.
 
 ## How sessions work

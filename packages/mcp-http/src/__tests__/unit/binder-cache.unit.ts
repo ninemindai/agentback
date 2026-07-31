@@ -14,12 +14,24 @@ import {cachedPerPrincipal} from '../../binder-cache.js';
 // tests pin down. Only `lookup` is cached — `apply` must still run per request
 // against that request's own context.
 
-const principal = (clientId: string, scopes: string[] = []): AuthInfo => ({
+const principal = (
+  subject: string,
+  scopes: string[] = [],
+  clientId = 'shared-oauth-client',
+): AuthInfo => ({
   token: 't',
+  // Deliberately the SAME for every principal by default: under OAuth this is
+  // the client APPLICATION id, shared across end users. Tests must key on the
+  // subject, never on this.
   clientId,
   scopes,
+  extra: {sub: subject},
   expiresAt: Math.floor(Date.now() / 1000) + 3600,
 });
+
+/** The identity key a real app supplies: subject plus granted scopes. */
+const bySubject = (p?: AuthInfo) =>
+  `${p?.extra?.sub ?? 'anon'}|${[...(p?.scopes ?? [])].sort().join(' ')}`;
 
 /** One request: a fresh child context carrying the principal, as the real seam does. */
 function requestCtx(app: Context, auth?: AuthInfo) {
@@ -33,10 +45,12 @@ const req = () => new Request('http://test.local/mcp', {method: 'POST'});
 describe('cachedPerPrincipal', () => {
   it('runs the lookup once per principal but applies on every request', async () => {
     const app = new Context('app');
-    const lookup = vi.fn((p?: AuthInfo) => [`tools-for-${p?.clientId}`]);
+    const lookup = vi.fn((p?: AuthInfo) => [`tools-for-${p?.extra?.sub}`]);
     const applied: string[][] = [];
-    const binder = cachedPerPrincipal(lookup, (_ctx, value) =>
-      applied.push(value),
+    const binder = cachedPerPrincipal(
+      lookup,
+      (_ctx, value) => applied.push(value),
+      {keyOf: bySubject},
     );
 
     for (let i = 0; i < 4; i++) {
@@ -50,9 +64,11 @@ describe('cachedPerPrincipal', () => {
 
   it('never shares one principal answer with another', async () => {
     const app = new Context('app');
-    const lookup = vi.fn((p?: AuthInfo) => p?.clientId ?? 'anon');
+    const lookup = vi.fn((p?: AuthInfo) => String(p?.extra?.sub ?? 'anon'));
     const seen: string[] = [];
-    const binder = cachedPerPrincipal(lookup, (_c, v) => seen.push(v));
+    const binder = cachedPerPrincipal(lookup, (_c, v) => seen.push(v), {
+      keyOf: bySubject,
+    });
 
     await binder(requestCtx(app, principal('alice')), req());
     await binder(requestCtx(app, principal('bob')), req());
@@ -69,7 +85,9 @@ describe('cachedPerPrincipal', () => {
     const app = new Context('app');
     const lookup = vi.fn((p?: AuthInfo) => (p?.scopes ?? []).join(','));
     const seen: string[] = [];
-    const binder = cachedPerPrincipal(lookup, (_c, v) => seen.push(v));
+    const binder = cachedPerPrincipal(lookup, (_c, v) => seen.push(v), {
+      keyOf: bySubject,
+    });
 
     await binder(requestCtx(app, principal('alice', ['admin'])), req());
     await binder(requestCtx(app, principal('alice', [])), req());
@@ -83,7 +101,10 @@ describe('cachedPerPrincipal', () => {
     try {
       const app = new Context('app');
       const lookup = vi.fn(() => 'v');
-      const binder = cachedPerPrincipal(lookup, () => {}, {ttlMs: 1000});
+      const binder = cachedPerPrincipal(lookup, () => {}, {
+        keyOf: bySubject,
+        ttlMs: 1000,
+      });
 
       await binder(requestCtx(app, principal('alice')), req());
       vi.advanceTimersByTime(999);
@@ -109,6 +130,7 @@ describe('cachedPerPrincipal', () => {
     });
     const seen: string[] = [];
     const binder = cachedPerPrincipal(lookup, (_c, v) => seen.push(v), {
+      keyOf: bySubject,
       ttlMs: 60_000,
     });
 
@@ -131,7 +153,7 @@ describe('cachedPerPrincipal', () => {
       resolve = r;
     });
     const lookup = vi.fn(() => pending);
-    const binder = cachedPerPrincipal(lookup, () => {});
+    const binder = cachedPerPrincipal(lookup, () => {}, {keyOf: bySubject});
 
     const inflight = Array.from({length: 5}, () =>
       binder(requestCtx(app, principal('alice')), req()),
@@ -144,8 +166,11 @@ describe('cachedPerPrincipal', () => {
 
   it('evicts the oldest principal past `max`', async () => {
     const app = new Context('app');
-    const lookup = vi.fn((p?: AuthInfo) => p?.clientId ?? '');
-    const binder = cachedPerPrincipal(lookup, () => {}, {max: 2});
+    const lookup = vi.fn((p?: AuthInfo) => String(p?.extra?.sub ?? ''));
+    const binder = cachedPerPrincipal(lookup, () => {}, {
+      keyOf: bySubject,
+      max: 2,
+    });
 
     await binder(requestCtx(app, principal('a')), req());
     await binder(requestCtx(app, principal('b')), req());
@@ -155,5 +180,50 @@ describe('cachedPerPrincipal', () => {
     expect(lookup).toHaveBeenCalledTimes(4);
     await binder(requestCtx(app, principal('c')), req()); // still cached
     expect(lookup).toHaveBeenCalledTimes(4);
+  });
+});
+
+// The finding this cache's API shape exists to prevent. `AuthInfo.clientId` is
+// the OAuth CLIENT APPLICATION id — every end user signing in through the same
+// app carries the same one. A cache keyed on it would serve user A's tool list
+// to user B automatically, with no stolen token involved. `keyOf` is required
+// precisely so that key can never be guessed by the framework.
+describe('cross-user isolation under a shared OAuth client', () => {
+  it('does not collide two subjects that share a clientId', async () => {
+    const app = new Context('app');
+    const lookup = vi.fn((p?: AuthInfo) => `tools-for-${p?.extra?.sub}`);
+    const seen: string[] = [];
+    const binder = cachedPerPrincipal(lookup, (_c, v) => seen.push(v), {
+      keyOf: bySubject,
+    });
+
+    // Same client app, same scopes, different humans.
+    const alice = principal('alice', ['mcp'], 'acme-web-app');
+    const bob = principal('bob', ['mcp'], 'acme-web-app');
+    expect(alice.clientId).toBe(bob.clientId);
+
+    await binder(requestCtx(app, alice), req());
+    await binder(requestCtx(app, bob), req());
+
+    expect(seen).toEqual(['tools-for-alice', 'tools-for-bob']);
+    expect(lookup).toHaveBeenCalledTimes(2); // NOT served from one entry
+  });
+
+  it('would have collided under a clientId-based key', async () => {
+    // Pins WHY keyOf is required: the same cache, keyed the tempting way,
+    // demonstrably leaks across users. If this ever stops colliding, the
+    // hazard has changed and the required-keyOf design can be revisited.
+    const app = new Context('app');
+    const lookup = vi.fn((p?: AuthInfo) => `tools-for-${p?.extra?.sub}`);
+    const seen: string[] = [];
+    const binder = cachedPerPrincipal(lookup, (_c, v) => seen.push(v), {
+      keyOf: p => `${p?.clientId} ${[...(p?.scopes ?? [])].sort().join(' ')}`,
+    });
+
+    await binder(requestCtx(app, principal('alice', ['mcp'], 'acme')), req());
+    await binder(requestCtx(app, principal('bob', ['mcp'], 'acme')), req());
+
+    expect(seen).toEqual(['tools-for-alice', 'tools-for-alice']); // bob sees alice
+    expect(lookup).toHaveBeenCalledTimes(1);
   });
 });
