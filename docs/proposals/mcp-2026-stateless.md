@@ -274,16 +274,16 @@ Needs a compatibility answer before Phase 2 ships, not a footnote.
 
 Each step is independently shippable and independently revertable.
 
-| Step    | Scope                                                               | Depends on |
-| ------- | ------------------------------------------------------------------- | ---------- |
-| **S1**  | ~~Memoize schema emission in `MCPServer`~~ — **SHIPPED**, see §4    | —          |
-| **S2**  | ~~Host-neutral session binder~~ — **SHIPPED**, see §3               | —          |
-| **S3**  | ~~Modern-era test harness~~ — **SHIPPED**, see §10                  | —          |
-| **S4a** | ~~`protocol: 'stateless'` on the fetch host, opt-in~~ — **SHIPPED** | S1–S3      |
-| **S4b** | ~~Express host + per-request DI context (D7)~~ — **SHIPPED**        | S4a        |
-| **S5**  | ~~`serveStdio`~~ — **SHIPPED** (`protocol: 'both'`, opt-in)         | S4         |
-| **S6**  | MRTR for `confirm:` — **ENHANCEMENT, not a blocker** (see below)    | S4         |
-| **S7**  | Flip the default; deprecate the old mounts                          | S4, S5, D3 |
+| Step    | Scope                                                            | Depends on |
+| ------- | ---------------------------------------------------------------- | ---------- |
+| **S1**  | ~~Memoize schema emission in `MCPServer`~~ — **SHIPPED**, see §4 | —          |
+| **S2**  | ~~Host-neutral session binder~~ — **SHIPPED**, see §3            | —          |
+| **S3**  | ~~Modern-era test harness~~ — **SHIPPED**, see §10               | —          |
+| **S4a** | ~~`protocol: 'both'` on the fetch host, opt-in~~ — **SHIPPED**   | S1–S3      |
+| **S4b** | ~~Express host + per-request DI context (D7)~~ — **SHIPPED**     | S4a        |
+| **S5**  | ~~`serveStdio`~~ — **SHIPPED** (`protocol: 'both'`, opt-in)      | S4         |
+| **S6**  | MRTR for `confirm:` — **ENHANCEMENT, not a blocker** (see below) | S4         |
+| **S7**  | Flip the default; deprecate the old mounts                       | S4, S5, D3 |
 
 S1–S3 are pure refactors with no wire change and could land any time. S4 is the
 first commit that changes bytes on the wire.

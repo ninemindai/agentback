@@ -12,9 +12,15 @@ import type {ToolBinding} from '../../mcp.server.js';
 // — eng review T3 / outside voice finding 5. It does everything EXCEPT the
 // AI-provider tool-name regex, which stays in @agentback/agents.
 
-function bind(name: string, meta: Partial<ToolBinding['meta']> = {}): ToolBinding {
+function bind(
+  name: string,
+  meta: Partial<ToolBinding['meta']> = {},
+): ToolBinding {
   class C {}
-  return {ctor: C, meta: {name, methodName: name, ...meta}} as unknown as ToolBinding;
+  return {
+    ctor: C,
+    meta: {name, methodName: name, ...meta},
+  } as unknown as ToolBinding;
 }
 
 function scopedBind(name: string, scopes: string[]): ToolBinding {
@@ -31,15 +37,15 @@ describe('selectTools', () => {
   });
 
   it('include filters by name', () => {
-    expect(selectTools(all, {include: ['echo']}).map(t => t.meta.name)).toEqual([
-      'echo',
-    ]);
+    expect(selectTools(all, {include: ['echo']}).map(t => t.meta.name)).toEqual(
+      ['echo'],
+    );
   });
 
   it('exclude filters by name', () => {
-    expect(selectTools(all, {exclude: ['echo']}).map(t => t.meta.name)).toEqual([
-      'open',
-    ]);
+    expect(selectTools(all, {exclude: ['echo']}).map(t => t.meta.name)).toEqual(
+      ['open'],
+    );
   });
 
   it('throws on duplicate tool names', () => {
@@ -62,9 +68,9 @@ describe('selectTools', () => {
 
   it('scope gate hides tools whose required scopes are not held', () => {
     const scoped = [bind('echo'), scopedBind('admin_op', ['admin:ops'])];
-    expect(selectTools(scoped, {scopes: ['other']}).map(t => t.meta.name)).toEqual(
-      ['echo'],
-    );
+    expect(
+      selectTools(scoped, {scopes: ['other']}).map(t => t.meta.name),
+    ).toEqual(['echo']);
   });
 
   it('says "visible" (not "registered") when a scope gate is active', () => {

@@ -47,7 +47,7 @@ export interface PrincipalCacheOptions {
  * Wrap a per-principal lookup so it runs once per principal per TTL instead of
  * once per request.
  *
- * Under `protocol: 'stateless'` the binder runs on **every request**, not once
+ * Under `protocol: 'both'` the binder runs on **every request**, not once
  * per session. A binder that hits a database for entitlements therefore
  * multiplies that query by request volume — the failure mode is not an error,
  * it is a quiet load multiplier, which is why this ships with the framework
@@ -60,7 +60,7 @@ export interface PrincipalCacheOptions {
  *
  * ```ts
  * perSession: cachedPerPrincipal(
- *   principal => entitlements.toolsFor(principal?.clientId),   // cached
+ *   principal => entitlements.toolsFor(principal?.extra?.sub), // cached
  *   (ctx, classes) => classes.forEach(C => addTool(ctx, C)),   // every request
  *   {ttlMs: 60_000},
  * )

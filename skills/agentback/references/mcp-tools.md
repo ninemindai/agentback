@@ -317,12 +317,12 @@ For a non-`RestApplication` Express app use `mountMcpHttp(mcpServer, expressApp,
 
 ### Stateless serving (`2026-07-28`)
 
-`protocol: 'stateless'` swaps the session machinery for the SDK's
+`protocol: 'both'` swaps the session machinery for the SDK's
 `createMcpHandler`, which serves the **2026-07-28** revision **and** 2025-era
 traffic from the same endpoint. Opt-in; the default is unchanged.
 
 ```ts
-await installMcpHttp(app, {protocol: 'stateless'});
+await installMcpHttp(app, {protocol: 'both'});
 ```
 
 There is no session: no `Mcp-Session-Id`, `GET`/`DELETE` answer `405`, and each
@@ -354,7 +354,7 @@ import {cachedPerPrincipal} from '@agentback/mcp-http';
 import {addTool} from '@agentback/mcp';
 
 await installMcpHttp(app, {
-  protocol: 'stateless',
+  protocol: 'both',
   perSession: cachedPerPrincipal(
     principal => entitlements.toolsFor(principal?.extra?.sub), // cached
     (ctx, classes) => classes.forEach(C => addTool(ctx, C)), // every request

@@ -3,7 +3,6 @@
 // License text available at https://opensource.org/license/mit/
 
 import {
-  createMcpHandler,
   hostHeaderValidationResponse,
   isInitializeRequest,
   originValidationResponse,
@@ -12,7 +11,6 @@ import {
 } from '@modelcontextprotocol/server';
 import type {
   AuthInfo,
-  McpHttpHandler,
   OAuthProtectedResourceMetadata,
 } from '@modelcontextprotocol/server';
 
@@ -22,19 +20,12 @@ import {
   resolveStrategy,
   type AuthenticationResult,
 } from '@agentback/authentication';
-import {loggers} from '@agentback/common';
 import {securityId} from '@agentback/security';
 import {Context} from '@agentback/core';
 import {MCPServer} from '@agentback/mcp';
 import type {RestServer} from '@agentback/rest';
 import type {McpHttpOptions, McpHttpHandle} from './index.js';
-import {
-  perRequestFactory,
-  resolveSessionServer,
-  toHostnames,
-} from './session.js';
-
-const log = loggers('agentback:mcp-http:fetch');
+import {resolveSessionServer, setupStateless} from './session.js';
 
 const DEFAULT_PATH = '/mcp';
 const PROTECTED_RESOURCE_PATH = '/.well-known/oauth-protected-resource';
@@ -177,38 +168,27 @@ export function mountMcpHttpFetch(
   // which calls the factory per REQUEST. There is no session map, no principal
   // pinning (every request re-authenticates above) and no GET/DELETE session
   // ops — the SDK answers those 405.
-  const stateless = options.protocol === 'stateless';
-  if (stateless && options.eventStore) {
-    log.warn(
-      "protocol: 'stateless' ignores `eventStore` — resumable SSE replay is a " +
-        'session feature and the stateless era has no sessions.',
+  const {
+    handler: statelessHandler,
+    allowedHostnames,
+    allowedOriginHostnames,
+  } = setupStateless(mcp, options);
+
+  // `rateLimit` is Express middleware and this host has no middleware chain, so
+  // it has never applied here. `installMcpHttp` picks the host automatically
+  // from `rest.listener`, so a caller can configure throttling and silently get
+  // none — the first symptom being a bill rather than an error. Refusing to
+  // start is the same posture this file already takes for other
+  // misconfigurations, and it is the whole point: a security-adjacent control
+  // that quietly does nothing is worse than one that is absent.
+  if (options.rateLimit) {
+    throw new Error(
+      '@agentback/mcp-http: `rateLimit` is not supported on the fetch/edge ' +
+        'host — it is Express middleware and this host has no middleware ' +
+        'chain, so it would silently not throttle. Remove the option, or run ' +
+        'the Express host (the default `rest.listener`). Tracked in TODOS.md.',
     );
   }
-  // Same default as the Express host: on when either allowlist is configured.
-  const enableDnsRebinding =
-    options.enableDnsRebindingProtection ??
-    (options.allowedHosts != null || options.allowedOrigins != null);
-  // DNS-rebinding protection: the fetch host has never had it (the Web transport
-  // was constructed without the allowlists), and `createMcpHandler` has no such
-  // options either. The SDK's runtime-neutral validators cover both.
-  const rebindingHosts =
-    stateless && enableDnsRebinding && options.allowedHosts
-      ? toHostnames(options.allowedHosts)
-      : undefined;
-  const rebindingOrigins =
-    stateless && enableDnsRebinding && options.allowedOrigins
-      ? toHostnames(options.allowedOrigins)
-      : undefined;
-
-  const statelessHandler: McpHttpHandler | undefined = stateless
-    ? createMcpHandler(
-        perRequestFactory({
-          mcp,
-          ...(perSession ? {binder: perSession} : {}),
-          ...(options.appContext ? {appContext: options.appContext} : {}),
-        }),
-      )
-    : undefined;
 
   if (perSession && !options.appContext) {
     throw new Error(
@@ -235,12 +215,12 @@ export function mountMcpHttpFetch(
     // request from a disallowed host should be refused without spending a token
     // verification on it. Mirrors the Express mount, where these guards sit
     // ahead of the auth guards.
-    if (rebindingHosts) {
-      const rejected = hostHeaderValidationResponse(req, rebindingHosts);
+    if (allowedHostnames) {
+      const rejected = hostHeaderValidationResponse(req, allowedHostnames);
       if (rejected) return rejected;
     }
-    if (rebindingOrigins) {
-      const rejected = originValidationResponse(req, rebindingOrigins);
+    if (allowedOriginHostnames) {
+      const rejected = originValidationResponse(req, allowedOriginHostnames);
       if (rejected) return rejected;
     }
 

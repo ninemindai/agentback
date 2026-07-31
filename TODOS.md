@@ -100,3 +100,39 @@ Also unresolved, and all cheaper to decide before implementation than during it:
 **Effort:** S
 **Priority:** P3
 **Depends on:** A decision on whether `AGENTS.md` should be tracked at all.
+
+### Port per-tool rate limiting to the fetch/edge host
+
+**What:** Implement a fetch-shaped equivalent of `toolRateLimitMiddleware` so `McpHttpOptions.rateLimit` throttles on the native/edge host, not only under Express.
+
+**Why:** `rateLimit` is documented as per-tool, per-caller throttling for `tools/call`, but it is Express middleware and the fetch host has no middleware chain, so it has never applied there. `installMcpHttp` chooses the host automatically from `rest.listener`, so the user never opts into the gap. Until the port lands, that combination now **throws at mount** rather than silently not throttling — which fixes the danger but leaves edge deployments with no throttling option at all.
+
+**Context:** Surfaced by the 2026-07-30 `/plan-eng-review` (finding D4). Pre-existing: zero occurrences of `rateLimit` in `fetch.ts` as of `v0.8.0`. The Express implementation is `packages/mcp-http/src/tool-rate-limit.ts`, built on `rate-limiter-flexible`, which is runtime-neutral enough to reuse — the work is the seam, not the algorithm. Note that under `protocol: 'stateless'` there is no session, so the bucket key must come from the authenticated principal (and see the `cachedPerPrincipal` lesson: `AuthInfo.clientId` is the OAuth _client_ id, not a per-user identity).
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** — (the throw makes the gap safe in the meantime)
+
+### Interop-test against a released older MCP client
+
+**What:** Add a test that drives a stateless AgentBack endpoint with a _released older_ `@modelcontextprotocol/client` version, not just the one in the lockfile.
+
+**Why:** Every current test runs against `@modelcontextprotocol/client@2.0.0`. Serving 2025-era clients from the same endpoint is the central compatibility promise of `protocol: 'stateless'`, and nothing verifies it against a client that predates the v2 rewrite.
+
+**Context:** Surfaced by the `/plan-eng-review` outside voice (Codex), 2026-07-30. Partly refuted at the time — the suite does use real sockets, real spawned child processes and the real SDK client rather than in-process fakes — but the narrow point stands: one client version is not interop. Likely shape is a devDependency on a pinned older client under an alias, exercised in `stateless.integration.ts`.
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** —
+
+### Client-compatibility matrix before deleting the session machinery
+
+**What:** Publish a matrix of client SDK versions, protocol revisions, transports and behaviours (resumability, `GET`/`DELETE`, session lifecycle) that the session machinery currently serves, with explicit removal criteria — **before** S7 deletes it.
+
+**Why:** S7 plans to delete ~138 session references, the `GET`/`DELETE` routes and `event-store.ts` one release after the default flips. Treating that as cleanup is a Hyrum's Law bet: anything depending on resumability or session lifecycle breaks even though the endpoint still claims 2025 compatibility. The two-release split keeps the _flip_ reversible; it does not make the _deletion_ reversible.
+
+**Context:** Surfaced by the `/plan-eng-review` outside voice (Codex), 2026-07-30. Relatedly, the flip date in `docs/proposals/mcp-2026-stateless.md` is currently justified by "Phase 2 shipped" rather than by evidence anyone wants it — gate it on adoption signal (example coverage, a documented rollback switch, one release of explicit opt-in) rather than on the phase being done.
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** Blocks the S7 deletion step (not the flip).

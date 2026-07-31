@@ -76,7 +76,7 @@ For a non-`RestApplication` Express app, use `mountMcpHttp(mcpServer, expressApp
 | Scaling                      | needs session affinity | plain round-robin, no shared storage |
 
 ```ts
-await installMcpHttp(app, {protocol: 'stateless'});
+await installMcpHttp(app, {protocol: 'both'});
 ```
 
 Both hosts support it: the Express mount adapts the SDK's web-standards-only
@@ -104,7 +104,7 @@ import {cachedPerPrincipal} from '@agentback/mcp-http';
 import {addTool} from '@agentback/mcp';
 
 await installMcpHttp(app, {
-  protocol: 'stateless',
+  protocol: 'both',
   perSession: cachedPerPrincipal(
     principal => entitlements.toolsFor(principal?.extra?.sub), // cached
     (ctx, classes) => classes.forEach(C => addTool(ctx, C)), // every request
@@ -274,7 +274,8 @@ await installMcpHttp(app, {
   perSession(ctx, req) {
     const principal = req.auth as AuthInfo | undefined; // validated by the guard
     if (!principal) return; // anonymous → shared tool set only
-    for (const ToolClass of entitlements.toolsFor(principal.clientId)) {
+    // NOT `clientId` — under OAuth that is the client APPLICATION id.
+    for (const ToolClass of entitlements.toolsFor(principal.extra?.sub)) {
       addTool(ctx, ToolClass); // discovered only for this session
     }
   },

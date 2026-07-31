@@ -14,13 +14,29 @@ import {RestApplication, type RestServer} from '@agentback/rest';
 import {MCPComponent, MCPServer, mcpServer, tool} from '@agentback/mcp';
 import {installMcpHttp} from '../../index.js';
 
-// `protocol: 'stateless'` serves the 2026-07-28 revision — and 2025-era traffic
+// `protocol: 'both'` serves the 2026-07-28 revision — and 2025-era traffic
 // from the same endpoint — with no session at all. Unlike modern-era
 // .integration.ts (which drives the handler in-process), this goes over a real
 // socket through the fetch/edge host, so it covers the actual mount wiring:
 // auth pass-through, both eras on one URL, and the absence of session ops.
 
 const EchoIn = z.object({text: z.string().min(1)});
+
+@mcpServer()
+class SlowTools {
+  /** Keeps the exchange open long enough to abort or fail mid-flight. */
+  @tool('slow', {input: z.object({ms: z.number()})})
+  async slow(input: {ms: number}) {
+    await new Promise(r => setTimeout(r, input.ms));
+    return {done: true};
+  }
+
+  @tool('boom')
+  async boom() {
+    await new Promise(r => setTimeout(r, 50));
+    throw new Error('tool exploded mid-flight');
+  }
+}
 
 @mcpServer()
 class DemoTools {
@@ -56,7 +72,7 @@ const verifier = {
   },
 };
 
-describe("mcp-http protocol: 'stateless' (fetch host)", () => {
+describe("mcp-http protocol: 'both' (fetch host)", () => {
   let app: RestApplication;
   let mcpUrl: URL;
 
@@ -76,7 +92,7 @@ describe("mcp-http protocol: 'stateless' (fetch host)", () => {
     app.service(DemoTools);
     await app.get<MCPServer>('servers.MCPServer');
     await installMcpHttp(app, {
-      protocol: 'stateless',
+      protocol: 'both',
       ...(opts.auth
         ? {
             auth: {
@@ -187,7 +203,7 @@ describe("mcp-http protocol: 'stateless' (fetch host)", () => {
 // completes, AFTER any streamed progress and before the body finishes draining,
 // so `onclose` is the correct release point. Closing when `fetch()` resolves
 // would be far too early: fetch() returns before the tool does any work.
-describe("protocol: 'stateless' per-request DI contexts", () => {
+describe("protocol: 'both' per-request DI contexts", () => {
   for (const listener of ['express', 'native'] as const) {
     describe(`${listener} host`, () => {
       let app: RestApplication;
@@ -213,7 +229,7 @@ describe("protocol: 'stateless' per-request DI contexts", () => {
         app.service(DemoTools);
         await app.get<MCPServer>('servers.MCPServer');
         await installMcpHttp(app, {
-          protocol: 'stateless',
+          protocol: 'both',
           perSession(ctx) {
             // Track disposal without reaching into Context internals: close()
             // is idempotent and observable through the subscription it drops.
@@ -293,7 +309,7 @@ describe('confirm: tools on the modern era', () => {
     });
     app.service(DangerTools);
     await app.get<MCPServer>('servers.MCPServer');
-    await installMcpHttp(app, {protocol: 'stateless'});
+    await installMcpHttp(app, {protocol: 'both'});
     await app.start();
     mcpUrl = new URL(
       (await app.get<RestServer>('servers.RestServer')).url + '/mcp',
@@ -360,7 +376,7 @@ describe('confirm: tools on the modern era', () => {
   });
 });
 
-// DNS-rebinding protection under `protocol: 'stateless'`. The session path gets
+// DNS-rebinding protection under `protocol: 'both'`. The session path gets
 // this from the transport's own options; createMcpHandler has none, so the
 // stateless path mounts the SDK's standalone validators. Without them a user
 // who configured an allowlist and switched to stateless silently lost it.
@@ -369,7 +385,7 @@ describe('confirm: tools on the modern era', () => {
 // as Origin HEADER VALUES (`https://app.example.com`), but the SDK validators
 // compare HOSTNAMES. Forwarding the configured array unnormalized would reject
 // every request — fail-closed, but broken.
-describe("protocol: 'stateless' DNS-rebinding protection", () => {
+describe("protocol: 'both' DNS-rebinding protection", () => {
   for (const listener of ['express', 'native'] as const) {
     describe(`${listener} host`, () => {
       let app: RestApplication;
@@ -395,7 +411,7 @@ describe("protocol: 'stateless' DNS-rebinding protection", () => {
         });
         app.service(DemoTools);
         await app.get<MCPServer>('servers.MCPServer');
-        await installMcpHttp(app, {protocol: 'stateless', ...opts});
+        await installMcpHttp(app, {protocol: 'both', ...opts});
         await app.start();
         base = (await app.get<RestServer>('servers.RestServer')).url;
       }
@@ -447,4 +463,100 @@ describe("protocol: 'stateless' DNS-rebinding protection", () => {
       });
     });
   }
+});
+
+// The disposal proof for per-request DI contexts originally covered only the
+// happy streaming path: fetch resolves, progress ticks, onclose, body drains.
+// These cover the paths that actually leak in production — a client that hangs
+// up, a tool that throws mid-flight, and a body nobody reads. If `onclose` does
+// not fire on those, a long-running server accumulates one Context per
+// abandoned request and never reaches `handler.close()` to catch up.
+describe("protocol: 'both' context disposal on failure paths", () => {
+  let app: RestApplication;
+  let base: string;
+  const opened: Array<{closed: boolean}> = [];
+
+  beforeEach(async () => {
+    opened.length = 0;
+    app = new RestApplication({rest: {listener: 'native'}});
+    app.configure('servers.RestServer').to({
+      port: 0,
+      host: '127.0.0.1',
+      listener: 'native',
+    });
+    app.component(MCPComponent);
+    app.configure('servers.MCPServer').to({
+      name: 'disposal',
+      version: '0.0.0',
+      transports: {stdio: false},
+    });
+    app.service(SlowTools);
+    await app.get<MCPServer>('servers.MCPServer');
+    await installMcpHttp(app, {
+      protocol: 'both',
+      perSession(ctx) {
+        const record = {closed: false};
+        opened.push(record);
+        const original = ctx.close.bind(ctx);
+        ctx.close = () => {
+          record.closed = true;
+          original();
+        };
+      },
+    });
+    await app.start();
+    base = (await app.get<RestServer>('servers.RestServer')).url;
+  });
+
+  afterEach(async () => app?.stop());
+
+  /** Wait until every opened context is disposed, or give up. */
+  async function settled(timeoutMs = 4000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (opened.length > 0 && opened.every(o => o.closed)) return true;
+      await new Promise(r => setTimeout(r, 25));
+    }
+    return false;
+  }
+
+  const call = (name: string, args: unknown, signal?: AbortSignal) =>
+    fetch(base + '/mcp', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: {name, arguments: args},
+      }),
+      ...(signal ? {signal} : {}),
+    });
+
+  it('disposes the context when the client aborts mid-flight', async () => {
+    const ac = new AbortController();
+    const inflight = call('slow', {ms: 3000}, ac.signal).catch(() => undefined);
+    await new Promise(r => setTimeout(r, 150)); // let the exchange open
+    ac.abort();
+    await inflight;
+
+    expect(await settled()).toBe(true);
+  });
+
+  it('disposes the context when the tool throws mid-flight', async () => {
+    const res = await call('boom', {});
+    await res.body?.cancel();
+
+    expect(await settled()).toBe(true);
+  });
+
+  it('disposes the context when the body is never read', async () => {
+    // No .text(), no .cancel() — the shape a careless caller produces.
+    await call('slow', {ms: 10});
+
+    expect(await settled()).toBe(true);
+  });
 });

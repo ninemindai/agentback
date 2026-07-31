@@ -152,5 +152,5 @@ On a 2026-pinned connection there is no `initialize`, so the SDK's
 identity lives in `ctx.mcpReq.envelope` instead.
 
 The HTTP counterpart is [`@agentback/mcp-http`](../mcp-http/README.md)'s
-`protocol: 'stateless'`. See
+`protocol: 'both'`. See
 [docs/proposals/mcp-2026-stateless.md](../../docs/proposals/mcp-2026-stateless.md).

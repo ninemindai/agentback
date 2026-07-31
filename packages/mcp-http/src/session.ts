@@ -2,9 +2,18 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import type {AuthInfo, McpRequestContext} from '@modelcontextprotocol/server';
+import {createMcpHandler} from '@modelcontextprotocol/server';
+import type {
+  AuthInfo,
+  McpHttpHandler,
+  McpRequestContext,
+} from '@modelcontextprotocol/server';
 import {BindingScope, Context} from '@agentback/core';
+import {loggers} from '@agentback/common';
 import {MCPBindings, MCPServer} from '@agentback/mcp';
+import type {McpHttpOptions} from './index.js';
+
+const log = loggers('agentback:mcp-http:session');
 
 /**
  * Populate a per-session DI context before its `MCPServer` is resolved. Bind
@@ -24,7 +33,9 @@ import {MCPBindings, MCPServer} from '@agentback/mcp';
  * async perSession(ctx) {
  *   const auth = await ctx.get(MCPBindings.REQUEST_AUTH, {optional: true});
  *   if (!auth) return;                       // anonymous -> shared tools only
- *   for (const T of entitlements.toolsFor(auth.clientId)) addTool(ctx, T);
+ *   // NOT `auth.clientId` — under OAuth that is the client APPLICATION id,
+ *   // shared by every end user of that app. Use your IdP's subject claim.
+ *   for (const T of entitlements.toolsFor(auth.extra?.sub)) addTool(ctx, T);
  * }
  * ```
  *
@@ -154,4 +165,72 @@ export function toHostnames(values: string[]): string[] {
       return value;
     }
   });
+}
+
+/** Everything the two hosts share when `protocol: 'both'` is enabled. */
+export interface StatelessSetup {
+  /** Whether stateless serving is on. */
+  enabled: boolean;
+  /** The handler serving both protocol eras. Present only when enabled. */
+  handler?: McpHttpHandler;
+  /**
+   * DNS-rebinding allowlists, already normalized to the hostnames the SDK's
+   * validators compare against. Each host applies these in its own idiom
+   * (Express middleware vs fetch `Response` builders), which is the one part
+   * that genuinely differs and so is deliberately NOT shared.
+   */
+  allowedHostnames?: string[];
+  allowedOriginHostnames?: string[];
+}
+
+/**
+ * Build the stateless serving setup both hosts need.
+ *
+ * Extracted because the two mounts previously kept their own copies of this —
+ * the same shape that let `SessionBinder` drift and hand one host the wrong
+ * request type. Consolidating means an option added here cannot be wired on one
+ * host and forgotten on the other.
+ */
+export function setupStateless(
+  mcp: MCPServer,
+  options: McpHttpOptions,
+): StatelessSetup {
+  const enabled = options.protocol === 'both';
+  if (!enabled) return {enabled: false};
+
+  if (options.eventStore) {
+    log.warn(
+      "protocol: 'both' ignores `eventStore` — resumable SSE replay is a " +
+        'session feature and the stateless era has no sessions.',
+    );
+  }
+  // On by default whenever either allowlist is configured, matching the
+  // session path's behaviour.
+  const rebinding =
+    options.enableDnsRebindingProtection ??
+    (options.allowedHosts != null || options.allowedOrigins != null);
+
+  return {
+    enabled: true,
+    handler: createMcpHandler(
+      perRequestFactory({
+        mcp,
+        ...(options.perSession ? {binder: options.perSession} : {}),
+        ...(options.appContext ? {appContext: options.appContext} : {}),
+      }),
+      {
+        // Without this, a throwing factory — which is where the perSession
+        // binder runs — answers 500 with nothing logged, so an entitlement
+        // outage presents as an unexplained error from our server.
+        onerror: (error: Error) =>
+          log.error('stateless request failed: %s', error.stack ?? error),
+      },
+    ),
+    ...(rebinding && options.allowedHosts
+      ? {allowedHostnames: toHostnames(options.allowedHosts)}
+      : {}),
+    ...(rebinding && options.allowedOrigins
+      ? {allowedOriginHostnames: toHostnames(options.allowedOrigins)}
+      : {}),
+  };
 }
