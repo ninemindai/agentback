@@ -8,10 +8,7 @@ import {
   requireBearerAuth,
 } from '@modelcontextprotocol/express';
 import type {OAuthTokenVerifier} from '@modelcontextprotocol/express';
-import {
-  createMcpHandler,
-  isInitializeRequest,
-} from '@modelcontextprotocol/server';
+import {isInitializeRequest} from '@modelcontextprotocol/server';
 import type {
   AuthInfo,
   EventStore,
@@ -48,9 +45,8 @@ import {
 } from './tool-rate-limit.js';
 import {mountMcpHttpFetch, PUBLIC_DISCOVERY_CORS} from './fetch.js';
 import {
-  perRequestFactory,
   resolveSessionServer,
-  toHostnames,
+  setupStateless,
   type SessionBinder,
 } from './session.js';
 
@@ -66,7 +62,7 @@ export {
 // Fetch-native MCP HTTP mount (runtime-neutral host path: native/Bun/Fastify).
 export {mountMcpHttpFetch} from './fetch.js';
 export {type SessionBinder} from './session.js';
-// Keeps a per-request binder cheap under `protocol: 'stateless'`.
+// Keeps a per-request binder cheap under `protocol: 'both'`.
 export {
   cachedPerPrincipal,
   type PrincipalCacheOptions,
@@ -155,7 +151,9 @@ export interface McpHttpOptions {
    *       // Validated by the guard and bound before the binder runs.
    *       const principal = await ctx.get(MCPBindings.REQUEST_AUTH, {optional: true});
    *       if (!principal) return;                             // anonymous -> shared set only
-   *       for (const ToolClass of entitlements.toolsFor(principal.clientId)) {
+   *       // NOT `clientId` — under OAuth that is the client APPLICATION id,
+   *       // shared by every end user. Use your IdP's subject claim.
+   *       for (const ToolClass of entitlements.toolsFor(principal.extra?.sub)) {
    *         addTool(ctx, ToolClass);                          // mirrors app.service(ToolClass)
    *       }
    *     },
@@ -165,10 +163,10 @@ export interface McpHttpOptions {
   /**
    * How the endpoint serves MCP.
    *
-   * - `'sessions'` (default) — the 2025-era Streamable HTTP transport: an
+   * - `'legacy'` (default) — the 2025-era Streamable HTTP transport: an
    *   `initialize` handshake mints an `Mcp-Session-Id`, and GET (SSE) / DELETE
    *   operate on that session. Resumable when an `eventStore` is set.
-   * - `'stateless'` — the SDK's `createMcpHandler`, which serves the
+   * - `'both'` — the SDK's `createMcpHandler`, which serves the
    *   **2026-07-28** revision and, from the same endpoint, 2025-era traffic
    *   through the established stateless idiom. There is no session: every
    *   request builds and tears down its own server, so the endpoint scales
@@ -187,7 +185,7 @@ export interface McpHttpOptions {
    * is a session feature and the stateless era has no sessions. Setting it
    * warns. GET/DELETE are session operations and answer `405`.
    */
-  protocol?: 'sessions' | 'stateless';
+  protocol?: 'legacy' | 'both';
   /**
    * DI root each per-session context is parented on (the application).
    * {@link installMcpHttp} fills this in automatically; only direct
@@ -437,41 +435,19 @@ export function mountMcpHttp(
   // `toNodeHandler`; `authInfo` still comes from the guards above (strict
   // pass-through — the handler verifies nothing itself). GET/DELETE are session
   // operations the SDK answers 405, so they are not mounted.
-  const stateless = options.protocol === 'stateless';
-  if (stateless && options.eventStore) {
-    log.warn(
-      "protocol: 'stateless' ignores `eventStore` — resumable SSE replay is a " +
-        'session feature and the stateless era has no sessions.',
-    );
-  }
-  // DNS-rebinding protection. On the session path the transport enforces this
-  // from its own options; `createMcpHandler` has no equivalent (its options are
-  // only legacy/onerror/responseMode/bus/maxSubscriptions/keepAliveMs), so the
-  // stateless path mounts the SDK's standalone validators instead. Without
-  // this, configuring `allowedHosts`/`allowedOrigins` and then switching to
-  // stateless silently drops the protection.
+  const {
+    handler: statelessHandler,
+    allowedHostnames,
+    allowedOriginHostnames,
+  } = setupStateless(mcp, options);
+  // The allowlists arrive normalized; applying them is host-specific, so it
+  // stays here rather than in the shared seam.
   const rebindingGuards: RequestHandler[] = [];
-  if (stateless && enableDnsRebindingProtection) {
-    if (options.allowedHosts) {
-      rebindingGuards.push(
-        hostHeaderValidation(toHostnames(options.allowedHosts)),
-      );
-    }
-    if (options.allowedOrigins) {
-      rebindingGuards.push(
-        originValidation(toHostnames(options.allowedOrigins)),
-      );
-    }
+  if (allowedHostnames)
+    rebindingGuards.push(hostHeaderValidation(allowedHostnames));
+  if (allowedOriginHostnames) {
+    rebindingGuards.push(originValidation(allowedOriginHostnames));
   }
-  const statelessHandler = stateless
-    ? createMcpHandler(
-        perRequestFactory({
-          mcp,
-          ...(perSession ? {binder: perSession} : {}),
-          ...(options.appContext ? {appContext: options.appContext} : {}),
-        }),
-      )
-    : undefined;
   if (statelessHandler) {
     const node = toNodeHandler(statelessHandler);
     expressApp.all(

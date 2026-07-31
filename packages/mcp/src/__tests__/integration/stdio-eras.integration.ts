@@ -24,6 +24,7 @@ const dir = join(import.meta.dirname, 'stdio-fixtures');
 
 /** Write a tiny server that boots MCPServer over stdio with the given config. */
 function serverScript(protocol: 'legacy' | 'both'): string {
+  mkdirSync(dir, {recursive: true});
   const file = join(dir, `server-${protocol}.mjs`);
   const repo = join(import.meta.dirname, '..', '..', '..', '..', '..');
   writeFileSync(
@@ -53,6 +54,16 @@ app.configure('servers.MCPServer').to({
 });
 app.service(Tools);
 await app.start();
+// Graceful-shutdown probe: the parent sends SIGUSR2, we stop() and report.
+// This is the only way to exercise stop() on a real stdio server — the normal
+// tests let the client disconnect, which kills the child without ever calling it.
+process.on('SIGUSR2', async () => {
+  const t = setTimeout(() => { console.error('STOP_HUNG'); process.exit(3); }, 5000);
+  await app.stop();
+  clearTimeout(t);
+  console.error('STOP_OK');
+  process.exit(0);
+});
 `,
   );
   return file;
@@ -74,11 +85,9 @@ describe('stdio protocol eras', () => {
   let legacy: string;
 
   beforeAll(() => {
-    mkdirSync(dir, {recursive: true});
     both = serverScript('both');
     legacy = serverScript('legacy');
   });
-  afterAll(() => rmSync(dir, {recursive: true, force: true}));
 
   it("serves the modern era when protocol is 'both'", async () => {
     const client = await connect(both, true);
@@ -110,3 +119,42 @@ describe('stdio protocol eras', () => {
     await client.close();
   }, 30_000);
 });
+
+// `MCPServer.stop()` under `protocol: 'both'` must close the handle `serveStdio`
+// returned. Nothing else covers it: the era tests let the client disconnect,
+// which kills the child before stop() is ever reached. If the handle is not
+// closed, a graceful shutdown hangs — invisible until a deploy fails to drain.
+describe('stdio graceful shutdown', () => {
+  for (const mode of ['both', 'legacy'] as const) {
+    it(`stop() completes under protocol: '${mode}'`, async () => {
+      const {spawn} = await import('node:child_process');
+      const child = spawn(process.execPath, [serverScript(mode)], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      let stderr = '';
+      child.stderr.on('data', d => (stderr += String(d)));
+
+      // Give the server a moment to finish start() before signalling.
+      await new Promise(r => setTimeout(r, 600));
+      child.kill('SIGUSR2');
+
+      const code: number = await new Promise(resolve => {
+        const t = setTimeout(() => {
+          child.kill('SIGKILL');
+          resolve(-1); // never exited: stop() hung
+        }, 10_000);
+        child.on('exit', c => {
+          clearTimeout(t);
+          resolve(c ?? -1);
+        });
+      });
+
+      expect(stderr).not.toContain('STOP_HUNG');
+      expect(stderr).toContain('STOP_OK');
+      expect(code).toBe(0);
+    }, 30_000);
+  }
+});
+
+// Fixtures are shared by both describes above, so clean up once at the end.
+afterAll(() => rmSync(dir, {recursive: true, force: true}));

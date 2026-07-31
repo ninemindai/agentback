@@ -27,7 +27,7 @@ export interface MCPServerConfig {
    *   still served as before.
    *
    * Opt-in while the ecosystem catches up, mirroring `mcp-http`'s
-   * `protocol: 'stateless'`. See
+   * `protocol: 'both'`. See
    * [docs/proposals/mcp-2026-stateless.md](../../../docs/proposals/mcp-2026-stateless.md).
    *
    * Note that on a 2026-pinned connection the SDK's `getClientCapabilities()` /

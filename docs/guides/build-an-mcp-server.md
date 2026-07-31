@@ -163,7 +163,7 @@ resolving the instance through its own binding, so constructor `@inject` works.
 
 > **Protocol revision.** By default AgentBack serves the 2025-era protocol on
 > both stdio and HTTP. To also serve **2026-07-28** (the stateless revision), set
-> `protocol: 'stateless'` on `installMcpHttp` or `protocol: 'both'` on the
+> `protocol: 'both'` on `installMcpHttp` or `protocol: 'both'` on the
 > `MCPServer` config — both serve the older era from the same endpoint, so they
 > are safe to enable before clients migrate. See
 > [the migration proposal](../proposals/mcp-2026-stateless.md).

@@ -8,7 +8,7 @@ import {MCPBindings} from '@agentback/mcp';
 import type {AuthInfo} from '@modelcontextprotocol/server';
 import {cachedPerPrincipal} from '../../binder-cache.js';
 
-// Under `protocol: 'stateless'` the binder runs on EVERY request, so an
+// Under `protocol: 'both'` the binder runs on EVERY request, so an
 // entitlement lookup inside it becomes a per-request database query. That
 // failure mode is a quiet load multiplier, not an error, which is what these
 // tests pin down. Only `lookup` is cached — `apply` must still run per request
