@@ -93,19 +93,9 @@ spike proved vs what is still assumed.
 
 **Effort:** S6 M / S7 S (the work is sequencing and comms, not code)
 **Priority:** P3
-**Depends on:** S7's deletion step is blocked by the compatibility matrix below.
-
-### Document and test browser CORS for the `/mcp` endpoint itself
-
-**What:** Decide, document, and test how a browser-hosted MCP client reaches `/mcp` cross-origin. Today only the `/.well-known/oauth-protected-resource` discovery route answers `OPTIONS`; `/mcp` relies on `RestServerConfig.cors` being configured by the app.
-
-**Why:** Browser MCP traffic to `/mcp` is preflighted (custom `MCP-Protocol-Version`, `Mcp-Session-Id`, `Authorization` and `content-type: application/json` are all non-simple), so an app that enables MCP-over-HTTP without also configuring `cors` gets a working curl and a broken browser client, with no error that points at CORS.
-
-**Context:** Pre-existing — true under SDK v1 as well, not a regression from the v2 migration. Surfaced by the `/plan-eng-review` outside voice. `@agentback/mcp-http` now exports `PUBLIC_DISCOVERY_CORS` for the discovery document; `/mcp` is deliberately NOT open-CORS, because it is authenticated. The likely answer is documentation plus an integration test asserting the preflight works when `rest.cors` is set, not a new default.
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** —
+**Depends on:** S7's deletion step is blocked by the four removal criteria in
+§5.1 of the design doc — the compatibility matrix now exists, and criterion 1
+(more than one 1.x release covered) is not yet met.
 
 ### Resync `AGENTS.md` with `CLAUDE.md`
 
@@ -130,27 +120,3 @@ spike proved vs what is still assumed.
 **Effort:** M
 **Priority:** P3
 **Depends on:** — (the throw makes the gap safe in the meantime)
-
-### Interop-test against a released older MCP client
-
-**What:** Add a test that drives a stateless AgentBack endpoint with a _released older_ `@modelcontextprotocol/client` version, not just the one in the lockfile.
-
-**Why:** Every current test runs against `@modelcontextprotocol/client@2.0.0`. Serving 2025-era clients from the same endpoint is the central compatibility promise of `protocol: 'stateless'`, and nothing verifies it against a client that predates the v2 rewrite.
-
-**Context:** Surfaced by the `/plan-eng-review` outside voice (Codex), 2026-07-30. Partly refuted at the time — the suite does use real sockets, real spawned child processes and the real SDK client rather than in-process fakes — but the narrow point stands: one client version is not interop. Likely shape is a devDependency on a pinned older client under an alias, exercised in `stateless.integration.ts`.
-
-**Effort:** M
-**Priority:** P3
-**Depends on:** —
-
-### Client-compatibility matrix before deleting the session machinery
-
-**What:** Publish a matrix of client SDK versions, protocol revisions, transports and behaviours (resumability, `GET`/`DELETE`, session lifecycle) that the session machinery currently serves, with explicit removal criteria — **before** S7 deletes it.
-
-**Why:** S7 plans to delete ~138 session references, the `GET`/`DELETE` routes and `event-store.ts` one release after the default flips. Treating that as cleanup is a Hyrum's Law bet: anything depending on resumability or session lifecycle breaks even though the endpoint still claims 2025 compatibility. The two-release split keeps the _flip_ reversible; it does not make the _deletion_ reversible.
-
-**Context:** Surfaced by the `/plan-eng-review` outside voice (Codex), 2026-07-30. Relatedly, the flip date in `docs/proposals/mcp-2026-stateless.md` is currently justified by "Phase 2 shipped" rather than by evidence anyone wants it — gate it on adoption signal (example coverage, a documented rollback switch, one release of explicit opt-in) rather than on the phase being done.
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** Blocks the S7 deletion step (not the flip).

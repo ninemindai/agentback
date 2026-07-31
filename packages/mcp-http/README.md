@@ -65,7 +65,7 @@ For a non-`RestApplication` Express app, use `mountMcpHttp(mcpServer, expressApp
 
 `protocol` picks how the endpoint serves MCP. The default is unchanged.
 
-|                              | `'sessions'` (default) | `'stateless'`                        |
+|                              | `'legacy'` (default)   | `'both'`                             |
 | ---------------------------- | ---------------------- | ------------------------------------ |
 | Protocol revision            | 2025-era only          | **2026-07-28 + 2025, same endpoint** |
 | `Mcp-Session-Id`             | minted on `initialize` | none                                 |
@@ -84,7 +84,7 @@ handler with `toNodeHandler`, the fetch/edge mount uses it directly. Clients tha
 speak either era are served from the same URL, so this is safe to turn on before
 your clients have migrated.
 
-Under `'stateless'` each request builds its own server and its own DI context,
+Under `'both'` each request builds its own server and its own DI context,
 released when the SDK closes that request's server — after any streamed
 progress, so streaming tools are unaffected.
 
@@ -157,6 +157,32 @@ await client.connect(
 await client.listTools();
 await client.callTool({name: 'add', arguments: {a: 2, b: 40}});
 ```
+
+## Browser clients (CORS)
+
+A browser MCP client's traffic to `/mcp` is **always** preflighted — `content-type:
+application/json`, `MCP-Protocol-Version`, `Mcp-Session-Id` and `Authorization`
+are all non-simple headers. `/mcp` is deliberately _not_ open-CORS (unlike the
+public `/.well-known/oauth-protected-resource` discovery document, which is
+unauthenticated by design), so who may call it stays your decision:
+
+```ts
+new RestApplication({rest: {cors: true}}); // or a CorsOptions object
+```
+
+Without it, `curl` works and the browser client fails with no error that
+mentions CORS. That is the single most confusing way to hit this.
+
+`installMcpHttp` adds `Mcp-Session-Id` to `Access-Control-Expose-Headers` on the
+session path automatically. Under CORS a response header is invisible to JS
+unless it is named there, and the session id is the one header the client must
+read and echo back — without it, `initialize` succeeds, the client never sees
+the id, and its next call is answered _"no active MCP session"_. This is not an
+access grant: `Access-Control-Allow-Origin` still decides who may read anything,
+so the header is inert until you configure `cors`.
+
+Under `protocol: 'both'` there is no session id at all, so plain `cors: true` is
+the whole story.
 
 ## Resumable sessions
 

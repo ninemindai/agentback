@@ -167,6 +167,37 @@ export function toHostnames(values: string[]): string[] {
   });
 }
 
+/**
+ * Merge `Mcp-Session-Id` into an `Access-Control-Expose-Headers` value.
+ *
+ * Under CORS a browser can only READ a response header that is named here, and
+ * the session id is the one header the MCP session protocol requires a client
+ * to read and echo back. Without it a cross-origin browser client completes
+ * `initialize`, cannot see the minted id, sends nothing on the next request,
+ * and is answered "no active MCP session" — a failure that looks like a
+ * server bug and never mentions CORS. `curl` is unaffected, so this reproduces
+ * only in a browser.
+ *
+ * This is **not** an access grant: whether an origin may read the response at
+ * all is decided by `Access-Control-Allow-Origin`, which stays entirely
+ * governed by the app's `rest.cors` config. With no `cors` configured there is
+ * no allow-origin and this header is inert. So it is safe to always send on the
+ * session path, and pointless on the stateless one (no session is ever minted).
+ *
+ * Any value the app's own CORS config already set is preserved — an app that
+ * exposes its own headers must not lose them to this.
+ */
+export function withSessionIdExposed(existing?: string | null): string {
+  const names = (existing ?? '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  if (names.some(n => n.toLowerCase() === 'mcp-session-id')) {
+    return names.join(', ');
+  }
+  return [...names, 'Mcp-Session-Id'].join(', ');
+}
+
 /** Everything the two hosts share when `protocol: 'both'` is enabled. */
 export interface StatelessSetup {
   /** Whether stateless serving is on. */

@@ -39,6 +39,7 @@
   "devDependencies": {
     "@agentback/testlab": "workspace:~",
     "@modelcontextprotocol/client": "^2.0.0",
+    "mcp-client-2025": "npm:@modelcontextprotocol/sdk@1.17.0",
     "vitest": "~4.1.10",
     "zod": "^4.4.3"
   },

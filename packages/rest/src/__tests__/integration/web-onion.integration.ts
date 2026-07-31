@@ -26,7 +26,7 @@ class OnionController {
 
 async function boot(
   configure: (app: RestApplication) => void,
-  cors?: boolean,
+  cors?: boolean | {origin?: string; exposedHeaders?: string[]},
 ): Promise<{
   app: RestApplication;
   host: ReturnType<RestServer['fetchHandler']>;
@@ -35,7 +35,7 @@ async function boot(
   app.configure('servers.RestServer').to({
     port: 0,
     host: '127.0.0.1',
-    ...(cors ? {cors: true} : {}),
+    ...(cors ? {cors: cors === true ? true : cors} : {}),
   });
   app.restController(OnionController);
   configure(app);
@@ -169,5 +169,36 @@ describe('built-in CORS WebMiddleware', () => {
       'https://app.example.com',
     );
     expect(await res.json()).toEqual({ok: true});
+  });
+
+  it('merges configured exposedHeaders with what a handler already set', async () => {
+    // This middleware wraps the response on the way OUT, so anything mounted
+    // downstream has already run. Replacing `Access-Control-Expose-Headers`
+    // here would silently drop a header only that route knows to expose —
+    // `@agentback/mcp-http` exposing `Mcp-Session-Id` is the real case, and it
+    // broke only on this host, because under Express the `cors` package runs
+    // BEFORE the handler and the handler merges on top.
+    const {app, host} = await boot(
+      a =>
+        a.webMiddleware(async (_req, _ctx, next) => {
+          const res = await next();
+          const headers = new Headers(res.headers);
+          headers.set('access-control-expose-headers', 'X-Route-Specific');
+          return new Response(res.body, {status: res.status, headers});
+        }),
+      {origin: 'https://app.example.com', exposedHeaders: ['X-App-Wide']},
+    );
+    current = app;
+
+    const res = await host.fetch(
+      new Request('http://x/ping', {
+        headers: {origin: 'https://app.example.com'},
+      }),
+    );
+    const exposed = (
+      res.headers.get('access-control-expose-headers') ?? ''
+    ).toLowerCase();
+    expect(exposed).toContain('x-route-specific'); // would be lost by `set`
+    expect(exposed).toContain('x-app-wide');
   });
 });

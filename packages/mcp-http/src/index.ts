@@ -47,6 +47,7 @@ import {mountMcpHttpFetch, PUBLIC_DISCOVERY_CORS} from './fetch.js';
 import {
   resolveSessionServer,
   setupStateless,
+  withSessionIdExposed,
   type SessionBinder,
 } from './session.js';
 
@@ -470,10 +471,25 @@ export function mountMcpHttp(
     };
   }
 
+  // Only reached on the session path (the stateless mount returned above, and
+  // it never mints a session id). Lets a cross-origin browser client READ the
+  // id the SDK is about to mint — inert unless the app configured `rest.cors`.
+  // See `withSessionIdExposed`.
+  const exposeSessionId: RequestHandler = (_req, res, next) => {
+    res.setHeader(
+      'Access-Control-Expose-Headers',
+      withSessionIdExposed(
+        res.getHeader('Access-Control-Expose-Headers') as string | undefined,
+      ),
+    );
+    next();
+  };
+
   // POST: client → server JSON-RPC. A request with no session must be an
   // `initialize`, which spins up a fresh per-session SDK server + transport.
   expressApp.post(
     path,
+    exposeSessionId,
     ...guards,
     express.json(),
     ...toolRateLimit,
@@ -577,8 +593,8 @@ export function mountMcpHttp(
     }
     await transport.handleRequest(req, res);
   };
-  expressApp.get(path, ...guards, onSessionRequest);
-  expressApp.delete(path, ...guards, onSessionRequest);
+  expressApp.get(path, exposeSessionId, ...guards, onSessionRequest);
+  expressApp.delete(path, exposeSessionId, ...guards, onSessionRequest);
 
   return {
     async closeAll() {

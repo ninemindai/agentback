@@ -143,6 +143,13 @@ await installMcpHttp(app, {
 - **Resumable sessions**: pass an `eventStore` only if you need SSE-replay
   across reconnects; a shared (Redis) store is required for it to work
   behind a load balancer.
+- **Browser clients need `rest.cors`**: `/mcp` is authenticated, so it is not
+  open-CORS the way the public discovery document is. Every browser MCP request
+  is preflighted (`MCP-Protocol-Version` and friends are non-simple headers), so
+  without `new RestApplication({rest: {cors: true}})` you get a working `curl`
+  and a browser client that fails without ever naming CORS. Keep the allowlist
+  as tight as your `allowedOrigins`. The `Mcp-Session-Id` expose-header the
+  session protocol requires is added for you.
 
 ## Step 4 — verify what a session actually sees
 
@@ -167,6 +174,8 @@ scopes.
 - [ ] Dangerous tools carry `@authorize({scopes})` (invisible without the
       scope) and, where appropriate, `confirm: true`.
 - [ ] `allowedHosts`/`allowedOrigins` set.
+- [ ] `rest.cors` configured **only if** a browser client needs `/mcp` — and
+      scoped to those origins, not `true`.
 - [ ] Per-tool rate limits for expensive tools.
 - [ ] No privileged `localPrincipal` on an HTTP-exposed app.
 - [ ] A scope-visibility test per sensitive tool.

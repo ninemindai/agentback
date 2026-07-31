@@ -25,7 +25,11 @@ import {Context} from '@agentback/core';
 import {MCPServer} from '@agentback/mcp';
 import type {RestServer} from '@agentback/rest';
 import type {McpHttpOptions, McpHttpHandle} from './index.js';
-import {resolveSessionServer, setupStateless} from './session.js';
+import {
+  resolveSessionServer,
+  setupStateless,
+  withSessionIdExposed,
+} from './session.js';
 
 const DEFAULT_PATH = '/mcp';
 const PROTECTED_RESOURCE_PATH = '/.well-known/oauth-protected-resource';
@@ -322,7 +326,20 @@ export function mountMcpHttpFetch(
       }
     }
 
-    return transport.handleRequest(req, {parsedBody, authInfo});
+    const res = await transport.handleRequest(req, {parsedBody, authInfo});
+    // Let a cross-origin browser client READ the session id the SDK just
+    // minted. Inert unless the app configured `rest.cors` — see
+    // `withSessionIdExposed`.
+    const headers = new Headers(res.headers);
+    headers.set(
+      'access-control-expose-headers',
+      withSessionIdExposed(headers.get('access-control-expose-headers')),
+    );
+    return new Response(res.body, {
+      status: res.status,
+      statusText: res.statusText,
+      headers,
+    });
   };
 
   // Register one handler per verb on the same path. addFetchHandler matches

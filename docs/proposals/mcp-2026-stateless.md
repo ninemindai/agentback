@@ -226,6 +226,72 @@ unsolicited notifications is the `subscriptions/listen` stream, published via
 `handler.notify` / `handler.bus`. `InMemoryEventStore` must stay exported while
 the legacy path is served.
 
+### 5.1 Compatibility matrix — what the session machinery serves today
+
+The two-release split (§7) makes the **flip** reversible. It does not make the
+**deletion** reversible, and "we flipped the default and nobody complained" is
+not evidence that nothing depends on this — it is Hyrum's Law waiting to be
+tested. Silence from users who never upgraded is indistinguishable from
+approval. So the deletion is gated on this table, not on the flip having shipped.
+
+**Client SDKs.** What is actually exercised in CI, not what is assumed to work:
+
+| Client                                | Era(s)         | Covered by                                        |
+| ------------------------------------- | -------------- | ------------------------------------------------- |
+| `@modelcontextprotocol/client@2.0.0`  | modern, legacy | every `mcp-http` integration test                 |
+| `@modelcontextprotocol/sdk@1.17.0`    | legacy only    | `legacy-client-interop.integration.ts` (aliased)  |
+| `@modelcontextprotocol/sdk` 1.0–1.16  | legacy only    | **untested**                                      |
+| `@modelcontextprotocol/sdk` 1.18–1.29 | legacy only    | **untested** (1.25 changed the `zod` peer to 3‖4) |
+
+1.17.0's `SUPPORTED_PROTOCOL_VERSIONS` is
+`['2025-06-18', '2025-03-26', '2024-11-05', '2024-10-07']`; the v2 server's is
+that list plus `2025-11-25`. So the legacy era is not one revision — it is four,
+and the interop test pins only the newest of them.
+
+**Transports.**
+
+| Transport                            | Sessions         | Stateless (`protocol: 'both'`) |
+| ------------------------------------ | ---------------- | ------------------------------ |
+| Streamable HTTP (`POST /mcp`)        | ✅               | ✅                             |
+| Streamable HTTP `GET` (SSE stream)   | ✅               | ❌ SDK answers 405             |
+| Streamable HTTP `DELETE` (terminate) | ✅               | ❌ SDK answers 405             |
+| stdio                                | n/a              | ✅ era pinned per connection   |
+| HTTP+SSE (the 2024 two-endpoint one) | ❌ never mounted | ❌                             |
+
+**Behaviours S7 would remove**, and what replaces each:
+
+| Behaviour                                           | Replacement under stateless                   |
+| --------------------------------------------------- | --------------------------------------------- |
+| `Mcp-Session-Id` minting                            | none — no session exists                      |
+| Session pinned to its originating principal         | every request re-authenticates                |
+| `GET` SSE stream for server→client notifications    | `subscriptions/listen` + `handler.notify`     |
+| `DELETE` session termination                        | none needed                                   |
+| Resumability (`Last-Event-ID`, `eventStore`)        | **nothing** — a real capability loss          |
+| `perSession` DI context                             | per-request context (§3) — narrowed, not lost |
+| `Mcp-Session-Id` in `Access-Control-Expose-Headers` | not needed — nothing to expose                |
+
+Resumability is the only row with no replacement. A client on a flaky network
+that reconnects with `Last-Event-ID` today gets its missed events; after
+deletion it gets nothing. That is a deliberate trade, but it must be a stated
+one.
+
+**Removal criteria.** All of these before the deletion step, none of them
+implied by the flip:
+
+1. The 1.x interop test covers **more than one** 1.x release — at minimum the
+   oldest version we intend to claim support for, plus 1.29 (the last before
+   the v2 split).
+2. A documented rollback switch (`protocol: 'legacy'`) has shipped and been
+   released for at least one full version.
+3. Resumability's removal is announced as a **breaking change**, not a cleanup,
+   with `eventStore` deprecated in a release that still honours it.
+4. At least one released version has served `protocol: 'both'` as the _opt-in_
+   default, so adoption is measurable rather than assumed.
+
+The flip date should likewise be gated on adoption signal — example coverage, a
+documented rollback, one release of explicit opt-in — rather than on "Phase 2
+shipped", which is a statement about our progress, not about anyone's need.
+
 ---
 
 ## 6. Open decisions
