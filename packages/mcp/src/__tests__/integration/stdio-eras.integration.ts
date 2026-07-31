@@ -64,6 +64,10 @@ process.on('SIGUSR2', async () => {
   console.error('STOP_OK');
   process.exit(0);
 });
+// Announced only AFTER the handler is installed, so the parent can never
+// signal into a window where nothing is listening. stdout is the MCP transport
+// under serveStdio, so readiness goes to stderr.
+console.error('READY');
 `,
   );
   return file;
@@ -134,8 +138,21 @@ describe('stdio graceful shutdown', () => {
       let stderr = '';
       child.stderr.on('data', d => (stderr += String(d)));
 
-      // Give the server a moment to finish start() before signalling.
-      await new Promise(r => setTimeout(r, 600));
+      // Wait for the child to announce its handler is installed. A fixed sleep
+      // here is exactly the flake CI caught: on a loaded runner the signal
+      // arrived before start() finished and was silently lost.
+      const ready = await new Promise<boolean>(resolve => {
+        const t = setTimeout(() => resolve(false), 15_000);
+        const check = () => {
+          if (stderr.includes('READY')) {
+            clearTimeout(t);
+            resolve(true);
+          }
+        };
+        child.stderr.on('data', check);
+        check();
+      });
+      expect(ready).toBe(true);
       child.kill('SIGUSR2');
 
       const code: number = await new Promise(resolve => {
