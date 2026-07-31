@@ -71,10 +71,24 @@ async function applyCorsHeaders(
     headers.set('access-control-allow-credentials', 'true');
   }
   if (opts.exposedHeaders) {
-    headers.set(
-      'access-control-expose-headers',
-      ([] as string[]).concat(opts.exposedHeaders).join(','),
-    );
+    // Merge, don't replace. This middleware wraps the response on the way out,
+    // so a handler that already declared an exposed header has run by now — and
+    // it knows about headers the app-wide config cannot (e.g. the MCP mount
+    // exposing `Mcp-Session-Id`, which is meaningless outside `/mcp`).
+    // Replacing here would silently drop it, and only on this host: under
+    // Express the real `cors` package runs BEFORE the handler, so the handler
+    // merges on top and nothing is lost. Merging keeps the two hosts agreeing.
+    const existing = (headers.get('access-control-expose-headers') ?? '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+    const merged = [...existing];
+    for (const name of ([] as string[]).concat(opts.exposedHeaders)) {
+      if (!merged.some(m => m.toLowerCase() === name.toLowerCase())) {
+        merged.push(name);
+      }
+    }
+    headers.set('access-control-expose-headers', merged.join(','));
   }
 }
 
