@@ -211,13 +211,13 @@ sessions are unaffected.
 
 The agent session registers the app's `/mcp` endpoint (which carries both the
 business tools and the `IntrospectionTools` surface) as an MCP server. The
-`IntrospectionTools` tools (`inventory`, `get`, `get_okf_bundle`) return
+`IntrospectionTools` tools (`inventory`, `get`, `list_okf_files`, `get_okf_files`, `get_okf_bundle`) return
 **metadata only**:
 
 - `inventory` returns keys, kinds, scopes, tags, and source — never values.
 - `get` for a binding returns the same metadata set — it **never resolves the
   binding's value** and never exposes secrets or instance data.
-- `get_okf_bundle` returns the static OKF snapshot — schema-indexed docs, not
+- `list_okf_files` returns the OKF table of contents (paths, titles, descriptions, sizes) and `get_okf_files` fetches chosen documents; `get_okf_bundle` returns the whole static OKF snapshot — schema-indexed docs, not
   runtime state.
 
 No `call_route` or `call_tool` MCP tool exists or will be added to this

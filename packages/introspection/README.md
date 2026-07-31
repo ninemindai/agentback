@@ -30,7 +30,9 @@ await app.start();
 
 - `inventory(kind?)` — list the app's nodes (`binding` | `schema-entity` | `route` | `tool`); omit `kind` for all. Bindings are metadata only.
 - `get({kind, id})` — fetch one node's detail by selector (the `id` comes from `inventory`; routes are `"GET /path"`). Bindings return metadata only.
-- `get_okf_bundle()` — the OKF knowledge bundle (a portable, schema-indexed snapshot) for the agent to ingest.
+- `list_okf_files()` — the OKF bundle's table of contents: every document's path, title, description and byte size, without the bodies. **Start here.**
+- `get_okf_files({paths})` — fetch chosen documents by path. Batch every path you need into one call.
+- `get_okf_bundle()` — the whole OKF knowledge bundle in one payload. The escape hatch when you genuinely want everything; on a non-trivial app prefer list + fetch, which is what OKF's progressive disclosure is for.
 
 Built on the same read-only builders as `@agentback/context-explorer` and
 `@agentback/schema-explorer` (incl. its OKF export) — this package is the

@@ -14,24 +14,24 @@ Each package also ships its own `README.md` under [`packages/`](../packages/).
 
 ## REST, MCP, and clients
 
-| Package                       | Role                                                                                                                                                     |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@agentback/http-server`      | HTTP server with graceful stop (port of `@loopback/http-server`)                                                                                         |
-| `@agentback/middleware`       | Runtime-neutral middleware-chain machinery (Express-free; shared by `rest` + the Express host)                                                           |
-| `@agentback/express`          | Optional Express **host** (`ExpressService`, the LB middleware chain over `express`/`cors`)                                                              |
-| `@agentback/openapi`          | Zod-first decorators + OpenAPI 3.1.1 emission                                                                                                            |
-| `@agentback/rest`             | REST server (Zod validation); `RestApplication`/`ExpressRestApplication` (Express) + `EdgeRestApplication` (fetch/Workers, no `express` install)         |
-| `@agentback/rest-explorer`    | Mounts Swagger UI 5.x at `/explorer`                                                                                                                     |
-| `@agentback/context-explorer` | Mounts a context/binding explorer UI                                                                                                                     |
-| `@agentback/schema-explorer`  | Mounts a schema/entity provenance explorer UI (REST + MCP + Drizzle); exports the graph as an OKF knowledge bundle (`buildOkfBundle`, Knowledge tab)     |
-| `@agentback/introspection`    | Read-only MCP server exposing the live app (bindings/schema/routes/tools + OKF) to any agent via a selector surface (`inventory`/`get`/`get_okf_bundle`) |
-| `@agentback/mcp`              | Decorator-driven MCP server (`@mcpServer`, `@tool` w/ Zod input/output; opt-in `2026-07-28` over stdio)                                                  |
-| `@agentback/mcp-inspector`    | Mounts an MCP inspector UI at `/mcp-inspector`                                                                                                           |
-| `@agentback/mcp-http`         | Exposes the MCP server over Streamable HTTP at `/mcp` (+ OAuth, scopes; opt-in stateless `2026-07-28` serving)                                           |
-| `@agentback/mcp-client`       | Connect to remote MCP servers over HTTP (OAuth-aware)                                                                                                    |
-| `@agentback/mcp-host`         | Aggregate upstream MCP servers into one gateway                                                                                                          |
-| `@agentback/mcp-connect`      | Persistent outbound MCP connections for browser/admin UIs                                                                                                |
-| `@agentback/client`           | Schema-shared typed HTTP client with no codegen                                                                                                          |
+| Package                       | Role                                                                                                                                                                                      |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@agentback/http-server`      | HTTP server with graceful stop (port of `@loopback/http-server`)                                                                                                                          |
+| `@agentback/middleware`       | Runtime-neutral middleware-chain machinery (Express-free; shared by `rest` + the Express host)                                                                                            |
+| `@agentback/express`          | Optional Express **host** (`ExpressService`, the LB middleware chain over `express`/`cors`)                                                                                               |
+| `@agentback/openapi`          | Zod-first decorators + OpenAPI 3.1.1 emission                                                                                                                                             |
+| `@agentback/rest`             | REST server (Zod validation); `RestApplication`/`ExpressRestApplication` (Express) + `EdgeRestApplication` (fetch/Workers, no `express` install)                                          |
+| `@agentback/rest-explorer`    | Mounts Swagger UI 5.x at `/explorer`                                                                                                                                                      |
+| `@agentback/context-explorer` | Mounts a context/binding explorer UI                                                                                                                                                      |
+| `@agentback/schema-explorer`  | Mounts a schema/entity provenance explorer UI (REST + MCP + Drizzle); exports the graph as an OKF knowledge bundle (`buildOkfBundle`, Knowledge tab)                                      |
+| `@agentback/introspection`    | Read-only MCP server exposing the live app (bindings/schema/routes/tools + OKF) to any agent via a selector surface (`inventory`/`get`/`list_okf_files`/`get_okf_files`/`get_okf_bundle`) |
+| `@agentback/mcp`              | Decorator-driven MCP server (`@mcpServer`, `@tool` w/ Zod input/output; opt-in `2026-07-28` over stdio)                                                                                   |
+| `@agentback/mcp-inspector`    | Mounts an MCP inspector UI at `/mcp-inspector`                                                                                                                                            |
+| `@agentback/mcp-http`         | Exposes the MCP server over Streamable HTTP at `/mcp` (+ OAuth, scopes; opt-in stateless `2026-07-28` serving)                                                                            |
+| `@agentback/mcp-client`       | Connect to remote MCP servers over HTTP (OAuth-aware)                                                                                                                                     |
+| `@agentback/mcp-host`         | Aggregate upstream MCP servers into one gateway                                                                                                                                           |
+| `@agentback/mcp-connect`      | Persistent outbound MCP connections for browser/admin UIs                                                                                                                                 |
+| `@agentback/client`           | Schema-shared typed HTTP client with no codegen                                                                                                                                           |
 
 ## Platform components
 

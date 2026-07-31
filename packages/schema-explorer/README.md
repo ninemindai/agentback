@@ -92,6 +92,12 @@ to git. It's a sixth projection of the one source of truth (alongside OpenAPI,
 MCP `inputSchema`, REST routes, Drizzle tables), aimed at _comprehension_ rather
 than the wire contract.
 
+The emitted bundle targets **OKF v0.2** and declares `okf_version` on its root
+`index.md`. Concepts carry the recommended `title`/`description` plus a
+`generated.by` actor; `generated.at` is deliberately omitted so the emitter
+stays byte-for-byte deterministic. `summarizeOkfBundle(bundle)` returns the
+table of contents without the bodies.
+
 The bundle is two-tier and cross-linked:
 
 - `schemas/<slug>.md` — one doc per entity. `type: table` when backed by a
