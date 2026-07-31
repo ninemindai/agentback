@@ -356,17 +356,26 @@ import {addTool} from '@agentback/mcp';
 await installMcpHttp(app, {
   protocol: 'stateless',
   perSession: cachedPerPrincipal(
-    principal => entitlements.toolsFor(principal?.clientId), // cached
+    principal => entitlements.toolsFor(principal?.extra?.sub), // cached
     (ctx, classes) => classes.forEach(C => addTool(ctx, C)), // every request
-    {ttlMs: 60_000},
+    {
+      // REQUIRED. This key is a security boundary, so the framework will not
+      // guess it. Do NOT use `clientId`: under OAuth that is the client
+      // APPLICATION id, shared by every end user of that app.
+      keyOf: p => `${p?.extra?.sub ?? 'anon'}|${[...(p?.scopes ?? [])].sort()}`,
+      ttlMs: 60_000,
+    },
   ),
 });
 ```
 
 Only the lookup is cached; `apply` runs fresh per request. **Never cache a
-`Context`** — it is closed when its request ends. `ttlMs` is the
-entitlement-revocation window; entries key on `clientId` + granted scopes so a
-re-issued narrower token cannot reuse a wider answer.
+`Context`** — it is closed when its request ends.
+
+`keyOf` is **required**. Do NOT key on `AuthInfo.clientId`: under OAuth that is
+the client _application_ id, shared by every end user of that app, so keying on
+it leaks one user's tool list to another. Use your IdP's subject claim plus
+granted scopes. `ttlMs` is the entitlement-revocation window.
 
 ### Resumable sessions
 

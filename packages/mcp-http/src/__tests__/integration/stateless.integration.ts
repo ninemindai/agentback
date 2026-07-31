@@ -359,3 +359,92 @@ describe('confirm: tools on the modern era', () => {
     await client.close();
   });
 });
+
+// DNS-rebinding protection under `protocol: 'stateless'`. The session path gets
+// this from the transport's own options; createMcpHandler has none, so the
+// stateless path mounts the SDK's standalone validators. Without them a user
+// who configured an allowlist and switched to stateless silently lost it.
+//
+// The Origin cases also pin the normalization: `allowedOrigins` is documented
+// as Origin HEADER VALUES (`https://app.example.com`), but the SDK validators
+// compare HOSTNAMES. Forwarding the configured array unnormalized would reject
+// every request — fail-closed, but broken.
+describe("protocol: 'stateless' DNS-rebinding protection", () => {
+  for (const listener of ['express', 'native'] as const) {
+    describe(`${listener} host`, () => {
+      let app: RestApplication;
+      let base: string;
+
+      async function start(opts: {
+        allowedHosts?: string[];
+        allowedOrigins?: string[];
+      }) {
+        app = new RestApplication(
+          listener === 'native' ? {rest: {listener: 'native'}} : {},
+        );
+        app.configure('servers.RestServer').to({
+          port: 0,
+          host: '127.0.0.1',
+          ...(listener === 'native' ? {listener: 'native'} : {}),
+        });
+        app.component(MCPComponent);
+        app.configure('servers.MCPServer').to({
+          name: 'rebind',
+          version: '0.0.0',
+          transports: {stdio: false},
+        });
+        app.service(DemoTools);
+        await app.get<MCPServer>('servers.MCPServer');
+        await installMcpHttp(app, {protocol: 'stateless', ...opts});
+        await app.start();
+        base = (await app.get<RestServer>('servers.RestServer')).url;
+      }
+
+      const post = (headers: Record<string, string> = {}) =>
+        fetch(base + '/mcp', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json, text/event-stream',
+            ...headers,
+          },
+          body: JSON.stringify({jsonrpc: '2.0', id: 1, method: 'tools/list'}),
+        });
+
+      afterEach(async () => app?.stop());
+
+      it('rejects a Host outside the allowlist', async () => {
+        // The server is reached at 127.0.0.1, so the real Host header can never
+        // match this allowlist — no header spoofing needed to exercise it.
+        await start({allowedHosts: ['mcp.example.com']});
+        const res = await post();
+        expect(res.status).toBeGreaterThanOrEqual(400);
+        await res.body?.cancel();
+      });
+
+      it('allows a Host that is on the allowlist', async () => {
+        const port = new URL(base).port;
+        await start({allowedHosts: [`127.0.0.1:${port}`, '127.0.0.1']});
+        const res = await post();
+        expect(res.status).toBe(200);
+        await res.body?.cancel();
+      });
+
+      it('rejects a disallowed Origin', async () => {
+        await start({allowedOrigins: ['https://app.example.com']});
+        const res = await post({origin: 'https://evil.test'});
+        expect(res.status).toBeGreaterThanOrEqual(400);
+        await res.body?.cancel();
+      });
+
+      it('accepts an allowlisted Origin configured as a full origin', async () => {
+        // The normalization case: config carries a full origin, the SDK
+        // validator compares hostnames. Unnormalized, this would 4xx.
+        await start({allowedOrigins: ['https://app.example.com']});
+        const res = await post({origin: 'https://app.example.com'});
+        expect(res.status).toBe(200);
+        await res.body?.cancel();
+      });
+    });
+  }
+});

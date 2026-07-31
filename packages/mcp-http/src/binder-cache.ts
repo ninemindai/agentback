@@ -13,6 +13,26 @@ const log = loggers('agentback:mcp-http:binder-cache');
 /** Tunables for {@link cachedPerPrincipal}. */
 export interface PrincipalCacheOptions {
   /**
+   * The identity this cache is keyed on. **Required, deliberately** — this key
+   * is a security boundary, and the framework cannot infer it.
+   *
+   * The obvious choice, `AuthInfo.clientId`, is wrong under OAuth: it is the
+   * **client application** id, shared by every end user signing in through that
+   * app, so keying on it hands one user's entitlement lookup to another. It is
+   * only per-user on AgentBack's own `strategyAuth` path, where the framework
+   * sets it to the principal's `securityId`. Which claim identifies a subject
+   * varies by IdP — often a `sub` in {@link AuthInfo.extra} — so you name it:
+   *
+   * ```ts
+   * keyOf: p => `${p?.extra?.sub ?? 'anon'}|${[...(p?.scopes ?? [])].sort()}`
+   * ```
+   *
+   * Include every authorization-relevant claim, not just the subject: granted
+   * scopes, and tenant/org where you have one. A re-issued token with narrower
+   * scopes must not reuse the wider answer.
+   */
+  keyOf: (principal: AuthInfo | undefined) => string;
+  /**
    * How long a lookup stays fresh. This is your **entitlement-revocation
    * window**: a principal whose access is revoked keeps the old answer until
    * the entry expires, so choose it against your security posture, not your
@@ -21,16 +41,7 @@ export interface PrincipalCacheOptions {
   ttlMs?: number;
   /** Maximum principals held. Oldest-inserted are evicted first. Default 1000. */
   max?: number;
-  /**
-   * Cache key for a principal. Defaults to `clientId` plus granted scopes, so a
-   * re-issued token carrying different scopes does not reuse the old answer.
-   * Anonymous callers share one key.
-   */
-  keyOf?: (principal: AuthInfo | undefined) => string;
 }
-
-const defaultKeyOf = (p: AuthInfo | undefined) =>
-  p ? `${p.clientId} ${[...(p.scopes ?? [])].sort().join(' ')}` : ' anon';
 
 /**
  * Wrap a per-principal lookup so it runs once per principal per TTL instead of
@@ -55,6 +66,9 @@ const defaultKeyOf = (p: AuthInfo | undefined) =>
  * )
  * ```
  *
+ * `keyOf` is required: see {@link PrincipalCacheOptions.keyOf} for why a
+ * default would be a cross-user leak under OAuth.
+ *
  * A `lookup` that throws is **not** cached — the next request retries, so a
  * transient outage does not pin a failure for the whole TTL. Concurrent
  * requests for the same cold principal share one in-flight lookup rather than
@@ -63,11 +77,11 @@ const defaultKeyOf = (p: AuthInfo | undefined) =>
 export function cachedPerPrincipal<T>(
   lookup: (principal: AuthInfo | undefined) => T | Promise<T>,
   apply: (sessionCtx: Context, value: T, request: Request) => void,
-  options: PrincipalCacheOptions = {},
+  options: PrincipalCacheOptions,
 ): SessionBinder {
   const ttlMs = options.ttlMs ?? 30_000;
   const max = options.max ?? 1000;
-  const keyOf = options.keyOf ?? defaultKeyOf;
+  const keyOf = options.keyOf;
   // Insertion-ordered, so the first key is always the oldest.
   const entries = new Map<string, {expires: number; value: Promise<T>}>();
 

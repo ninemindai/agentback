@@ -4,7 +4,9 @@
 
 import {
   createMcpHandler,
+  hostHeaderValidationResponse,
   isInitializeRequest,
+  originValidationResponse,
   requireBearerAuth,
   WebStandardStreamableHTTPServerTransport,
 } from '@modelcontextprotocol/server';
@@ -26,7 +28,11 @@ import {Context} from '@agentback/core';
 import {MCPServer} from '@agentback/mcp';
 import type {RestServer} from '@agentback/rest';
 import type {McpHttpOptions, McpHttpHandle} from './index.js';
-import {perRequestFactory, resolveSessionServer} from './session.js';
+import {
+  perRequestFactory,
+  resolveSessionServer,
+  toHostnames,
+} from './session.js';
 
 const log = loggers('agentback:mcp-http:fetch');
 
@@ -178,6 +184,22 @@ export function mountMcpHttpFetch(
         'session feature and the stateless era has no sessions.',
     );
   }
+  // Same default as the Express host: on when either allowlist is configured.
+  const enableDnsRebinding =
+    options.enableDnsRebindingProtection ??
+    (options.allowedHosts != null || options.allowedOrigins != null);
+  // DNS-rebinding protection: the fetch host has never had it (the Web transport
+  // was constructed without the allowlists), and `createMcpHandler` has no such
+  // options either. The SDK's runtime-neutral validators cover both.
+  const rebindingHosts =
+    stateless && enableDnsRebinding && options.allowedHosts
+      ? toHostnames(options.allowedHosts)
+      : undefined;
+  const rebindingOrigins =
+    stateless && enableDnsRebinding && options.allowedOrigins
+      ? toHostnames(options.allowedOrigins)
+      : undefined;
+
   const statelessHandler: McpHttpHandler | undefined = stateless
     ? createMcpHandler(
         perRequestFactory({
@@ -209,6 +231,19 @@ export function mountMcpHttpFetch(
     sessionOwners[id] === principal;
 
   const handle = async (req: Request): Promise<Response> => {
+    // Rebinding checks run BEFORE auth: this is a transport-level gate, and a
+    // request from a disallowed host should be refused without spending a token
+    // verification on it. Mirrors the Express mount, where these guards sit
+    // ahead of the auth guards.
+    if (rebindingHosts) {
+      const rejected = hostHeaderValidationResponse(req, rebindingHosts);
+      if (rejected) return rejected;
+    }
+    if (rebindingOrigins) {
+      const rejected = originValidationResponse(req, rebindingOrigins);
+      if (rejected) return rejected;
+    }
+
     // Authenticate once per request. OAuth bearer (resource-server) runs first
     // when configured; otherwise strategy-based auth. Either can gate the call.
     let authInfo: AuthInfo | undefined;
