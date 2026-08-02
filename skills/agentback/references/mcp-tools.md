@@ -87,15 +87,15 @@ surface goes dark.
 
 `options` fields:
 
-| field         | type                         | required | meaning                                                                                                                                    |
-| ------------- | ---------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `input`       | `ZodObject`                  | no       | Zod schema for slot 0; drives the SDK inputSchema                                                                                          |
-| `output`      | `ZodObject`                  | no       | Zod schema for the return; validated at runtime                                                                                            |
-| `description` | `string`                     | no       | Shown in tools/list                                                                                                                        |
-| `title`       | `string`                     | no       | Human-readable display name                                                                                                                |
-| `scope`       | `string`                     | no       | OAuth scope required to see/call the tool                                                                                                  |
-| `confirm`     | `boolean \| {ttlMs?}`        | no       | Dangerous tool: first call → `confirmation_required` error + single-use token; identical retry with the `confirmationToken` input executes |
-| `ui`          | `{resourceUri, visibility?}` | no       | MCP Apps (SEP-1865) widget link, emitted as `_meta.ui` — see [MCP Apps Widgets](#mcp-apps-widgets-ui)                                      |
+| field         | type                         | required | meaning                                                                                                                            |
+| ------------- | ---------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `input`       | `ZodObject`                  | no       | Zod schema for slot 0; drives the SDK inputSchema                                                                                  |
+| `output`      | `ZodObject`                  | no       | Zod schema for the return; validated at runtime                                                                                    |
+| `description` | `string`                     | no       | Shown in tools/list                                                                                                                |
+| `title`       | `string`                     | no       | Human-readable display name                                                                                                        |
+| `scope`       | `string`                     | no       | OAuth scope required to see/call the tool                                                                                          |
+| `confirm`     | `boolean \| {ttlMs?}`        | no       | Dangerous tool: native `elicitation` prompt on `2026-07-28` hosts that declare it, else a `confirmation_required` token round-trip |
+| `ui`          | `{resourceUri, visibility?}` | no       | MCP Apps (SEP-1865) widget link, emitted as `_meta.ui` — see [MCP Apps Widgets](#mcp-apps-widgets-ui)                              |
 
 ### Slot 0 = `z.infer<typeof input>` when input is declared
 
@@ -142,11 +142,31 @@ payloads.
 ### `confirm:` — dangerous tools
 
 `confirm: true` (or `{ttlMs}`) gates a destructive tool behind a two-phase
-round-trip. The first call is refused with a `confirmation_required` error
-carrying a single-use token; retrying the **identical** call with that token
-in the `confirmationToken` input property executes it. The property is added
-to the advertised `inputSchema` automatically (don't declare it in `input:`),
-and it is stripped before schema validation, so the handler never sees it.
+round-trip. **One mechanism, two presentations, chosen per request:**
+
+- **Native prompt** — when the caller is on the `2026-07-28` era **and declared
+  the `elicitation` capability**, the tool returns an `input_required` result
+  and a conformant host renders a real confirmation dialog. From the caller's
+  side this is still a single `callTool`; the SDK completes the round trip.
+- **Token dance** — everyone else (the 2025 era, a modern client that cannot
+  prompt, and every programmatic path: `callTool`, the CLI, agents). The first
+  call is refused with a `confirmation_required` error carrying a single-use
+  token; retrying the **identical** call with that token in the
+  `confirmationToken` input property executes it. The property is added to the
+  advertised `inputSchema` automatically (don't declare it in `input:`) and is
+  stripped before schema validation, so the handler never sees it.
+
+Being on the new era is **not** sufficient — the SDK rejects an elicitation a
+client never declared support for, which would turn a confirmation into a hard
+protocol error. An explicit `confirmationToken` always wins, on either era, so
+a caller that already speaks the token dance keeps working.
+
+**The `ConfirmationStore` is the sole authority on both paths.** Under the
+native flow the token merely rides in MRTR `requestState`, which the client
+echoes back and the spec therefore treats as attacker-controlled: it has no
+replay defense of its own. A forged or replayed `requestState` fails
+`store.verify` exactly as a forged input token does. A declined or cancelled
+prompt does **not** run the tool, even if a valid token is present.
 
 ```ts
 @tool('delete_dataset', {input: DatasetRef, confirm: true})

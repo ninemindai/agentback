@@ -23,12 +23,17 @@ import {
   type StdioServerHandle,
 } from '@modelcontextprotocol/server/stdio';
 import {
+  CLIENT_CAPABILITIES_META_KEY,
+  inputRequired,
+  inputResponse,
+  isInputRequiredResult,
   McpServer,
   ProtocolError,
   ProtocolErrorCode,
 } from '@modelcontextprotocol/server';
 import type {
   CallToolResult,
+  InputRequiredResult,
   ListToolsResult,
 } from '@modelcontextprotocol/server';
 import {extensionFilter, Server} from '@agentback/core';
@@ -263,6 +268,12 @@ export interface CallToolOptions {
    */
   binding?: ToolBinding;
 }
+
+/**
+ * The `inputRequests` key the confirmation elicitation is filed under. Stable
+ * because the retry reads its answer back by the same name.
+ */
+const CONFIRM_REQUEST_KEY = 'confirm';
 
 export class MCPServer implements Server {
   private mcp: McpServer;
@@ -559,7 +570,11 @@ export class MCPServer implements Server {
     // token rides in the optional `confirmationToken` input property
     // (advertised in the inputSchema) and is stripped before validation.
     if (tool.meta.confirm) {
-      input = await this.enforceConfirmation(tool, input);
+      const gate = await this.enforceConfirmation(tool, input, reqCtx);
+      // A native confirmation prompt is a RESULT, not an input: it goes back to
+      // the client untouched and the tool body never runs this turn.
+      if (isInputRequiredResult(gate)) return gate;
+      input = gate;
     }
 
     const nonInjected: unknown[] = [];
@@ -652,30 +667,152 @@ export class MCPServer implements Server {
   }
 
   /**
-   * `confirm:` tools: the first call (no `confirmationToken` input property)
-   * fails with `confirmation_required` carrying a single-use token bound to
-   * the exact input; the identical retry with the token executes. Returns
-   * the input with the token stripped, ready for schema validation.
+   * MRTR affordances read off the SDK handler context.
+   *
+   * Two independent gates, and conflating them is a live regression:
+   *
+   * 1. **Era.** `envelope` is the 2026-07-28 per-request `_meta` envelope and
+   *    is **absent on the 2025 era**, so its presence is the era
+   *    discriminator — available right here, without threading the era through
+   *    `buildServer` and `dispatchTool`. Verified against a live handler on
+   *    both eras, not inferred.
+   * 2. **Capability.** The SDK REFUSES to emit an elicitation to a client that
+   *    did not declare `elicitation`, raising `MissingRequiredClientCapability`
+   *    — which would turn a confirmation into a hard protocol error for every
+   *    modern client that cannot prompt. Being on the new era does not imply
+   *    being able to ask a human anything. Found by the existing confirm tests
+   *    failing when this shipped gated on era alone.
+   *
+   * `canElicit` is therefore the real gate; `modern` alone is never enough.
+   */
+  private mrtrContext(reqCtx: Context): {
+    canElicit: boolean;
+    requestState?: string;
+    responses?: Record<string, unknown>;
+  } {
+    const extra = reqCtx.getSync(MCPBindings.REQUEST_EXTRA, {
+      optional: true,
+    }) as
+      | {
+          mcpReq?: {
+            envelope?: Record<string, unknown>;
+            requestState?: () => unknown;
+            inputResponses?: Record<string, unknown>;
+          };
+        }
+      | undefined;
+    const req = extra?.mcpReq;
+    if (!req?.envelope) return {canElicit: false};
+    const caps = req.envelope[CLIENT_CAPABILITIES_META_KEY] as
+      {elicitation?: unknown} | undefined;
+    const state = req.requestState?.();
+    return {
+      canElicit: Boolean(caps?.elicitation),
+      ...(typeof state === 'string' && state ? {requestState: state} : {}),
+      ...(req.inputResponses ? {responses: req.inputResponses} : {}),
+    };
+  }
+
+  /**
+   * `confirm:` tools: a first call is refused, and only an explicitly
+   * confirmed retry executes.
+   *
+   * Two presentations of ONE mechanism:
+   *
+   * - **2025 era** — the call fails with `confirmation_required` carrying a
+   *   single-use token; the identical retry passes it back in the
+   *   `confirmationToken` input property.
+   * - **2026-07-28, client declares `elicitation`** — the call returns a
+   *   native `input_required` result with an elicitation, so a conformant host
+   *   renders a real confirmation prompt instead of asking the model to replay
+   *   a token. The token rides in `requestState`.
+   *
+   * A modern client that cannot elicit falls back to the token dance, because
+   * the SDK rejects an elicitation it did not declare support for. The new era
+   * is necessary but not sufficient.
+   *
+   * **The `ConfirmationStore` remains the sole authority on both paths**, and
+   * that is the load-bearing decision here. `requestState` is echoed back by
+   * the client, so the MCP spec requires treating it as attacker-controlled on
+   * re-entry; it carries no replay defense, no revocation and no staleness of
+   * its own. Using it merely to *transport* a token the server already issued
+   * — single-use, TTL'd, and fingerprinted against the exact input — means a
+   * forged or replayed `requestState` fails `store.verify` exactly as a forged
+   * input token does. Had the confirmation itself been encoded into
+   * `requestState`, this migration would have traded a server-authoritative
+   * gate for a client-held claim.
+   *
+   * Returns the input with the token stripped (ready for schema validation),
+   * or an `InputRequiredResult` the caller must return to the client verbatim.
    */
   protected async enforceConfirmation(
     tool: ToolBinding,
     input: unknown,
-  ): Promise<unknown> {
+    reqCtx?: Context,
+  ): Promise<unknown | InputRequiredResult> {
     const raw =
       input && typeof input === 'object'
         ? {...(input as Record<string, unknown>)}
         : {};
-    const token = raw.confirmationToken;
+    const explicit = raw.confirmationToken;
     delete raw.confirmationToken;
     const scope = `tool:${tool.meta.name}`;
     const fingerprint = stableStringify(raw);
     const store = await this.confirmationStore();
+    const mrtr = reqCtx ? this.mrtrContext(reqCtx) : {canElicit: false};
+
+    // A host that rendered the prompt may have had the user say no. Executing
+    // anyway because a token happens to be present would defeat the point of
+    // asking, so a decline is checked BEFORE the token.
+    if (mrtr.responses) {
+      const answer = inputResponse(mrtr.responses, CONFIRM_REQUEST_KEY);
+      if (answer.kind === 'elicit' && answer.action !== 'accept') {
+        // 'decline' -> declined, 'cancel' -> cancelled.
+        const past = answer.action === 'cancel' ? 'cancelled' : 'declined';
+        const err = new Error(
+          `Confirmation for ${tool.meta.name} was ${past}. The tool did not run.`,
+        );
+        const e = err as Error & {code: string; publicMessage: string};
+        e.code = ErrorCodes.CONFIRMATION_INVALID;
+        e.publicMessage = err.message;
+        throw err;
+      }
+    }
+
+    // The explicit input property wins, so a caller that already knows the
+    // token dance keeps working on either era.
+    const token =
+      typeof explicit === 'string' && explicit ? explicit : mrtr.requestState;
+
     if (typeof token !== 'string' || !token) {
       const ttlMs =
         typeof tool.meta.confirm === 'object'
           ? tool.meta.confirm.ttlMs
           : undefined;
       const issued = store.issue(scope, fingerprint, ttlMs);
+      if (mrtr.canElicit) {
+        return inputRequired({
+          inputRequests: {
+            [CONFIRM_REQUEST_KEY]: inputRequired.elicit({
+              message:
+                `Confirm running ${tool.meta.name}` +
+                `${tool.meta.description ? ` — ${tool.meta.description}` : ''}.`,
+              requestedSchema: {
+                type: 'object',
+                properties: {
+                  confirm: {
+                    type: 'boolean',
+                    description: `Run ${tool.meta.name} with these arguments.`,
+                  },
+                },
+                required: ['confirm'],
+              },
+            }),
+          },
+          // Transport only — `store.verify` below is what actually authorizes.
+          requestState: issued,
+        });
+      }
       const err = new Error(
         `Tool ${tool.meta.name} requires confirmation. Retry the identical ` +
           `call with the issued token in the 'confirmationToken' input ` +
@@ -999,6 +1136,10 @@ export class MCPServer implements Server {
           const ctx = this.requestContextFor(extra);
 
           const result = await this.dispatchTool(t, input, ctx);
+          // A `confirm:` tool asking for native confirmation (2026-07-28).
+          // This is a protocol result, not tool output — returning it verbatim
+          // is what lets a conformant host render the prompt.
+          if (isInputRequiredResult(result)) return result as never;
           // Pre-shaped MCP content (escape hatch).
           if (
             result &&

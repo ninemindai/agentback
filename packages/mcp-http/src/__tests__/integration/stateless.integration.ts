@@ -353,6 +353,85 @@ describe('confirm: tools on the modern era', () => {
     await client.close();
   });
 
+  /** A modern client that CAN prompt, answering every elicitation the same way. */
+  async function elicitingClient(action: 'accept' | 'decline' | 'cancel') {
+    const prompts: string[] = [];
+    const client = new Client(
+      {name: 'c', version: '0.0.0'},
+      {
+        versionNegotiation: {mode: 'auto' as const},
+        capabilities: {elicitation: {}},
+      },
+    );
+    client.setRequestHandler(
+      'elicitation/create',
+      async (req: {params: {message: string}}) => {
+        prompts.push(req.params.message);
+        return {
+          action,
+          ...(action === 'accept' ? {content: {confirm: true}} : {}),
+        };
+      },
+    );
+    await client.connect(new StreamableHTTPClientTransport(mcpUrl));
+    return {client, prompts};
+  }
+
+  it('asks a capable host natively, in ONE call from the caller', async () => {
+    // The point of S6. The caller makes one `callTool`; the host renders a real
+    // prompt and the SDK completes the round trip. No token is replayed by the
+    // model, which is what the token dance always asked it to do.
+    const {client, prompts} = await elicitingClient('accept');
+    const res = await client.callTool({
+      name: 'deploy',
+      arguments: {env: 'prod'},
+    });
+    expect(prompts).toEqual(['Confirm running deploy.']);
+    expect(res.isError).toBeFalsy();
+    expect(
+      JSON.parse((res.content as {type: string; text: string}[])[0].text),
+    ).toEqual({deployed: 'prod'});
+    await client.close();
+  });
+
+  for (const action of ['decline', 'cancel'] as const) {
+    it(`does not run the tool when the human says no (${action})`, async () => {
+      // A prompt whose answer is ignored is worse than no prompt.
+      const {client} = await elicitingClient(action);
+      const res = await client.callTool({
+        name: 'deploy',
+        arguments: {env: 'prod'},
+      });
+      expect(res.isError).toBe(true);
+      expect(errorOf(res).code).toBe('confirmation_invalid');
+      expect(errorOf(res).message).toMatch(
+        action === 'cancel' ? /cancelled/ : /declined/,
+      );
+      await client.close();
+    });
+  }
+
+  it('falls back to the token dance for a modern client that cannot prompt', async () => {
+    // Being on the new era does NOT imply being able to ask a human anything.
+    // The SDK rejects an elicitation a client never declared, so gating on era
+    // alone turned every such confirmation into a protocol error — which is how
+    // this was caught. `capabilities` is left empty here deliberately.
+    const client = new Client(
+      {name: 'c', version: '0.0.0'},
+      {versionNegotiation: {mode: 'auto' as const}},
+    );
+    await client.connect(new StreamableHTTPClientTransport(mcpUrl));
+    expect(client.getProtocolEra()).toBe('modern');
+
+    const first = await client.callTool({
+      name: 'deploy',
+      arguments: {env: 'prod'},
+    });
+    expect(errorOf(first).code).toBe('confirmation_required');
+    expect(errorOf(first).confirmationToken).toBeTruthy();
+    await client.close();
+  });
+
   it('still refuses a valid token against a tampered payload', async () => {
     const client = new Client(
       {name: 'c', version: '0.0.0'},
