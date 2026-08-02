@@ -1,8 +1,12 @@
 # Proposal: adopt MCP protocol revision `2026-07-28` (stateless core)
 
-**Status:** **DESIGN** (2026-07-29). Phase 1 — the SDK v1→v2 package swap with
-zero wire change — shipped in `0.8.0` (`910966a`, `c9862e8`, `d59a1ac`). This
-document is Phase 2: putting `2026-07-28` bytes on the wire.
+**Status:** **PHASE 2 SHIPPED.** The default flipped to `protocol: 'both'` in
+0.9.0 on both HTTP and stdio, so `2026-07-28` bytes are on the wire out of the
+box and 2025-era clients are served from the same endpoint. The **deletion**
+step (S7b) is still gated — see §5.1.
+
+Filed 2026-07-29. Phase 1 — the SDK v1→v2 package swap with zero wire change —
+shipped in `0.8.0` (`910966a`, `c9862e8`, `d59a1ac`).
 
 **Nothing here is on a deadline.** SDK v2 speaks the 2025 era by default, the
 2025 era has a 12-month deprecation window, and v1 gets security fixes for ~6
@@ -236,17 +240,24 @@ approval. So the deletion is gated on this table, not on the flip having shipped
 
 **Client SDKs.** What is actually exercised in CI, not what is assumed to work:
 
-| Client                                | Era(s)         | Covered by                                        |
-| ------------------------------------- | -------------- | ------------------------------------------------- |
-| `@modelcontextprotocol/client@2.0.0`  | modern, legacy | every `mcp-http` integration test                 |
-| `@modelcontextprotocol/sdk@1.17.0`    | legacy only    | `legacy-client-interop.integration.ts` (aliased)  |
-| `@modelcontextprotocol/sdk` 1.0–1.16  | legacy only    | **untested**                                      |
-| `@modelcontextprotocol/sdk` 1.18–1.29 | legacy only    | **untested** (1.25 changed the `zod` peer to 3‖4) |
+| Client                               | Newest revision it speaks | Era(s)         | Covered by                                       |
+| ------------------------------------ | ------------------------- | -------------- | ------------------------------------------------ |
+| `@modelcontextprotocol/client@2.0.0` | `2026-07-28`              | modern, legacy | every `mcp-http` integration test                |
+| `@modelcontextprotocol/sdk@1.29.0`   | `2025-11-25`              | legacy only    | `legacy-client-interop.integration.ts` (aliased) |
+| `@modelcontextprotocol/sdk@1.17.0`   | `2025-06-18`              | legacy only    | same                                             |
+| `@modelcontextprotocol/sdk@1.11.0`   | `2025-03-26`              | legacy only    | same                                             |
 
-1.17.0's `SUPPORTED_PROTOCOL_VERSIONS` is
-`['2025-06-18', '2025-03-26', '2024-11-05', '2024-10-07']`; the v2 server's is
-that list plus `2025-11-25`. So the legacy era is not one revision — it is four,
-and the interop test pins only the newest of them.
+**The legacy era is not one revision.** The v2 server supports
+`['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05', '2024-10-07']`, and a
+client negotiates down from whatever it knows. The three pinned clients were
+chosen so that **every 2025 revision is exercised as some client's newest** —
+1.11.0 is the first 1.x with a Streamable HTTP transport at all, 1.29.0 the last
+before the v2 package split, 1.17.0 the midpoint. Each runs the full interop
+suite (27 tests).
+
+The 2024 revisions are reachable only by clients older than 1.11.0, which
+predate the transport this endpoint speaks; they are out of scope by
+construction rather than by omission.
 
 **Transports.**
 
@@ -278,19 +289,28 @@ one.
 **Removal criteria.** All of these before the deletion step, none of them
 implied by the flip:
 
-1. The 1.x interop test covers **more than one** 1.x release — at minimum the
-   oldest version we intend to claim support for, plus 1.29 (the last before
-   the v2 split).
+1. ~~The 1.x interop test covers **more than one** 1.x release.~~ **MET** —
+   1.11.0 / 1.17.0 / 1.29.0, covering every 2025 revision as some client's
+   newest.
 2. A documented rollback switch (`protocol: 'legacy'`) has shipped and been
-   released for at least one full version.
+   released for at least one full version. **MET at 0.8.0**, where `protocol`
+   shipped with `'legacy'` as the default and therefore as a proven path.
 3. Resumability's removal is announced as a **breaking change**, not a cleanup,
-   with `eventStore` deprecated in a release that still honours it.
+   with `eventStore` deprecated in a release that still honours it. **NOT MET.**
 4. At least one released version has served `protocol: 'both'` as the _opt-in_
-   default, so adoption is measurable rather than assumed.
+   default, so adoption is measurable rather than assumed. **MET at 0.8.0.**
 
-The flip date should likewise be gated on adoption signal — example coverage, a
-documented rollback, one release of explicit opt-in — rather than on "Phase 2
-shipped", which is a statement about our progress, not about anyone's need.
+**Two of the four gate the flip; all four gate the deletion.** They are not the
+same decision and should not be made in the same release:
+
+- The **flip** (default becomes `'both'`) is reversible by one config line, and
+  every criterion bearing on it — interop breadth, a proven rollback switch, a
+  release of opt-in — is now met. `'both'` serves 2025 clients by construction,
+  so flipping does not drop support for anything; it changes which path is
+  exercised by default.
+- The **deletion** additionally needs criterion 3, because resumability is the
+  one behaviour with no replacement. Deleting it is a capability removal that
+  must be announced as such, not folded into a cleanup commit.
 
 ---
 
@@ -340,16 +360,17 @@ Needs a compatibility answer before Phase 2 ships, not a footnote.
 
 Each step is independently shippable and independently revertable.
 
-| Step    | Scope                                                            | Depends on |
-| ------- | ---------------------------------------------------------------- | ---------- |
-| **S1**  | ~~Memoize schema emission in `MCPServer`~~ — **SHIPPED**, see §4 | —          |
-| **S2**  | ~~Host-neutral session binder~~ — **SHIPPED**, see §3            | —          |
-| **S3**  | ~~Modern-era test harness~~ — **SHIPPED**, see §10               | —          |
-| **S4a** | ~~`protocol: 'both'` on the fetch host, opt-in~~ — **SHIPPED**   | S1–S3      |
-| **S4b** | ~~Express host + per-request DI context (D7)~~ — **SHIPPED**     | S4a        |
-| **S5**  | ~~`serveStdio`~~ — **SHIPPED** (`protocol: 'both'`, opt-in)      | S4         |
-| **S6**  | MRTR for `confirm:` — **ENHANCEMENT, not a blocker** (see below) | S4         |
-| **S7**  | Flip the default; deprecate the old mounts                       | S4, S5, D3 |
+| Step    | Scope                                                               | Depends on   |
+| ------- | ------------------------------------------------------------------- | ------------ |
+| **S1**  | ~~Memoize schema emission in `MCPServer`~~ — **SHIPPED**, see §4    | —            |
+| **S2**  | ~~Host-neutral session binder~~ — **SHIPPED**, see §3               | —            |
+| **S3**  | ~~Modern-era test harness~~ — **SHIPPED**, see §10                  | —            |
+| **S4a** | ~~`protocol: 'both'` on the fetch host, opt-in~~ — **SHIPPED**      | S1–S3        |
+| **S4b** | ~~Express host + per-request DI context (D7)~~ — **SHIPPED**        | S4a          |
+| **S5**  | ~~`serveStdio`~~ — **SHIPPED** (`protocol: 'both'`, opt-in)         | S4           |
+| **S6**  | MRTR for `confirm:` — **ENHANCEMENT, not a blocker** (see below)    | S4           |
+| **S7a** | ~~Flip the default to `'both'` (HTTP + stdio)~~ — **SHIPPED 0.9.0** | S4, S5, D3   |
+| **S7b** | Delete the session machinery                                        | §5.1 crit. 3 |
 
 S1–S3 are pure refactors with no wire change and could land any time. S4 is the
 first commit that changes bytes on the wire.

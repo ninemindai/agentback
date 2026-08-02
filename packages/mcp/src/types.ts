@@ -19,15 +19,17 @@ export interface MCPServerConfig {
   /**
    * Protocol eras this server speaks over **stdio**.
    *
-   * - `'legacy'` (default) — the 2025-era `initialize` handshake only, exactly
-   *   as a hand-wired `StdioServerTransport` serves it.
-   * - `'both'` — serve via the SDK's `serveStdio`, where the opening exchange
-   *   selects the era and one instance is pinned for the connection: a
-   *   2026-07-28 client is served the modern protocol, a 2025-era client is
-   *   still served as before.
+   * - `'both'` (**default**) — serve via the SDK's `serveStdio`, where the
+   *   opening exchange selects the era and one instance is pinned for the
+   *   connection: a 2026-07-28 client is served the modern protocol, a
+   *   2025-era client is still served exactly as before.
+   * - `'legacy'` — the 2025-era `initialize` handshake only, exactly as a
+   *   hand-wired `StdioServerTransport` serves it. The rollback switch.
    *
-   * Opt-in while the ecosystem catches up, mirroring `mcp-http`'s
-   * `protocol: 'both'`. See
+   * The default flipped to `'both'` because it is strictly additive over stdio:
+   * there is no session concept here, so serving the modern era costs a 2025
+   * client nothing. Verified against real spawned processes in
+   * `stdio-eras.integration.ts`. Mirrors `mcp-http`'s `protocol`. See
    * [docs/proposals/mcp-2026-stateless.md](../../../docs/proposals/mcp-2026-stateless.md).
    *
    * Note that on a 2026-pinned connection the SDK's `getClientCapabilities()` /
@@ -52,7 +54,8 @@ export const DEFAULT_MCP_CONFIG: Required<
 > & {transports: NonNullable<MCPServerConfig['transports']>} = {
   name: 'agentback-mcp',
   version: '0.0.0',
-  // 2025-era only until the ecosystem catches up; `'both'` is opt-in.
-  protocol: 'legacy',
+  // Serve both eras (0.9.0). Strictly additive over stdio — there is no
+  // session concept here, so a 2025 client is unaffected. `'legacy'` opts out.
+  protocol: 'both',
   transports: {stdio: true},
 };

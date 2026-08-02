@@ -1,6 +1,6 @@
 {
   "name": "@agentback/mcp-http",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -39,7 +39,9 @@
   "devDependencies": {
     "@agentback/testlab": "workspace:~",
     "@modelcontextprotocol/client": "^2.0.0",
-    "mcp-client-2025": "npm:@modelcontextprotocol/sdk@1.17.0",
+    "mcp-client-1-11": "npm:@modelcontextprotocol/sdk@1.11.0",
+    "mcp-client-1-17": "npm:@modelcontextprotocol/sdk@1.17.0",
+    "mcp-client-1-29": "npm:@modelcontextprotocol/sdk@1.29.0",
     "vitest": "~4.1.10",
     "zod": "^4.4.3"
   },

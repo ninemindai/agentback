@@ -161,11 +161,15 @@ that metadata and tags the binding — **you never call `.tag()`**. At
 their `@tool`/`@resource`/`@prompt` methods, and registers each with the SDK —
 resolving the instance through its own binding, so constructor `@inject` works.
 
-> **Protocol revision.** By default AgentBack serves the 2025-era protocol on
-> both stdio and HTTP. To also serve **2026-07-28** (the stateless revision), set
-> `protocol: 'both'` on `installMcpHttp` or `protocol: 'both'` on the
-> `MCPServer` config — both serve the older era from the same endpoint, so they
-> are safe to enable before clients migrate. See
+> **Protocol revision.** Since 0.9.0 AgentBack serves **`2026-07-28` and the
+> 2025 era from the same endpoint** by default, on both stdio and HTTP — you get
+> the current revision without asking, and existing clients keep working. Pin
+> back with `protocol: 'legacy'` on `installMcpHttp` or on the `MCPServer`
+> config.
+>
+> Over HTTP the default is also **stateless**: no `Mcp-Session-Id`, one server
+> per request, so `perSession` binders run per request and `eventStore`
+> resumability does not apply. See
 > [the migration proposal](../proposals/mcp-2026-stateless.md).
 
 ```mermaid

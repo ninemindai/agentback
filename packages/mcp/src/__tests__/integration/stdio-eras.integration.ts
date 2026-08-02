@@ -23,9 +23,9 @@ import {StdioClientTransport} from '@modelcontextprotocol/client/stdio';
 const dir = join(import.meta.dirname, 'stdio-fixtures');
 
 /** Write a tiny server that boots MCPServer over stdio with the given config. */
-function serverScript(protocol: 'legacy' | 'both'): string {
+function serverScript(protocol: 'legacy' | 'both' | undefined): string {
   mkdirSync(dir, {recursive: true});
-  const file = join(dir, `server-${protocol}.mjs`);
+  const file = join(dir, `server-${protocol ?? 'default'}.mjs`);
   const repo = join(import.meta.dirname, '..', '..', '..', '..', '..');
   writeFileSync(
     file,
@@ -49,7 +49,7 @@ const app = new Application();
 app.component(MCPComponent);
 app.configure('servers.MCPServer').to({
   name: 'stdio-test', version: '0.0.0',
-  protocol: ${JSON.stringify(protocol)},
+  ${protocol === undefined ? '' : `protocol: ${JSON.stringify(protocol)},`}
   transports: {stdio: true},
 });
 app.service(Tools);
@@ -114,10 +114,32 @@ describe('stdio protocol eras', () => {
     await client.close();
   }, 30_000);
 
-  it('stays 2025-only by default', async () => {
-    // The default must not have moved: an auto-negotiating client probes,
-    // finds no modern support, and falls back rather than failing.
+  it("serves 2025 only when pinned to protocol: 'legacy'", async () => {
+    // The rollback switch. An auto-negotiating client probes, finds no modern
+    // support, and falls back rather than failing — so pinning back is safe
+    // for clients that already moved on.
+    //
+    // This test used to be called "stays 2025-only by default" and asserted
+    // the same thing. The default moved to 'both' in 0.9.0; the assertion is
+    // still right but it is now about an explicit opt-out, not a default, and
+    // a name that says otherwise is worse than no name.
     const client = await connect(legacy, true);
+    expect(client.getProtocolEra()).toBe('legacy');
+    expect((await client.listTools()).tools.map(t => t.name)).toContain('echo');
+    await client.close();
+  }, 30_000);
+
+  it('serves the modern era with no `protocol` set at all', async () => {
+    // The flip itself. Nothing but `transports: {stdio: true}` configured.
+    const client = await connect(serverScript(undefined), true);
+    expect(client.getProtocolEra()).toBe('modern');
+    expect((await client.listTools()).tools.map(t => t.name)).toContain('echo');
+    await client.close();
+  }, 30_000);
+
+  it('still serves a 2025 client with no `protocol` set', async () => {
+    // The half that makes the flip safe: the default must not drop anyone.
+    const client = await connect(serverScript(undefined), false);
     expect(client.getProtocolEra()).toBe('legacy');
     expect((await client.listTools()).tools.map(t => t.name)).toContain('echo');
     await client.close();

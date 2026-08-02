@@ -110,6 +110,7 @@ describe('mcp-http (per-session tool discovery)', () => {
     await app.get<MCPServer>('servers.MCPServer');
 
     await installMcpHttp(app, {
+      protocol: 'legacy',
       auth: {
         verifier,
         resource: 'https://example.test/mcp',
@@ -291,6 +292,7 @@ describe('perSession host parity', () => {
         app.service(SharedTools);
         await app.get<MCPServer>('servers.MCPServer');
         await installMcpHttp(app, {
+          protocol: 'legacy',
           auth: {
             verifier,
             resource: 'https://example.test/mcp',

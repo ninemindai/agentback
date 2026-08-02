@@ -226,9 +226,22 @@ export function setupStateless(
   mcp: MCPServer,
   options: McpHttpOptions,
 ): StatelessSetup {
-  const enabled = options.protocol === 'both';
-  if (!enabled) return {enabled: false};
+  if (options.protocol === 'legacy') return {enabled: false};
 
+  // `eventStore` is an explicit request for resumable SSE, which is a SESSION
+  // feature — the stateless era has no sessions and cannot replay. So an app
+  // that configured it and did not name a protocol keeps sessions: the default
+  // flip must never silently remove a capability the caller asked for by name.
+  // Setting `protocol` explicitly always wins, in either direction.
+  if (options.protocol === undefined && options.eventStore) {
+    log.info(
+      'serving the 2025 era (sessions) because `eventStore` is set — ' +
+        'resumable SSE replay needs a session, and the default ' +
+        "protocol: 'both' has none. Pass protocol: 'both' explicitly to take " +
+        'the 2026-07-28 revision and drop resumability.',
+    );
+    return {enabled: false};
+  }
   if (options.eventStore) {
     log.warn(
       "protocol: 'both' ignores `eventStore` — resumable SSE replay is a " +

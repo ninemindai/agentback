@@ -61,39 +61,55 @@ For a localhost-only server, set `allowedHosts: ['127.0.0.1:PORT', 'localhost:PO
 `installMcpHttp` throws if no MCP server is bound (add `MCPComponent` first).
 For a non-`RestApplication` Express app, use `mountMcpHttp(mcpServer, expressApp, opts)`.
 
-## Protocol: sessions or stateless
+## Protocol: stateless (default) or sessions
 
-`protocol` picks how the endpoint serves MCP. The default is unchanged.
+`protocol` picks how the endpoint serves MCP. **The default is `'both'` as of
+0.9.0** — you get the `2026-07-28` revision without asking, and 2025-era clients
+keep working from the same URL.
 
-|                              | `'legacy'` (default)   | `'both'`                             |
-| ---------------------------- | ---------------------- | ------------------------------------ |
-| Protocol revision            | 2025-era only          | **2026-07-28 + 2025, same endpoint** |
-| `Mcp-Session-Id`             | minted on `initialize` | none                                 |
-| `GET` / `DELETE` on `/mcp`   | SSE stream / terminate | `405` (session ops)                  |
-| Server instance              | one per session        | one per **request**                  |
-| `eventStore` (resumable SSE) | supported              | not applicable — warns               |
-| `perSession` binder          | once per session       | once per **request** (see below)     |
-| Scaling                      | needs session affinity | plain round-robin, no shared storage |
+|                              | `'both'` (default)                   | `'legacy'`             |
+| ---------------------------- | ------------------------------------ | ---------------------- |
+| Protocol revision            | **2026-07-28 + 2025, same endpoint** | 2025-era only          |
+| `Mcp-Session-Id`             | none                                 | minted on `initialize` |
+| `GET` / `DELETE` on `/mcp`   | `405` (session ops)                  | SSE stream / terminate |
+| Server instance              | one per **request**                  | one per session        |
+| `eventStore` (resumable SSE) | not applicable — see below           | supported              |
+| `perSession` binder          | once per **request** (see below)     | once per session       |
+| Scaling                      | plain round-robin, no shared storage | needs session affinity |
+
+Both hosts support both: the Express mount adapts the SDK's web-standards-only
+handler with `toNodeHandler`, the fetch/edge mount uses it directly.
+
+### Why the default flipped, and how to undo it
+
+`'both'` serves 2025-era clients **by construction**, so this is not a drop in
+client support — it is verified against three released 1.x SDKs (1.11.0 /
+1.17.0 / 1.29.0, covering every 2025 revision) on top of the current client.
+
+The rollback is one line, with nothing else to change:
 
 ```ts
-await installMcpHttp(app, {protocol: 'both'});
+await installMcpHttp(app, {protocol: 'legacy'});
 ```
 
-Both hosts support it: the Express mount adapts the SDK's web-standards-only
-handler with `toNodeHandler`, the fetch/edge mount uses it directly. Clients that
-speak either era are served from the same URL, so this is safe to turn on before
-your clients have migrated.
+Two things do change under the default, because sessions are gone:
+
+⚠️ **`perSession` now runs on every request.** If your binder does an
+entitlement lookup, wrap it in [`cachedPerPrincipal`](#caching-a-per-request-binder)
+or that lookup starts tracking request volume.
+
+⚠️ **`eventStore` (resumable SSE replay) needs a session.** Rather than let the
+new default silently delete it, setting `eventStore` **without** naming a
+protocol keeps the endpoint on `'legacy'` and logs why. An explicit
+`protocol: 'both'` alongside it warns and drops resumability — naming the
+protocol is always decisive.
 
 Under `'both'` each request builds its own server and its own DI context,
 released when the SDK closes that request's server — after any streamed
 progress, so streaming tools are unaffected.
 
-⚠️ **`perSession` now runs on every request.** If your binder does an
-entitlement lookup, wrap it in [`cachedPerPrincipal`](#caching-a-per-request-binder)
-or that lookup tracks request volume.
-
-Stdio has its own switch — see [`@agentback/mcp`](../mcp/README.md)'s
-`protocol: 'both'`.
+Stdio has the same switch and the same default — see
+[`@agentback/mcp`](../mcp/README.md).
 
 ## Caching a per-request binder
 

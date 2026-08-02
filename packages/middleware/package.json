@@ -1,6 +1,6 @@
 {
   "name": "@agentback/middleware",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Runtime-neutral middleware chain machinery (Express-free) shared by @agentback/rest and the @agentback/express host",
   "type": "module",
   "main": "dist/index.js",

@@ -315,15 +315,22 @@ await app.start();
 `installMcpHttp` throws if no MCP server is bound — add `MCPComponent` first.
 For a non-`RestApplication` Express app use `mountMcpHttp(mcpServer, expressApp, opts)`.
 
-### Stateless serving (`2026-07-28`)
+### Stateless serving (`2026-07-28`) — the default since 0.9.0
 
 `protocol: 'both'` swaps the session machinery for the SDK's
 `createMcpHandler`, which serves the **2026-07-28** revision **and** 2025-era
-traffic from the same endpoint. Opt-in; the default is unchanged.
+traffic from the same endpoint. **This is the default** — you do not need to
+set it. Pin back with `protocol: 'legacy'`:
 
 ```ts
-await installMcpHttp(app, {protocol: 'both'});
+await installMcpHttp(app); // 2026-07-28 + 2025, stateless
+await installMcpHttp(app, {protocol: 'legacy'}); // 2025-era sessions only
 ```
+
+Backward compatibility is by construction, not by promise: a 2025-era client is
+served from the same URL. Verified against `@modelcontextprotocol/sdk` 1.11.0,
+1.17.0 and 1.29.0 — covering every 2025 revision — in
+`legacy-client-interop.integration.ts`.
 
 There is no session: no `Mcp-Session-Id`, `GET`/`DELETE` answer `405`, and each
 request builds its own server — so the endpoint scales behind a plain
@@ -335,16 +342,19 @@ Consequences to know before enabling:
 - **`perSession` becomes per-request.** Same binder contract, but it now runs on
   every request instead of once per session. Wrap an expensive lookup in
   `cachedPerPrincipal` (below) or it tracks request volume.
-- **`eventStore` does not apply.** Resumable SSE replay is a session feature;
-  setting it warns.
+- **`eventStore` does not apply.** Resumable SSE replay is a session feature.
+  Setting it **without** naming a protocol keeps the endpoint on `'legacy'`
+  (logged), so the default never deletes a capability you asked for by name; an
+  explicit `protocol: 'both'` alongside it warns and drops resumability.
 - **`confirm:` is unaffected** — it is userland (tool error + input property), so
   it round-trips across separate stateless requests unchanged.
 
-Stdio has its own switch: `protocol: 'both'` on the `MCPServer` config routes it
-through `serveStdio`, pinning the era per connection.
+Stdio has the same switch and the same default: `protocol: 'both'` routes it
+through `serveStdio`, pinning the era per connection. The stdio flip is strictly
+additive — no session concept there, so a 2025 client is unaffected.
 
 ```ts
-app.configure('servers.MCPServer').to({protocol: 'both'});
+app.configure('servers.MCPServer').to({protocol: 'legacy'}); // pin back
 ```
 
 ### Caching a per-request binder

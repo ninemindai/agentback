@@ -115,7 +115,7 @@ describe('mcp-http (Streamable HTTP transport)', () => {
     });
     app.service(DemoTools);
     await app.get<MCPServer>('servers.MCPServer');
-    await installMcpHttp(app);
+    await installMcpHttp(app, {protocol: 'legacy'});
     await app.start();
     const server = await app.restServer;
     mcpUrl = new URL(server.url + '/mcp');
@@ -271,7 +271,7 @@ describe('mcp-http (app-level middleware chain fronts /mcp)', () => {
     });
 
     await app.get<MCPServer>('servers.MCPServer');
-    await installMcpHttp(app);
+    await installMcpHttp(app, {protocol: 'legacy'});
     await app.start();
     try {
       const url = new URL((await app.restServer).url + '/mcp');
