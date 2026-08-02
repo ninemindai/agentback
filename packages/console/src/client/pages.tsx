@@ -11,6 +11,7 @@ import {App as ContextApp} from '@agentback/context-explorer/client/App';
 import {App as SchemaApp} from '@agentback/schema-explorer/client/App';
 import {pages as apiPages} from '@agentback/rest-explorer/console';
 import {pages as mcpPages} from '@agentback/mcp-inspector/console';
+import {pages as agentPages} from '@agentback/console-agents/console';
 import {publishFocus} from './focus.js';
 import type {ConsolePage} from './types.js';
 
@@ -22,7 +23,13 @@ const contextPages: ConsolePage[] = [
     order: 10,
     route: '/context',
     liveRefresh: 'prop',
-    component: ({apiBase, reloadNonce}: {apiBase: string; reloadNonce?: number}) => (
+    component: ({
+      apiBase,
+      reloadNonce,
+    }: {
+      apiBase: string;
+      reloadNonce?: number;
+    }) => (
       <ContextApp
         apiBase={apiBase}
         title="Context Explorer"
@@ -43,7 +50,13 @@ const schemaPages: ConsolePage[] = [
     order: 40,
     route: '/schema',
     liveRefresh: 'prop',
-    component: ({apiBase, reloadNonce}: {apiBase: string; reloadNonce?: number}) => (
+    component: ({
+      apiBase,
+      reloadNonce,
+    }: {
+      apiBase: string;
+      reloadNonce?: number;
+    }) => (
       <SchemaApp
         apiBase={apiBase}
         title="Schema Explorer"
@@ -61,4 +74,8 @@ export const pages: ConsolePage[] = [
   ...schemaPages,
   ...apiPages,
   ...mcpPages,
+  // Renders an explanation rather than a prompt box unless the feature is
+  // enabled AND an agent is bound — the page is statically bundled, so it
+  // cannot be omitted at build time.
+  ...agentPages,
 ];

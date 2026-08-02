@@ -115,6 +115,12 @@ importers:
       '@agentback/agents':
         specifier: workspace:*
         version: link:../../packages/agents
+      '@agentback/console':
+        specifier: workspace:*
+        version: link:../../packages/console
+      '@agentback/console-agents':
+        specifier: workspace:*
+        version: link:../../packages/console-agents
       '@agentback/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -124,6 +130,9 @@ importers:
       '@agentback/metering':
         specifier: workspace:*
         version: link:../../packages/metering
+      '@agentback/openapi':
+        specifier: workspace:*
+        version: link:../../packages/openapi
       '@agentback/rest':
         specifier: workspace:*
         version: link:../../packages/rest
@@ -990,6 +999,9 @@ importers:
 
   packages/console:
     dependencies:
+      '@agentback/console-agents':
+        specifier: workspace:~
+        version: link:../console-agents
       '@agentback/console-theme':
         specifier: workspace:~
         version: link:../console-theme
@@ -1057,6 +1069,49 @@ importers:
       zod:
         specifier: ^4.4.3
         version: 4.4.3
+
+  packages/console-agents:
+    dependencies:
+      '@agentback/agents':
+        specifier: workspace:~
+        version: link:../agents
+      '@agentback/common':
+        specifier: workspace:~
+        version: link:../common
+      '@agentback/console':
+        specifier: workspace:~
+        version: link:../console
+      '@agentback/core':
+        specifier: workspace:~
+        version: link:../core
+      '@agentback/openapi':
+        specifier: workspace:~
+        version: link:../openapi
+      '@agentback/rest':
+        specifier: workspace:~
+        version: link:../rest
+      '@agentback/security':
+        specifier: workspace:~
+        version: link:../security
+      tslib:
+        specifier: ^2.8.1
+        version: 2.8.1
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@agentback/testing':
+        specifier: workspace:~
+        version: link:../testing
+      '@types/react':
+        specifier: ~19.2.17
+        version: 19.2.17
+      react:
+        specifier: ~19.2.7
+        version: 19.2.7
+      vitest:
+        specifier: ~4.1.10
+        version: 4.1.10(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(vite@8.0.13(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
 
   packages/console-chat:
     dependencies:

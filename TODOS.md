@@ -2,45 +2,33 @@
 
 ## Examples
 
-### Adopt AgentError across the demo and examples once released
+### ~~Session caching of introspection builders~~ — CLOSED, measured, not worth it
 
-**What:** `AgentError` (added in `@agentback/openapi`, commit `9cc545a`) shipped in **0.2.0** — this is now actionable: replace the hand-rolled error shape in the demo's `WeatherError` with `extends AgentError`, and adopt `AgentError` in `examples/` services that throw client-correctable errors.
+**Decision (2026-08-02): do not build.** The TODO's own gate was "don't build
+until a perf problem is measured." Measured, at three scales (synthetic app,
+warm, 10–30 iterations):
 
-**Why:** The demo's `WeatherService.WeatherError` currently hand-rolls the same `statusCode`/`code`/`publicMessage`/`retryable` fields that `AgentError` now provides (done deliberately so the demo keeps building against the published 0.1.2). Once `AgentError` is on npm, `extends AgentError` deletes that duplication and makes the demo the canonical example of the framework's client-error primitive — the same "flagship demo should use the supported path" argument that drove the createTestApp conversion.
+| tools | routes | `buildModel` | `buildSchemaInventory` | `buildOkfBundle` |
+| ----- | ------ | ------------ | ---------------------- | ---------------- |
+| 25    | 10     | 0.07 ms      | 0.08 ms                | 0.26 ms          |
+| 100   | 40     | 0.15 ms      | 0.22 ms                | 1.00 ms          |
+| 250   | 100    | 0.24 ms      | 0.50 ms                | 3.88 ms          |
 
-**Context:** The duplication is documented inline in `agentback-demo/src/weather-service.ts` (the `WeatherError` class comment explicitly says "same shape as @agentback/openapi's AgentError ... can later extend AgentError once released"). Selector errors there default to 400 `invalid_input`; Open-Meteo failures use 502 `upstream_error`. `AgentError`'s constructor is `new AgentError(message, {status?, code?, issues?, hint?, retryable?, schema?, cause?})`, defaulting to status 400. The framework-side primitive and its tests already exist (`packages/openapi/src/agent-error.ts`, `agent-error.unit.ts`); this TODO is purely downstream adoption, gated on publish.
+There is no perf problem to solve. For scale: `buildServer()` costs 6.04 ms at
+100 tools and is paid on **every request** under stateless serving; these
+builders cost less and are paid only when an agent explicitly calls
+`inventory` / `get` / `get_okf_bundle`, which is a discovery action, not a hot
+path.
 
-**Effort:** S
-**Priority:** P3
-**Depends on:** Satisfied — `AgentError` is published in `@agentback/*` 0.2.0.
+Caching would trade invalidation correctness — which the original entry
+correctly identified as the only real complexity — for under 4 ms on an
+infrequent call. That is a bad trade, and a cache that goes stale when a
+binding changes would make the introspection surface _lie_ about the app,
+which is worse than being slow.
 
-## Introspection (Phase 1 follow-ups)
-
-### Session caching of introspection builders
-
-**What:** Memoize `buildModel`/`buildSchemaInventory`/`buildOkfBundle` per session/process with invalidation when the container's bindings change.
-
-**Why:** Each `inventory`/`get`/`get_okf_bundle` call re-walks the DI container. Fine at dev scale; wasteful for a chatty agent on a large app.
-
-**Context:** Builders are side-effect-free and deterministic for a stable container, so caching is safe as long as it invalidates on binding mutation. Don't build until a perf problem is measured — invalidation correctness is the only real complexity.
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** Phase 1 (`@agentback/introspection`) shipped.
-
-### Console "Agents" playground tab
-
-**What:** A prompt box in the existing `/console` that runs one agent turn against the running app's own `toHostTools`-projected tools and renders `result.steps` inline.
-
-**Why:** The strongest magical-moment delivery for `@agentback/agents` — zero terminal setup, uses the live DI container; the Stripe-Shell pattern (a console that executes) is the biggest activation lever the 2026-07 DX review deferred.
-
-**Context:** See `docs/proposals/harness.md` appendix "NOT in scope" + DX review D9/D25. Reuse surface: `console`/`console-theme` shell, `mcp-inspector`'s `callTool` UI. Design must resolve the conceptual collision with `console-chat`'s dock (that runs a coding agent over ACP; this runs the app's own AI SDK agent) and model-key handling in a browser context.
-
-**Effort:** M
-**Priority:** P3
-**Depends on:** `@agentback/agents` v1 shipped; demand signal from metering `'agent'` `UsageEvent`s.
-
-## MCP SDK v2 (Phase 2 and follow-ups)
+**Revisit if** `buildOkfBundle` exceeds ~50 ms on a real app (roughly 3000+
+tools at the measured slope), or if a caller is shown to poll it in a loop.
+Reopen with the measurement attached.
 
 ### Finish MCP protocol revision `2026-07-28` (S6, S7)
 
@@ -96,15 +84,3 @@ spike proved vs what is still assumed.
 **Depends on:** S7's deletion step is blocked by the four removal criteria in
 §5.1 of the design doc — the compatibility matrix now exists, and criterion 1
 (more than one 1.x release covered) is not yet met.
-
-### Resync `AGENTS.md` with `CLAUDE.md`
-
-**What:** Bring the gitignored local `AGENTS.md` back in line with `CLAUDE.md`, or generate it from `CLAUDE.md`.
-
-**Why:** `AGENTS.md` is what non-Claude harnesses (Codex, Cursor) read. It drifted ~71 lines behind `CLAUDE.md` between 2026-07-09 and now, so those harnesses work from a stale architecture description.
-
-**Context:** `/AGENTS.md` is explicitly gitignored (`.gitignore:27`) and was deliberately untracked in `e373b60`, so this is a local-workflow question, not a repo doc-surface one. The MCP SDK v2 drift specifically was patched locally during the v2 migration review. If the file is meant to stay in sync, generating it from `CLAUDE.md` in `website/build.mjs` (which already derives docs) beats hand-maintaining two copies.
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** A decision on whether `AGENTS.md` should be tracked at all.
