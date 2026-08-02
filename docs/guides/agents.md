@@ -74,6 +74,31 @@ Sessions created through the wrapped agent (`HarnessAgent`'s `createSession`) re
 
 `AgentBindings.RAW_AGENT` is the unwrapped escape hatch (no identity, no metering).
 
+## Driving it from the console
+
+`@agentback/console-agents` adds an **Agent** tab to `/console`: a prompt box
+that runs one turn against the app's own tools and renders the steps inline.
+
+```ts
+await installConsole(app, {
+  auth: {/* … */},
+  features: [...defaultFeatures(), agentsConsoleFeature({enabled: true})],
+});
+```
+
+The turn runs **server-side** — the browser sends only a prompt, so a provider
+key is never bundled into a page — and it resolves the same
+`AgentBindings.AGENT` binding described above, so quota, per-turn identity and
+metering behave exactly as they do in production.
+
+It is **off by default** and mounts no route when off, because a turn spends
+tokens and invokes real tools as whoever is looking at the console. Try it with
+no credentials at all: `pnpm -F hello-agents console`.
+
+Not to be confused with `@agentback/console-chat`, which docks a _coding_ agent
+against your source tree over ACP. That one writes the code; this one exercises
+it.
+
 ## Security posture
 
 Tool results are model inputs: a tool that returns untrusted content can steer the loop (prompt injection). Defaults to copy: **read-only/idempotent tools in the `include` list**, per-principal quota as the blast-radius limiter, and `{scopes}` to apply the same visibility gate as a scoped MCP transport. Side-effecting tools should wait for the approval-flows design; `confirm:` tools are excluded from projection.

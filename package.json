@@ -18,7 +18,8 @@
     "test:watch": "vitest",
     "konsistent": "konsistent",
     "lint": "eslint . && prettier --check \"**/*.{ts,json,md}\"",
-    "lint:fix": "eslint . --fix && prettier --write \"**/*.{ts,json,md}\""
+    "lint:fix": "eslint . --fix && prettier --write \"**/*.{ts,json,md}\"",
+    "agents-md": "node scripts/gen-agents-md.mjs"
   },
   "pnpm": {
     "ignoredBuiltDependencies": [

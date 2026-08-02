@@ -7,5 +7,15 @@
     "composite": true
   },
   "include": ["src/**/*"],
-  "exclude": ["dist", "node_modules"]
+  "exclude": ["dist", "node_modules"],
+  "references": [
+    {"path": "../../packages/agents"},
+    {"path": "../../packages/console"},
+    {"path": "../../packages/console-agents"},
+    {"path": "../../packages/core"},
+    {"path": "../../packages/mcp"},
+    {"path": "../../packages/metering"},
+    {"path": "../../packages/rest"},
+    {"path": "../../packages/security"}
+  ]
 }

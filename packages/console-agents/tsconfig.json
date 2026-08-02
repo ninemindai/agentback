@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "./tsconfig.tsbuildinfo"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["dist", "node_modules", "src/client/console-page.tsx"],
+  "references": [
+    {"path": "../agents"},
+    {"path": "../common"},
+    {"path": "../console"},
+    {"path": "../core"},
+    {"path": "../openapi"},
+    {"path": "../rest"},
+    {"path": "../security"}
+  ]
+}

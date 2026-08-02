@@ -7,13 +7,17 @@
   "scripts": {
     "build": "tsc -b",
     "start": "node dist/main.js",
-    "clean": "rm -rf dist *.tsbuildinfo"
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "console": "node dist/console.js"
   },
   "dependencies": {
     "@agentback/agents": "workspace:*",
+    "@agentback/console": "workspace:*",
+    "@agentback/console-agents": "workspace:*",
     "@agentback/core": "workspace:*",
     "@agentback/mcp": "workspace:*",
     "@agentback/metering": "workspace:*",
+    "@agentback/openapi": "workspace:*",
     "@agentback/rest": "workspace:*",
     "@agentback/security": "workspace:*",
     "ai": "~7.0.18",

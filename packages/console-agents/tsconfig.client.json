@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "rootDir": ".",
+    "tsBuildInfoFile": "./tsconfig.client.tsbuildinfo"
+  },
+  "include": ["src/client/**/*"],
+  "exclude": ["dist", "node_modules"]
+}

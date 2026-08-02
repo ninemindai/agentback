@@ -85,6 +85,7 @@ pnpm exec vitest run -t "name of test"
    - `schema-explorer` — read-only web UI that indexes the app **by schema** instead of by protocol: every Zod entity as a node, with provenance edges to each REST route, MCP tool, and Drizzle table that uses it (joined by object identity; names + table origin come from `schema`-tagged context bindings via `bindSchema`/`@agentback/drizzle/zod`'s `register*Schema`). The inverse of the per-protocol explorers; JSON API via a real `@api` controller; an ERD-style field view. Reads both `rest` and `mcp`. Also **exports the graph as an OKF (Open Knowledge Format) bundle** — a portable directory of markdown+frontmatter docs an agent ingests verbatim (a sixth, comprehension-oriented projection of the one source of truth); `buildOkfBundle(ctx)`/`inventoryToOkf(inv, {exclude?})` are emit-only + deterministic and by default omit the framework's own dev-tooling controllers. Served at `GET /schema-explorer/api/okf` and browsable/downloadable (`.zip`/`.md`) from the **Knowledge** tab.
    - `introspection` — a **read-only** MCP server that projects the live app to any agent (your terminal Claude Code, Cursor, an A2A peer), served over `mcp-http`. A small selector surface — `inventory(kind?)`, `get({kind,id})`, and the OKF trio `list_okf_files()` / `get_okf_files({paths})` / `get_okf_bundle()` (list first, fetch what you need; the full bundle is the escape hatch) — wrapping the explorers' read-only builders (`buildModel`, `buildSchemaInventory`, `buildOkfBundle`). **Read-only forever:** never invokes a route/tool; bindings are metadata-only (never resolves a secret-bearing value — only schema-tagged bindings are resolved, to their Zod object, as schema-explorer already does). The agent-facing sibling of the explorers; the "see" half of the see-and-evolve agent-console direction (evolution = the coding agent editing source). See `examples/hello-agent-console`.
    - `console` + `console-theme` — unified dev console at `/console` composing context-explorer + schema-explorer + rest-explorer + mcp-inspector behind one shell; `console-theme` is the shared "newspaper" design tokens used by all five UIs.
+   - `console-agents` — the console's **Agent** tab: a prompt box that runs **one turn of the app's own agent** (`AgentBindings.AGENT`, resolved per request so identity and metering match production) against the app's own `@tool`s, and renders the flattened `steps` inline. **The turn runs server-side** — the browser sends only a prompt string, so a provider key is never bundled into a page. **Off by default** (`enabled: false`); when off **no route is mounted**, not merely hidden. The page is statically bundled into the console SPA, so it always exists and renders an explanation when disabled or when no agent is bound. NOT `console-chat`: that dock runs a _coding_ agent over ACP against your **source tree** in a subprocess; this runs **your app's** agent against **your tools** in-process — the dock writes the code, this exercises it. `console` depends on it for the static page import but declares **no tsconfig project reference** (the page lives in client-only `pages.tsx`, excluded from `tsc -b`) — that is what keeps the console↔panel cycle out of the TS build, same as `console-chat`. See `examples/hello-agents` (`pnpm -F hello-agents console`, mock model, zero creds).
    - `console-chat` — **ACP agent dock** for the console: a right-column chat panel that spawns a `claude-agent-acp` (or custom) coding agent as a subprocess and bridges it to the browser over SSE + POST. **Off by default** (`enabled: false`); dock hidden unless >=1 agent discovered via PATH probe. **Node-host-only** (subprocess spawn; absent on `EdgeRestApplication`). Grounding: OKF brief at session start + `IntrospectionTools` as a live MCP server the agent can query. Permission prompts (file edits/shell) surface an inline approve/deny card; path+session scoped "remember" only — no blanket bypass. All bridge endpoints (`/console/chat/*`) require an authenticated principal; never expose beyond loopback without real auth. ACP protocol is experimental and adapter-isolated (`acp-session.ts` is the sole ACP seam). `chatConsoleFeature()` is a `ConsoleFeature` with a duck-typed `chatConfig` property that `installConsole` reads without importing `console-chat` (avoiding the circular dep). See `examples/hello-agent-console` and `docs/guides/agent-console.md`.
    - `testing` — first-class test harness: `createTestApp` with binding overrides, typed in-process REST client, supertest bridge, in-memory MCP client.
 
@@ -225,6 +226,27 @@ Versioning is **lockstep**: every `@agentback/*` package + `create-agentback` sh
 6. **Bump dependent repos** (e.g. the demo) to `^X.Y.Z` and re-verify against the published packages.
 
 Right after a publish, a consumer `npm install` can briefly 404 the new version (registry/CDN propagation lag) even though `npm view <pkg> version` shows it — retry with `--prefer-online` before assuming a partial release.
+
+## `AGENTS.md` is generated from this file
+
+`AGENTS.md` is what non-Claude harnesses (Codex, Cursor) read. It stays
+**gitignored** — it is a local workflow file, not a repo doc surface — but it is
+no longer hand-maintained, because that failed: it drifted ~71 lines behind,
+lost the `agents` and `command` packages entirely, and described `mcp-http`
+three releases out of date.
+
+```bash
+pnpm agents-md                       # regenerate after editing CLAUDE.md
+node scripts/gen-agents-md.mjs --check   # fail if stale
+```
+
+The generator rewrites **only** the title and the one framing line addressed to
+a specific harness, and copies the rest byte-for-byte. That restraint is the
+point: the previous copy was made by a blanket `s/claude/Codex/`, which also
+turned the real binary `claude-agent-acp` into a fictional `Codex-agent-acp` and
+"Claude Desktop" into "Codex Desktop". Most "Claude" mentions in this file are
+facts about the world — product, binary and package names — not branding to
+substitute. **When you edit this file, run `pnpm agents-md`.**
 
 ## Style
 
