@@ -137,9 +137,13 @@ await installMcpHttp(app, {
   works out of the box — production deployments should always set the
   allowlists.
 - **Rate limiting** is per tool and per caller, so one chatty agent can't
-  starve the rest. (The in-memory limiter is per-process; see the
-  multi-instance checklist in
-  [Deploy to production](deploy-to-production.md).)
+  starve the rest. Applies on both hosts and both protocols, and counts batched
+  (array) JSON-RPC bodies per element. (The in-memory limiter is per-process;
+  see the multi-instance checklist in
+  [Deploy to production](deploy-to-production.md).) Note the default bucket key
+  is the authenticated `clientId` — under **OAuth** that is the client
+  _application_, not the user, so pass a `keyGenerator` reading your IdP's
+  subject claim if you want per-user limits.
 - **Resumable sessions**: pass an `eventStore` only if you need SSE-replay
   across reconnects; a shared (Redis) store is required for it to work
   behind a load balancer.

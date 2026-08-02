@@ -25,6 +25,7 @@ import {Context} from '@agentback/core';
 import {MCPServer} from '@agentback/mcp';
 import type {RestServer} from '@agentback/rest';
 import type {McpHttpOptions, McpHttpHandle} from './index.js';
+import {createToolRateLimiter, rateLimitErrorBody} from './tool-rate-limit.js';
 import {
   resolveSessionServer,
   setupStateless,
@@ -178,21 +179,15 @@ export function mountMcpHttpFetch(
     allowedOriginHostnames,
   } = setupStateless(mcp, options);
 
-  // `rateLimit` is Express middleware and this host has no middleware chain, so
-  // it has never applied here. `installMcpHttp` picks the host automatically
-  // from `rest.listener`, so a caller can configure throttling and silently get
-  // none — the first symptom being a bill rather than an error. Refusing to
-  // start is the same posture this file already takes for other
-  // misconfigurations, and it is the whole point: a security-adjacent control
-  // that quietly does nothing is worse than one that is absent.
-  if (options.rateLimit) {
-    throw new Error(
-      '@agentback/mcp-http: `rateLimit` is not supported on the fetch/edge ' +
-        'host — it is Express middleware and this host has no middleware ' +
-        'chain, so it would silently not throttle. Remove the option, or run ' +
-        'the Express host (the default `rest.listener`). Tracked in TODOS.md.',
-    );
-  }
+  // Per-tool throttling. This host has no middleware chain, so rather than
+  // mounting middleware it applies the shared decision core inline, below.
+  // (Until this existed, configuring `rateLimit` here threw at mount: the
+  // option was Express-only, `installMcpHttp` picks the host automatically from
+  // `rest.listener`, and silently not throttling shows up as a bill rather than
+  // an error.)
+  const rateLimiter = options.rateLimit
+    ? createToolRateLimiter(options.rateLimit)
+    : undefined;
 
   if (perSession && !options.appContext) {
     throw new Error(
@@ -246,11 +241,42 @@ export function mountMcpHttpFetch(
         return rpcError(401, 'Unauthorized');
       }
     }
+    // POST may carry a body; read it once and hand it to the SDK as parsedBody
+    // (a Web Request body is single-read). GET/DELETE carry none.
+    //
+    // Read BEFORE the stateless branch: rate limiting needs to see the
+    // JSON-RPC method, and both paths need the already-consumed body passed
+    // through rather than re-read from a spent stream.
+    let parsedBody: unknown;
+    if (req.method === 'POST') {
+      try {
+        parsedBody = await req.json();
+      } catch {
+        parsedBody = undefined;
+      }
+    }
+
+    if (rateLimiter) {
+      const decision = await rateLimiter.check(parsedBody, {
+        ...(authInfo ? {authInfo} : {}),
+        header: name => req.headers.get(name) ?? undefined,
+        // No `ip`: see RateLimitCaller.ip — this host has no trustworthy
+        // source for one, and a spoofable header is worse than none.
+      });
+      if (!decision.ok) {
+        return Response.json(rateLimitErrorBody(decision.tool, decision.id), {
+          status: 429,
+          headers: {'retry-after': String(decision.retryAfterSecs)},
+        });
+      }
+    }
+
     if (statelessHandler) {
       // `authInfo` is strict pass-through: the SDK verifies nothing itself, so
       // the guard above stays the only authority.
       return statelessHandler.fetch(req, {
         ...(authInfo ? {authInfo} : {}),
+        ...(parsedBody !== undefined ? {parsedBody} : {}),
       });
     }
 
@@ -261,17 +287,6 @@ export function mountMcpHttpFetch(
 
     if (transport && sessionId && !ownsSession(sessionId, principal)) {
       return rpcError(403, 'MCP session belongs to a different principal');
-    }
-
-    // POST may carry a body; read it once and hand it to the SDK as parsedBody
-    // (a Web Request body is single-read). GET/DELETE carry none.
-    let parsedBody: unknown;
-    if (req.method === 'POST') {
-      try {
-        parsedBody = await req.json();
-      } catch {
-        parsedBody = undefined;
-      }
     }
 
     if (!transport) {
