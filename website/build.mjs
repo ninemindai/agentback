@@ -179,11 +179,35 @@ function replaceMermaidBlocks(md, src, outPage) {
   return md.replace(/```mermaid\n([\s\S]*?)```/g, (_, source) => {
     n += 1;
     const name = `${diagramBase(src)}-${n}.svg`;
-    if (!fs.existsSync(path.join(DIAGRAM_DIR, name))) {
+    const svgPath = path.join(DIAGRAM_DIR, name);
+    if (!fs.existsSync(svgPath)) {
       throw new Error(
         `${src} mermaid block #${n} has no rendered SVG at ` +
           `website/diagrams/${name} — create or update it ` +
           `(see website/diagrams/STYLE.md).`,
+      );
+    }
+    // The filename→block mapping is POSITIONAL, so inserting a diagram in the
+    // middle of a doc silently re-points every SVG after it at the wrong block:
+    // the build still passes and the site renders confidently wrong pictures.
+    // That happened (one insert into overview.md mis-mapped four diagrams), so
+    // each SVG declares the block it was drawn for and we check it here. A
+    // missing SVG was already loud; a WRONG one is now loud too.
+    const svg = fs.readFileSync(svgPath, 'utf8');
+    const claim = svg.match(/<!-- Source: (\S+) mermaid block (\d+)/);
+    if (!claim) {
+      throw new Error(
+        `website/diagrams/${name} has no provenance comment. Add ` +
+          `\`<!-- Source: ${src} mermaid block ${n} ("<section>") -->\`` +
+          ` as the first line inside <svg> (see website/diagrams/STYLE.md).`,
+      );
+    }
+    if (claim[1] !== src || Number(claim[2]) !== n) {
+      throw new Error(
+        `website/diagrams/${name} was drawn for ${claim[1]} block ` +
+          `${claim[2]}, but it is being used for ${src} block ${n}. ` +
+          `A diagram was probably inserted or removed above this one — ` +
+          `renumber the SVG files and update their Source comments.`,
       );
     }
     const rel = path.posix.relative(

@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 160" width="920" height="160" role="img" aria-label="MCP tool discovery: @mcpServer class is bound and tagged via app.service(), found by MCPServer at start, and registered with the MCP SDK">
+  <!-- Source: docs/guides/build-an-mcp-server.md mermaid block 1 ("How discovery works") -->
   <defs>
     <marker id="arrow" markerWidth="8" markerHeight="7" refX="8" refY="3.5" orient="auto">
       <path d="M0,0 L8,3.5 L0,7 z" fill="#8a948d"/>

@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 390" width="900" height="390" role="img" aria-label="app.component() contributes controllers, classes, providers, servers, and lifecycle observers, all landing in the one Application context">
+  <!-- Source: docs/concepts/components-servers-lifecycle.md mermaid block 1 ("Component — a bundle of bindings") -->
   <defs>
     <marker id="arrow" markerWidth="8" markerHeight="7" refX="8" refY="3.5" orient="auto">
       <path d="M0,0 L8,3.5 L0,7 z" fill="#8a948d"/>

@@ -18,7 +18,8 @@ pnpm clean                         # tsc -b --clean + rm -rf each package's dist
 pnpm test                          # vitest run — IMPORTANT: requires a prior `pnpm build`
 pnpm test:watch                    # vitest watch
 pnpm typecheck:client              # tsc --noEmit on the esbuild client bundles (NOT covered by build/test)
-pnpm verify                        # full local CI mirror: konsistent + build + typecheck:client + test + validate-templates
+pnpm verify                        # full local CI mirror: konsistent + build + typecheck:client + test + validate-templates + build:site
+pnpm build:site                    # render website/dist (fails on a missing/mis-mapped docs diagram)
 pnpm konsistent                    # structural-convention check (konsistent.json) — fast, runs on source
 pnpm lint                          # eslint + prettier --check
 pnpm lint:fix                      # eslint --fix + prettier --write
@@ -270,7 +271,26 @@ The project is MIT-licensed (root `LICENSE`, `Copyright (c) NineMind, Inc.`). Ev
 
 `.github/workflows/ci.yml` runs, on Node 22.13 and 24 (pnpm 11 requires Node ≥ 22.13): `pnpm install --frozen-lockfile` → **`pnpm konsistent`** (structural conventions, fails in seconds) → `pnpm build` → **`pnpm typecheck:client`** → `pnpm test`, plus a separate **validate-templates** job (`pnpm build` → `node scripts/validate-templates.mjs`). The lockfile must be committed in sync with `package.json` changes or CI fails at install.
 
-**Run `pnpm verify` before pushing — it mirrors CI** (konsistent + build + typecheck:client + test + validate-templates). `pnpm build`/`pnpm test` alone are **not** sufficient: esbuild bundles the client `.tsx` without type-checking and vitest runs only the server `dist/`, so neither catches client-bundle type errors. The CI-only `typecheck:client` step (`tsc -p tsconfig.client.json --noEmit` per UI package) is the one that does — e.g. a client file importing from `src/lib`/`src/model.ts` must be inside that package's `tsconfig.client.json` `include`.
+**Run `pnpm verify` before pushing — it mirrors CI** (konsistent + build + typecheck:client + test + validate-templates + build:site). `pnpm build`/`pnpm test` alone are **not** sufficient: esbuild bundles the client `.tsx` without type-checking and vitest runs only the server `dist/`, so neither catches client-bundle type errors. The CI-only `typecheck:client` step (`tsc -p tsconfig.client.json --noEmit` per UI package) is the one that does — e.g. a client file importing from `src/lib`/`src/model.ts` must be inside that package's `tsconfig.client.json` `include`.
+
+## Docs diagrams are SVG, and the mapping is positional
+
+Mermaid blocks stay inline in the markdown as the **source of truth**; the site
+renders a hand-laid `website/diagrams/<doc>-<n>.svg` per block and tucks the
+mermaid under a `<details>`. See `website/diagrams/STYLE.md` — those SVGs are
+embedded via `<img>`, so **no web fonts, no scripts, no `<foreignObject>`**
+(that is why they use system mono and the light site palette rather than the
+dark standalone diagrams in `docs/architecture/diagrams/*.html`).
+
+**The filename→block mapping is positional.** Inserting a mermaid block into the
+middle of a doc re-points every SVG after it at the wrong block. Each SVG
+therefore carries `<!-- Source: <doc> mermaid block <n> ("<section>") -->` and
+`build:site` fails on a missing, mismatched, or absent comment. When you add or
+remove a diagram: renumber the SVGs after it and update their Source comments.
+
+`pnpm verify` runs `build:site` for this reason — a docs-only change can break
+the site deploy, and it did (three merges shipped with a broken deploy before
+the check existed).
 
 ## Merging PRs (rebase-merge)
 

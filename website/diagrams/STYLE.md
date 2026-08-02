@@ -4,6 +4,26 @@ Standalone `.svg` files embedded via `<img>` in the generated docs pages.
 Derived from each doc's mermaid source (kept inline in the markdown as the
 source of truth — regenerate the SVG when the mermaid changes).
 
+## Provenance comment (required — the build checks it)
+
+Every file declares the block it was drawn for, as the first line inside `<svg>`:
+
+```xml
+<!-- Source: docs/architecture/overview.md mermaid block 3 ("Protocol eras") -->
+```
+
+The filename→block mapping is **positional** (`<doc>-<n>.svg` ↔ the nth mermaid
+block). That means inserting a diagram into the middle of a doc silently
+re-points every SVG after it at the wrong block — the build passes and the site
+renders confidently wrong pictures. It has happened: one insert into
+`overview.md` mis-mapped four diagrams and only surfaced because the _last_ one
+had no file to fall back on.
+
+So `website/build.mjs` now fails on a missing comment, a wrong doc path, or a
+wrong block number, as well as on a missing file. **When you insert or remove a
+mermaid block, renumber the SVGs after it and update their Source comments** —
+the build will tell you if you forget.
+
 ## Hard constraints
 
 - **Raw SVG only** — no external CSS, no `<foreignObject>`, no scripts.

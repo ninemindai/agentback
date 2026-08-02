@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 268" width="940" height="268" role="img" aria-label="REST pipeline: Zod schemas to @api controller, registered on the app, started, serving routes with validation plus /openapi.json and /explorer">
+  <!-- Source: docs/guides/build-a-rest-api.md mermaid block 1 ("Recap") -->
   <defs>
     <marker id="arrow" markerWidth="8" markerHeight="7" refX="8" refY="3.5" orient="auto">
       <path d="M0,0 L8,3.5 L0,7 z" fill="#8a948d"/>

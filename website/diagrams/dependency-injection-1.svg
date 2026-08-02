@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 480" width="880" height="480" role="img" aria-label="The Application is a Context holding a binding registry; app.get resolves a binding and weaves its @inject dependencies from sibling bindings">
+  <!-- Source: docs/concepts/dependency-injection.md mermaid block 1 ("The three nouns") -->
   <defs>
     <marker id="arrow" markerWidth="8" markerHeight="7" refX="8" refY="3.5" orient="auto">
       <path d="M0,0 L8,3.5 L0,7 z" fill="#8a948d"/>
