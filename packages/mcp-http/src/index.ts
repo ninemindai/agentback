@@ -164,27 +164,34 @@ export interface McpHttpOptions {
   /**
    * How the endpoint serves MCP.
    *
-   * - `'legacy'` (default) — the 2025-era Streamable HTTP transport: an
-   *   `initialize` handshake mints an `Mcp-Session-Id`, and GET (SSE) / DELETE
-   *   operate on that session. Resumable when an `eventStore` is set.
-   * - `'both'` — the SDK's `createMcpHandler`, which serves the
+   * - `'both'` (**default**) — the SDK's `createMcpHandler`, which serves the
    *   **2026-07-28** revision and, from the same endpoint, 2025-era traffic
    *   through the established stateless idiom. There is no session: every
    *   request builds and tears down its own server, so the endpoint scales
    *   behind a plain round-robin load balancer with no shared storage.
+   * - `'legacy'` — the 2025-era Streamable HTTP transport: an `initialize`
+   *   handshake mints an `Mcp-Session-Id`, and GET (SSE) / DELETE operate on
+   *   that session. Resumable when an `eventStore` is set. **The rollback
+   *   switch** — one line, no other change.
    *
-   * Opt-in while the ecosystem catches up — see
+   * The default flipped in 0.9.0. `'both'` serves 2025-era clients by
+   * construction, verified against three released 1.x SDKs (1.11.0 / 1.17.0 /
+   * 1.29.0) covering every 2025 revision — so this is not a drop in client
+   * support. See
    * [docs/proposals/mcp-2026-stateless.md](../../docs/proposals/mcp-2026-stateless.md).
    *
-   * Works on both hosts. {@link McpHttpOptions.perSession} applies and becomes
-   * per-**request** discovery: each request gets its own DI child context,
-   * released when the SDK closes that request's server (after any streamed
-   * progress). Keep the binder cheap, or cache it keyed on the principal —
-   * it now runs on every request rather than once per session.
+   * What *does* change under the default, because sessions are gone:
    *
-   * ⚠️ {@link McpHttpOptions.eventStore} does not apply: resumable SSE replay
-   * is a session feature and the stateless era has no sessions. Setting it
-   * warns. GET/DELETE are session operations and answer `405`.
+   * - {@link McpHttpOptions.perSession} becomes per-**request** discovery: each
+   *   request gets its own DI child context, released when the SDK closes that
+   *   request's server (after any streamed progress). Keep the binder cheap or
+   *   wrap it in `cachedPerPrincipal` — it now runs on every request.
+   * - `GET` / `DELETE` on the endpoint answer `405`; they were session ops.
+   * - {@link McpHttpOptions.eventStore} cannot apply — resumable SSE replay
+   *   needs a session. Rather than silently dropping it, setting `eventStore`
+   *   **without** naming a protocol keeps the endpoint on `'legacy'` (logged),
+   *   so a capability you asked for by name is never removed by a default. An
+   *   explicit `protocol: 'both'` alongside it warns and drops resumability.
    */
   protocol?: 'legacy' | 'both';
   /**

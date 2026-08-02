@@ -74,7 +74,7 @@ describe('mountMcpHttpFetch (native listener)', () => {
     const server = await app.get<RestServer>('servers.RestServer');
     // Mount BEFORE start(): native start() builds fetchHandler(), which folds in
     // the addFetchHandler routes registered here.
-    handle = mountMcpHttpFetch(mcp, server);
+    handle = mountMcpHttpFetch(mcp, server, {protocol: 'legacy'});
     await app.start();
     mcpUrl = new URL(server.url + '/mcp');
   });

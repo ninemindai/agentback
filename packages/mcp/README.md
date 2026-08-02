@@ -136,16 +136,22 @@ Sits between the DI container (`context`/`core`) and the MCP SDK. The REST layer
 
 ## Protocol eras over stdio
 
-`protocol` selects which protocol revisions stdio speaks. Default `'legacy'`.
+`protocol` selects which protocol revisions stdio speaks. **Default `'both'` as
+of 0.9.0.**
 
-```ts
-app.configure('servers.MCPServer').to({protocol: 'both'});
-```
+- `'both'` (default) — served through the SDK's `serveStdio`: the **opening
+  exchange** selects the era and one instance is pinned for the connection's
+  lifetime, so a 2026-07-28 client and a 2025-era client are both served by the
+  same binary.
+- `'legacy'` — the 2025-era `initialize` handshake only. The rollback switch:
 
-- `'legacy'` (default) — the 2025-era `initialize` handshake only.
-- `'both'` — served through the SDK's `serveStdio`: the **opening exchange**
-  selects the era and one instance is pinned for the connection's lifetime, so a
-  2026-07-28 client and a 2025-era client are both served by the same binary.
+  ```ts
+  app.configure('servers.MCPServer').to({protocol: 'legacy'});
+  ```
+
+The stdio flip is **strictly additive**: unlike HTTP there is no session concept
+here, so serving the modern era costs a 2025-era client nothing. Both directions
+are covered against real spawned child processes in `stdio-eras.integration.ts`.
 
 On a 2026-pinned connection there is no `initialize`, so the SDK's
 `getClientCapabilities()` / `getClientVersion()` return `undefined`. Per-request

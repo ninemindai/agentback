@@ -70,7 +70,11 @@ async function main() {
     .tag(AuthenticationBindings.AUTH_STRATEGY);
 
   await installMcpHttp(app, {
-    // Require an api-key; the principal's scopes drive per-session tool ACL.
+    // `protocol` is unset, so this serves the 2026-07-28 revision AND 2025-era
+    // clients from one endpoint, statelessly (the 0.9.0 default). Pin back with
+    // `protocol: 'legacy'` if you need sessions or `eventStore` resumability.
+    //
+    // Require an api-key; the principal's scopes drive per-request tool ACL.
     strategyAuth: {strategy: 'api-key'},
     // Per-(caller, tool) limits: 30/min default, but `add` is tighter at 5/min.
     rateLimit: {
@@ -83,7 +87,8 @@ async function main() {
   await app.start();
   const server = await app.restServer;
   console.log(`hello-mcp (HTTP) listening at ${server.url}`);
-  console.log(`  MCP endpoint: POST/GET/DELETE ${server.url}/mcp`);
+  console.log(`  MCP endpoint: POST ${server.url}/mcp  (2026-07-28 + 2025)`);
+  console.log(`    stateless by default — GET/DELETE are session ops → 405`);
   console.log(`  Auth: send  x-api-key: <key>  (no key → 401)`);
   console.log(`    admin-key → sees echo, add, admin_ping`);
   console.log(`    user-key  → sees echo, add  (admin_ping hidden by scope)`);

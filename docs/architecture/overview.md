@@ -92,6 +92,41 @@ sequenceDiagram
 An MCP tool call follows the analogous path inside `MCPServer.dispatchTool`:
 parse input → weave injects → apply method → validate output.
 
+### Protocol eras: one endpoint, two revisions
+
+Since 0.9.0 the default is `protocol: 'both'` — the SDK's `createMcpHandler`
+serves the **`2026-07-28`** revision and 2025-era traffic from the same URL,
+picking per request. `dispatchTool` above is unchanged either way; the era only
+decides how a call arrives.
+
+```mermaid
+graph TD
+  C26["2026-07-28 client"] --> EP["POST /mcp"]
+  C25["2025-era client<br/>(SDK 1.11 – 1.29)"] --> EP
+  EP --> H{"protocol"}
+
+  H -->|"'both' — DEFAULT"| SL["createMcpHandler<br/>one server per REQUEST"]
+  H -->|"'legacy' — rollback"| SS["StreamableHTTPServerTransport<br/>one server per SESSION"]
+
+  SL --> D["MCPServer.dispatchTool<br/>(identical on both paths)"]
+  SS --> D
+
+  SL -.->|"no Mcp-Session-Id<br/>GET/DELETE → 405<br/>perSession runs per request"| N1[" "]
+  SS -.->|"Mcp-Session-Id minted<br/>eventStore replay works<br/>perSession runs once"| N2[" "]
+
+  style SL fill:#dff0d8,stroke:#3c763d
+  style N1 fill:none,stroke:none
+  style N2 fill:none,stroke:none
+```
+
+Both client boxes reach both paths — that is the compatibility claim, and it is
+verified against three released 1.x SDKs rather than asserted. The one asymmetry
+worth remembering: `eventStore` (resumable SSE) exists only on the session path,
+so configuring it without naming a protocol keeps you on `'legacy'`.
+
+Stdio has the same switch and the same default, via `serveStdio`, with the era
+pinned per connection instead of per request.
+
 ## How HTTP hosts work
 
 > A polished, standalone version of the hosts diagram below lives at

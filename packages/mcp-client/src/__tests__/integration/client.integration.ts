@@ -35,7 +35,9 @@ const verifier = {
   },
 };
 
-async function startServer(opts: {auth?: boolean} = {}) {
+async function startServer(
+  opts: {auth?: boolean; protocol?: 'legacy' | 'both'} = {},
+) {
   const app = new RestApplication({});
   app.configure('servers.RestServer').to({port: 0, host: '127.0.0.1'});
   app.component(MCPComponent);
@@ -46,9 +48,9 @@ async function startServer(opts: {auth?: boolean} = {}) {
   });
   app.service(Tools);
   await app.get<MCPServer>('servers.MCPServer');
-  await installMcpHttp(
-    app,
-    opts.auth
+  await installMcpHttp(app, {
+    ...(opts.protocol ? {protocol: opts.protocol} : {}),
+    ...(opts.auth
       ? {
           auth: {
             verifier,
@@ -56,8 +58,8 @@ async function startServer(opts: {auth?: boolean} = {}) {
             authorizationServers: ['https://as.example.test'],
           },
         }
-      : {},
-  );
+      : {}),
+  });
   await app.start();
   const url = (await app.restServer).url + '/mcp';
   return {app, url};
@@ -74,10 +76,28 @@ describe('mcp-client (connectMcp)', () => {
     });
 
     it('connects and lists/calls tools', async () => {
-      const {client, transport} = await connectMcp({url, name: 'demo'});
-      expect(transport.sessionId).toBeTruthy();
+      // No session-id assertion here: the server default is stateless as of
+      // 0.9.0, so `transport.sessionId` is undefined. Sessions are asserted
+      // where they are the subject, in the `protocol: 'legacy'` block below.
+      const {client} = await connectMcp({url, name: 'demo'});
       const {tools} = await client.listTools();
       expect(tools.map(t => t.name)).toEqual(['add']);
+      const r = await client.callTool({name: 'add', arguments: {a: 2, b: 40}});
+      expect(r.structuredContent).toEqual({sum: 42});
+      await client.close();
+    });
+  });
+
+  // The client wrapper must work against BOTH server protocols — a remote MCP
+  // server is not ours to configure, so it may be either.
+  describe("against a protocol: 'legacy' server", () => {
+    beforeEach(async () => {
+      ({app, url} = await startServer({protocol: 'legacy'}));
+    });
+
+    it('completes a session handshake and calls tools', async () => {
+      const {client, transport} = await connectMcp({url, name: 'demo'});
+      expect(transport.sessionId).toBeTruthy();
       const r = await client.callTool({name: 'add', arguments: {a: 2, b: 40}});
       expect(r.structuredContent).toEqual({sum: 42});
       await client.close();
