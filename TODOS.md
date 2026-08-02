@@ -108,15 +108,3 @@ spike proved vs what is still assumed.
 **Effort:** S
 **Priority:** P3
 **Depends on:** A decision on whether `AGENTS.md` should be tracked at all.
-
-### Port per-tool rate limiting to the fetch/edge host
-
-**What:** Implement a fetch-shaped equivalent of `toolRateLimitMiddleware` so `McpHttpOptions.rateLimit` throttles on the native/edge host, not only under Express.
-
-**Why:** `rateLimit` is documented as per-tool, per-caller throttling for `tools/call`, but it is Express middleware and the fetch host has no middleware chain, so it has never applied there. `installMcpHttp` chooses the host automatically from `rest.listener`, so the user never opts into the gap. Until the port lands, that combination now **throws at mount** rather than silently not throttling — which fixes the danger but leaves edge deployments with no throttling option at all.
-
-**Context:** Surfaced by the 2026-07-30 `/plan-eng-review` (finding D4). Pre-existing: zero occurrences of `rateLimit` in `fetch.ts` as of `v0.8.0`. The Express implementation is `packages/mcp-http/src/tool-rate-limit.ts`, built on `rate-limiter-flexible`, which is runtime-neutral enough to reuse — the work is the seam, not the algorithm. Note that under `protocol: 'stateless'` there is no session, so the bucket key must come from the authenticated principal (and see the `cachedPerPrincipal` lesson: `AuthInfo.clientId` is the OAuth _client_ id, not a per-user identity).
-
-**Effort:** M
-**Priority:** P3
-**Depends on:** — (the throw makes the gap safe in the meantime)

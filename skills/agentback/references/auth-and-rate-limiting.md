@@ -383,7 +383,15 @@ middleware is exported as `toolRateLimitMiddleware(options)`.
 - **`SCOPE_INTERNAL` is never granted by `SCOPE_ALL`.** List it explicitly.
 - **REST rate limiting is global unless `path` is set.** Without `path`,
   `installRateLimit` applies to every route, including `/mcp`.
-- **`rateLimit` uses `req.auth.clientId` as the bucket key** when
+- **`rateLimit` uses the authenticated `clientId` as the bucket key** when
   `strategyAuth` (or OAuth `auth`) is also configured — so limits are
-  per-authenticated-caller rather than per-IP.
+  per-authenticated-caller rather than per-IP. Under **OAuth** that is the
+  client _application_ id, shared by every end user of that app; pass
+  `keyGenerator: c => c.authInfo?.extra?.sub ?? 'anon'` for per-user limits.
+  `keyGenerator` receives a host-neutral `{authInfo, header(name), ip}` — `ip`
+  is `undefined` on the fetch/edge host, which has no trustworthy source for one.
+- **`rateLimit` works on both hosts and both protocols.** The Express mount runs
+  it as middleware; the fetch/edge mount applies the same core inline. A batched
+  (array) JSON-RPC body is counted per element, so it cannot be used to get extra
+  calls.
 - **Store failures always fail open** in both rate limiters.

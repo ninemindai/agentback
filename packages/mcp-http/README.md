@@ -346,7 +346,12 @@ keyed by the authenticated `clientId` (from `auth`/`strategyAuth`) or the client
 IP. In-memory by default; pass a `store` (ioredis-compatible) to share across
 instances. On exceed it returns `429` with a JSON-RPC error + `Retry-After`;
 store failures fail open. Non-`tools/call` methods (initialize, `tools/list`)
-are not limited.
+are not limited. Works on **both hosts and both protocols** — the Express mount
+runs it as middleware, the fetch/edge mount applies the same decision core
+inline.
+
+A batched (array) JSON-RPC body is counted **per element**, so wrapping calls in
+an array does not get you extra ones.
 
 ```ts
 await installMcpHttp(app, {
@@ -359,3 +364,23 @@ await installMcpHttp(app, {
   },
 });
 ```
+
+### Choosing the bucket key
+
+`keyGenerator` receives a host-neutral `RateLimitCaller` — `{authInfo, header(name), ip}`
+— so one generator works under both mounts. Two things about the **default**
+(`authInfo.clientId ?? ip ?? 'anon'`) are worth knowing before you rely on it:
+
+- **Under OAuth, `clientId` is the client _application_ id**, shared by every end
+  user signing in through that app. So the default throttles the app, not the
+  user, and one noisy user starves everyone else on that client. Key on your
+  IdP's subject claim for per-user limits:
+  `keyGenerator: c => c.authInfo?.extra?.sub ?? 'anon'`. (On the `strategyAuth`
+  path `clientId` _is_ the principal's `securityId`, so the default is per-user
+  there.)
+- **`ip` is `undefined` on the fetch/edge host.** There is no trustworthy source
+  for it: the candidates are all `X-Forwarded-For`-style headers, and keying on a
+  client-settable header means an attacker rotates it and is never limited at
+  all. If your platform verifies one, read it explicitly:
+  `keyGenerator: c => c.header('CF-Connecting-IP') ?? 'anon'`. Otherwise
+  anonymous callers share one bucket — coarse, but it still says no.
