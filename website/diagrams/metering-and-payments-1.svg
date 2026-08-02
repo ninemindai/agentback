@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" width="960" height="520" role="img" aria-label="Metering data flow: a REST or MCP call with bearer token is attributed to a principal, dispatch hooks emit UsageEvents into Meter.observe(), which fans out to usage sinks and the quota service">
+  <!-- Source: docs/architecture/metering-and-payments.md mermaid block 1 ("Metering data flow") -->
   <defs>
     <marker id="arr" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
       <path d="M0,0 L8,3.5 L0,7 z" fill="#8a948d"/>

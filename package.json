@@ -13,13 +13,14 @@
     "build:watch": "tsc -b --watch",
     "clean": "tsc -b --clean && pnpm -r exec rm -rf dist",
     "typecheck:client": "pnpm -r --if-present run typecheck:client",
-    "verify": "pnpm konsistent && pnpm build && pnpm typecheck:client && pnpm test && node scripts/validate-templates.mjs",
+    "verify": "pnpm konsistent && pnpm build && pnpm typecheck:client && pnpm test && node scripts/validate-templates.mjs && pnpm build:site",
     "test": "vitest run",
     "test:watch": "vitest",
     "konsistent": "konsistent",
     "lint": "eslint . && prettier --check \"**/*.{ts,json,md}\"",
     "lint:fix": "eslint . --fix && prettier --write \"**/*.{ts,json,md}\"",
-    "agents-md": "node scripts/gen-agents-md.mjs"
+    "agents-md": "node scripts/gen-agents-md.mjs",
+    "build:site": "node website/build.mjs"
   },
   "pnpm": {
     "ignoredBuiltDependencies": [

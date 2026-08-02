@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 320" width="940" height="320" role="img" aria-label="A request flows through the WebMiddleware onion, the router, then either the RestHandler pipeline or the exact/prefix handlers, producing a Response">
-  <!-- Source: docs/guides/deploy-to-edge.md mermaid block 2 ("request flow on the fetch path") -->
+  <!-- Source: docs/guides/deploy-to-edge.md mermaid block 2 ("How a request flows on the fetch path") -->
   <defs>
     <marker id="arrow" markerWidth="8" markerHeight="7" refX="8" refY="3.5" orient="auto">
       <path d="M0,0 L8,3.5 L0,7 z" fill="#8a948d"/>

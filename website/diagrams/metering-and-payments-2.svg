@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 560" width="880" height="560" role="img" aria-label="Payment rails: gating rails (paymentMiddleware to x402 HTTP 402 and MPP sessions, PaidMCPServer to tool error challenge) settle through an external facilitator; the reporting rail (StripeMeterSink) forwards usage to Stripe metered billing">
+  <!-- Source: docs/architecture/metering-and-payments.md mermaid block 2 ("Payment rails") -->
   <defs>
     <marker id="arr" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
       <path d="M0,0 L8,3.5 L0,7 z" fill="#8a948d"/>
