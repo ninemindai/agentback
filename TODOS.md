@@ -30,11 +30,10 @@ which is worse than being slow.
 tools at the measured slope), or if a caller is shown to poll it in a loop.
 Reopen with the measurement attached.
 
-### Finish MCP protocol revision `2026-07-28` (S6, S7)
+### Finish MCP protocol revision `2026-07-28` (S7b only)
 
-**What:** Two steps remain: migrate the hand-rolled `confirm:` flow to native
-multi-round-trip requests (S6), and flip `protocol` to `'both'` by default then
-retire the session machinery (S7).
+**What:** One step remains: retire the session machinery (S7b). S6 (native MRTR
+`confirm:`) and S7a (the default flip) shipped in 0.9.0.
 
 **Why:** The 2025 era has a 12-month deprecation window and SDK v1 is on
 security-only support. Nothing is on the clock, but the default should
