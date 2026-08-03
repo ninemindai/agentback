@@ -418,6 +418,14 @@ inline.
 A batched (array) JSON-RPC body is counted **per element**, so wrapping calls in
 an array does not get you extra ones.
 
+⚠️ **This is tool quota, not a general request throttle.** Because a request the
+transport will refuse is no longer debited, malformed traffic is no longer
+incidentally throttled by `rateLimit` — an attacker can send rejected requests
+without spending quota. That was never what a per-tool bucket was for, but if
+`rateLimit` was your only throttle you now want a general one in front of it:
+use [`@agentback/extension-rate-limit`](../extension-rate-limit), which limits
+requests rather than tool calls.
+
 Quota measures work performed, not requests received: on the stateless mount a
 request the transport is about to refuse at its inbound validation ladder is
 **not** debited. That covers a malformed JSON-RPC shape, a batch carrying

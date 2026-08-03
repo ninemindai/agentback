@@ -139,15 +139,22 @@ describe('rejectedOriginLogger', () => {
     expect(report('https://evil.test')).toBeUndefined(); // deduped
   });
 
-  it('stays bounded when the caller rotates the header', () => {
-    // `Origin` is caller-controlled, so an unbounded dedup set is a memory
-    // amplifier and an unbounded log is a disk one.
+  it('never goes permanently blind after a flood of junk origins', () => {
+    // A hard cap would let an attacker send 32 junk `Origin` values right after
+    // a deploy and silence every later rejection — including the real customer
+    // origin an operator needs during an incident. Eviction keeps the tracker
+    // bounded without handing observability to the caller.
     const report = rejectedOriginLogger(['localhost']);
-    let reported = 0;
-    for (let i = 0; i < 500; i++) {
-      if (report(`https://evil-${i}.test`)) reported++;
-    }
-    expect(reported).toBeLessThanOrEqual(32);
+    for (let i = 0; i < 500; i++) report(`https://evil-${i}.test`);
+
+    const legit = report('https://app.example.com');
+    expect(legit).toContain('app.example.com');
+  });
+
+  it('still suppresses an immediate repeat', () => {
+    const report = rejectedOriginLogger(['localhost']);
+    expect(report('https://evil.test')).toBeTruthy();
+    expect(report('https://evil.test')).toBeUndefined();
   });
 
   it('reports a missing Origin distinctly from a present one', () => {
