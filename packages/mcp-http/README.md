@@ -32,7 +32,7 @@ Options:
 | ------------------------------ | ------- | ------------------------------------------------------------------------- |
 | `path`                         | `/mcp`  | URL path the transport is mounted at                                      |
 | `allowedHosts`                 | —       | allowlist of `Host` header values                                         |
-| `allowedOrigins`               | —       | allowlist of `Origin` header values                                       |
+| `allowedOrigins`               | auto¹   | allowlist of `Origin` header values                                       |
 | `enableDnsRebindingProtection` | auto¹   | reject requests with non-allowlisted Host/Origin                          |
 | `eventStore`                   | —       | enable resumable sessions (see below)                                     |
 | `auth`                         | —       | OAuth 2.1 resource-server protection (see below)                          |
@@ -40,14 +40,37 @@ Options:
 | `rateLimit`                    | —       | per-tool, per-caller rate limiting for `tools/call` (see below)           |
 | `perSession`                   | —       | per-user/per-tenant tool _discovery_ via a session DI context (see below) |
 
-¹ Defaults to `true` when `allowedHosts` or `allowedOrigins` is set, otherwise
-`false` (so the default dev experience isn't blocked).
+¹ On the default (stateless) mount an `Origin` allowlist is always derived, so
+protection is **on**; see below. Under `protocol: 'legacy'` it stays `true` only
+when `allowedHosts` or `allowedOrigins` is set.
 
 ### Security: DNS rebinding
 
 A browser-reachable MCP endpoint is a DNS-rebinding target — a malicious page
-can POST to it from the user's machine. **Production deployments should pin the
-allowlists** to the real host/origin, which turns protection on:
+can POST to it from the user's machine. Every Streamable HTTP revision since
+`2025-03-26` says servers **MUST** validate `Origin` for exactly this reason, so
+the default mount validates it whether or not you configure an allowlist.
+
+What it validates when you configure nothing:
+
+| `rest.cors`                            | derived `Origin` allowlist         |
+| -------------------------------------- | ---------------------------------- |
+| not set                                | localhost only                     |
+| `{origin: ['https://app.example.com']}` | localhost + `app.example.com`      |
+| `true`, `'*'`, a RegExp or a callback  | nothing derivable — **logs a warning**, validation stays off |
+
+The allowlist is derived from `rest.cors` because those origins are already your
+statement of which browsers may call the app — declaring them twice is a second
+source of truth that drifts. When CORS admits *any* origin there is nothing to
+enumerate, so it warns instead of guessing: restricting to localhost there would
+break the browser client your own config admits.
+
+**A missing `Origin` header always passes.** Only browsers send one, so MCP
+clients, `curl` and stdio bridges are unaffected — the default can only reject a
+browser request, which is the case being defended.
+
+Pin the allowlists explicitly in production; an explicit value always wins, and
+`enableDnsRebindingProtection: false` opts out entirely:
 
 ```ts
 await installMcpHttp(app, {
@@ -56,6 +79,8 @@ await installMcpHttp(app, {
 });
 ```
 
+`Origin` values are compared **by hostname** (port-agnostic) on the stateless
+mount, so `https://app.example.com` also admits `https://app.example.com:8443`.
 For a localhost-only server, set `allowedHosts: ['127.0.0.1:PORT', 'localhost:PORT']`.
 
 `installMcpHttp` throws if no MCP server is bound (add `MCPComponent` first).
@@ -375,6 +400,15 @@ inline.
 
 A batched (array) JSON-RPC body is counted **per element**, so wrapping calls in
 an array does not get you extra ones.
+
+Quota measures work performed, not requests received: on the stateless mount a
+request the transport is about to refuse at its inbound validation ladder is
+**not** debited. That covers a malformed JSON-RPC shape, a batch carrying
+`2026-07-28` elements, and an `Mcp-Method` / `MCP-Protocol-Version` header that
+disagrees with the body (`-32020 HeaderMismatch`). It matters most where the
+bucket is shared: on the fetch host every anonymous caller keys to one `anon`
+bucket, and a rejected batch would otherwise spend one point per element it
+names while running nothing.
 
 ```ts
 await installMcpHttp(app, {

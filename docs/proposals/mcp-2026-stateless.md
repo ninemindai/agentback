@@ -354,6 +354,36 @@ the process's stdin/stdout.
 **D5 — MCP Apps.** `@modelcontextprotocol/ext-apps` still peer-deps SDK v1.
 Needs a compatibility answer before Phase 2 ships, not a footnote.
 
+**D6 — `Origin` validation default. RESOLVED (2026-08-03).** Validation is now
+on by default on the stateless mount. The spec check that settled it: the
+Streamable HTTP binding says "Servers **MUST** validate the `Origin` header on
+all incoming connections" — and that wording is **not new in `2026-07-28`**, it
+is identical in `2025-06-18` and dates to `2025-03-26`. The permissive default
+was therefore never conformant on any revision; the 0.9.0 flip only made it easy
+to reach. It is safe to default because the spec conditions its 403 on `Origin`
+being *present*, and the SDK's `validateOriginHeader` passes a missing one by
+design — only browsers send the header.
+
+The allowlist is **derived from `rest.cors`** rather than configured a second
+time: those origins already state which browsers may call the app. A CORS config
+that admits any origin enumerates nothing, so it warns and leaves validation off
+instead of guessing an allowlist that would lock out the client it admits.
+
+Scoped to stateless because the two paths interpret `allowedOrigins`
+differently — the session transport exact-matches the raw header, the stateless
+path compares hostnames — so a derived `localhost` would 403 a browser on
+`http://localhost:3000` under sessions. Unifying that is a separate breaking
+decision, and belongs with S7b.
+
+**D7 — Rate-limiter ordering. RESOLVED (2026-08-03).** The limiter must run
+before `statelessHandler.fetch()` (it needs the body, which the handler
+consumes), so it used to debit requests the SDK's inbound ladder then rejected.
+Fixed by consulting the SDK's exported `classifyInboundRequest` first and
+skipping the debit for a doomed request; it never answers, so the SDK remains
+the sole owner of the wire format. Notably **not** fixed by keying the debit off
+`Mcp-Method`/`Mcp-Name`, which the spec warns against for policy enforcers that
+have not confirmed header–body validation applies to the request's version.
+
 ---
 
 ## 7. Sequencing

@@ -470,16 +470,20 @@ describe("protocol: 'both' DNS-rebinding protection", () => {
       let app: RestApplication;
       let base: string;
 
-      async function start(opts: {
-        allowedHosts?: string[];
-        allowedOrigins?: string[];
-      }) {
+      async function start(
+        opts: {
+          allowedHosts?: string[];
+          allowedOrigins?: string[];
+        },
+        cors?: boolean | {origin?: string | string[]},
+      ) {
         app = new RestApplication(
           listener === 'native' ? {rest: {listener: 'native'}} : {},
         );
         app.configure('servers.RestServer').to({
           port: 0,
           host: '127.0.0.1',
+          ...(cors !== undefined ? {cors} : {}),
           ...(listener === 'native' ? {listener: 'native'} : {}),
         });
         app.component(MCPComponent);
@@ -537,6 +541,45 @@ describe("protocol: 'both' DNS-rebinding protection", () => {
         // validator compares hostnames. Unnormalized, this would 4xx.
         await start({allowedOrigins: ['https://app.example.com']});
         const res = await post({origin: 'https://app.example.com'});
+        expect(res.status).toBe(200);
+        await res.body?.cancel();
+      });
+
+      // The Streamable HTTP binding has required Origin validation on every
+      // revision since 2025-03-26; configuring nothing used to mean no check at
+      // all, which is the exact combination DNS-rebinding defense exists for.
+      it('rejects a foreign Origin with NOTHING configured', async () => {
+        await start({});
+        const res = await post({origin: 'https://evil.test'});
+        expect(res.status).toBe(403);
+        await res.body?.cancel();
+      });
+
+      it('still serves a request that sends no Origin at all', async () => {
+        // The non-breakage guarantee: only browsers send `Origin`, so every MCP
+        // client, curl and stdio bridge is untouched by the new default. If
+        // this ever fails, the default has become a breaking change.
+        await start({});
+        const res = await post();
+        expect(res.status).toBe(200);
+        await res.body?.cancel();
+      });
+
+      it('admits an Origin that `rest.cors` already declares', async () => {
+        // One source of truth: the app said this origin may call it, so the
+        // rebinding allowlist reuses that rather than asking a second time.
+        await start({}, {origin: 'https://app.example.com'});
+        const res = await post({origin: 'https://app.example.com'});
+        expect(res.status).toBe(200);
+        await res.body?.cancel();
+      });
+
+      it('leaves validation off when cors admits any origin', async () => {
+        // Nothing to enumerate, so nothing is derived (a warning is logged).
+        // Locking down to localhost here would break the browser client this
+        // very config admits.
+        await start({}, true);
+        const res = await post({origin: 'https://evil.test'});
         expect(res.status).toBe(200);
         await res.body?.cancel();
       });

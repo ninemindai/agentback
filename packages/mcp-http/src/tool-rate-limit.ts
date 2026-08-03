@@ -3,6 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 import type {Request as ExpressRequest, RequestHandler} from 'express';
+import {classifyInboundRequest} from '@modelcontextprotocol/server';
 import type {AuthInfo} from '@modelcontextprotocol/server';
 import {
   RateLimiterMemory,
@@ -214,6 +215,48 @@ export function rateLimitErrorBody(tool: string, id: unknown) {
 }
 
 /**
+ * Whether the stateless transport will reject this request at its inbound
+ * validation ladder, before any tool runs — in which case it must not be
+ * debited.
+ *
+ * Quota should measure work performed, not requests received. The limiter runs
+ * ahead of the SDK handler (it needs the parsed body, which the handler
+ * consumes), so without this a request the transport is about to refuse still
+ * spends points: the 2026-07-28 binding requires `Mcp-Method` / `Mcp-Name` to
+ * mirror the body and rejects a mismatch with `-32020`, and `tallyToolCalls`
+ * counts every entry of a batch — so one POST carrying N `tools/call` entries
+ * debits N points for zero executed tools.
+ *
+ * This only decides *whether to debit*; it never answers. The rejected request
+ * still goes to the SDK, which owns the wire format — duplicating the error
+ * shaping here is how the two would drift.
+ *
+ * Delegates to the SDK's exported classifier, so the rungs it covers (HTTP
+ * method, JSON-RPC shape, era classification including the `Mcp-Method` and
+ * `MCP-Protocol-Version` cross-checks, and envelope validity) stay defined in
+ * one place. A *missing* standard header is validated a rung later by an
+ * un-exported SDK function and is deliberately not mirrored here.
+ */
+export function rejectedBeforeDispatch(request: {
+  httpMethod: string;
+  header: (name: string) => string | undefined;
+  body: unknown;
+}): boolean {
+  const protocolVersionHeader = request.header('mcp-protocol-version');
+  const mcpMethodHeader = request.header('mcp-method');
+  const mcpNameHeader = request.header('mcp-name');
+  return (
+    classifyInboundRequest({
+      httpMethod: request.httpMethod,
+      ...(protocolVersionHeader !== undefined ? {protocolVersionHeader} : {}),
+      ...(mcpMethodHeader !== undefined ? {mcpMethodHeader} : {}),
+      ...(mcpNameHeader !== undefined ? {mcpNameHeader} : {}),
+      ...(request.body !== undefined ? {body: request.body} : {}),
+    }).kind === 'reject'
+  );
+}
+
+/**
  * Per-tool, per-caller rate limiting for MCP-over-HTTP on the **Express** host.
  * Reads the JSON-RPC body (must run after `express.json()`); only `tools/call`
  * requests are limited, each tool getting its own bucket per caller. Responds
@@ -222,20 +265,38 @@ export function rateLimitErrorBody(tool: string, id: unknown) {
  *
  * The fetch/edge host applies {@link createToolRateLimiter} directly — there is
  * no middleware chain there to mount this into.
+ *
+ * `statelessLadder` marks the mount as the one whose requests go on to the
+ * SDK's inbound validation ladder, enabling the {@link rejectedBeforeDispatch}
+ * pre-check. The legacy/session mount has no such ladder, so it passes `false`.
  */
 export function toolRateLimitMiddleware(
   options: McpToolRateLimitOptions = {},
+  {statelessLadder = false}: {statelessLadder?: boolean} = {},
 ): RequestHandler {
   const limiter = createToolRateLimiter(options);
   return (req, res, next) => {
     const authInfo = (req as ExpressRequest & {auth?: AuthInfo}).auth;
+    const header = (name: string): string | undefined => {
+      const v = req.headers[name.toLowerCase()];
+      return Array.isArray(v) ? v[0] : v;
+    };
+    // Spend nothing on a request the transport is about to refuse.
+    if (
+      statelessLadder &&
+      rejectedBeforeDispatch({
+        httpMethod: req.method,
+        header,
+        body: req.body,
+      })
+    ) {
+      next();
+      return;
+    }
     limiter
       .check(req.body, {
         ...(authInfo ? {authInfo} : {}),
-        header: name => {
-          const v = req.headers[name.toLowerCase()];
-          return Array.isArray(v) ? v[0] : v;
-        },
+        header,
         ...(req.ip ? {ip: req.ip} : {}),
       })
       .then(decision => {

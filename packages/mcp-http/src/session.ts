@@ -2,7 +2,10 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {createMcpHandler} from '@modelcontextprotocol/server';
+import {
+  createMcpHandler,
+  localhostAllowedOrigins,
+} from '@modelcontextprotocol/server';
 import type {
   AuthInfo,
   McpHttpHandler,
@@ -183,6 +186,35 @@ export function toHostnames(values: string[]): string[] {
 }
 
 /**
+ * The origins a CORS configuration names, or `'any'` when it admits every
+ * origin and therefore names no allowlist to reuse.
+ *
+ * `rest.cors`'s origins already ARE an origin allowlist — the set of browser
+ * origins the app says may talk to it — so the `/mcp` rebinding allowlist is
+ * derived from them rather than configured a second time. A regex or function
+ * origin, `origin: true`, `'*'`, or a bare `cors: true` enumerate nothing;
+ * those answer `'any'`, and the caller warns instead of guessing.
+ */
+export function corsDeclaredOrigins(cors: unknown): string[] | 'any' {
+  // No CORS at all: nothing declared, and no cross-origin browser access.
+  if (cors === undefined || cors === null || cors === false) return [];
+  if (cors === true) return 'any'; // `cors()` defaults to `origin: '*'`
+  if (typeof cors !== 'object') return [];
+  const {origin} = cors as {origin?: unknown};
+  if (origin === undefined || origin === true || origin === '*') return 'any';
+  if (origin === false) return [];
+  if (typeof origin === 'string') return [origin];
+  if (!Array.isArray(origin)) return 'any'; // RegExp, or a custom callback
+  const declared: string[] = [];
+  for (const entry of origin) {
+    if (typeof entry !== 'string') return 'any'; // a RegExp element
+    if (entry === '*') return 'any';
+    declared.push(entry);
+  }
+  return declared;
+}
+
+/**
  * Merge `Mcp-Session-Id` into an `Access-Control-Expose-Headers` value.
  *
  * Under CORS a browser can only READ a response header that is named here, and
@@ -263,11 +295,48 @@ export function setupStateless(
         'session feature and the stateless era has no sessions.',
     );
   }
-  // On by default whenever either allowlist is configured, matching the
-  // session path's behaviour.
+  // Origin validation is a spec MUST, not a hardening option: every Streamable
+  // HTTP revision since 2025-03-26 says "Servers MUST validate the `Origin`
+  // header on all incoming connections to prevent DNS rebinding attacks". It
+  // defaults ON here rather than only when an allowlist is configured, because
+  // "browser-reachable with no allowlist" is the exact combination the guard
+  // exists to stop — and since 0.9.0 made this the default mount, reaching it
+  // by accident got easy.
+  //
+  // This is safe to default because a MISSING `Origin` passes by design (see
+  // `validateOriginHeader`): only browsers send the header, so no MCP client,
+  // curl, or stdio bridge is affected. The only request that can newly fail is
+  // a browser one — which is the case being defended.
+  //
+  // The allowlist is derived from `rest.cors` rather than configured twice:
+  // those origins are already the app's statement of which browsers may call
+  // it. When CORS admits any origin there is nothing to enumerate, so we warn
+  // instead of guessing — locking such an app down to localhost would break
+  // the browser client its own config allows.
+  //
+  // Scoped to stateless serving on purpose: the two paths read `allowedOrigins`
+  // differently (this one hostname-wise via `toHostnames`, the session
+  // transport by exact string match on the raw header), so a derived
+  // `localhost` would 403 a browser on `http://localhost:3000` under sessions.
+  // The early returns above mean the session path never reaches here.
+  let allowedOrigins = options.allowedOrigins;
+  if (allowedOrigins === undefined) {
+    const declared = corsDeclaredOrigins(options.corsConfig);
+    if (declared === 'any') {
+      log.warn(
+        'MCP endpoint is browser-reachable with NO Origin validation: `cors` ' +
+          'admits any origin, so no allowlist could be derived from it. The ' +
+          'Streamable HTTP spec requires servers to validate `Origin` ' +
+          '(DNS-rebinding defense) — set `allowedOrigins` to your real ' +
+          'browser origin(s).',
+      );
+    } else {
+      allowedOrigins = [...localhostAllowedOrigins(), ...declared];
+    }
+  }
   const rebinding =
     options.enableDnsRebindingProtection ??
-    (options.allowedHosts != null || options.allowedOrigins != null);
+    (options.allowedHosts != null || allowedOrigins != null);
 
   return {
     enabled: true,
@@ -289,8 +358,8 @@ export function setupStateless(
     ...(rebinding && options.allowedHosts
       ? {allowedHostnames: toHostnames(options.allowedHosts)}
       : {}),
-    ...(rebinding && options.allowedOrigins
-      ? {allowedOriginHostnames: toHostnames(options.allowedOrigins)}
+    ...(rebinding && allowedOrigins
+      ? {allowedOriginHostnames: toHostnames(allowedOrigins)}
       : {}),
   };
 }

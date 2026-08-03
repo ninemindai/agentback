@@ -394,4 +394,18 @@ middleware is exported as `toolRateLimitMiddleware(options)`.
   it as middleware; the fetch/edge mount applies the same core inline. A batched
   (array) JSON-RPC body is counted per element, so it cannot be used to get extra
   calls.
+- **A request the transport will reject is not debited.** On the stateless mount
+  the limiter first asks the SDK's inbound validation ladder whether the request
+  survives (bad JSON-RPC shape, a batch carrying `2026-07-28` elements, or an
+  `Mcp-Method` / `MCP-Protocol-Version` header disagreeing with the body →
+  `-32020 HeaderMismatch`). Quota measures work performed, not requests received.
 - **Store failures always fail open** in both rate limiters.
+- **`Origin` validation is on by default** on the stateless `/mcp` mount — the
+  Streamable HTTP spec has required it since `2025-03-26`. With `allowedOrigins`
+  unset, the allowlist is derived from `rest.cors` (localhost + the origins CORS
+  names). A CORS config admitting *any* origin (`cors: true`, `'*'`, a RegExp or
+  callback) enumerates nothing, so that **warns** and leaves validation off
+  rather than locking out the browser client it admits. A **missing `Origin`
+  passes** — only browsers send one, so MCP clients and `curl` are unaffected.
+  Compared by hostname (port-agnostic). `protocol: 'legacy'` keeps the old
+  opt-in default.

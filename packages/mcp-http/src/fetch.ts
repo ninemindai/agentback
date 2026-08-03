@@ -25,7 +25,11 @@ import {Context} from '@agentback/core';
 import {MCPServer} from '@agentback/mcp';
 import type {RestServer} from '@agentback/rest';
 import type {McpHttpOptions, McpHttpHandle} from './index.js';
-import {createToolRateLimiter, rateLimitErrorBody} from './tool-rate-limit.js';
+import {
+  createToolRateLimiter,
+  rateLimitErrorBody,
+  rejectedBeforeDispatch,
+} from './tool-rate-limit.js';
 import {
   resolveSessionServer,
   setupStateless,
@@ -256,10 +260,26 @@ export function mountMcpHttpFetch(
       }
     }
 
-    if (rateLimiter) {
+    const header = (name: string): string | undefined =>
+      req.headers.get(name) ?? undefined;
+
+    // Spend nothing on a request the stateless transport is about to refuse at
+    // its inbound validation ladder — quota measures work performed, not
+    // requests received. It matters most here: this host has no trustworthy
+    // client IP, so every anonymous caller shares one bucket, and a batch body
+    // debits one point per `tools/call` entry it names.
+    const doomed =
+      statelessHandler !== undefined &&
+      rejectedBeforeDispatch({
+        httpMethod: req.method,
+        header,
+        body: parsedBody,
+      });
+
+    if (rateLimiter && !doomed) {
       const decision = await rateLimiter.check(parsedBody, {
         ...(authInfo ? {authInfo} : {}),
-        header: name => req.headers.get(name) ?? undefined,
+        header,
         // No `ip`: see RateLimitCaller.ip — this host has no trustworthy
         // source for one, and a spoofable header is worse than none.
       });
