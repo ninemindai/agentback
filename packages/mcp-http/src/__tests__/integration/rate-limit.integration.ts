@@ -238,5 +238,38 @@ describe.each([
         expect(invocations).toBe(3);
       },
     );
+    // The other half of the invariant, stated honestly. The pre-check consults
+    // the SDK's EXPORTED classifier, which covers the edge rungs (shape, era,
+    // envelope). A *missing* standard header is validated later, inside an
+    // un-exported SDK function, so it is still refused — but only after the
+    // debit. Characterized rather than hidden: quota is not a perfect measure
+    // of executed work, and this test says exactly where the line is. See the
+    // `reward()` refund TODO. If a future SDK moves the check earlier, this
+    // flips to 200-with-budget-intact and should be updated, not deleted.
+    it.skipIf(protocol !== 'both')(
+      'still debits when the SDK rejects a rung the classifier cannot see',
+      async () => {
+        await start(1);
+        const rejected = await post({
+          jsonrpc: '2.0',
+          id: 300,
+          method: 'tools/call',
+          params: {
+            name: 'echo',
+            arguments: {text: 'x'},
+            _meta: {
+              'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+              'io.modelcontextprotocol/clientInfo': {name: 'c', version: '0'},
+              'io.modelcontextprotocol/clientCapabilities': {},
+            },
+          },
+        });
+        // Refused by the SDK for the absent `Mcp-Method` header, not by us.
+        expect(rejected.status).toBe(400);
+        expect(invocations).toBe(0);
+        // The point was spent anyway: budget of 1 is now exhausted.
+        expect((await callOnce('echo', 301)).status).toBe(429);
+      },
+    );
   },
 );

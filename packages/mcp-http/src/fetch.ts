@@ -5,8 +5,8 @@
 import {
   hostHeaderValidationResponse,
   isInitializeRequest,
-  originValidationResponse,
   requireBearerAuth,
+  validateOriginHeader,
   WebStandardStreamableHTTPServerTransport,
 } from '@modelcontextprotocol/server';
 import type {
@@ -31,6 +31,8 @@ import {
   rejectedBeforeDispatch,
 } from './tool-rate-limit.js';
 import {
+  ORIGIN_REJECTED_HINT,
+  rejectedOriginLogger,
   resolveSessionServer,
   setupStateless,
   withSessionIdExposed,
@@ -177,11 +179,23 @@ export function mountMcpHttpFetch(
   // which calls the factory per REQUEST. There is no session map, no principal
   // pinning (every request re-authenticates above) and no GET/DELETE session
   // ops — the SDK answers those 405.
+  // Self-serve the app's CORS config the way `installMcpHttp` does: this mount
+  // is handed the RestServer, so a direct caller (Bun/Workers/custom host)
+  // should get the same derived Origin allowlist as the documented entry point
+  // rather than silently falling back to localhost-only.
   const {
     handler: statelessHandler,
     allowedHostnames,
     allowedOriginHostnames,
-  } = setupStateless(mcp, options);
+  } = setupStateless(mcp, {
+    ...options,
+    ...(options.corsConfig === undefined
+      ? {corsConfig: server.config.cors}
+      : {}),
+  });
+  const warnRejectedOrigin = allowedOriginHostnames
+    ? rejectedOriginLogger(allowedOriginHostnames)
+    : undefined;
 
   // Per-tool throttling. This host has no middleware chain, so rather than
   // mounting middleware it applies the shared decision core inline, below.
@@ -213,6 +227,46 @@ export function mountMcpHttpFetch(
     sessionOwners[id] === undefined ||
     sessionOwners[id] === principal;
 
+  // Request pipeline. Every position here is load-bearing — read this before
+  // inserting a stage, because several orderings are security properties, not
+  // style. The Express mount (`mountMcpHttp`) runs the same sequence as a
+  // middleware chain; this is the canonical description of both.
+  //
+  //   inbound Request
+  //         │
+  //         ▼
+  //   ┌─────────────────┐  Host/Origin allowlists. FIRST, so a rebinding
+  //   │ rebinding guard │  attempt costs no token verification. Rejections
+  //   └────────┬────────┘  are logged once per distinct Origin (bounded).
+  //            │ pass
+  //            ▼
+  //   ┌─────────────────┐  OAuth bearer, else strategy auth. BEFORE the
+  //   │      auth       │  limiter, so an unauthenticated flood is 401'd
+  //   └────────┬────────┘  without ever touching a quota bucket.
+  //            │ authInfo
+  //            ▼
+  //   ┌─────────────────┐  ONCE — a Web Request body cannot be re-read, and
+  //   │   parse body    │  both the limiter and the SDK need it, so it is
+  //   └────────┬────────┘  read here and passed down as `parsedBody`.
+  //            │
+  //            ▼  (only when `rateLimit` is configured)
+  //   ┌─────────────────┐  Would the SDK's inbound ladder refuse this? If so,
+  //   │  doomed-check   │  skip the debit: quota measures work performed. This
+  //   └────────┬────────┘  decides only WHETHER to debit — it never answers.
+  //            │ not doomed
+  //            ▼
+  //   ┌─────────────────┐  Per-tool, per-caller. A batch debits one point per
+  //   │   rate limiter  │  `tools/call` entry, hence the check above.
+  //   └────────┬────────┘
+  //            │ allowed
+  //            ▼
+  //   ┌─────────────────┐  createMcpHandler: 2026-07-28 + 2025 from one
+  //   │  SDK stateless  │  endpoint, and the 9-rung validation ladder that
+  //   │     handler     │  owns every rejection's wire format.
+  //   └─────────────────┘
+  //
+  //   (session path only, when `protocol: 'legacy'`: transport lookup by
+  //    Mcp-Session-Id with per-principal ownership, below.)
   const handle = async (req: Request): Promise<Response> => {
     // Rebinding checks run BEFORE auth: this is a transport-level gate, and a
     // request from a disallowed host should be refused without spending a token
@@ -223,8 +277,15 @@ export function mountMcpHttpFetch(
       if (rejected) return rejected;
     }
     if (allowedOriginHostnames) {
-      const rejected = originValidationResponse(req, allowedOriginHostnames);
-      if (rejected) return rejected;
+      const origin = req.headers.get('origin');
+      // The SDK's own validator stays the authority on what is allowed; only
+      // the message is ours, so the caller learns how to fix it rather than
+      // getting a bare 403 (see ORIGIN_REJECTED_HINT).
+      const result = validateOriginHeader(origin, allowedOriginHostnames);
+      if (!result.ok) {
+        warnRejectedOrigin!(origin);
+        return rpcError(403, `${result.message}. ${ORIGIN_REJECTED_HINT}`);
+      }
     }
 
     // Authenticate once per request. OAuth bearer (resource-server) runs first
@@ -263,26 +324,31 @@ export function mountMcpHttpFetch(
     const header = (name: string): string | undefined =>
       req.headers.get(name) ?? undefined;
 
-    // Spend nothing on a request the stateless transport is about to refuse at
-    // its inbound validation ladder — quota measures work performed, not
-    // requests received. It matters most here: this host has no trustworthy
-    // client IP, so every anonymous caller shares one bucket, and a batch body
-    // debits one point per `tools/call` entry it names.
-    const doomed =
-      statelessHandler !== undefined &&
-      rejectedBeforeDispatch({
-        httpMethod: req.method,
-        header,
-        body: parsedBody,
-      });
-
-    if (rateLimiter && !doomed) {
-      const decision = await rateLimiter.check(parsedBody, {
-        ...(authInfo ? {authInfo} : {}),
-        header,
-        // No `ip`: see RateLimitCaller.ip — this host has no trustworthy
-        // source for one, and a spoofable header is worse than none.
-      });
+    // Classify ONLY when throttling is on: this is pure work whose single
+    // consumer is the debit decision below, and `rateLimit` is opt-in, so
+    // hoisting it would tax every request of every app that never configured
+    // one.
+    if (rateLimiter) {
+      // Spend nothing on a request the stateless transport is about to refuse
+      // at its inbound validation ladder — quota measures work performed, not
+      // requests received. It matters most here: this host has no trustworthy
+      // client IP, so every anonymous caller shares one bucket, and a batch
+      // body debits one point per `tools/call` entry it names.
+      const doomed =
+        statelessHandler !== undefined &&
+        rejectedBeforeDispatch({
+          httpMethod: req.method,
+          header,
+          body: parsedBody,
+        });
+      const decision = doomed
+        ? {ok: true as const}
+        : await rateLimiter.check(parsedBody, {
+            ...(authInfo ? {authInfo} : {}),
+            header,
+            // No `ip`: see RateLimitCaller.ip — this host has no trustworthy
+            // source for one, and a spoofable header is worse than none.
+          });
       if (!decision.ok) {
         return Response.json(rateLimitErrorBody(decision.tool, decision.id), {
           status: 429,

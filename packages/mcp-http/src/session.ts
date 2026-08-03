@@ -214,6 +214,132 @@ export function corsDeclaredOrigins(cors: unknown): string[] | 'any' {
   return declared;
 }
 
+/** The `Origin` allowlist decision, plus the warning it earned (if any). */
+export interface OriginAllowlistDecision {
+  /**
+   * Origins to admit, or `undefined` when no `Origin` check should run at all.
+   * Normalized to hostnames later by {@link toHostnames}.
+   */
+  origins?: string[];
+  /** Emitted by the caller when the outcome deserves operator attention. */
+  warning?: string;
+}
+
+/**
+ * Decide which `Origin` values a stateless `/mcp` mount admits.
+ *
+ * Origin validation is a spec MUST, not a hardening option: every Streamable
+ * HTTP revision since 2025-03-26 says "Servers MUST validate the `Origin`
+ * header on all incoming connections to prevent DNS rebinding attacks". So the
+ * allowlist defaults ON rather than appearing only when one is configured —
+ * "browser-reachable with no allowlist" is the exact combination the guard
+ * exists to stop, and since 0.9.0 made this the default mount, reaching it by
+ * accident got easy.
+ *
+ * Safe to default because a MISSING `Origin` passes by design (see
+ * `validateOriginHeader`): only browsers send the header, so no MCP client,
+ * curl, or stdio bridge is affected. The only request that can newly fail is a
+ * browser one — which is the case being defended.
+ *
+ * The allowlist comes from `rest.cors` rather than being configured twice:
+ * those origins already state which browsers may call the app. When CORS
+ * admits *any* origin there is nothing to enumerate, and the outcome then
+ * depends on whether protection was asked for by name:
+ *
+ * - asked for explicitly (`enableDnsRebindingProtection: true`) → fall back to
+ *   localhost, because an explicit `true` must never become a silent no-op;
+ * - left to the default → no allowlist, and a warning. Locking a wide-open
+ *   CORS app down to localhost would break the browser client its own config
+ *   admits, which is not a default's call to make.
+ *
+ * Stateless-only by construction: the two paths read `allowedOrigins`
+ * differently (this one hostname-wise via {@link toHostnames}, the session
+ * transport by exact string match on the raw header), so a derived `localhost`
+ * would 403 a browser on `http://localhost:3000` under sessions.
+ * {@link setupStateless} returns before calling this on the session path.
+ */
+export function deriveOriginAllowlist(
+  options: Pick<
+    McpHttpOptions,
+    'allowedOrigins' | 'corsConfig' | 'enableDnsRebindingProtection'
+  >,
+): OriginAllowlistDecision {
+  if (options.allowedOrigins !== undefined) {
+    return {origins: options.allowedOrigins};
+  }
+  const declared = corsDeclaredOrigins(options.corsConfig);
+  if (declared !== 'any') {
+    return {origins: [...localhostAllowedOrigins(), ...declared]};
+  }
+  if (options.enableDnsRebindingProtection === true) {
+    return {
+      origins: localhostAllowedOrigins(),
+      warning:
+        'DNS-rebinding protection was requested explicitly but `cors` admits ' +
+        'any origin, so no allowlist could be derived from it. Admitting ' +
+        'localhost only — set `allowedOrigins` to your real browser ' +
+        'origin(s) to widen it.',
+    };
+  }
+  return {
+    warning:
+      'MCP endpoint is browser-reachable with NO Origin validation: `cors` ' +
+      'admits any origin, so no allowlist could be derived from it. The ' +
+      'Streamable HTTP spec requires servers to validate `Origin` ' +
+      '(DNS-rebinding defense) — set `allowedOrigins` to your real browser ' +
+      'origin(s).',
+  };
+}
+
+/**
+ * Remediation text returned in the 403 body when an `Origin` is refused.
+ *
+ * The body, not the log, is the channel that actually reaches the person
+ * debugging: framework logs are `debug`-namespaced and emit nothing unless
+ * `DEBUG` is set, while a browser developer is already looking at the failed
+ * request. Deliberately does NOT enumerate the allowlist — that detail goes to
+ * the log, where the reader is the operator rather than the caller.
+ */
+export const ORIGIN_REJECTED_HINT =
+  'Origin not allowed. This endpoint validates `Origin` to prevent DNS ' +
+  'rebinding, as the MCP Streamable HTTP spec requires. If this client is ' +
+  'legitimate, add its origin to `allowedOrigins` (or to `rest.cors`, which ' +
+  'the default allowlist is derived from).';
+
+/**
+ * Build a deduplicating reporter for rejected `Origin` values.
+ *
+ * A derived allowlist can 403 a browser the operator never explicitly
+ * excluded, and the SDK's rejection is a bare 403 that never mentions
+ * `allowedOrigins`. That makes a new default undiagnosable: the app worked
+ * before the upgrade and the server does not say why it stopped.
+ *
+ * Deduplicated per distinct origin and capped, because the header is
+ * caller-controlled: without that, a hostile client rotating `Origin` values
+ * turns a diagnostic into a log-flooding amplifier.
+ *
+ * Logs and ALSO returns the message (or `undefined` when already reported), so
+ * the dedup contract is testable without depending on `DEBUG` being set.
+ */
+export function rejectedOriginLogger(
+  allowed: string[],
+): (origin: string | null | undefined) => string | undefined {
+  const seen = new Set<string>();
+  return origin => {
+    const key = origin ?? '(none)';
+    if (seen.has(key)) return undefined;
+    if (seen.size >= 32) return undefined; // bounded: caller-controlled value
+    seen.add(key);
+    const message =
+      `rejected MCP request from Origin ${key} — it is not in the allowlist ` +
+      `[${allowed.join(', ')}]. Add it to \`allowedOrigins\` (or to ` +
+      '`rest.cors`, which the default allowlist is derived from) if this ' +
+      'client is legitimate.';
+    log.warn(message);
+    return message;
+  };
+}
+
 /**
  * Merge `Mcp-Session-Id` into an `Access-Control-Expose-Headers` value.
  *
@@ -319,21 +445,8 @@ export function setupStateless(
   // transport by exact string match on the raw header), so a derived
   // `localhost` would 403 a browser on `http://localhost:3000` under sessions.
   // The early returns above mean the session path never reaches here.
-  let allowedOrigins = options.allowedOrigins;
-  if (allowedOrigins === undefined) {
-    const declared = corsDeclaredOrigins(options.corsConfig);
-    if (declared === 'any') {
-      log.warn(
-        'MCP endpoint is browser-reachable with NO Origin validation: `cors` ' +
-          'admits any origin, so no allowlist could be derived from it. The ' +
-          'Streamable HTTP spec requires servers to validate `Origin` ' +
-          '(DNS-rebinding defense) — set `allowedOrigins` to your real ' +
-          'browser origin(s).',
-      );
-    } else {
-      allowedOrigins = [...localhostAllowedOrigins(), ...declared];
-    }
-  }
+  const {origins: allowedOrigins, warning} = deriveOriginAllowlist(options);
+  if (warning) log.warn(warning);
   const rebinding =
     options.enableDnsRebindingProtection ??
     (options.allowedHosts != null || allowedOrigins != null);

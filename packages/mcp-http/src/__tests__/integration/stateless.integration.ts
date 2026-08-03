@@ -12,7 +12,7 @@ import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {z} from 'zod';
 import {RestApplication, type RestServer} from '@agentback/rest';
 import {MCPComponent, MCPServer, mcpServer, tool} from '@agentback/mcp';
-import {installMcpHttp} from '../../index.js';
+import {installMcpHttp, mountMcpHttpFetch} from '../../index.js';
 
 // `protocol: 'both'` serves the 2026-07-28 revision — and 2025-era traffic
 // from the same endpoint — with no session at all. Unlike modern-era
@@ -474,6 +474,7 @@ describe("protocol: 'both' DNS-rebinding protection", () => {
         opts: {
           allowedHosts?: string[];
           allowedOrigins?: string[];
+          enableDnsRebindingProtection?: boolean;
         },
         cors?: boolean | {origin?: string | string[]},
       ) {
@@ -582,6 +583,99 @@ describe("protocol: 'both' DNS-rebinding protection", () => {
         const res = await post({origin: 'https://evil.test'});
         expect(res.status).toBe(200);
         await res.body?.cancel();
+      });
+
+      it('validates anyway when protection is requested by name', async () => {
+        // An explicit `enableDnsRebindingProtection: true` must never be a
+        // no-op. With `cors: true` nothing is derivable, so it falls back to
+        // localhost rather than silently enforcing nothing.
+        await start({enableDnsRebindingProtection: true}, true);
+        const res = await post({origin: 'https://evil.test'});
+        expect(res.status).toBe(403);
+        await res.body?.cancel();
+      });
+
+      // Only the fetch mount takes a RestServer, so only it can self-serve.
+      it.skipIf(listener !== 'native')(
+        'derives from rest.cors when mounted directly, no installMcpHttp',
+        async () => {
+          // `mountMcpHttpFetch` is the documented low-level path for Bun,
+          // Workers and custom hosts. It is handed the RestServer, so it must
+          // reach the same allowlist as `installMcpHttp` rather than silently
+          // falling back to localhost-only and 403ing a configured origin.
+          app = new RestApplication({rest: {listener: 'native'}});
+          app.configure('servers.RestServer').to({
+            port: 0,
+            host: '127.0.0.1',
+            listener: 'native',
+            cors: {origin: 'https://direct.example.com'},
+          });
+          app.component(MCPComponent);
+          app.configure('servers.MCPServer').to({
+            name: 'direct',
+            version: '0.0.0',
+            transports: {stdio: false},
+          });
+          app.service(DemoTools);
+          const mcp = await app.get<MCPServer>('servers.MCPServer');
+          const restServer = await app.get<RestServer>('servers.RestServer');
+          mountMcpHttpFetch(mcp, restServer, {protocol: 'both'});
+          await app.start();
+          base = restServer.url;
+
+          const allowed = await post({origin: 'https://direct.example.com'});
+          expect(allowed.status).toBe(200);
+          await allowed.body?.cancel();
+
+          const denied = await post({origin: 'https://evil.test'});
+          expect(denied.status).toBe(403);
+          await denied.body?.cancel();
+        },
+      );
+
+      // Characterization, not endorsement: `validateOriginHeader` compares
+      // HOSTNAMES, so a CORS grant naming exactly `https://app.example.com`
+      // also admits `http://` and any port on that host. Deriving from CORS
+      // therefore widens a precise grant. Pinned so the widening is known
+      // behaviour rather than a surprise, and so a future SDK that tightens
+      // the comparison shows up here as a failure to react to.
+      it('widens a CORS origin to its whole hostname', async () => {
+        await start({}, {origin: 'https://app.example.com'});
+        const downgraded = await post({origin: 'http://app.example.com'});
+        expect(downgraded.status).toBe(200); // scheme ignored
+        await downgraded.body?.cancel();
+
+        const otherPort = await post({origin: 'https://app.example.com:8443'});
+        expect(otherPort.status).toBe(200); // port ignored
+        await otherPort.body?.cancel();
+
+        const other = await post({origin: 'https://evil.test'});
+        expect(other.status).toBe(403); // but a different host is still out
+        await other.body?.cancel();
+      });
+
+      it('rejects the opaque `null` Origin browsers send', async () => {
+        // Sandboxed iframes and some redirects produce `Origin: null`. It is
+        // not a hostname and must not be treated as "no Origin" (which passes).
+        await start({});
+        const res = await post({origin: 'null'});
+        expect(res.status).toBe(403);
+        await res.body?.cancel();
+      });
+
+      it('says how to fix it in the 403 body', async () => {
+        // A derived default that 403s a browser must say why, in the channel
+        // the person debugging is actually looking at. The log is not that
+        // channel: framework loggers are `debug`-namespaced and emit nothing
+        // unless DEBUG is set, whereas a browser developer already has the
+        // failed request open in devtools.
+        await start({});
+        const res = await post({origin: 'https://evil.test'});
+        expect(res.status).toBe(403);
+        const body = (await res.json()) as {error: {message: string}};
+        expect(body.error.message).toContain('evil.test');
+        expect(body.error.message).toContain('allowedOrigins');
+        expect(body.error.message).toContain('rest.cors');
       });
     });
   }
