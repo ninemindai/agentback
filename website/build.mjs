@@ -116,12 +116,31 @@ function mapTarget(repoPath) {
   return `${GITHUB}/${kind}/main/${p}`;
 }
 
+// Repo-relative links in shipped pages whose target does not exist. Collected
+// rather than thrown on the spot so one build reports every one of them.
+//
+// This has to be checked HERE, not against `dist`: `mapTarget` sends anything
+// the site does not ship to a GitHub URL, so a typo'd `docs/guides/typo.md`
+// becomes a perfectly well-formed link to a GitHub 404 and is invisible to any
+// check that runs later. Verified by mutation — a dist-only check passed with a
+// deliberately broken link in it.
+//
+// Scoped to `rewriteHref`'s callers (DOC_PAGES + docs/blog/**), which is exactly
+// the surface a reader can reach. Internal scratch like docs/superpowers/ is
+// never rendered and is not the build's business.
+const linkProblems = [];
+
 /** Rewrite one href found in a file at repo dir `srcDir`, for an output page at `outPage`. */
 function rewriteHref(href, srcDir, outPage) {
   if (/^(https?:|mailto:|#|data:)/.test(href)) return href;
   const [target, anchor] = href.split('#');
   if (!target) return href;
   const resolved = path.posix.normalize(path.posix.join(srcDir, target));
+  if (!fs.existsSync(path.join(root, resolved))) {
+    linkProblems.push(
+      `${outPage}: href="${href}" -> ${resolved} (no such path)`,
+    );
+  }
   const mapped = mapTarget(resolved);
   const suffix = anchor ? `#${anchor}` : '';
   if (/^https?:/.test(mapped)) return mapped + suffix;
@@ -670,7 +689,74 @@ if (CF_WEB_ANALYTICS_TOKEN) {
   injectBeacon(out);
 }
 
+// 7. Link checks, two of them, because they catch different failures.
+//
+// (a) SOURCE links, collected in `rewriteHref` above: a repo-relative link in a
+//     shipped page pointing at a path that does not exist. This is the typo
+//     case, and it is invisible downstream because `mapTarget` turns an
+//     unshipped path into a GitHub URL.
+//
+// (b) OUTPUT links, walked below: an internal href/src in `dist` that resolves
+//     to nothing. This is the mapping/copy case — a page that was linked but
+//     never emitted.
+//
+// (b) runs against `dist` and AFTER step 5, because step 5 appends `?v=`
+// cache-busters and the point is to check what actually ships. Two traps it
+// encodes, both hit while writing it: strip BOTH `#` and `?` (missing the query
+// string reported all 35 stamped stylesheets as broken), and a directory link is
+// served by its `index.html`.
+//
+// External links are deliberately never fetched: a build must not fail because
+// someone else's host is down.
+if (linkProblems.length) {
+  throw new Error(
+    `website/build.mjs: ${linkProblems.length} broken repo-relative link(s) ` +
+      `in shipped pages. A link to a file the site does not render is fine — ` +
+      `it is rewritten to GitHub — but the path has to exist in the repo.\n  ` +
+      linkProblems.join('\n  '),
+  );
+}
+
+const checkLinks = dir => {
+  const problems = [];
+  const walk = current => {
+    for (const entry of fs.readdirSync(current, {withFileTypes: true})) {
+      const file = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        walk(file);
+        continue;
+      }
+      if (!entry.name.endsWith('.html')) continue;
+      const html = fs.readFileSync(file, 'utf8');
+      for (const [, attr, raw] of html.matchAll(/\b(href|src)="([^"]+)"/g)) {
+        if (/^(https?:|mailto:|tel:|#|data:|javascript:)/i.test(raw)) continue;
+        const target = decodeURIComponent(raw.split('#')[0].split('?')[0]);
+        if (!target) continue;
+        const dest = path.resolve(path.dirname(file), target);
+        const ok =
+          fs.existsSync(dest) &&
+          (!fs.statSync(dest).isDirectory() ||
+            fs.existsSync(path.join(dest, 'index.html')));
+        if (!ok) {
+          problems.push(`${path.relative(dir, file)} -> ${attr}="${raw}"`);
+        }
+      }
+    }
+  };
+  walk(dir);
+  if (problems.length) {
+    throw new Error(
+      `website/build.mjs: ${problems.length} broken internal link(s) in the ` +
+        `built site. A repo-relative link is fine — \`mapTarget\` rewrites it — ` +
+        `but the target has to exist or be a page the site ships ` +
+        `(see DOC_PAGES).\n  ${problems.join('\n  ')}`,
+    );
+  }
+  return problems.length;
+};
+checkLinks(out);
+
 const count = DOC_PAGES.length;
 console.log(
-  `built website/dist — homepage, ${count} docs pages, blog, diagrams`,
+  `built website/dist — homepage, ${count} docs pages, blog, diagrams, links OK`,
 );
