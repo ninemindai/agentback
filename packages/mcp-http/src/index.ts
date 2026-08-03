@@ -77,16 +77,39 @@ export interface McpHttpOptions {
   /**
    * Reject requests whose `Host`/`Origin` headers are not in the allowlists
    * below — defends a browser-reachable MCP endpoint against DNS-rebinding
-   * attacks (a malicious page POSTing to your server). Defaults to `true`
-   * when `allowedHosts` or `allowedOrigins` is set, otherwise `false` (so the
-   * out-of-the-box dev experience isn't blocked). **Production deployments
-   * should set the allowlists** to their real host/origin.
+   * attacks (a malicious page POSTing to your server).
+   *
+   * Under the default (stateless) mount this is **on**, because an `Origin`
+   * allowlist is always derived (see {@link McpHttpOptions.allowedOrigins}).
+   * Set `false` to opt out entirely; set `true` with `allowedHosts` to also
+   * check `Host`. Under `protocol: 'legacy'` it keeps the older behaviour of
+   * defaulting to `true` only when an allowlist is configured.
    */
   enableDnsRebindingProtection?: boolean;
   /** Allowed `Host` header values (e.g. `['mcp.example.com']`). */
   allowedHosts?: string[];
-  /** Allowed `Origin` header values (e.g. `['https://app.example.com']`). */
+  /**
+   * Allowed `Origin` header values (e.g. `['https://app.example.com']`).
+   * Compared **by hostname** (port-agnostic) on the default stateless mount.
+   *
+   * The Streamable HTTP spec requires servers to validate `Origin` on every
+   * revision since 2025-03-26, so when this is unset the stateless mount
+   * derives an allowlist rather than skipping the check: localhost, plus the
+   * origins `rest.cors` already names. A missing `Origin` header always passes
+   * — only browsers send one — so non-browser MCP clients are unaffected.
+   *
+   * When CORS admits *any* origin there is nothing to enumerate; that logs a
+   * warning and leaves validation off rather than locking out the browser
+   * client the app's own CORS config allows.
+   */
   allowedOrigins?: string[];
+  /**
+   * The REST server's `cors` configuration, the source the default `Origin`
+   * allowlist is derived from. {@link installMcpHttp} supplies this
+   * automatically; direct {@link mountMcpHttp} callers can pass it, or just
+   * set {@link McpHttpOptions.allowedOrigins} explicitly.
+   */
+  corsConfig?: boolean | {origin?: unknown};
   /**
    * Enable **resumable** sessions: pass an `EventStore` (e.g. the bundled
    * {@link InMemoryEventStore}, or a Redis-backed one in production) and the
@@ -274,6 +297,13 @@ export async function installMcpHttp(
   if (opts.perSession && !opts.appContext) {
     opts = {...opts, appContext: app};
   }
+  // The app's CORS config is the origin allowlist it has already declared;
+  // hand it down so the default `Origin` validation derives from it instead of
+  // asking for the same origins twice. Both hosts reach the mount through
+  // here, and only this function has the RestServer to read it from.
+  if (opts.corsConfig === undefined) {
+    opts = {...opts, corsConfig: server.config.cors};
+  }
   // Inherit the app's era posture when this mount does not state one, so
   // `protocol: 'legacy'` on the MCPServer config rolls back BOTH surfaces.
   // Before this, it rolled back stdio only and left /mcp on the new revision —
@@ -444,10 +474,6 @@ export function mountMcpHttp(
     );
   }
 
-  const toolRateLimit = options.rateLimit
-    ? [toolRateLimitMiddleware(options.rateLimit)]
-    : [];
-
   const rpcError = (res: Response, status: number, message: string) =>
     res
       .status(status)
@@ -463,6 +489,17 @@ export function mountMcpHttp(
     allowedHostnames,
     allowedOriginHostnames,
   } = setupStateless(mcp, options);
+  // Built after `setupStateless` so the limiter knows whether its requests go
+  // on to the SDK's inbound validation ladder — a request that ladder will
+  // reject must not be debited. Only one of the two mounts below is ever
+  // reached, so this single instance always matches the mount that uses it.
+  const toolRateLimit = options.rateLimit
+    ? [
+        toolRateLimitMiddleware(options.rateLimit, {
+          statelessLadder: statelessHandler !== undefined,
+        }),
+      ]
+    : [];
   // The allowlists arrive normalized; applying them is host-specific, so it
   // stays here rather than in the shared seam.
   const rebindingGuards: RequestHandler[] = [];

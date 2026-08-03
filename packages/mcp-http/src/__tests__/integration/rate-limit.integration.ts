@@ -198,5 +198,45 @@ describe.each([
       expect((await callOnce('echo', 2)).status).toBe(429); // override = 1
       expect((await callOnce('cheap', 3)).status).toBe(200); // default = 5
     });
+
+    // Quota measures work performed, not requests received. The limiter runs
+    // ahead of the SDK handler (it needs the body, which the handler consumes),
+    // so a request the transport is about to refuse used to spend points first.
+    // A batch is the amplifying case: `tallyToolCalls` counts every entry, so
+    // one POST that never runs a single tool could drain the whole budget.
+    //
+    // Only the stateless mount has an inbound validation ladder to consult;
+    // under `protocol: 'legacy'` there is nothing to pre-check.
+    it.skipIf(protocol !== 'both')(
+      'does not spend quota on a request the inbound ladder rejects',
+      async () => {
+        await start(3);
+        const envelope = {
+          'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+          'io.modelcontextprotocol/clientInfo': {name: 'c', version: '0'},
+          'io.modelcontextprotocol/clientCapabilities': {},
+        };
+        // A batch containing modern elements is refused at the SDK's
+        // `jsonrpc-shape` rung (`batch-with-modern-element`), before dispatch.
+        const doomed = await post(
+          Array.from({length: 3}, (_, i) => ({
+            jsonrpc: '2.0',
+            id: 200 + i,
+            method: 'tools/call',
+            params: {name: 'echo', arguments: {text: 'b'}, _meta: envelope},
+          })),
+        );
+        expect(doomed.status).toBe(400);
+        expect(invocations).toBe(0); // nothing ran, so nothing is owed
+
+        // The full budget must survive: three real calls still succeed. Before
+        // the pre-check the rejected batch debited all three points and the
+        // first of these answered 429.
+        expect((await callOnce('echo', 1)).status).toBe(200);
+        expect((await callOnce('echo', 2)).status).toBe(200);
+        expect((await callOnce('echo', 3)).status).toBe(200);
+        expect(invocations).toBe(3);
+      },
+    );
   },
 );
