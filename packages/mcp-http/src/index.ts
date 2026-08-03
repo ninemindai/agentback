@@ -7,10 +7,7 @@ import {
   requireBearerAuth,
 } from '@modelcontextprotocol/express';
 import type {OAuthTokenVerifier} from '@modelcontextprotocol/express';
-import {
-  isInitializeRequest,
-  validateOriginHeader,
-} from '@modelcontextprotocol/server';
+import {isInitializeRequest} from '@modelcontextprotocol/server';
 import type {
   AuthInfo,
   EventStore,
@@ -47,7 +44,9 @@ import {
 } from './tool-rate-limit.js';
 import {mountMcpHttpFetch, PUBLIC_DISCOVERY_CORS} from './fetch.js';
 import {
+  describeOriginRules,
   ORIGIN_REJECTED_HINT,
+  originAllowed,
   rejectedOriginLogger,
   resolveSessionServer,
   setupStateless,
@@ -497,7 +496,7 @@ export function mountMcpHttp(
   const {
     handler: statelessHandler,
     allowedHostnames,
-    allowedOriginHostnames,
+    originRules,
   } = setupStateless(mcp, options);
   // Built after `setupStateless` so the limiter knows whether its requests go
   // on to the SDK's inbound validation ladder — a request that ladder will
@@ -517,22 +516,27 @@ export function mountMcpHttp(
   const rebindingGuards: RequestHandler[] = [];
   if (allowedHostnames)
     rebindingGuards.push(hostHeaderValidation(allowedHostnames));
-  if (allowedOriginHostnames) {
+  if (originRules) {
     // Not the SDK's `originValidation` middleware: it answers a bare 403 that
     // never mentions `allowedOrigins`, which makes a derived-default rejection
-    // undiagnosable. The SDK's `validateOriginHeader` stays the authority on
-    // what is allowed — only the message is ours, and it matches the fetch
-    // host's byte for byte.
-    const warnRejectedOrigin = rejectedOriginLogger(allowedOriginHostnames);
+    // undiagnosable, and it only does hostname matching. `originAllowed`
+    // matches each rule at its declared precision, and the message matches the
+    // fetch host's byte for byte.
+    const warnRejectedOrigin = rejectedOriginLogger(
+      describeOriginRules(originRules),
+    );
     rebindingGuards.push((req, res, next) => {
       const origin = req.headers.origin;
-      const result = validateOriginHeader(origin, allowedOriginHostnames);
-      if (result.ok) {
+      if (originAllowed(origin, originRules)) {
         next();
         return;
       }
       warnRejectedOrigin(origin);
-      rpcError(res, 403, `${result.message}. ${ORIGIN_REJECTED_HINT}`);
+      rpcError(
+        res,
+        403,
+        `Invalid Origin header: ${origin}. ${ORIGIN_REJECTED_HINT}`,
+      );
     });
   }
   if (statelessHandler) {

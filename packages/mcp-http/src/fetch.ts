@@ -6,7 +6,6 @@ import {
   hostHeaderValidationResponse,
   isInitializeRequest,
   requireBearerAuth,
-  validateOriginHeader,
   WebStandardStreamableHTTPServerTransport,
 } from '@modelcontextprotocol/server';
 import type {
@@ -31,7 +30,9 @@ import {
   rejectedBeforeDispatch,
 } from './tool-rate-limit.js';
 import {
+  describeOriginRules,
   ORIGIN_REJECTED_HINT,
+  originAllowed,
   rejectedOriginLogger,
   resolveSessionServer,
   setupStateless,
@@ -186,15 +187,15 @@ export function mountMcpHttpFetch(
   const {
     handler: statelessHandler,
     allowedHostnames,
-    allowedOriginHostnames,
+    originRules,
   } = setupStateless(mcp, {
     ...options,
     ...(options.corsConfig === undefined
       ? {corsConfig: server.config.cors}
       : {}),
   });
-  const warnRejectedOrigin = allowedOriginHostnames
-    ? rejectedOriginLogger(allowedOriginHostnames)
+  const warnRejectedOrigin = originRules
+    ? rejectedOriginLogger(describeOriginRules(originRules))
     : undefined;
 
   // Per-tool throttling. This host has no middleware chain, so rather than
@@ -276,15 +277,17 @@ export function mountMcpHttpFetch(
       const rejected = hostHeaderValidationResponse(req, allowedHostnames);
       if (rejected) return rejected;
     }
-    if (allowedOriginHostnames) {
+    if (originRules) {
       const origin = req.headers.get('origin');
-      // The SDK's own validator stays the authority on what is allowed; only
-      // the message is ours, so the caller learns how to fix it rather than
-      // getting a bare 403 (see ORIGIN_REJECTED_HINT).
-      const result = validateOriginHeader(origin, allowedOriginHostnames);
-      if (!result.ok) {
+      // Each rule matches at the precision it was declared at — see
+      // `OriginRule`. The message is ours so the caller learns how to fix it
+      // rather than getting a bare 403 (see ORIGIN_REJECTED_HINT).
+      if (!originAllowed(origin, originRules)) {
         warnRejectedOrigin!(origin);
-        return rpcError(403, `${result.message}. ${ORIGIN_REJECTED_HINT}`);
+        return rpcError(
+          403,
+          `Invalid Origin header: ${origin}. ${ORIGIN_REJECTED_HINT}`,
+        );
       }
     }
 
@@ -328,6 +331,11 @@ export function mountMcpHttpFetch(
     // consumer is the debit decision below, and `rateLimit` is opt-in, so
     // hoisting it would tax every request of every app that never configured
     // one.
+    // Hands debited points back if the transport ends up refusing the request
+    // for a rung the pre-check below cannot see (a missing standard header, for
+    // one — the SDK validates that in an un-exported function).
+    let refundQuota: (() => Promise<void>) | undefined;
+
     if (rateLimiter) {
       // Spend nothing on a request the stateless transport is about to refuse
       // at its inbound validation ladder — quota measures work performed, not
@@ -349,6 +357,7 @@ export function mountMcpHttpFetch(
             // No `ip`: see RateLimitCaller.ip — this host has no trustworthy
             // source for one, and a spoofable header is worse than none.
           });
+      if (decision.ok) refundQuota = decision.refund;
       if (!decision.ok) {
         return Response.json(rateLimitErrorBody(decision.tool, decision.id), {
           status: 429,
@@ -360,10 +369,15 @@ export function mountMcpHttpFetch(
     if (statelessHandler) {
       // `authInfo` is strict pass-through: the SDK verifies nothing itself, so
       // the guard above stays the only authority.
-      return statelessHandler.fetch(req, {
+      const res = await statelessHandler.fetch(req, {
         ...(authInfo ? {authInfo} : {}),
         ...(parsedBody !== undefined ? {parsedBody} : {}),
       });
+      // A transport-level refusal (4xx) means no tool ran, so the points go
+      // back. A tool that merely errored answers 200 with a JSON-RPC error —
+      // that work WAS performed and stays debited.
+      if (res.status >= 400 && refundQuota) await refundQuota();
+      return res;
     }
 
     const principal = authInfo?.clientId;

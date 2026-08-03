@@ -5,6 +5,7 @@
 import {
   createMcpHandler,
   localhostAllowedOrigins,
+  validateOriginHeader,
 } from '@modelcontextprotocol/server';
 import type {
   AuthInfo,
@@ -185,42 +186,147 @@ export function toHostnames(values: string[]): string[] {
   });
 }
 
+/** What a CORS config names, split by how precisely it can be matched. */
+export interface CorsDeclaration {
+  /** Full origins, e.g. `https://app.example.com`. Matched exactly. */
+  exact: string[];
+  /** Origin patterns. Matched by testing the pattern. */
+  patterns: RegExp[];
+}
+
 /**
  * The origins a CORS configuration names, or `'any'` when it admits every
  * origin and therefore names no allowlist to reuse.
  *
  * `rest.cors`'s origins already ARE an origin allowlist — the set of browser
  * origins the app says may talk to it — so the `/mcp` rebinding allowlist is
- * derived from them rather than configured a second time. A regex or function
- * origin, `origin: true`, `'*'`, or a bare `cors: true` enumerate nothing;
- * those answer `'any'`, and the caller warns instead of guessing.
+ * derived from them rather than configured a second time.
+ *
+ * A **RegExp is kept, not discarded**. `cors: {origin: /\.example\.com$/}` is a
+ * *restrictive* config; collapsing it to `'any'` (as this once did) gave the
+ * least protection to a caller who asked for more than a wildcard did. Regexes
+ * are pure, so they can be evaluated per request.
+ *
+ * A **callback origin still answers `'any'`**. `CustomOrigin` is
+ * `(origin, callback) => void` — asynchronous and free to have side effects or
+ * depend on request state, so it is not something a transport guard can invoke
+ * per request. `origin: true`, `'*'`, and a bare `cors: true` are genuine
+ * wildcards and answer `'any'` too; the caller warns rather than guessing.
  */
-export function corsDeclaredOrigins(cors: unknown): string[] | 'any' {
+export function corsDeclaredOrigins(cors: unknown): CorsDeclaration | 'any' {
+  const none: CorsDeclaration = {exact: [], patterns: []};
   // No CORS at all: nothing declared, and no cross-origin browser access.
-  if (cors === undefined || cors === null || cors === false) return [];
+  if (cors === undefined || cors === null || cors === false) return none;
   if (cors === true) return 'any'; // `cors()` defaults to `origin: '*'`
-  if (typeof cors !== 'object') return [];
+  if (typeof cors !== 'object') return none;
   const {origin} = cors as {origin?: unknown};
   if (origin === undefined || origin === true || origin === '*') return 'any';
-  if (origin === false) return [];
-  if (typeof origin === 'string') return [origin];
-  if (!Array.isArray(origin)) return 'any'; // RegExp, or a custom callback
-  const declared: string[] = [];
+  if (origin === false) return none;
+  if (typeof origin === 'string') return {exact: [origin], patterns: []};
+  if (origin instanceof RegExp) return {exact: [], patterns: [origin]};
+  // A function origin is the only remaining non-array shape.
+  if (!Array.isArray(origin)) return 'any';
+  const declared: CorsDeclaration = {exact: [], patterns: []};
   for (const entry of origin) {
-    if (typeof entry !== 'string') return 'any'; // a RegExp element
+    if (entry instanceof RegExp) {
+      declared.patterns.push(entry);
+      continue;
+    }
+    if (typeof entry !== 'string') return 'any'; // a nested callback/boolean
     if (entry === '*') return 'any';
-    declared.push(entry);
+    declared.exact.push(entry);
   }
   return declared;
 }
 
-/** The `Origin` allowlist decision, plus the warning it earned (if any). */
+/**
+ * One clause of an `Origin` policy. Kept separate by kind because **precision
+ * follows the source**: an entry is matched at the precision it was declared
+ * at, rather than everything being flattened to hostnames.
+ *
+ * - `hostname` — port- and scheme-agnostic, via the SDK's `validateOriginHeader`.
+ *   Used for explicitly-configured `allowedOrigins` (its documented, shipped
+ *   behaviour, which changing would break callers) and for the localhost
+ *   defaults (dev servers move ports).
+ * - `exact` — full `scheme://host[:port]` equality. Used for origins derived
+ *   from CORS, so a precise grant stays precise: naming
+ *   `https://app.example.com` must not also admit `http://app.example.com`.
+ * - `pattern` — the RegExp the app already trusted for CORS.
+ */
+export type OriginRule =
+  | {kind: 'hostname'; values: string[]}
+  | {kind: 'exact'; values: string[]}
+  | {kind: 'pattern'; values: RegExp[]};
+
+/** Canonical `scheme://host[:port]` form, or `undefined` if unparseable. */
+function canonicalOrigin(value: string): string | undefined {
+  try {
+    const {origin} = new URL(value);
+    // `new URL('app.example.com')` throws, but some inputs parse to the opaque
+    // "null" origin (e.g. `data:` URLs); those can never match a real browser
+    // Origin and must not become a wildcard.
+    return origin === 'null' ? undefined : origin;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Does this `Origin` header satisfy any rule?
+ *
+ * A missing or empty header PASSES: only browsers send `Origin`, so an absent
+ * one means a non-browser client (MCP client, curl, stdio bridge), which is not
+ * what DNS-rebinding defense is aimed at. Every other value must match a rule —
+ * including the literal `null` origin browsers send for opaque contexts, which
+ * fails because it is not a parseable origin.
+ */
+export function originAllowed(
+  origin: string | null | undefined,
+  rules: OriginRule[],
+): boolean {
+  if (origin === null || origin === undefined || origin === '') return true;
+  const canonical = canonicalOrigin(origin);
+  for (const rule of rules) {
+    switch (rule.kind) {
+      case 'hostname':
+        if (validateOriginHeader(origin, rule.values).ok) return true;
+        break;
+      case 'exact':
+        if (canonical === undefined) break; // unparseable never matches
+        if (rule.values.some(v => canonicalOrigin(v) === canonical))
+          return true;
+        break;
+      case 'pattern':
+        if (canonical === undefined) break;
+        // Test the canonical origin so a trailing slash or default port in the
+        // header cannot dodge a pattern anchored with `$`.
+        if (rule.values.some(p => p.test(canonical))) return true;
+        break;
+    }
+  }
+  return false;
+}
+
+/** Operator-facing summary of what a policy admits, for the rejection log. */
+export function describeOriginRules(rules: OriginRule[]): string {
+  return (
+    rules
+      .map(rule =>
+        rule.kind === 'pattern'
+          ? `matching ${rule.values.map(String).join(', ')}`
+          : `${rule.kind} ${rule.values.join(', ')}`,
+      )
+      .join('; ') || '(nothing)'
+  );
+}
+
+/** The `Origin` policy decision, plus the warning it earned (if any). */
 export interface OriginAllowlistDecision {
   /**
-   * Origins to admit, or `undefined` when no `Origin` check should run at all.
-   * Normalized to hostnames later by {@link toHostnames}.
+   * Rules to admit by, or `undefined` when no `Origin` check should run at all.
+   * Each rule carries its own matching precision — see {@link OriginRule}.
    */
-  origins?: string[];
+  rules?: OriginRule[];
   /** Emitted by the caller when the outcome deserves operator attention. */
   warning?: string;
 }
@@ -252,10 +358,15 @@ export interface OriginAllowlistDecision {
  *   CORS app down to localhost would break the browser client its own config
  *   admits, which is not a default's call to make.
  *
- * Stateless-only by construction: the two paths read `allowedOrigins`
- * differently (this one hostname-wise via {@link toHostnames}, the session
- * transport by exact string match on the raw header), so a derived `localhost`
- * would 403 a browser on `http://localhost:3000` under sessions.
+ * **Precision follows the source.** A CORS origin is matched exactly and a CORS
+ * regex is tested, so a grant stays as narrow as the app declared it; only the
+ * localhost defaults and an explicitly-configured `allowedOrigins` use
+ * hostname matching (the latter because that is its shipped, documented
+ * behaviour and narrowing it would break callers who already set it).
+ *
+ * Stateless-only by construction: the session transport exact-matches the raw
+ * `Origin` header against `allowedOrigins`, so a derived `localhost` would 403
+ * a browser on `http://localhost:3000` there.
  * {@link setupStateless} returns before calling this on the session path.
  */
 export function deriveOriginAllowlist(
@@ -265,15 +376,28 @@ export function deriveOriginAllowlist(
   >,
 ): OriginAllowlistDecision {
   if (options.allowedOrigins !== undefined) {
-    return {origins: options.allowedOrigins};
+    // Hostname matching, deliberately: this option shipped with those
+    // semantics and tightening it now would 403 callers who already set it.
+    return {
+      rules: [{kind: 'hostname', values: toHostnames(options.allowedOrigins)}],
+    };
   }
   const declared = corsDeclaredOrigins(options.corsConfig);
   if (declared !== 'any') {
-    return {origins: [...localhostAllowedOrigins(), ...declared]};
+    const rules: OriginRule[] = [
+      {kind: 'hostname', values: localhostAllowedOrigins()},
+    ];
+    if (declared.exact.length) {
+      rules.push({kind: 'exact', values: declared.exact});
+    }
+    if (declared.patterns.length) {
+      rules.push({kind: 'pattern', values: declared.patterns});
+    }
+    return {rules};
   }
   if (options.enableDnsRebindingProtection === true) {
     return {
-      origins: localhostAllowedOrigins(),
+      rules: [{kind: 'hostname', values: localhostAllowedOrigins()}],
       warning:
         'DNS-rebinding protection was requested explicitly but `cors` admits ' +
         'any origin, so no allowlist could be derived from it. Admitting ' +
@@ -330,7 +454,7 @@ export const ORIGIN_REJECTED_HINT =
  * the dedup contract is testable without depending on `DEBUG` being set.
  */
 export function rejectedOriginLogger(
-  allowed: string[],
+  allowedDescription: string,
 ): (origin: string | null | undefined) => string | undefined {
   const MAX_TRACKED = 32;
   const seen = new Set<string>();
@@ -346,7 +470,7 @@ export function rejectedOriginLogger(
     seen.add(key);
     const message =
       `rejected MCP request from Origin ${key} — it is not in the allowlist ` +
-      `[${allowed.join(', ')}]. Add it to \`allowedOrigins\` (or to ` +
+      `[${allowedDescription}]. Add it to \`allowedOrigins\` (or to ` +
       '`rest.cors`, which the default allowlist is derived from) if this ' +
       'client is legitimate.';
     log.warn(message);
@@ -398,7 +522,11 @@ export interface StatelessSetup {
    * that genuinely differs and so is deliberately NOT shared.
    */
   allowedHostnames?: string[];
-  allowedOriginHostnames?: string[];
+  /**
+   * `Origin` policy, or absent when no check runs. Rules carry their own
+   * matching precision — see {@link OriginRule}.
+   */
+  originRules?: OriginRule[];
 }
 
 /**
@@ -459,11 +587,11 @@ export function setupStateless(
   // transport by exact string match on the raw header), so a derived
   // `localhost` would 403 a browser on `http://localhost:3000` under sessions.
   // The early returns above mean the session path never reaches here.
-  const {origins: allowedOrigins, warning} = deriveOriginAllowlist(options);
+  const {rules: originRules, warning} = deriveOriginAllowlist(options);
   if (warning) log.warn(warning);
   const rebinding =
     options.enableDnsRebindingProtection ??
-    (options.allowedHosts != null || allowedOrigins != null);
+    (options.allowedHosts != null || originRules != null);
 
   return {
     enabled: true,
@@ -485,8 +613,6 @@ export function setupStateless(
     ...(rebinding && options.allowedHosts
       ? {allowedHostnames: toHostnames(options.allowedHosts)}
       : {}),
-    ...(rebinding && allowedOrigins
-      ? {allowedOriginHostnames: toHostnames(allowedOrigins)}
-      : {}),
+    ...(rebinding && originRules ? {originRules} : {}),
   };
 }

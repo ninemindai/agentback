@@ -33,7 +33,24 @@ class DemoTools {
   cheap(input: {text: string}) {
     return {echoed: input.text};
   }
+
+  /** Runs, then throws — an in-band tool error, NOT a transport refusal. */
+  @tool('boom')
+  boom() {
+    invocations++;
+    throw new Error('tool exploded');
+  }
 }
+
+/**
+ * Let a post-response refund land.
+ *
+ * The refund is applied once the status is known — on Express via
+ * `res.on('finish')` — which can be just after the client's `fetch` resolves.
+ * Waiting a couple of macrotask turns is honest about that window; asserting
+ * immediately would be asserting a race.
+ */
+const settle = () => new Promise(r => setTimeout(r, 50));
 
 const JSON_HEADERS = {
   'content-type': 'application/json',
@@ -238,16 +255,14 @@ describe.each([
         expect(invocations).toBe(3);
       },
     );
-    // The other half of the invariant, stated honestly. The pre-check consults
-    // the SDK's EXPORTED classifier, which covers the edge rungs (shape, era,
-    // envelope). A *missing* standard header is validated later, inside an
-    // un-exported SDK function, so it is still refused — but only after the
-    // debit. Characterized rather than hidden: quota is not a perfect measure
-    // of executed work, and this test says exactly where the line is. See the
-    // `reward()` refund TODO. If a future SDK moves the check earlier, this
-    // flips to 200-with-budget-intact and should be updated, not deleted.
+    // The rung the pre-check CANNOT see, now closed by refund rather than by
+    // prediction. A *missing* standard header is validated inside an
+    // un-exported SDK function, so the classifier routes the request as modern
+    // and it gets debited — then the transport answers 4xx and the points come
+    // back. This test previously asserted the debit stuck; it is the direct
+    // proof that the `reward()` follow-up landed.
     it.skipIf(protocol !== 'both')(
-      'still debits when the SDK rejects a rung the classifier cannot see',
+      'refunds when the SDK rejects a rung the classifier cannot see',
       async () => {
         await start(1);
         const rejected = await post({
@@ -267,8 +282,43 @@ describe.each([
         // Refused by the SDK for the absent `Mcp-Method` header, not by us.
         expect(rejected.status).toBe(400);
         expect(invocations).toBe(0);
-        // The point was spent anyway: budget of 1 is now exhausted.
-        expect((await callOnce('echo', 301)).status).toBe(429);
+
+        // The refund is applied after the response is on the wire (on Express
+        // it rides `res.on('finish')`), so it can land just after the client's
+        // fetch resolves. That window is inherent to observing the status
+        // rather than predicting it — poll briefly instead of pretending it is
+        // synchronous.
+        await settle();
+
+        // Budget of 1 intact: nothing ran, so nothing is owed.
+        expect((await callOnce('echo', 301)).status).toBe(200);
+        expect(invocations).toBe(1);
+      },
+    );
+
+    // Refund is scoped to transport-level refusals. A tool that throws answers
+    // 200 with a JSON-RPC error — that work WAS performed, so it stays debited.
+    it.skipIf(protocol !== 'both')(
+      'does not refund a tool that ran and failed',
+      async () => {
+        await start(1);
+        const callBoom = (id: number) =>
+          post({
+            jsonrpc: '2.0',
+            id,
+            method: 'tools/call',
+            params: {name: 'boom'},
+          });
+
+        const errored = await callBoom(400);
+        expect(errored.status).toBe(200); // in-band error, not a refusal
+        expect(invocations).toBe(1); // it really ran
+        await settle();
+
+        // Same bucket (per-tool), and the point stays spent because the work
+        // was performed. Asserting against `echo` here would prove nothing —
+        // each tool has its own bucket.
+        expect((await callBoom(401)).status).toBe(429);
       },
     );
   },

@@ -476,7 +476,7 @@ describe("protocol: 'both' DNS-rebinding protection", () => {
           allowedOrigins?: string[];
           enableDnsRebindingProtection?: boolean;
         },
-        cors?: boolean | {origin?: string | string[]},
+        cors?: boolean | {origin?: string | string[] | RegExp},
       ) {
         app = new RestApplication(
           listener === 'native' ? {rest: {listener: 'native'}} : {},
@@ -633,25 +633,56 @@ describe("protocol: 'both' DNS-rebinding protection", () => {
         },
       );
 
-      // Characterization, not endorsement: `validateOriginHeader` compares
-      // HOSTNAMES, so a CORS grant naming exactly `https://app.example.com`
-      // also admits `http://` and any port on that host. Deriving from CORS
-      // therefore widens a precise grant. Pinned so the widening is known
-      // behaviour rather than a surprise, and so a future SDK that tightens
-      // the comparison shows up here as a failure to react to.
-      it('widens a CORS origin to its whole hostname', async () => {
+      // A CORS origin is matched EXACTLY: naming `https://app.example.com` must
+      // not also admit the plaintext scheme or another port on that host. This
+      // test previously asserted the opposite — it characterized the widening
+      // as known behaviour while it was still SDK hostname matching. Precision
+      // now follows the source, so it asserts the narrow grant instead.
+      it('does not widen a CORS origin to its whole hostname', async () => {
         await start({}, {origin: 'https://app.example.com'});
+        const exact = await post({origin: 'https://app.example.com'});
+        expect(exact.status).toBe(200);
+        await exact.body?.cancel();
+
         const downgraded = await post({origin: 'http://app.example.com'});
-        expect(downgraded.status).toBe(200); // scheme ignored
+        expect(downgraded.status).toBe(403); // scheme is part of the origin
         await downgraded.body?.cancel();
 
         const otherPort = await post({origin: 'https://app.example.com:8443'});
-        expect(otherPort.status).toBe(200); // port ignored
+        expect(otherPort.status).toBe(403); // so is the port
         await otherPort.body?.cancel();
 
         const other = await post({origin: 'https://evil.test'});
-        expect(other.status).toBe(403); // but a different host is still out
+        expect(other.status).toBe(403);
         await other.body?.cancel();
+      });
+
+      // The case that previously got NO validation at all: a restrictive regex
+      // collapsed to "unenumerable", which gave it less protection than a
+      // wildcard. Regexes are pure, so they are evaluated per request.
+      it('enforces a RegExp CORS origin instead of giving up', async () => {
+        await start({}, {origin: /\.example\.com$/});
+        const matching = await post({origin: 'https://app.example.com'});
+        expect(matching.status).toBe(200);
+        await matching.body?.cancel();
+
+        const notMatching = await post({origin: 'https://evil.test'});
+        expect(notMatching.status).toBe(403);
+        await notMatching.body?.cancel();
+
+        // Anchored `$` must not be dodged by a suffix-lookalike host.
+        const lookalike = await post({origin: 'https://example.com.evil.test'});
+        expect(lookalike.status).toBe(403);
+        await lookalike.body?.cancel();
+      });
+
+      it('still admits localhost on any port', async () => {
+        // Hostname semantics are kept where they earn their keep: dev servers
+        // move ports, so pinning localhost to one would be hostile.
+        await start({}, {origin: 'https://app.example.com'});
+        const dev = await post({origin: 'http://localhost:5173'});
+        expect(dev.status).toBe(200);
+        await dev.body?.cancel();
       });
 
       it('rejects the opaque `null` Origin browsers send', async () => {

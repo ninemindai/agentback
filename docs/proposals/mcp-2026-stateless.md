@@ -361,7 +361,7 @@ all incoming connections" — and that wording is **not new in `2026-07-28`**, i
 is identical in `2025-06-18` and dates to `2025-03-26`. The permissive default
 was therefore never conformant on any revision; the 0.9.0 flip only made it easy
 to reach. It is safe to default because the spec conditions its 403 on `Origin`
-being *present*, and the SDK's `validateOriginHeader` passes a missing one by
+being _present_, and the SDK's `validateOriginHeader` passes a missing one by
 design — only browsers send the header.
 
 The allowlist is **derived from `rest.cors`** rather than configured a second
@@ -375,7 +375,16 @@ path compares hostnames — so a derived `localhost` would 403 a browser on
 `http://localhost:3000` under sessions. Unifying that is a separate breaking
 decision, and belongs with S7b.
 
-**D7 — Rate-limiter ordering. RESOLVED (2026-08-03).** The limiter must run
+**Follow-up, resolved 2026-08-03: precision follows the source.** The first cut
+flattened every entry to a hostname, so a precise `cors` origin became a
+whole-hostname grant and a restrictive `cors` RegExp was discarded entirely (it
+collapsed to "unenumerable", giving it less protection than a wildcard). Entries
+are now matched at the precision they were declared at: CORS origin strings
+exactly, CORS regexes by test, explicit `allowedOrigins` and localhost by
+hostname. Only a callback origin remains unusable — `CustomOrigin` is
+`(origin, callback) => void`, so it cannot be invoked per request.
+
+**D7 — Rate-limiter ordering. RESOLVED (2026-08-03), then completed.** The limiter must run
 before `statelessHandler.fetch()` (it needs the body, which the handler
 consumes), so it used to debit requests the SDK's inbound ladder then rejected.
 Fixed by consulting the SDK's exported `classifyInboundRequest` first and
@@ -383,6 +392,12 @@ skipping the debit for a doomed request; it never answers, so the SDK remains
 the sole owner of the wire format. Notably **not** fixed by keying the debit off
 `Mcp-Method`/`Mcp-Name`, which the spec warns against for policy enforcers that
 have not confirmed header–body validation applies to the request's version.
+
+The classifier is exported but only covers the edge rungs; a _missing_ standard
+header is validated inside an un-exported SDK function. That remainder is now
+handled by **refund** (`reward()`) on a 4xx — predicted where possible, observed
+where not. Both run: the pre-check keeps the amplifying batch case race-free,
+and the refund closes what prediction cannot reach.
 
 ---
 

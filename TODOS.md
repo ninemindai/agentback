@@ -79,93 +79,74 @@ envelope rungs; a _missing_ standard header is validated a rung later by an
 un-exported SDK function and is deliberately not mirrored — pinned by a test
 that fails if a future SDK moves that check earlier.
 
-### Tighten `Origin` matching, and decouple it from `rest.cors`
+### ~~Tighten `Origin` matching, and decouple it from `rest.cors`~~ — CLOSED, shipped
 
-**What:** Two related follow-ups on the derived `Origin` allowlist: (a) offer
-scheme/port-exact origin matching instead of the SDK's hostname-only compare,
-and (b) reconsider `rest.cors` as the derivation source.
+**Decision (2026-08-03): diverge from the SDK's flat hostname comparison —
+precision follows the source.** The open question this entry recorded was
+"whether to diverge from the SDK's comparison semantics". Answer: yes, but
+selectively. Rather than one rule for everything, each entry is matched at the
+precision it was _declared_ at:
 
-**Why (a):** `validateOriginHeader` compares **hostnames** — verified: with an
-allowlist of `app.example.com`, all of `https://app.example.com`,
-`http://app.example.com` and `https://app.example.com:8443` are admitted. So a
-CORS config naming exactly `https://app.example.com` yields a whole-hostname
-MCP grant, including the plaintext scheme. It does not weaken the rebinding
-defense itself (an attacker's page is on a _different_ host), but it is a
-silent widening of a precise grant, and it now happens by default rather than
-only when someone configured `allowedOrigins` by hand.
+| declared as               | matched                              |
+| ------------------------- | ------------------------------------ |
+| a CORS origin string      | exact `scheme://host[:port]`         |
+| a CORS RegExp             | by testing the pattern               |
+| explicit `allowedOrigins` | by hostname (unchanged)              |
+| localhost defaults        | by hostname (dev servers move ports) |
 
-**Why (b):** CORS governs whether a browser may **read** a response; Origin
-validation governs whether the request is **accepted at all**. They are
-different policies, so an origin trusted to read REST responses is now
-automatically trusted to invoke MCP tools. That is right for the common case
-(one browser app talking to one service) and wrong for a deployment whose REST
-and MCP browser clients differ.
+**(a) resolved.** `cors: {origin: 'https://app.example.com'}` no longer admits
+`http://app.example.com` or `:8443`. Explicit `allowedOrigins` deliberately
+KEEPS hostname matching: those are its shipped, documented semantics and
+narrowing them would 403 callers who already set the option. The fix lands
+exactly where the widening was introduced (the derivation) and nowhere else.
 
-**Context:** Both raised by the `/plan-eng-review` outside voice (Codex) on
-2026-08-03, and both verified against the SDK before being recorded. The
-widening is pinned by `widens a CORS origin to its whole hostname` in
-`stateless.integration.ts`, so it is characterized behaviour, not a latent
-surprise; `Origin: null` is separately pinned as rejected.
+**The bigger win was the case this entry buried at the bottom.** A RegExp
+`cors.origin` used to collapse to `'any'` — a _restrictive_ config got LESS
+protection than a wildcard, the least defensible of the three cases. Both Codex
+passes flagged it independently. Regexes are pure, so they are now evaluated per
+request. A **callback** origin still answers `'any'`: `CustomOrigin` is
+`(origin, callback) => void`, asynchronous and free to have side effects, so a
+transport guard cannot invoke it per request.
 
-**Deliberately not fixed now:** hostname comparison is the SDK's documented
-semantics and already applied to explicitly-configured `allowedOrigins`, so
-changing it is a behaviour change to an existing option, not a fix to this
-branch. `allowedOrigins` always wins over the derivation, so anyone who needs a
-different MCP-specific policy already has the escape hatch.
+**(b) resolved as: keep deriving.** The concern was that CORS governs whether a
+browser may _read_ a response while Origin validation governs whether the
+request is _accepted_. True, but the precision fix dissolves most of it — the
+derived policy now says exactly what CORS said rather than a widened version,
+and `allowedOrigins` remains the override for a deployment whose REST and MCP
+browser clients genuinely differ. Decoupling would mean asking for the same
+origins twice, which is the second-source-of-truth problem this avoided.
 
-**Worth considering when picked up:** a regex/callback `cors.origin` could be
-_consulted_ (call the predicate with the candidate origin at request time)
-rather than collapsing to `'any'` — that would make "validation on by default"
-true for dynamic CORS allowlists, which is currently the largest category where
-it silently stays off. The adversarial pass sharpened this: `cors: {origin:
-/\.example\.com$/}` is a _restrictive_ config that the code currently treats as
-identical to wildcard, which is the least defensible case of the three. Both
-Codex passes flagged it independently.
+**Shipped:** `OriginRule` / `originAllowed` / `describeOriginRules`
+(`session.ts`), consumed by both hosts. The characterization test that pinned
+the widening now asserts the opposite and is renamed — it did its job.
 
-**Effort:** M
-**Priority:** P3
-**Depends on:** — (needs a decision on whether to diverge from the SDK's
-comparison semantics)
+### ~~Refund rate-limiter points when the transport rejects a request~~ — CLOSED, shipped
 
-### Refund rate-limiter points when the transport rejects a request
+**Decision (2026-08-03): built, alongside the pre-check rather than instead of
+it.** This entry deferred refund because it is not strictly more complete — it
+trades a closed race for an open one. That reasoning still holds, which is why
+both mechanisms now run:
 
-**What:** Hand quota back via `rate-limiter-flexible`'s `reward(key, points)`
-when the MCP transport answers a 4xx, instead of only pre-checking the requests
-the SDK's exported classifier can recognize.
+- **Predicted** (`rejectedBeforeDispatch`) — no debit at all for the rungs the
+  SDK's exported classifier can see. No race, because nothing is spent.
+- **Observed** (`RateLimitDecision.refund`, via `reward()`) — covers the rungs
+  it cannot see, by reacting to a 4xx from the transport.
 
-**Why:** `rejectedBeforeDispatch` closes the cases the classifier sees — bad
-JSON-RPC shape, batches carrying modern elements, and `Mcp-Method` /
-`MCP-Protocol-Version` cross-check mismatches. It cannot see a _missing_
-standard header, which the SDK validates a rung later in an un-exported
-function. A refund covers every rejection generically, without copying any
-SDK-internal rule — which was the exact objection that ruled out mirroring the
-presence check.
+The pre-check still carries the amplifying case (a batch debiting N points for
+zero executed tools), so the refund's debit-then-refund window applies only to
+the narrow remainder — which is what makes the combination worth shipping when
+refund alone was not.
 
-**Context:** Surfaced by `/plan-eng-review` on 2026-08-03 against the branch
-that shipped the pre-check. `reward()` verified present in
-`rate-limiter-flexible@11.2.0` (`types.d.ts:47`,
-`lib/RateLimiterAbstract.js:122`).
+**Scoped to transport-level refusals.** A tool that runs and throws answers 200
+with a JSON-RPC error and stays debited: that work was performed.
 
-**Deliberately deferred, with the reasoning**, because refund is _not_ strictly
-more complete than what shipped:
-
-- The residual gap carries **no attacker leverage**. After the pre-check, a
-  missing-header request costs one request and debits one point — identical to
-  a legitimate call. The amplifying case (a batch debiting N points for zero
-  executed tools) is already closed.
-- Refund introduces a debit-then-refund **window** where a burst can still trip
-  the limit before points come back. The pre-check has no such window, so this
-  trades a closed race for an open one.
-- It also changes `ToolRateLimiter`'s shape (a refund handle) and needs
-  response-status plumbing on both hosts.
-
-**Revisit if** a real deployment shows meaningful quota burn from rejected
-requests, or if a future SDK moves standard-header validation earlier (the test
-`does not claim to catch an absent standard header` in `origin-default.unit.ts`
-fails loudly if that happens).
-
-**Effort:** M
-**Priority:** P3
+**One robustness bug found while building it.** Registering the refund on
+`res.on('finish')` assumed a full Express response; a `res` without an event
+emitter threw an _unhandled rejection inside the middleware_, breaking the
+request rather than skipping the accounting. Now guarded on
+`typeof res.on === 'function'` — refund is best-effort by design and must never
+be why a request fails. Caught by an existing unit test's mock, which is exactly
+what that mock is for.
 
 ### ~~Decide the Origin-validation default for a browser-reachable `/mcp`~~ — CLOSED, spec verified, shipped
 
