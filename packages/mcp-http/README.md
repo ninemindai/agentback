@@ -53,17 +53,37 @@ the default mount validates it whether or not you configure an allowlist.
 
 What it validates when you configure nothing:
 
-| `rest.cors`                             | derived `Origin` allowlist                                   |
-| --------------------------------------- | ------------------------------------------------------------ |
-| not set                                 | localhost only                                               |
-| `{origin: ['https://app.example.com']}` | localhost + `app.example.com`                                |
-| `true`, `'*'`, a RegExp or a callback   | nothing derivable — **logs a warning**, validation stays off |
+| `rest.cors`                           | derived `Origin` policy                                      |
+| ------------------------------------- | ------------------------------------------------------------ |
+| not set                               | localhost only                                               |
+| `{origin: 'https://app.example.com'}` | localhost + that **exact** origin (scheme and port included) |
+| `{origin: /\.example\.com$/}`         | localhost + anything the **pattern** matches                 |
+| `true`, `'*'`, or a callback          | nothing derivable — **logs a warning**, validation stays off |
 
-The allowlist is derived from `rest.cors` because those origins are already your
+The policy is derived from `rest.cors` because those origins are already your
 statement of which browsers may call the app — declaring them twice is a second
 source of truth that drifts. When CORS admits _any_ origin there is nothing to
 enumerate, so it warns instead of guessing: restricting to localhost there would
 break the browser client your own config admits.
+
+**Precision follows the source.** Each entry is matched at the precision it was
+declared at, rather than everything being flattened to hostnames:
+
+| declared as                 | matched                                    |
+| --------------------------- | ------------------------------------------ |
+| a CORS origin string        | exact `scheme://host[:port]`               |
+| a CORS RegExp               | by testing the pattern                     |
+| `allowedOrigins` (explicit) | by hostname — port- and scheme-agnostic    |
+| localhost defaults          | by hostname, so dev servers can move ports |
+
+So `cors: {origin: 'https://app.example.com'}` does **not** also admit
+`http://app.example.com` or `:8443` — a precise grant stays precise. Explicit
+`allowedOrigins` keeps hostname matching because that is its shipped, documented
+behaviour and narrowing it would 403 callers who already set it.
+
+A **callback** `origin` is the one shape that still can't be reused:
+`CustomOrigin` is `(origin, callback) => void`, asynchronous and free to have
+side effects, so a transport guard can't invoke it per request.
 
 One exception: if you pass `enableDnsRebindingProtection: true` **explicitly**
 and nothing is derivable, it falls back to localhost rather than enforcing
@@ -88,15 +108,11 @@ await installMcpHttp(app, {
 });
 ```
 
-⚠️ **`Origin` values are compared by hostname only** on the stateless mount —
-scheme and port are ignored. `https://app.example.com` therefore also admits
-`https://app.example.com:8443` **and `http://app.example.com`**. That is the
-SDK's `validateOriginHeader` semantics, and it applies to values you configure
-explicitly as well as derived ones — so a precise CORS grant becomes a
-whole-hostname grant. It still blocks the case the guard exists for (a
-different host, which is what DNS rebinding produces), but if you need
-scheme-exact policy, enforce it at your proxy. `Origin: null` (sandboxed
-iframes, opaque origins) is always rejected.
+Values passed to `allowedOrigins` are compared **by hostname** (see the
+precision table above), so `https://app.example.com` there also admits
+`https://app.example.com:8443`. Origins _derived_ from `rest.cors` are matched
+exactly. `Origin: null` (sandboxed iframes, opaque origins) is always rejected
+by every rule.
 
 For a localhost-only server, set `allowedHosts: ['127.0.0.1:PORT', 'localhost:PORT']`.
 
@@ -418,22 +434,31 @@ inline.
 A batched (array) JSON-RPC body is counted **per element**, so wrapping calls in
 an array does not get you extra ones.
 
-⚠️ **This is tool quota, not a general request throttle.** Because a request the
-transport will refuse is no longer debited, malformed traffic is no longer
-incidentally throttled by `rateLimit` — an attacker can send rejected requests
-without spending quota. That was never what a per-tool bucket was for, but if
-`rateLimit` was your only throttle you now want a general one in front of it:
-use [`@agentback/extension-rate-limit`](../extension-rate-limit), which limits
-requests rather than tool calls.
+⚠️ **This is tool quota, not a general request throttle.** Requests the
+transport refuses cost no quota, so malformed traffic is not throttled by
+`rateLimit` — that was never what a per-tool bucket was for. If `rateLimit` was
+your only throttle you want a general one in front of it:
+[`@agentback/extension-rate-limit`](../extension-rate-limit) limits requests
+rather than tool calls.
 
-Quota measures work performed, not requests received: on the stateless mount a
-request the transport is about to refuse at its inbound validation ladder is
-**not** debited. That covers a malformed JSON-RPC shape, a batch carrying
-`2026-07-28` elements, and an `Mcp-Method` / `MCP-Protocol-Version` header that
-disagrees with the body (`-32020 HeaderMismatch`). It matters most where the
-bucket is shared: on the fetch host every anonymous caller keys to one `anon`
-bucket, and a rejected batch would otherwise spend one point per element it
-names while running nothing.
+Quota measures work performed, not requests received. Two mechanisms keep that
+true, because one alone cannot:
+
+- **Predicted** — before debiting, the request is run past the SDK's exported
+  inbound classifier. A malformed JSON-RPC shape, a batch carrying
+  `2026-07-28` elements, or an `Mcp-Method` / `MCP-Protocol-Version` header that
+  disagrees with the body (`-32020 HeaderMismatch`) is never charged at all.
+- **Observed** — the rungs the classifier cannot see (a _missing_ standard
+  header is validated inside an un-exported SDK function) are refunded when the
+  transport answers a 4xx. Best-effort, and applied after the response, so a
+  burst can briefly see the debit before it comes back.
+
+A tool that runs and throws answers `200` with a JSON-RPC error and stays
+debited — that work was performed.
+
+This matters most where the bucket is shared: on the fetch host every anonymous
+caller keys to one `anon` bucket, and a rejected batch would otherwise spend one
+point per element it names while running nothing.
 
 ```ts
 await installMcpHttp(app, {

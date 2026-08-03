@@ -82,7 +82,22 @@ interface JsonRpcCall {
 
 /** The outcome of checking one HTTP request against the limiters. */
 export type RateLimitDecision =
-  {ok: true} | {ok: false; tool: string; retryAfterSecs: number; id: unknown};
+  | {
+      ok: true;
+      /**
+       * Hand the debited points back. Present only when points were actually
+       * spent, so a fail-open or a zero-tool request carries nothing.
+       *
+       * The pre-check ({@linkcode rejectedBeforeDispatch}) covers the ladder
+       * rungs the SDK's exported classifier can see; this covers the rest, by
+       * observation rather than prediction — the host calls it when the
+       * transport answers a transport-level rejection (4xx). Best-effort:
+       * a store failure while refunding is swallowed, exactly as a store
+       * failure while debiting fails open.
+       */
+      refund?: () => Promise<void>;
+    }
+  | {ok: false; tool: string; retryAfterSecs: number; id: unknown};
 
 /**
  * Extract every `tools/call` in a request body, tallied per tool.
@@ -177,10 +192,15 @@ export function createToolRateLimiter(
       if (counts.size === 0) return {ok: true};
       const key = callerKey(caller);
 
+      // What was actually spent, so it can be handed back if the transport
+      // then refuses the request. Only successful consumes are recorded.
+      const spent: Array<{tool: string; points: number}> = [];
+
       for (const [tool, n] of counts) {
         const limiter = limiters.get(tool) ?? limiters.get(DEFAULT_BUCKET)!;
         try {
           await limiter.consume(`${key}:${tool}`, n);
+          spent.push({tool, points: n});
         } catch (err) {
           if (err instanceof RateLimiterRes) {
             // Points already consumed from earlier tools in this batch are not
@@ -197,7 +217,21 @@ export function createToolRateLimiter(
           return {ok: true};
         }
       }
-      return {ok: true};
+      if (spent.length === 0) return {ok: true};
+      return {
+        ok: true,
+        refund: async () => {
+          for (const {tool, points} of spent) {
+            const limiter = limiters.get(tool) ?? limiters.get(DEFAULT_BUCKET)!;
+            try {
+              await limiter.reward(`${key}:${tool}`, points);
+            } catch {
+              // Refunding is best-effort: a store that cannot give points back
+              // must not turn a rejected request into a 500.
+            }
+          }
+        },
+      };
     },
   };
 }
@@ -269,6 +303,9 @@ export function rejectedBeforeDispatch(request: {
  * `statelessLadder` marks the mount as the one whose requests go on to the
  * SDK's inbound validation ladder, enabling the {@link rejectedBeforeDispatch}
  * pre-check. The legacy/session mount has no such ladder, so it passes `false`.
+ *
+ * Debited points are refunded on a 4xx (see {@link RateLimitDecision.refund}),
+ * which catches the rejections the pre-check cannot predict.
  */
 export function toolRateLimitMiddleware(
   options: McpToolRateLimitOptions = {},
@@ -301,6 +338,20 @@ export function toolRateLimitMiddleware(
       })
       .then(decision => {
         if (decision.ok) {
+          // The status is only known once the response is on the wire, so the
+          // refund rides `finish`. A transport-level refusal (4xx) means no
+          // tool ran; a tool that merely errored answers 200 with a JSON-RPC
+          // error and stays debited, because that work WAS performed.
+          // Guarded: refund is best-effort accounting, so it must never be
+          // the reason a request fails. A `res` without an event emitter (a
+          // hand-rolled adapter, a test double) simply does not get refunds
+          // rather than throwing an unhandled rejection mid-request.
+          if (decision.refund && typeof res.on === 'function') {
+            const refund = decision.refund;
+            res.on('finish', () => {
+              if (res.statusCode >= 400) void refund();
+            });
+          }
           next();
           return;
         }

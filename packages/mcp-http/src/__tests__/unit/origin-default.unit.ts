@@ -8,8 +8,10 @@ import {MCPComponent, MCPServer, mcpServer, tool} from '@agentback/mcp';
 import {
   corsDeclaredOrigins,
   deriveOriginAllowlist,
+  originAllowed,
   rejectedOriginLogger,
   setupStateless,
+  type OriginRule,
 } from '../../session.js';
 import {rejectedBeforeDispatch} from '../../tool-rate-limit.js';
 
@@ -41,33 +43,45 @@ async function givenMcp(): Promise<MCPServer> {
 
 describe('corsDeclaredOrigins', () => {
   it('enumerates the origins a CORS config names', () => {
-    expect(corsDeclaredOrigins({origin: 'https://app.example.com'})).toEqual([
-      'https://app.example.com',
-    ]);
+    expect(corsDeclaredOrigins({origin: 'https://app.example.com'})).toEqual({
+      exact: ['https://app.example.com'],
+      patterns: [],
+    });
     expect(
       corsDeclaredOrigins({origin: ['https://a.example.com', 'https://b.dev']}),
-    ).toEqual(['https://a.example.com', 'https://b.dev']);
+    ).toEqual({
+      exact: ['https://a.example.com', 'https://b.dev'],
+      patterns: [],
+    });
   });
 
-  it('reports `any` when the config enumerates nothing to reuse', () => {
-    // `cors: true` is `origin: '*'`; a regex or callback origin cannot be
-    // listed. Guessing an allowlist here would lock out the very browser
-    // client the app's own CORS config admits.
+  it('keeps a RegExp origin instead of discarding it', () => {
+    // This used to collapse to `'any'`, which gave a *restrictive* config the
+    // least protection of the three cases — worse than a wildcard, which at
+    // least is honest about admitting everything. Regexes are pure, so they
+    // can be evaluated per request.
+    const re = /\.example\.com$/;
+    expect(corsDeclaredOrigins({origin: re})).toEqual({
+      exact: [],
+      patterns: [re],
+    });
+    expect(corsDeclaredOrigins({origin: ['https://a.dev', re]})).toEqual({
+      exact: ['https://a.dev'],
+      patterns: [re],
+    });
+  });
+
+  it('reports `any` only when the config truly admits everything', () => {
+    // A callback origin is `(origin, callback) => void`: asynchronous and free
+    // to have side effects, so a transport guard cannot invoke it per request.
     expect(corsDeclaredOrigins(true)).toBe('any');
     expect(corsDeclaredOrigins({})).toBe('any');
     expect(corsDeclaredOrigins({origin: true})).toBe('any');
     expect(corsDeclaredOrigins({origin: '*'})).toBe('any');
-    expect(corsDeclaredOrigins({origin: /example\.com$/})).toBe('any');
     expect(corsDeclaredOrigins({origin: () => true})).toBe('any');
-    expect(corsDeclaredOrigins({origin: ['https://a.dev', /b\.dev/]})).toBe(
-      'any',
-    );
   });
 
   it('reports `any` for a wildcard inside an array', () => {
-    // `['*']` is enumerable syntactically but means "everything" semantically,
-    // so it must collapse to `any` rather than becoming a literal `*` entry
-    // that could never match a real origin.
     expect(corsDeclaredOrigins({origin: ['*']})).toBe('any');
     expect(corsDeclaredOrigins({origin: ['https://a.dev', '*']})).toBe('any');
   });
@@ -75,52 +89,136 @@ describe('corsDeclaredOrigins', () => {
   it('treats a disabled CORS config as declaring nothing', () => {
     // Not the same as `'any'`: no CORS means no cross-origin browser access at
     // all, so localhost-only is the right derived allowlist.
-    expect(corsDeclaredOrigins(undefined)).toEqual([]);
-    expect(corsDeclaredOrigins(false)).toEqual([]);
-    expect(corsDeclaredOrigins({origin: false})).toEqual([]);
+    const none = {exact: [], patterns: []};
+    expect(corsDeclaredOrigins(undefined)).toEqual(none);
+    expect(corsDeclaredOrigins(false)).toEqual(none);
+    expect(corsDeclaredOrigins({origin: false})).toEqual(none);
+  });
+});
+
+describe('originAllowed', () => {
+  const localhost: OriginRule = {
+    kind: 'hostname',
+    values: ['localhost', '127.0.0.1'],
+  };
+
+  it('passes a request that sends no Origin at all', () => {
+    // Only browsers send `Origin`; an absent one is a non-browser client and
+    // is not what rebinding defense is aimed at.
+    expect(originAllowed(undefined, [localhost])).toBe(true);
+    expect(originAllowed(null, [localhost])).toBe(true);
+    expect(originAllowed('', [localhost])).toBe(true);
+  });
+
+  it('rejects the opaque `null` Origin', () => {
+    expect(originAllowed('null', [localhost])).toBe(false);
+  });
+
+  it('matches an exact rule on scheme AND port', () => {
+    // The whole point of the exact rule: a precise CORS grant stays precise.
+    const rules: OriginRule[] = [
+      {kind: 'exact', values: ['https://app.example.com']},
+    ];
+    expect(originAllowed('https://app.example.com', rules)).toBe(true);
+    expect(originAllowed('http://app.example.com', rules)).toBe(false);
+    expect(originAllowed('https://app.example.com:8443', rules)).toBe(false);
+    expect(originAllowed('https://evil.test', rules)).toBe(false);
+  });
+
+  it('canonicalizes both sides before comparing', () => {
+    // `https://x/` and `https://x:443` are the same origin; a trailing slash
+    // or an explicit default port must not cause a spurious 403.
+    const rules: OriginRule[] = [
+      {kind: 'exact', values: ['https://app.example.com/']},
+    ];
+    expect(originAllowed('https://app.example.com', rules)).toBe(true);
+    expect(originAllowed('https://app.example.com:443', rules)).toBe(true);
+  });
+
+  it('tests a pattern rule against the canonical origin', () => {
+    const rules: OriginRule[] = [
+      {kind: 'pattern', values: [/\.example\.com$/]},
+    ];
+    expect(originAllowed('https://app.example.com', rules)).toBe(true);
+    // Anchored `$` must not be dodged by a trailing slash or default port.
+    expect(originAllowed('https://app.example.com:443', rules)).toBe(true);
+    expect(originAllowed('https://evil.test', rules)).toBe(false);
+    expect(originAllowed('https://example.com.evil.test', rules)).toBe(false);
+  });
+
+  it('keeps hostname semantics for the hostname rule', () => {
+    // Explicit `allowedOrigins` and the localhost defaults stay port- and
+    // scheme-agnostic: dev servers move ports, and narrowing a shipped option
+    // would 403 callers who already set it.
+    expect(originAllowed('http://localhost:3000', [localhost])).toBe(true);
+    expect(originAllowed('https://localhost', [localhost])).toBe(true);
+    expect(originAllowed('http://evil.test', [localhost])).toBe(false);
+  });
+
+  it('admits when ANY rule matches', () => {
+    const rules: OriginRule[] = [
+      localhost,
+      {kind: 'exact', values: ['https://app.example.com']},
+    ];
+    expect(originAllowed('http://localhost:5173', rules)).toBe(true);
+    expect(originAllowed('https://app.example.com', rules)).toBe(true);
+    expect(originAllowed('https://evil.test', rules)).toBe(false);
+  });
+
+  it('never matches on an unparseable configured entry', () => {
+    // A bare hostname in `cors.origin` is already a broken CORS config (browsers
+    // send full origins). It must fail closed, not widen to everything.
+    const rules: OriginRule[] = [{kind: 'exact', values: ['app.example.com']}];
+    expect(originAllowed('https://app.example.com', rules)).toBe(false);
   });
 });
 
 describe('deriveOriginAllowlist', () => {
   it('falls back to localhost when protection was asked for by name', () => {
-    // An explicit `true` must never become a silent no-op. With `cors: true`
-    // there is nothing to enumerate, so the safe direction is localhost-only
-    // plus a warning the operator can act on — not "no check at all", which
-    // would leave a security flag reading enabled while enforcing nothing.
     const decision = deriveOriginAllowlist({
       corsConfig: true,
       enableDnsRebindingProtection: true,
     });
-    expect(decision.origins).toEqual(['localhost', '127.0.0.1', '[::1]']);
+    expect(decision.rules).toEqual([
+      {kind: 'hostname', values: ['localhost', '127.0.0.1', '[::1]']},
+    ]);
     expect(decision.warning).toMatch(/requested explicitly/);
   });
 
   it('leaves validation off (with a warning) when left to the default', () => {
     const decision = deriveOriginAllowlist({corsConfig: true});
-    expect(decision.origins).toBeUndefined();
+    expect(decision.rules).toBeUndefined();
     expect(decision.warning).toMatch(/NO Origin validation/);
   });
 
-  it('warns about nothing when an allowlist is derivable', () => {
+  it('derives an EXACT rule from a CORS origin, plus localhost', () => {
     const decision = deriveOriginAllowlist({
       corsConfig: {origin: 'https://app.example.com'},
     });
-    expect(decision.origins).toEqual([
-      'localhost',
-      '127.0.0.1',
-      '[::1]',
-      'https://app.example.com',
+    expect(decision.rules).toEqual([
+      {kind: 'hostname', values: ['localhost', '127.0.0.1', '[::1]']},
+      {kind: 'exact', values: ['https://app.example.com']},
     ]);
     expect(decision.warning).toBeUndefined();
   });
 
-  it('passes an explicit allowlist through untouched and unwarned', () => {
+  it('derives a PATTERN rule from a CORS regex', () => {
+    // The case that previously got no validation at all.
+    const re = /\.example\.com$/;
+    const decision = deriveOriginAllowlist({corsConfig: {origin: re}});
+    expect(decision.rules).toContainEqual({kind: 'pattern', values: [re]});
+    expect(decision.warning).toBeUndefined();
+  });
+
+  it('keeps hostname semantics for an explicit allowlist', () => {
     const decision = deriveOriginAllowlist({
       corsConfig: true,
       allowedOrigins: ['https://only.example.com'],
       enableDnsRebindingProtection: true,
     });
-    expect(decision.origins).toEqual(['https://only.example.com']);
+    expect(decision.rules).toEqual([
+      {kind: 'hostname', values: ['only.example.com']},
+    ]);
     expect(decision.warning).toBeUndefined();
   });
 });
@@ -131,7 +229,7 @@ describe('rejectedOriginLogger', () => {
   // is set, so a hook-based test would pass for the wrong reason (or fail
   // depending on the runner's environment).
   it('explains a rejection once per origin and names the fix', () => {
-    const report = rejectedOriginLogger(['localhost']);
+    const report = rejectedOriginLogger('hostname localhost');
     const first = report('https://evil.test');
     expect(first).toContain('https://evil.test');
     expect(first).toContain('allowedOrigins');
@@ -144,7 +242,7 @@ describe('rejectedOriginLogger', () => {
     // a deploy and silence every later rejection — including the real customer
     // origin an operator needs during an incident. Eviction keeps the tracker
     // bounded without handing observability to the caller.
-    const report = rejectedOriginLogger(['localhost']);
+    const report = rejectedOriginLogger('hostname localhost');
     for (let i = 0; i < 500; i++) report(`https://evil-${i}.test`);
 
     const legit = report('https://app.example.com');
@@ -152,59 +250,62 @@ describe('rejectedOriginLogger', () => {
   });
 
   it('still suppresses an immediate repeat', () => {
-    const report = rejectedOriginLogger(['localhost']);
+    const report = rejectedOriginLogger('hostname localhost');
     expect(report('https://evil.test')).toBeTruthy();
     expect(report('https://evil.test')).toBeUndefined();
   });
 
   it('reports a missing Origin distinctly from a present one', () => {
-    const report = rejectedOriginLogger(['localhost']);
+    const report = rejectedOriginLogger('hostname localhost');
     expect(report(null)).toContain('(none)');
   });
 });
 
 describe('stateless Origin allowlist', () => {
   it('defaults to localhost when the app declares no CORS', async () => {
-    const {allowedOriginHostnames} = setupStateless(await givenMcp(), {});
-    expect(allowedOriginHostnames).toEqual(['localhost', '127.0.0.1', '[::1]']);
+    const {originRules} = setupStateless(await givenMcp(), {});
+    expect(originRules).toEqual([
+      {kind: 'hostname', values: ['localhost', '127.0.0.1', '[::1]']},
+    ]);
   });
 
-  it('adds the origins `rest.cors` declares, as hostnames', async () => {
-    const {allowedOriginHostnames} = setupStateless(await givenMcp(), {
+  it('adds the origins `rest.cors` declares, at exact precision', async () => {
+    const {originRules} = setupStateless(await givenMcp(), {
       corsConfig: {origin: ['https://app.example.com']},
     });
-    // Normalized to hostnames: the stateless check is port-agnostic, so
-    // `https://app.example.com:8443` is admitted by the same entry.
-    expect(allowedOriginHostnames).toEqual([
-      'localhost',
-      '127.0.0.1',
-      '[::1]',
-      'app.example.com',
+    // The CORS origin becomes an EXACT rule — scheme and port included — so a
+    // precise grant is not widened to the whole hostname. Localhost stays
+    // hostname-matched so dev servers can move ports.
+    expect(originRules).toEqual([
+      {kind: 'hostname', values: ['localhost', '127.0.0.1', '[::1]']},
+      {kind: 'exact', values: ['https://app.example.com']},
     ]);
   });
 
   it('leaves validation off when CORS admits any origin', async () => {
     // Nothing to enumerate. Restricting to localhost would break the browser
     // app this config allows, so this warns loudly instead.
-    const {allowedOriginHostnames} = setupStateless(await givenMcp(), {
+    const {originRules} = setupStateless(await givenMcp(), {
       corsConfig: true,
     });
-    expect(allowedOriginHostnames).toBeUndefined();
+    expect(originRules).toBeUndefined();
   });
 
   it('never overrides an explicit allowlist', async () => {
-    const {allowedOriginHostnames} = setupStateless(await givenMcp(), {
+    const {originRules} = setupStateless(await givenMcp(), {
       corsConfig: true,
       allowedOrigins: ['https://only.example.com'],
     });
-    expect(allowedOriginHostnames).toEqual(['only.example.com']);
+    expect(originRules).toEqual([
+      {kind: 'hostname', values: ['only.example.com']},
+    ]);
   });
 
   it('honours an explicit opt-out', async () => {
-    const {allowedOriginHostnames} = setupStateless(await givenMcp(), {
+    const {originRules} = setupStateless(await givenMcp(), {
       enableDnsRebindingProtection: false,
     });
-    expect(allowedOriginHostnames).toBeUndefined();
+    expect(originRules).toBeUndefined();
   });
 
   it('does not derive an allowlist for the session path', async () => {
@@ -213,7 +314,7 @@ describe('stateless Origin allowlist', () => {
     // `http://localhost:3000`. Legacy serving keeps the old default.
     const setup = setupStateless(await givenMcp(), {protocol: 'legacy'});
     expect(setup.enabled).toBe(false);
-    expect(setup.allowedOriginHostnames).toBeUndefined();
+    expect(setup.originRules).toBeUndefined();
   });
 });
 

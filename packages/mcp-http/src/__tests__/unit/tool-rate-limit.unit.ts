@@ -24,7 +24,20 @@ function run(
   return new Promise(resolve => {
     const headers: Record<string, string> = {};
     let status: number | undefined;
+    const finishHandlers: Array<() => void> = [];
     const res = {
+      statusCode: 200,
+      // The middleware registers the quota refund on `finish`; without this the
+      // mock would exercise a different code path than production.
+      on(event: string, handler: () => void) {
+        if (event === 'finish') finishHandlers.push(handler);
+        return res;
+      },
+      /** Test helper: pretend the response flushed with `code`. */
+      _finish(code: number) {
+        (res as unknown as {statusCode: number}).statusCode = code;
+        for (const h of finishHandlers) h();
+      },
       set(k: string, v: string) {
         headers[k] = String(v);
         return res;
@@ -298,5 +311,55 @@ describe('createToolRateLimiter — the branches nobody was testing', () => {
     // No ip at all => the shared anon bucket, independent of the ip ones.
     expect((await limiter.check(tc('t'), caller())).ok).toBe(true);
     expect((await limiter.check(tc('t'), caller())).ok).toBe(false);
+  });
+
+  it('hands points back when the transport refuses the request', async () => {
+    // The half the pre-check cannot predict: a rung validated inside an
+    // un-exported SDK function is only observable AFTER the fact, so the
+    // limiter exposes a refund rather than trying to guess.
+    // NOTE: no "is it spent yet?" probe in between — `consume` increments even
+    // when it rejects, so probing would spend the very point under test.
+    const limiter = createToolRateLimiter({points: 1});
+    const first = await limiter.check(tc('t'), caller());
+    expect(first.ok).toBe(true);
+    expect(first.ok && first.refund).toBeTruthy();
+
+    if (first.ok) await first.refund!();
+
+    // The point came back: a second call still fits a budget of 1. Without the
+    // refund this is a 429 — that direction is covered by the limiting tests
+    // above, so the two together pin both halves.
+    expect((await limiter.check(tc('t'), caller())).ok).toBe(true);
+  });
+
+  it('carries no refund when nothing was spent', async () => {
+    // A body with no `tools/call` debits nothing, so there is nothing to hand
+    // back — and a refund closure would be a lie about what happened.
+    const limiter = createToolRateLimiter({points: 1});
+    const decision = await limiter.check(
+      {jsonrpc: '2.0', id: 1, method: 'tools/list'},
+      caller(),
+    );
+    expect(decision.ok).toBe(true);
+    expect(decision.ok && decision.refund).toBeUndefined();
+  });
+
+  it('refunds every tool in a batch', async () => {
+    // A batch debits per element and across tools, so the refund has to walk
+    // every bucket it touched, not just the first.
+    const limiter = createToolRateLimiter({points: 2});
+    const decision = await limiter.check(
+      [tc('a', 1), tc('a', 2), tc('b', 3)],
+      caller(),
+    );
+    expect(decision.ok).toBe(true);
+
+    if (decision.ok) await decision.refund!();
+
+    // `a` was debited 2 of 2 and `b` 1 of 2; after the refund both are whole,
+    // so `a` fits two more calls.
+    expect((await limiter.check(tc('a'), caller())).ok).toBe(true);
+    expect((await limiter.check(tc('a'), caller())).ok).toBe(true);
+    expect((await limiter.check(tc('b'), caller())).ok).toBe(true);
   });
 });
