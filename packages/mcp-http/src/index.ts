@@ -4,11 +4,13 @@
 
 import {
   hostHeaderValidation,
-  originValidation,
   requireBearerAuth,
 } from '@modelcontextprotocol/express';
 import type {OAuthTokenVerifier} from '@modelcontextprotocol/express';
-import {isInitializeRequest} from '@modelcontextprotocol/server';
+import {
+  isInitializeRequest,
+  validateOriginHeader,
+} from '@modelcontextprotocol/server';
 import type {
   AuthInfo,
   EventStore,
@@ -45,6 +47,8 @@ import {
 } from './tool-rate-limit.js';
 import {mountMcpHttpFetch, PUBLIC_DISCOVERY_CORS} from './fetch.js';
 import {
+  ORIGIN_REJECTED_HINT,
+  rejectedOriginLogger,
   resolveSessionServer,
   setupStateless,
   withSessionIdExposed,
@@ -100,7 +104,13 @@ export interface McpHttpOptions {
    *
    * When CORS admits *any* origin there is nothing to enumerate; that logs a
    * warning and leaves validation off rather than locking out the browser
-   * client the app's own CORS config allows.
+   * client the app's own CORS config allows — **unless**
+   * `enableDnsRebindingProtection: true` was passed explicitly, in which case
+   * it falls back to localhost, because an explicit `true` must never become a
+   * silent no-op.
+   *
+   * A rejection answers `403` with a body naming `allowedOrigins`, so the
+   * caller can act on it without reading the server's logs.
    */
   allowedOrigins?: string[];
   /**
@@ -501,12 +511,29 @@ export function mountMcpHttp(
       ]
     : [];
   // The allowlists arrive normalized; applying them is host-specific, so it
-  // stays here rather than in the shared seam.
+  // stays here rather than in the shared seam. The full request pipeline and
+  // why each stage sits where it does is diagrammed above `handle` in
+  // `fetch.ts` — this chain runs the same sequence.
   const rebindingGuards: RequestHandler[] = [];
   if (allowedHostnames)
     rebindingGuards.push(hostHeaderValidation(allowedHostnames));
   if (allowedOriginHostnames) {
-    rebindingGuards.push(originValidation(allowedOriginHostnames));
+    // Not the SDK's `originValidation` middleware: it answers a bare 403 that
+    // never mentions `allowedOrigins`, which makes a derived-default rejection
+    // undiagnosable. The SDK's `validateOriginHeader` stays the authority on
+    // what is allowed — only the message is ours, and it matches the fetch
+    // host's byte for byte.
+    const warnRejectedOrigin = rejectedOriginLogger(allowedOriginHostnames);
+    rebindingGuards.push((req, res, next) => {
+      const origin = req.headers.origin;
+      const result = validateOriginHeader(origin, allowedOriginHostnames);
+      if (result.ok) {
+        next();
+        return;
+      }
+      warnRejectedOrigin(origin);
+      rpcError(res, 403, `${result.message}. ${ORIGIN_REJECTED_HINT}`);
+    });
   }
   if (statelessHandler) {
     const node = toNodeHandler(statelessHandler);

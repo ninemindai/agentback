@@ -53,21 +53,30 @@ the default mount validates it whether or not you configure an allowlist.
 
 What it validates when you configure nothing:
 
-| `rest.cors`                            | derived `Origin` allowlist         |
-| -------------------------------------- | ---------------------------------- |
-| not set                                | localhost only                     |
-| `{origin: ['https://app.example.com']}` | localhost + `app.example.com`      |
-| `true`, `'*'`, a RegExp or a callback  | nothing derivable — **logs a warning**, validation stays off |
+| `rest.cors`                             | derived `Origin` allowlist                                   |
+| --------------------------------------- | ------------------------------------------------------------ |
+| not set                                 | localhost only                                               |
+| `{origin: ['https://app.example.com']}` | localhost + `app.example.com`                                |
+| `true`, `'*'`, a RegExp or a callback   | nothing derivable — **logs a warning**, validation stays off |
 
 The allowlist is derived from `rest.cors` because those origins are already your
 statement of which browsers may call the app — declaring them twice is a second
-source of truth that drifts. When CORS admits *any* origin there is nothing to
+source of truth that drifts. When CORS admits _any_ origin there is nothing to
 enumerate, so it warns instead of guessing: restricting to localhost there would
 break the browser client your own config admits.
+
+One exception: if you pass `enableDnsRebindingProtection: true` **explicitly**
+and nothing is derivable, it falls back to localhost rather than enforcing
+nothing. An explicit `true` should never be a silent no-op.
 
 **A missing `Origin` header always passes.** Only browsers send one, so MCP
 clients, `curl` and stdio bridges are unaffected — the default can only reject a
 browser request, which is the case being defended.
+
+A rejection answers `403` with a body that names `allowedOrigins` and `rest.cors`,
+so whoever is looking at the failed request can fix it without server logs (the
+framework's `loggers` are `debug`-namespaced and emit nothing unless `DEBUG` is
+set). The full allowlist goes to the log, deduplicated per origin.
 
 Pin the allowlists explicitly in production; an explicit value always wins, and
 `enableDnsRebindingProtection: false` opts out entirely:
@@ -79,8 +88,16 @@ await installMcpHttp(app, {
 });
 ```
 
-`Origin` values are compared **by hostname** (port-agnostic) on the stateless
-mount, so `https://app.example.com` also admits `https://app.example.com:8443`.
+⚠️ **`Origin` values are compared by hostname only** on the stateless mount —
+scheme and port are ignored. `https://app.example.com` therefore also admits
+`https://app.example.com:8443` **and `http://app.example.com`**. That is the
+SDK's `validateOriginHeader` semantics, and it applies to values you configure
+explicitly as well as derived ones — so a precise CORS grant becomes a
+whole-hostname grant. It still blocks the case the guard exists for (a
+different host, which is what DNS rebinding produces), but if you need
+scheme-exact policy, enforce it at your proxy. `Origin: null` (sandboxed
+iframes, opaque origins) is always rejected.
+
 For a localhost-only server, set `allowedHosts: ['127.0.0.1:PORT', 'localhost:PORT']`.
 
 `installMcpHttp` throws if no MCP server is bound (add `MCPComponent` first).

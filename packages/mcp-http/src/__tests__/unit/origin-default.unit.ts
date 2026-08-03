@@ -5,7 +5,12 @@
 import {describe, expect, it} from 'vitest';
 import {Application} from '@agentback/core';
 import {MCPComponent, MCPServer, mcpServer, tool} from '@agentback/mcp';
-import {corsDeclaredOrigins, setupStateless} from '../../session.js';
+import {
+  corsDeclaredOrigins,
+  deriveOriginAllowlist,
+  rejectedOriginLogger,
+  setupStateless,
+} from '../../session.js';
 import {rejectedBeforeDispatch} from '../../tool-rate-limit.js';
 
 // Every Streamable HTTP revision since 2025-03-26 says "Servers MUST validate
@@ -59,12 +64,95 @@ describe('corsDeclaredOrigins', () => {
     );
   });
 
+  it('reports `any` for a wildcard inside an array', () => {
+    // `['*']` is enumerable syntactically but means "everything" semantically,
+    // so it must collapse to `any` rather than becoming a literal `*` entry
+    // that could never match a real origin.
+    expect(corsDeclaredOrigins({origin: ['*']})).toBe('any');
+    expect(corsDeclaredOrigins({origin: ['https://a.dev', '*']})).toBe('any');
+  });
+
   it('treats a disabled CORS config as declaring nothing', () => {
     // Not the same as `'any'`: no CORS means no cross-origin browser access at
     // all, so localhost-only is the right derived allowlist.
     expect(corsDeclaredOrigins(undefined)).toEqual([]);
     expect(corsDeclaredOrigins(false)).toEqual([]);
     expect(corsDeclaredOrigins({origin: false})).toEqual([]);
+  });
+});
+
+describe('deriveOriginAllowlist', () => {
+  it('falls back to localhost when protection was asked for by name', () => {
+    // An explicit `true` must never become a silent no-op. With `cors: true`
+    // there is nothing to enumerate, so the safe direction is localhost-only
+    // plus a warning the operator can act on — not "no check at all", which
+    // would leave a security flag reading enabled while enforcing nothing.
+    const decision = deriveOriginAllowlist({
+      corsConfig: true,
+      enableDnsRebindingProtection: true,
+    });
+    expect(decision.origins).toEqual(['localhost', '127.0.0.1', '[::1]']);
+    expect(decision.warning).toMatch(/requested explicitly/);
+  });
+
+  it('leaves validation off (with a warning) when left to the default', () => {
+    const decision = deriveOriginAllowlist({corsConfig: true});
+    expect(decision.origins).toBeUndefined();
+    expect(decision.warning).toMatch(/NO Origin validation/);
+  });
+
+  it('warns about nothing when an allowlist is derivable', () => {
+    const decision = deriveOriginAllowlist({
+      corsConfig: {origin: 'https://app.example.com'},
+    });
+    expect(decision.origins).toEqual([
+      'localhost',
+      '127.0.0.1',
+      '[::1]',
+      'https://app.example.com',
+    ]);
+    expect(decision.warning).toBeUndefined();
+  });
+
+  it('passes an explicit allowlist through untouched and unwarned', () => {
+    const decision = deriveOriginAllowlist({
+      corsConfig: true,
+      allowedOrigins: ['https://only.example.com'],
+      enableDnsRebindingProtection: true,
+    });
+    expect(decision.origins).toEqual(['https://only.example.com']);
+    expect(decision.warning).toBeUndefined();
+  });
+});
+
+describe('rejectedOriginLogger', () => {
+  // Asserts on the returned message rather than a log hook on purpose: the
+  // framework's loggers are `debug`-namespaced and emit nothing unless `DEBUG`
+  // is set, so a hook-based test would pass for the wrong reason (or fail
+  // depending on the runner's environment).
+  it('explains a rejection once per origin and names the fix', () => {
+    const report = rejectedOriginLogger(['localhost']);
+    const first = report('https://evil.test');
+    expect(first).toContain('https://evil.test');
+    expect(first).toContain('allowedOrigins');
+    expect(first).toContain('localhost'); // the allowlist, for the operator
+    expect(report('https://evil.test')).toBeUndefined(); // deduped
+  });
+
+  it('stays bounded when the caller rotates the header', () => {
+    // `Origin` is caller-controlled, so an unbounded dedup set is a memory
+    // amplifier and an unbounded log is a disk one.
+    const report = rejectedOriginLogger(['localhost']);
+    let reported = 0;
+    for (let i = 0; i < 500; i++) {
+      if (report(`https://evil-${i}.test`)) reported++;
+    }
+    expect(reported).toBeLessThanOrEqual(32);
+  });
+
+  it('reports a missing Origin distinctly from a present one', () => {
+    const report = rejectedOriginLogger(['localhost']);
+    expect(report(null)).toContain('(none)');
   });
 });
 
@@ -206,6 +294,20 @@ describe('rejectedBeforeDispatch', () => {
         body: [modernCall, modernCall, modernCall],
       }),
     ).toBe(true);
+  });
+
+  it('handles a body that could not be parsed at all', () => {
+    // The fetch host sets `parsedBody = undefined` when `req.json()` throws,
+    // so unparseable JSON — a cheap thing for a hostile client to send — must
+    // not blow up the pre-check. Whatever it decides, it must decide it
+    // without throwing, since this runs before the SDK sees the request.
+    expect(() =>
+      rejectedBeforeDispatch({
+        httpMethod: 'POST',
+        header: headers({'mcp-protocol-version': '2026-07-28'}),
+        body: undefined,
+      }),
+    ).not.toThrow();
   });
 
   it('does not claim to catch an absent standard header', () => {
