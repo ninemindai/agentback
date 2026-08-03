@@ -30,6 +30,62 @@ which is worse than being slow.
 tools at the measured slope), or if a caller is shown to poll it in a loop.
 Reopen with the measurement attached.
 
+### Validate 2026 transport headers before debiting the rate limiter
+
+**What:** On modern-era requests, validate the required `Mcp-Method` / `Mcp-Name`
+transport headers before `rateLimiter.check()` debits quota — or key the debit
+off the validated header rather than the parsed body.
+
+**Why:** `packages/mcp-http/src/fetch.ts` runs the limiter before
+`statelessHandler.fetch()`, and the SDK validates those headers later. A
+malformed request that will be rejected as `HeaderMismatch` still spends
+points first. The bucket key is normally the caller's own principal, so mostly
+they burn their own quota — but **anonymous callers share one `anon` bucket**
+(the fetch host has no trustworthy IP), so a stream of malformed requests can
+exhaust the shared anonymous quota for everyone. That is a cheap DoS on the
+anonymous tier.
+
+**Context:** Surfaced by the `/plan-eng-review` outside voice (Codex),
+2026-08-02, against the 0.9.0 work. The 2026-07-28 Streamable HTTP revision
+added these headers specifically so intermediaries can route and rate-limit
+**without trusting the body**, which is an argument for keying the limiter off
+them rather than off `tallyToolCalls`. The Express stateless mount has the same
+ordering (`packages/mcp-http/src/index.ts`, the `expressApp.all` stateless
+branch). Body parsing would still be needed for the legacy fallback and for
+batch counting.
+
+**Effort:** M
+**Priority:** P2
+**Depends on:** — (needs confirming which headers the SDK actually enforces, and
+on which era, before reordering anything)
+
+### Decide the Origin-validation default for a browser-reachable `/mcp`
+
+**What:** Decide whether DNS-rebinding/Origin validation should be on by default
+for HTTP `protocol: 'both'`, rather than only when `allowedHosts`/`allowedOrigins`
+is configured.
+
+**Why:** `packages/mcp-http/src/session.ts` enables the checks only when an
+allowlist is set. Since 0.9.0 made `protocol: 'both'` the default and 0.9.0 also
+documented `rest.cors` for browser MCP clients, it is now easy to ship a
+browser-reachable `/mcp` with **no Origin validation at all** — the combination
+the rebinding guard exists to stop. The permissive default was chosen so local
+dev works out of the box; that argument is weaker now that browser access is a
+documented path.
+
+**Context:** Surfaced by the `/plan-eng-review` outside voice (Codex),
+2026-08-02. Codex reads the 2026 Streamable HTTP spec as saying servers MUST
+validate `Origin` on incoming connections; **verify that against the spec text
+before acting** — the current default predates the flip and is not a regression
+from it. Cheapest useful step is probably making `rest.cors` + no
+`allowedOrigins` a loud startup warning for `/mcp`, which is the posture this
+package already took for `rateLimit` on the fetch host. Full default-on is a
+breaking change for local dev and needs its own decision.
+
+**Effort:** S (warn) / M (default-on)
+**Priority:** P2
+**Depends on:** Confirming the actual spec requirement.
+
 ### Finish MCP protocol revision `2026-07-28` (S7b only)
 
 **What:** One step remains: retire the session machinery (S7b). S6 (native MRTR

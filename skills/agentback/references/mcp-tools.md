@@ -165,8 +165,14 @@ a caller that already speaks the token dance keeps working.
 native flow the token merely rides in MRTR `requestState`, which the client
 echoes back and the spec therefore treats as attacker-controlled: it has no
 replay defense of its own. A forged or replayed `requestState` fails
-`store.verify` exactly as a forged input token does. A declined or cancelled
-prompt does **not** run the tool, even if a valid token is present.
+`store.verify` exactly as a forged input token does.
+
+On the elicitation path an **affirmative answer is required**, not merely the
+absence of a refusal: the retry's `inputResponses.confirm` must be an
+elicitation, `action: 'accept'`, carrying `confirm: true`. A missing, malformed,
+declined or cancelled response does not run the tool even with a valid token —
+otherwise "native confirmation" would mean nothing stronger than "the client
+echoed the state back", and a client that never showed the prompt would pass.
 
 ```ts
 @tool('delete_dataset', {input: DatasetRef, confirm: true})

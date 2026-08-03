@@ -229,3 +229,74 @@ describe('createToolRateLimiter (host-neutral core)', () => {
     }
   });
 });
+
+// Branches the /plan-eng-review coverage audit found untested. Each is a
+// documented posture, and a posture with no assertion is a comment.
+describe('createToolRateLimiter — the branches nobody was testing', () => {
+  const tc = (name: string, id = 1) => ({
+    jsonrpc: '2.0',
+    method: 'tools/call',
+    params: {name},
+    id,
+  });
+  const caller = (over: Record<string, unknown> = {}) =>
+    ({
+      header: () => undefined,
+      ...over,
+    }) as Parameters<ReturnType<typeof createToolRateLimiter>['check']>[1];
+
+  it('FAILS OPEN when the store itself is broken', async () => {
+    // Redis down must not lock every caller out of every tool. This is a
+    // deliberate availability-over-enforcement trade, and if a refactor ever
+    // flips it to fail-closed, a cache blip becomes a total tool outage.
+    const exploding = {
+      consume() {
+        return Promise.reject(new Error('ECONNREFUSED: redis is down'));
+      },
+    };
+    const limiter = createToolRateLimiter({
+      points: 1,
+      store: exploding,
+      keyGenerator: () => 'c',
+    });
+    // Well past the limit — still allowed, because the store never answered.
+    for (let i = 0; i < 5; i++) {
+      expect((await limiter.check(tc('t'), caller())).ok).toBe(true);
+    }
+  });
+
+  it('keeps a caller blocked for blockSecs after they exceed', async () => {
+    const limiter = createToolRateLimiter({
+      points: 1,
+      durationSecs: 1,
+      blockSecs: 60,
+      keyGenerator: () => 'blocked',
+    });
+    expect((await limiter.check(tc('t'), caller())).ok).toBe(true);
+    const first = await limiter.check(tc('t'), caller());
+    expect(first.ok).toBe(false);
+    // The block outlives the 1s window it was earned in.
+    if (!first.ok) expect(first.retryAfterSecs).toBeGreaterThan(1);
+  });
+
+  it('falls back through ip to a shared anon bucket by default', async () => {
+    // No keyGenerator: authInfo wins, then ip, then one shared 'anon' bucket.
+    // The fetch host supplies no ip, so edge callers share 'anon' — coarse,
+    // but it still says no, which is the point.
+    const limiter = createToolRateLimiter({points: 1});
+    expect((await limiter.check(tc('t'), caller({ip: '1.1.1.1'}))).ok).toBe(
+      true,
+    );
+    // Different ip => different bucket.
+    expect((await limiter.check(tc('t'), caller({ip: '2.2.2.2'}))).ok).toBe(
+      true,
+    );
+    // Same ip again => exhausted.
+    expect((await limiter.check(tc('t'), caller({ip: '1.1.1.1'}))).ok).toBe(
+      false,
+    );
+    // No ip at all => the shared anon bucket, independent of the ip ones.
+    expect((await limiter.check(tc('t'), caller())).ok).toBe(true);
+    expect((await limiter.check(tc('t'), caller())).ok).toBe(false);
+  });
+});
