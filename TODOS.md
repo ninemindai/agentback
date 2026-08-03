@@ -114,9 +114,13 @@ branch. `allowedOrigins` always wins over the derivation, so anyone who needs a
 different MCP-specific policy already has the escape hatch.
 
 **Worth considering when picked up:** a regex/callback `cors.origin` could be
-_consulted_ rather than collapsing to `'any'` — that would make "validation on
-by default" true for dynamic CORS allowlists, which is currently the largest
-category where it silently stays off.
+_consulted_ (call the predicate with the candidate origin at request time)
+rather than collapsing to `'any'` — that would make "validation on by default"
+true for dynamic CORS allowlists, which is currently the largest category where
+it silently stays off. The adversarial pass sharpened this: `cors: {origin:
+/\.example\.com$/}` is a _restrictive_ config that the code currently treats as
+identical to wildcard, which is the least defensible case of the three. Both
+Codex passes flagged it independently.
 
 **Effort:** M
 **Priority:** P3

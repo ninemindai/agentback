@@ -314,9 +314,17 @@ export const ORIGIN_REJECTED_HINT =
  * `allowedOrigins`. That makes a new default undiagnosable: the app worked
  * before the upgrade and the server does not say why it stopped.
  *
- * Deduplicated per distinct origin and capped, because the header is
- * caller-controlled: without that, a hostile client rotating `Origin` values
- * turns a diagnostic into a log-flooding amplifier.
+ * Deduplicated per distinct origin, because the header is caller-controlled:
+ * without that, a hostile client rotating `Origin` values turns a diagnostic
+ * into a log-flooding amplifier.
+ *
+ * The dedup set **evicts oldest rather than refusing to log** once full. A hard
+ * cap looks safer and is worse: 32 junk origins after a deploy would silence
+ * every later rejection, including the real customer origin an operator needs
+ * during an incident — attacker-controlled observability. Eviction keeps memory
+ * bounded at 32 entries while leaving the diagnostic live; the resulting log
+ * volume is proportional to the distinct-origin rate, which is already the rate
+ * at which this caller is being answered 403 anyway.
  *
  * Logs and ALSO returns the message (or `undefined` when already reported), so
  * the dedup contract is testable without depending on `DEBUG` being set.
@@ -324,11 +332,17 @@ export const ORIGIN_REJECTED_HINT =
 export function rejectedOriginLogger(
   allowed: string[],
 ): (origin: string | null | undefined) => string | undefined {
+  const MAX_TRACKED = 32;
   const seen = new Set<string>();
   return origin => {
     const key = origin ?? '(none)';
     if (seen.has(key)) return undefined;
-    if (seen.size >= 32) return undefined; // bounded: caller-controlled value
+    if (seen.size >= MAX_TRACKED) {
+      // Drop the oldest entry (Set iterates in insertion order) so the tracker
+      // stays bounded without ever going permanently blind.
+      const oldest = seen.values().next();
+      if (!oldest.done) seen.delete(oldest.value);
+    }
     seen.add(key);
     const message =
       `rejected MCP request from Origin ${key} — it is not in the allowlist ` +
