@@ -8,7 +8,7 @@
     </title>
     <meta
       name="description"
-      content="MCP's 2026-07-28 revision removes protocol-level sessions, the GET stream, and resumability. AgentBack 0.9.0 serves it by default — and 2025-era clients from the same endpoint — without a single @tool changing."
+      content="MCP's 2026-07-28 revision removes protocol-level sessions, the GET stream, and resumability. AgentBack 0.9.0 serves it by default, and 2025-era clients from the same endpoint, without a single @tool changing."
     />
     <link rel="stylesheet" href="../styles.css" />
   </head>
@@ -31,69 +31,62 @@
         <p class="lede">
           MCP's <code>2026-07-28</code> revision removes protocol-level
           sessions, the GET stream, and resumability. AgentBack
-          <code>0.9.0</code> serves it by default — and 2025-era clients from
-          the same URL — without a single <code>@tool</code> changing. That
-          insulation is the whole argument this blog has been making, finally
-          getting tested by something real.
+          <code>0.9.0</code> serves it by default, and 2025-era clients from the
+          same URL, without a single <code>@tool</code> changing.
         </p>
 
         <p>
-          A protocol revision that deletes a core mechanism is the kind of event
-          that tells you what your abstractions were actually worth. If your
-          framework had spread session identity through its middle — a session
-          id threaded into handlers, per-session caches, a discovery step that
-          ran once per connection — then "sessions are gone" is a rewrite.
+          A protocol revision that deletes a core mechanism tells you what your
+          abstractions were worth. If your framework had threaded session
+          identity through its middle, into handlers, per-session caches, a
+          discovery step that ran once per connection, then "sessions are gone"
+          means a rewrite.
         </p>
 
         <p>
-          It wasn't, here. The tool you wrote in 0.8 is byte-for-byte the tool
-          that runs on the new revision:
+          The tool you wrote in 0.8 is byte-for-byte the tool that runs on the
+          new revision:
         </p>
 
         <pre><code class="language-ts">@tool('forecast', {input: ForecastIn, output: ForecastOut})
 async forecast(input: z.infer&lt;typeof ForecastIn&gt;) { … }</code></pre>
 
         <p>
-          Nothing in that declaration ever mentioned a session, because a tool
-          is a projection of a schema, not a participant in a transport. The
-          transport changed underneath it. It kept working.
+          Nothing in that declaration mentions a session, because a tool is a
+          projection of a schema rather than a participant in a transport. The
+          transport changed underneath it and it kept working.
         </p>
 
-        <h2>What the revision actually took away</h2>
+        <h2>What the revision took away</h2>
         <p>
-          The <code>2026-07-28</code> Streamable HTTP binding is smaller than
-          its predecessor, not larger. It removes the
-          <code>Mcp-Session-Id</code>
-          handshake, the standalone GET stream, and resumable SSE via
-          <code>Last-Event-ID</code>. Every message is its own POST.
-          Server-to-client interactions that used to be server-initiated
-          requests are now embedded in results as input requests — Multi
-          Round-Trip Requests, or MRTR.
+          The <code>2026-07-28</code> Streamable HTTP binding removes the
+          <code>Mcp-Session-Id</code> handshake, the standalone GET stream, and
+          resumable SSE via <code>Last-Event-ID</code>. Every message is its own
+          POST. Server-to-client interactions that used to be server-initiated
+          requests now come back embedded in results as input requests, under
+          the name Multi Round-Trip Requests, or MRTR.
         </p>
 
         <p>
-          The practical consequence is operational rather than syntactic: with
-          no session, there is no affinity. An endpoint scales behind plain
+          With no session there is no affinity. An endpoint scales behind plain
           round-robin with no shared storage, because every request builds and
-          tears down its own server. That is a genuinely better shape for
-          anything running more than one instance.
+          tears down its own server. That helps anything running more than one
+          instance.
         </p>
 
         <h2>Two eras, one endpoint, one line back</h2>
         <p>
-          You do not choose an era. <code>protocol: 'both'</code> — the default
-          in 0.9.0 on both the stdio and HTTP surfaces — serves the new revision
-          and 2025-era traffic from the same URL. A client that speaks the old
-          handshake gets the old handshake. A client that sends a per-request
-          envelope gets the new one. Neither is configured; both are detected.
+          <code>protocol: 'both'</code>, the default in 0.9.0 on both the stdio
+          and HTTP surfaces, serves the new revision and 2025-era traffic from
+          the same URL. A client that speaks the old handshake gets the old
+          handshake. A client that sends a per-request envelope gets the new
+          one. Neither is configured; both are detected.
         </p>
 
         <p>
-          We did not take that on faith. The dual-era path is verified against
-          three released 1.x SDKs — 1.11.0, 1.17.0, 1.29.0 — covering every 2025
-          revision, on top of the current client. And because a default that
-          cannot be undone is not a default but a migration, the rollback is one
-          line:
+          We verified the dual-era path against three released 1.x SDKs, 1.11.0,
+          1.17.0 and 1.29.0, covering every 2025 revision, on top of the current
+          client. The rollback is one line:
         </p>
 
         <pre><code class="language-ts">await installMcpHttp(app, {protocol: 'legacy'});
@@ -101,45 +94,42 @@ async forecast(input: z.infer&lt;typeof ForecastIn&gt;) { … }</code></pre>
 app.configure('servers.MCPServer').to({protocol: 'legacy'});</code></pre>
 
         <p>
-          Setting it on the server config rolls back stdio <em>and</em>
+          Setting it on the server config rolls back stdio and
           <code>/mcp</code> together. An earlier cut rolled back only stdio and
-          quietly left the endpoint on the new revision — a documented one-line
-          rollback that did half the job, which is worst precisely when someone
-          is reaching for it mid-incident.
+          left the endpoint on the new revision, which is a documented one-line
+          rollback doing half its job, and it fails worst when someone reaches
+          for it mid-incident.
         </p>
 
         <p>
           One exception keeps the flip safe. Resumable SSE is a session feature
           with no replacement in the new revision, so if you set an
-          <code>eventStore</code> and do <em>not</em> name a protocol, you stay
-          on sessions. A default should never silently delete a capability you
+          <code>eventStore</code> and do not name a protocol, you stay on
+          sessions. A default should never silently delete a capability you
           asked for by name.
         </p>
 
-        <h2>Sessions were never in your code, so they were cheap to remove</h2>
+        <h2>Sessions were never in your code</h2>
         <p>
-          The one place sessions <em>were</em> visible in userland was
-          <code>perSession</code> — the hook for per-user tool discovery. Under
-          the new revision it becomes per-<em>request</em> discovery. Same
-          binder, same signature, same security contract; it just runs more
-          often.
+          The one place sessions were visible in userland was
+          <code>perSession</code>, the hook for per-user tool discovery. Under
+          the new revision it becomes per-request discovery. Same binder, same
+          signature, same security contract, running more often.
         </p>
 
         <p>
-          That worked because the DI container was already doing the
-          load-bearing part. A per-session server was a child
-          <code>Context</code> resolved from the application context. A
-          per-request server is the same child context with a shorter life. The
-          framework's own seam did not care how long "a request's worth of
-          state" lasts, which is exactly what you want from a seam.
+          The DI container was already doing the load-bearing part. A
+          per-session server was a child <code>Context</code> resolved from the
+          application context; a per-request server is that same child context
+          with a shorter life. The seam never cared how long a request's worth
+          of state lasts.
         </p>
 
         <p>
-          The honest cost: a binder that does an entitlement lookup now does it
-          on every request instead of once per connection. That is a quiet load
-          multiplier rather than an error, which is the worst way for a problem
-          to arrive — so the framework ships the answer rather than leaving each
-          app to rediscover it:
+          That costs something. A binder doing an entitlement lookup now runs it
+          on every request instead of once per connection, which arrives as a
+          quiet load multiplier rather than an error. So the framework ships the
+          answer instead of leaving each app to rediscover it:
         </p>
 
         <pre><code class="language-ts">perSession: cachedPerPrincipal(
@@ -149,145 +139,130 @@ app.configure('servers.MCPServer').to({protocol: 'legacy'});</code></pre>
 )</code></pre>
 
         <p>
-          Only the lookup is cached. The <code>apply</code> step runs fresh
-          against that request's own context, and a <code>Context</code> is
-          never cached — it is closed when its request ends.
+          Only the lookup is cached. <code>apply</code> runs fresh against that
+          request's own context, and a <code>Context</code> is never cached,
+          since it closes when its request ends.
         </p>
 
         <p>
-          <code>keyOf</code> is required, deliberately. The obvious choice —
-          <code>AuthInfo.clientId</code> — is wrong under OAuth, where it is the
+          <code>keyOf</code> is required, deliberately. The obvious choice,
+          <code>AuthInfo.clientId</code>, is wrong under OAuth, where it is the
           client <em>application</em> id shared by every end user of that app.
           Keying a cache on it hands one user's entitlement lookup to another.
           Which claim identifies a subject varies by identity provider, so the
-          framework refuses to guess a security boundary and makes you name it.
+          framework makes you name the security boundary rather than guessing
+          it.
         </p>
 
         <h2>The bug shape statelessness invites</h2>
         <p>
-          Two real bugs came out of this work, and they had the same shape.
-          Naming it is more useful than claiming there weren't any.
-        </p>
-
-        <p>
-          When a request path moves from per-session to per-request
-          construction, every value the session path computed <em>once</em> must
-          be re-derived <em>per request</em>. That sounds obvious. What makes it
-          dangerous is how the mistake looks in a diff:
+          Two bugs came out of this work and they had the same shape. When a
+          request path moves from per-session to per-request construction, every
+          value the session path computed once has to be re-derived per request.
+          Here is how that mistake looks in a diff:
         </p>
 
         <pre><code class="language-ts">// session path
 const scoped = authEnabled ? {scopes: authInfo?.scopes ?? []} : undefined;
 
-// stateless factory, first cut — looks equivalent, is not
+// stateless factory, first cut: looks equivalent, is not
 const scoped = ctx.authInfo ? {scopes: ctx.authInfo.scopes} : {};</code></pre>
 
         <p>
           The consumer treats <code>undefined</code> as "skip scope filtering
-          entirely." Under optional auth, an anonymous caller had no
+          entirely." Under optional auth an anonymous caller had no
           <code>authInfo</code>, fell through to <code>{}</code>, and every
-          <code>@tool({scope})</code> became visible <em>and</em> callable —
+          <code>@tool({scope})</code> became visible and callable.
           <code>@tool({scope})</code> is a visibility gate, so nothing
-          downstream re-checks it. The second bug was the same shape wearing
+          downstream re-checks it. The second bug was the same mistake in
           different clothes: a confirmation store that lived per instance
           vanished between the two requests of a <code>confirm:</code> round
           trip, so every valid token was rejected.
         </p>
 
         <p>
-          Both are fixed, both are pinned by regression tests, and both are
-          written into the framework's own contributor docs as invariants — not
-          because the fix was hard, but because the <em>shape</em> will come
-          back. Anything that used to be computed once per session is now a
-          candidate.
+          Both are fixed and pinned by regression tests, and both are written
+          into the framework's contributor docs as invariants, because the shape
+          will come back. Anything that used to be computed once per session is
+          now a candidate.
         </p>
 
         <h2>Confirmation gets a native face</h2>
         <p>
           <code>confirm:</code> tools have always used a token dance: the server
-          answers <code>confirmation_required</code> with a single-use token,
-          the caller repeats the call carrying it. The new revision's MRTR lets
-          a conformant host render a real dialog instead — so
-          <code>confirm:</code> now picks its presentation per request.
+          answers <code>confirmation_required</code> with a single-use token and
+          the caller repeats the call carrying it. MRTR lets a conformant host
+          render a real dialog instead, so <code>confirm:</code> now picks its
+          presentation per request.
         </p>
 
         <p>
           A client on the new era that <em>declared</em> the elicitation
           capability gets a native <code>input_required</code> result. Everyone
-          else — the 2025 era, a modern client that cannot prompt, and every
-          programmatic caller like the CLI or an in-app agent — gets the token
-          dance. Era alone is not the gate, and that detail cost us a bug worth
-          repeating: the SDK raises a hard protocol error for an elicitation the
-          client never declared, so gating on era would have turned a
-          confirmation into a crash.
+          else gets the token dance: the 2025 era, a modern client that cannot
+          prompt, and every programmatic caller such as the CLI or an in-app
+          agent. Era alone is not the gate, and that detail cost us a bug. The
+          SDK raises a hard protocol error for an elicitation the client never
+          declared, so gating on era would have turned a confirmation into a
+          crash.
         </p>
 
         <p>
-          One thing did not move. The confirmation store remains the sole
-          authority on both paths. MRTR's <code>requestState</code> only
-          <em>transports</em> a token the server already issued, because
-          <code>requestState</code> is client-echoed and the spec treats it as
-          attacker-controlled. A round trip having happened is not the same as a
-          human having said yes.
+          The confirmation store remains the sole authority on both paths.
+          MRTR's <code>requestState</code> only <em>transports</em> a token the
+          server already issued, because <code>requestState</code> is
+          client-echoed and the spec treats it as attacker-controlled. A round
+          trip having happened is not the same as a human having said yes.
         </p>
 
         <h2>A MUST we had never met</h2>
         <p>
-          The revision also prompted us to re-read a clause we had been failing
-          since long before it: servers <strong>MUST</strong> validate the
-          <code>Origin</code> header on incoming connections. Not new in
-          <code>2026-07-28</code> — identical wording sits in
+          The revision also sent us back to a clause we had been failing since
+          long before it: servers <strong>MUST</strong> validate the
+          <code>Origin</code> header on incoming connections. That wording is
+          not new in <code>2026-07-28</code>. It sits in
           <code>2025-06-18</code> and dates to <code>2025-03-26</code>. Enabling
           the check only when someone happened to configure an allowlist was
           never conformant on any revision.
         </p>
 
         <p>
-          It is on by default now, and the allowlist is derived from your
-          <code>rest.cors</code> config rather than declared a second time —
-          because those origins already <em>are</em> your statement of which
-          browsers may call the app. Each entry is matched at the precision it
-          was declared at: a CORS origin string exactly, scheme and port
-          included; a CORS regex by testing it; an explicitly-configured
+          It is on by default now, and the allowlist comes from your
+          <code>rest.cors</code> config instead of being declared a second time,
+          since those origins already are your statement of which browsers may
+          call the app. Each entry is matched at the precision it was declared
+          at: a CORS origin string exactly, scheme and port included; a CORS
+          regex by testing it; an explicitly configured
           <code>allowedOrigins</code> by hostname, because that is its shipped
           behaviour and narrowing it would break callers who already set it.
         </p>
 
         <p>
-          This is safe to default because a <em>missing</em> <code>Origin</code>
-          passes. Only browsers send the header, so no MCP client, no
-          <code>curl</code>, no stdio bridge is affected. The only request that
-          can newly fail is a browser one, which is the case the guard exists
-          for. The full posture — bearer auth, framework strategies, rate
-          limiting and this guard together — is in
+          Defaulting this on is safe because a <em>missing</em>
+          <code>Origin</code> passes. Only browsers send the header, so no MCP
+          client, no <code>curl</code>, no stdio bridge is affected. The only
+          request that can newly fail is a browser one, which is the case the
+          guard exists for. The full posture, bearer auth and framework
+          strategies and rate limiting alongside this guard, is in
           <a href="../../guides/secure-mcp-over-http.md"
             >securing MCP over HTTP</a
           >.
         </p>
 
-        <h2>What the revision was really a test of</h2>
+        <h2>What is left</h2>
         <p>
-          The claim this blog keeps making is that a service should have one
-          source of truth and that every surface should be a projection of it.
-          The usual objection is that projections are fine until reality changes
-          shape, and then the abstraction is a liability.
+          Resumable SSE has no replacement in the new revision, so retiring the
+          session machinery for good is a breaking capability removal, and it
+          stays gated on that. Nothing is on the clock: the 2025 era has a
+          12-month deprecation window, and <code>protocol: 'legacy'</code> keeps
+          working the whole time.
         </p>
 
         <p>
-          This was that test. A protocol removed its session model, its
-          streaming endpoint, and its resumability story. The framework's
-          transport layer absorbed it, the DI container turned out to have been
-          doing the hard part all along, and the surface you author — a Zod
-          schema on a decorator — did not move.
-        </p>
-
-        <p>
-          The work that remains is the honest kind: resumable SSE has no
-          replacement in the new revision, so retiring the session machinery for
-          good is a breaking capability removal rather than a cleanup, and it is
-          still gated on that. Nothing is on the clock. But the default is now
-          the era the ecosystem is moving to, and getting there cost your
-          application code exactly nothing.
+          Upgrading from 0.8 changes which era your endpoint serves by default
+          and nothing in your tool code. If a browser client starts getting
+          403s, set <code>allowedOrigins</code>. If you need sessions back, set
+          <code>protocol: 'legacy'</code>.
         </p>
 
         <div class="post-actions">
