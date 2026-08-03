@@ -29,8 +29,13 @@
         <p class="post-meta">August 3, 2026</p>
         <h1>The spec deleted sessions. Your tools never noticed.</h1>
         <p class="lede">
-          MCP's <code>2026-07-28</code> revision removes protocol-level
-          sessions, the GET stream, and resumability. AgentBack
+          MCP's
+          <a
+            href="https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http"
+            ><code>2026-07-28</code></a
+          >
+          revision removes protocol-level sessions, the GET stream, and
+          resumability. AgentBack
           <code>0.9.0</code> serves it by default, and 2025-era clients from the
           same URL, without a single <code>@tool</code> changing.
         </p>
@@ -59,7 +64,12 @@ async forecast(input: z.infer&lt;typeof ForecastIn&gt;) { … }</code></pre>
 
         <h2>What the revision took away</h2>
         <p>
-          The <code>2026-07-28</code> Streamable HTTP binding removes the
+          The
+          <a
+            href="https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http"
+            >Streamable HTTP binding</a
+          >
+          removes the
           <code>Mcp-Session-Id</code> handshake, the standalone GET stream, and
           resumable SSE via <code>Last-Event-ID</code>. Every message is its own
           POST. Server-to-client interactions that used to be server-initiated
@@ -221,9 +231,13 @@ const scoped = ctx.authInfo ? {scopes: ctx.authInfo.scopes} : {};</code></pre>
           long before it: servers <strong>MUST</strong> validate the
           <code>Origin</code> header on incoming connections. That wording is
           not new in <code>2026-07-28</code>. It sits in
-          <code>2025-06-18</code> and dates to <code>2025-03-26</code>. Enabling
-          the check only when someone happened to configure an allowlist was
-          never conformant on any revision.
+          <a
+            href="https://modelcontextprotocol.io/specification/2025-06-18/basic/transports"
+            ><code>2025-06-18</code></a
+          >
+          and dates to <code>2025-03-26</code>. Enabling the check only when
+          someone happened to configure an allowlist was never conformant on any
+          revision.
         </p>
 
         <p>
