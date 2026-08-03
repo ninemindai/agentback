@@ -274,6 +274,21 @@ export async function installMcpHttp(
   if (opts.perSession && !opts.appContext) {
     opts = {...opts, appContext: app};
   }
+  // Inherit the app's era posture when this mount does not state one, so
+  // `protocol: 'legacy'` on the MCPServer config rolls back BOTH surfaces.
+  // Before this, it rolled back stdio only and left /mcp on the new revision —
+  // a documented one-line rollback that silently did half the job, which is
+  // worst precisely when someone is reaching for it mid-incident. An explicit
+  // value on the mount still wins, for the genuinely mixed case.
+  // `eventStore` without an explicit protocol already means "keep sessions"
+  // (see setupStateless); inheriting here would set `protocol` and silence that
+  // rule, so the yield wins and inheritance only fills a genuinely open choice.
+  if (opts.protocol === undefined && !opts.eventStore) {
+    const configured = (
+      mcp as unknown as {config?: {protocol?: 'legacy' | 'both'}}
+    ).config?.protocol;
+    if (configured) opts = {...opts, protocol: configured};
+  }
   // Pick the mount that matches the host: the native listener serves
   // fetchHandler() (no Express req/res), so use the fetch-native transport;
   // otherwise the classic Express mount. Both expose the same McpHttpHandle.

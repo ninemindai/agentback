@@ -144,11 +144,14 @@ describe('confirm: — the store stays the authority under MRTR', () => {
         {env: 'prod'},
         h.ctxFor({modern: true, canElicit: true}),
       )) as {requestState: string};
+      // An affirmative answer is required alongside the token now: the token
+      // proves a round trip, the accepted response proves a human said yes.
       const ctx = () =>
         h.ctxFor({
           modern: true,
           canElicit: true,
           requestState: issued.requestState,
+          responses: {confirm: {action: 'accept', content: {confirm: true}}},
         });
 
       await expect(h.gate({env: 'prod'}, ctx())).resolves.toEqual({

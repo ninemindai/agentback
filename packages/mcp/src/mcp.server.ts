@@ -761,16 +761,33 @@ export class MCPServer implements Server {
     const store = await this.confirmationStore();
     const mrtr = reqCtx ? this.mrtrContext(reqCtx) : {canElicit: false};
 
-    // A host that rendered the prompt may have had the user say no. Executing
-    // anyway because a token happens to be present would defeat the point of
-    // asking, so a decline is checked BEFORE the token.
-    if (mrtr.responses) {
-      const answer = inputResponse(mrtr.responses, CONFIRM_REQUEST_KEY);
-      if (answer.kind === 'elicit' && answer.action !== 'accept') {
-        // 'decline' -> declined, 'cancel' -> cancelled.
-        const past = answer.action === 'cancel' ? 'cancelled' : 'declined';
+    // On the MRTR path the token alone must NOT authorize the call.
+    //
+    // `requestState` is echoed by the client, so "the client sent the token
+    // back" only proves a round trip happened — not that a human was asked or
+    // said yes. A client that skipped the prompt entirely and replayed the
+    // state would execute the tool, which makes "native confirmation" a
+    // strictly weaker claim than the docs make. So an affirmative answer is
+    // REQUIRED whenever the client was capable of being prompted: the response
+    // must be an elicitation, accepted, carrying `confirm: true`.
+    //
+    // Rejecting only explicit decline/cancel (the first shape of this code) let
+    // a missing, malformed, or `{confirm: false}` response through.
+    if (mrtr.canElicit) {
+      const answer = inputResponse(mrtr.responses ?? {}, CONFIRM_REQUEST_KEY);
+      const accepted =
+        answer.kind === 'elicit' &&
+        answer.action === 'accept' &&
+        (answer.content as {confirm?: unknown} | undefined)?.confirm === true;
+      if (mrtr.requestState && !accepted) {
+        const why =
+          answer.kind === 'elicit' && answer.action !== 'accept'
+            ? answer.action === 'cancel'
+              ? 'was cancelled'
+              : 'was declined'
+            : 'was not affirmatively accepted';
         const err = new Error(
-          `Confirmation for ${tool.meta.name} was ${past}. The tool did not run.`,
+          `Confirmation for ${tool.meta.name} ${why}. The tool did not run.`,
         );
         const e = err as Error & {code: string; publicMessage: string};
         e.code = ErrorCodes.CONFIRMATION_INVALID;
@@ -842,6 +859,17 @@ export class MCPServer implements Server {
   }
 
   private confirmationStoreCache?: ConfirmationStore;
+  /**
+   * Resolve the confirmation store, which `MCPComponent` binds app-level.
+   *
+   * The `?? new InMemoryConfirmationStore()` fallback that used to live here
+   * was instance-scoped, and a `confirm:` round-trip spans two requests: under
+   * the stateless default with a `perSession` binder, request 2 got a brand-new
+   * `MCPServer` with a brand-new empty store and rejected every valid token.
+   * The fallback now lives on the app context so the chain walk finds ONE
+   * instance from any per-request child. Kept optional so a caller who binds
+   * their own (Redis, for multi-instance) still wins.
+   */
   protected async confirmationStore(): Promise<ConfirmationStore> {
     if (!this.confirmationStoreCache) {
       this.confirmationStoreCache =

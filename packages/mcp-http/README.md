@@ -90,7 +90,14 @@ The rollback is one line, with nothing else to change:
 
 ```ts
 await installMcpHttp(app, {protocol: 'legacy'});
+// or once, app-wide — this mount inherits it:
+app.configure('servers.MCPServer').to({protocol: 'legacy'});
 ```
+
+When this mount does not state a `protocol`, it **inherits the `MCPServer`
+config's**, so pinning the app back rolls back stdio and `/mcp` together. An
+explicit value here still wins, for the genuinely mixed case. (`eventStore`
+without a protocol still yields to sessions — see below.)
 
 Two things do change under the default, because sessions are gone:
 

@@ -109,9 +109,24 @@ export function perRequestFactory(options: {
   mcp: MCPServer;
   binder?: SessionBinder;
   appContext?: Context;
+  /**
+   * Whether the mount authenticates at all. Load-bearing: `buildServer()`
+   * skips scope filtering entirely when `scopes` is `undefined`, so an
+   * anonymous request under OPTIONAL auth must still pass `[]` (deny scoped
+   * tools) rather than nothing (expose them).
+   */
+  authEnabled?: boolean;
 }) {
   return async (ctx: McpRequestContext) => {
-    const scoped = ctx.authInfo ? {scopes: ctx.authInfo.scopes ?? []} : {};
+    // Mirrors the session path's `authEnabled ? (authInfo?.scopes ?? []) :
+    // undefined`. Writing this as `ctx.authInfo ? {...} : {}` looked
+    // equivalent and was not: with `strategyAuth: {required: false}` an
+    // anonymous caller has no authInfo, fell through to `{}`, and every
+    // `@tool({scope})` became visible AND callable — `@tool({scope})` is a
+    // visibility gate, so nothing downstream re-checks it.
+    const scoped = options.authEnabled
+      ? {scopes: ctx.authInfo?.scopes ?? []}
+      : {};
     if (!options.binder || !ctx.requestInfo) {
       return options.mcp.buildServer(scoped);
     }
@@ -259,6 +274,7 @@ export function setupStateless(
     handler: createMcpHandler(
       perRequestFactory({
         mcp,
+        authEnabled: Boolean(options.auth ?? options.strategyAuth),
         ...(options.perSession ? {binder: options.perSession} : {}),
         ...(options.appContext ? {appContext: options.appContext} : {}),
       }),
