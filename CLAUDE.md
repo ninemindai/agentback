@@ -19,7 +19,7 @@ pnpm test                          # vitest run — IMPORTANT: requires a prior 
 pnpm test:watch                    # vitest watch
 pnpm typecheck:client              # tsc --noEmit on the esbuild client bundles (NOT covered by build/test)
 pnpm verify                        # full local CI mirror: konsistent + build + typecheck:client + test + validate-templates + build:site
-pnpm build:site                    # render website/dist (fails on a missing/mis-mapped docs diagram)
+pnpm build:site                    # render website/dist (fails on a missing/mis-mapped docs diagram, or a broken link)
 pnpm konsistent                    # structural-convention check (konsistent.json) — fast, runs on source
 pnpm lint                          # eslint + prettier --check
 pnpm lint:fix                      # eslint --fix + prettier --write
@@ -296,6 +296,21 @@ remove a diagram: renumber the SVGs after it and update their Source comments.
 `pnpm verify` runs `build:site` for this reason — a docs-only change can break
 the site deploy, and it did (three merges shipped with a broken deploy before
 the check existed).
+
+## Links in docs are checked at build time
+
+`build:site` fails on a repo-relative link, in any page it ships (`DOC_PAGES` +
+`docs/blog/**`), whose target does not exist in the repo. Linking a path the
+site does **not** render is fine — `mapTarget` rewrites it to a GitHub URL — but
+the path has to be real.
+
+The check runs on the **sources**, inside `rewriteHref`, not on `dist`. That is
+load-bearing: `mapTarget` turns anything unshipped into a GitHub URL, so a
+typo'd `docs/guides/typo.md` becomes a well-formed link to a GitHub 404 that no
+check against the built output can see. A dist-only version of this check was
+written first and passed a deliberately broken link. A second pass over `dist`
+also runs, catching the different failure of a page that was linked but never
+emitted.
 
 ## Merging PRs (rebase-merge)
 
