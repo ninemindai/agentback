@@ -3,6 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 import {AgentError, ErrorCodes} from '@agentback/openapi';
+import {TEMPLATES, capabilityNames, type TemplateName} from 'create-agentback';
 
 export interface DeployArgs {
   target: 'vercel' | 'cloudflare';
@@ -90,5 +91,101 @@ export function parseDeployArgs(argv: string[]): DeployArgs {
       bad(`deploy: unknown flag '${f}'`);
     }
   }
+  return out;
+}
+
+export interface NewArgs {
+  name: string;
+  template: TemplateName;
+  capabilities: string[];
+  host?: {port?: number; host?: string; basePath?: string};
+  help: boolean;
+}
+
+const NEW_VALUE_FLAGS = new Set([
+  '--template',
+  '-t',
+  '--with',
+  '--port',
+  '--host',
+  '--base-path',
+]);
+const EQ_FORM = /^--[a-z-]+=/;
+
+export function parseNewArgs(argv: string[]): NewArgs {
+  const out: NewArgs = {
+    name: '',
+    template: 'hybrid',
+    capabilities: [],
+    help: false,
+  };
+  const host: {port?: number; host?: string; basePath?: string} = {};
+  const caps = new Set<string>();
+
+  for (let i = 0; i < argv.length; i++) {
+    const f = argv[i];
+    if (f === '-h' || f === '--help') {
+      out.help = true;
+    } else if (f === '--drizzle' || f === '--auth') {
+      caps.add(f.slice(2));
+    } else if (f === '-c' || f === '--console') {
+      caps.add('console');
+    } else if (NEW_VALUE_FLAGS.has(f) || EQ_FORM.test(f)) {
+      // `--template rest` and `--template=rest` must both work: the `=` form is
+      // supported by create-agentback's own CLI, and two entry points to the
+      // same scaffolder disagreeing on flag syntax is a bug users hit once.
+      const eq = f.indexOf('=');
+      const flag = eq === -1 ? f : f.slice(0, eq);
+      const v = eq === -1 ? argv[++i] : f.slice(eq + 1);
+      if (v === undefined || v === '') bad(`new: ${flag} needs a value`);
+      if (flag === '--template' || flag === '-t') {
+        if (!(TEMPLATES as readonly string[]).includes(v))
+          bad(
+            `new: unknown template '${v}' (supported: ${TEMPLATES.join(', ')})`,
+          );
+        out.template = v as TemplateName;
+      } else if (flag === '--with') {
+        for (const c of v.split(',').filter(Boolean)) caps.add(c);
+      } else if (flag === '--port') {
+        const n = Number(v);
+        if (!Number.isInteger(n))
+          bad(`new: --port must be an integer, got '${v}'`);
+        host.port = n;
+      } else if (flag === '--host') {
+        host.host = v;
+      } else if (flag === '--base-path') {
+        host.basePath = v;
+      } else {
+        bad(`new: unknown flag '${flag}'`);
+      }
+    } else if (f.startsWith('-')) {
+      bad(`new: unknown flag '${f}'`);
+    } else if (!out.name) {
+      out.name = f;
+    } else {
+      bad(`new: unexpected argument '${f}'`);
+    }
+  }
+
+  // Validate against the CHOSEN template, not the global set: capabilities are
+  // per-template (`console` needs an HTTP server, so it is invalid for `mcp`).
+  // Runs after the loop because `--with` may precede `--template` in argv.
+  const valid = capabilityNames(out.template);
+  for (const c of caps) {
+    if (!valid.includes(c))
+      bad(
+        `new: unknown capability '${c}' for the ${out.template} template ` +
+          `(supported: ${valid.join(', ')})`,
+      );
+  }
+  out.capabilities = [...caps];
+
+  if (!out.name && !out.help)
+    bad(
+      'new: missing name. Usage: agentback new <name> ' +
+        '[--template hybrid|rest|mcp]\n' +
+        'For the interactive wizard, run: npm create agentback',
+    );
+  if (Object.keys(host).length) out.host = host;
   return out;
 }

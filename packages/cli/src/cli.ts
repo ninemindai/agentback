@@ -4,15 +4,51 @@
 // License text available at https://opensource.org/license/mit/
 
 import {realpathSync} from 'node:fs';
+import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {AgentError} from '@agentback/openapi';
-import {parseDeployArgs} from './args.js';
+import {parseDeployArgs, parseNewArgs} from './args.js';
+import {runNew} from './new.js';
+import {selfVersion} from './version.js';
 import {nodeExec} from './exec.js';
 import {runDeploy} from './run-deploy.js';
 import {vercelTarget} from './targets/vercel.js';
 import {cloudflareTarget} from './targets/cloudflare.js';
 
-export const USAGE = `agentback — deploy an AgentBack app
+export const USAGE = `agentback — scaffold, deploy, and upgrade an AgentBack app
+(also available as \`abc\`)
+
+Usage:
+  agentback new <name> [--template hybrid|rest|mcp] [--with <caps>]
+  agentback deploy (vercel|cloudflare) [options]
+  agentback --version
+
+Run \`agentback <command> --help\` for command-specific options.
+
+Exit codes: 0 success, 1 failure.
+`;
+
+export const NEW_USAGE = `agentback new — scaffold a new AgentBack app
+
+Usage:
+  agentback new <name> [options]
+
+Options:
+  -t, --template <name>   hybrid (default), rest, or mcp
+  --with <caps>           comma-separated add-ons (console, drizzle, auth)
+  --drizzle               shorthand for --with drizzle
+  --auth                  shorthand for --with auth
+  -c, --console           shorthand for --with console
+  --port <n>              REST server port (rest|hybrid)
+  --host <h>              REST server host (rest|hybrid)
+  --base-path <p>         REST base path (rest|hybrid)
+  -h, --help              show this help
+
+This delegates to create-agentback. For the interactive wizard, run
+\`npm create agentback\` instead — \`agentback new\` requires a name.
+`;
+
+export const DEPLOY_USAGE = `agentback deploy — deploy an AgentBack app
 
 Usage:
   agentback deploy (vercel|cloudflare) [options]
@@ -35,16 +71,46 @@ Options:
 
 export async function main(argv: string[]): Promise<number> {
   const [cmd, ...rest] = argv;
-  if (cmd !== 'deploy') {
-    console.log(USAGE);
-    return cmd ? 1 : 0;
-  }
   try {
-    const args = parseDeployArgs(rest);
-    if (args.help) {
-      console.log(USAGE);
+    // `--version` is table stakes for any CLI, and load-bearing for this one:
+    // `update` refuses when the CLI is older than its target and tells the user
+    // to compare versions, which is unanswerable without this.
+    if (cmd === '--version' || cmd === '-v') {
+      console.log(selfVersion());
       return 0;
     }
+    if (cmd === 'new') {
+      const args = parseNewArgs(rest);
+      if (args.help) {
+        console.log(NEW_USAGE);
+        return 0;
+      }
+      const dir = runNew(args, {cwd: process.cwd()});
+      console.log(`Created ${dir}`);
+      console.log(
+        `Next: cd ${path.basename(dir)} && npm install && npm run build && npm start`,
+      );
+      return 0;
+    }
+    if (cmd === 'deploy') return await runDeployCommand(rest);
+    console.log(USAGE);
+    return cmd ? 1 : 0;
+  } catch (e) {
+    if (e instanceof AgentError) {
+      console.error(e.message);
+      return 1;
+    }
+    throw e;
+  }
+}
+
+async function runDeployCommand(rest: string[]): Promise<number> {
+  const args = parseDeployArgs(rest);
+  if (args.help) {
+    console.log(DEPLOY_USAGE);
+    return 0;
+  }
+  {
     const target =
       args.target === 'cloudflare' ? cloudflareTarget : vercelTarget;
     const out = await runDeploy(args, target, {
@@ -73,12 +139,6 @@ export async function main(argv: string[]): Promise<number> {
     }
     console.log(`Deployed and verified: ${out.url}`);
     return 0;
-  } catch (e) {
-    if (e instanceof AgentError) {
-      console.error(e.message);
-      return 1;
-    }
-    throw e;
   }
 }
 

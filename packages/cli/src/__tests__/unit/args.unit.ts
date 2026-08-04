@@ -3,7 +3,62 @@
 // License text available at https://opensource.org/license/mit/
 
 import {describe, expect, it} from 'vitest';
-import {parseDeployArgs} from '../../args.js';
+import {parseDeployArgs, parseNewArgs} from '../../args.js';
+
+describe('parseNewArgs', () => {
+  it('defaults to the hybrid template', () => {
+    expect(parseNewArgs(['my-svc'])).toMatchObject({
+      name: 'my-svc',
+      template: 'hybrid',
+      capabilities: [],
+    });
+  });
+
+  it('parses --template and comma-separated --with', () => {
+    const a = parseNewArgs([
+      'my-svc',
+      '--template',
+      'rest',
+      '--with',
+      'drizzle,auth',
+    ]);
+    expect(a.template).toBe('rest');
+    expect(a.capabilities).toEqual(['drizzle', 'auth']);
+  });
+
+  it('accepts the --flag=value form like create-agentback does', () => {
+    const a = parseNewArgs(['my-svc', '--template=rest', '--with=drizzle']);
+    expect(a.template).toBe('rest');
+    expect(a.capabilities).toEqual(['drizzle']);
+  });
+
+  it('dedupes capabilities across --with and shorthands', () => {
+    const a = parseNewArgs(['my-svc', '--with', 'drizzle', '--drizzle']);
+    expect(a.capabilities).toEqual(['drizzle']);
+  });
+
+  it('parses host options', () => {
+    const a = parseNewArgs(['my-svc', '--port', '8080', '--host', '0.0.0.0']);
+    expect(a.host).toEqual({port: 8080, host: '0.0.0.0'});
+  });
+
+  it('rejects an unknown template', () => {
+    expect(() => parseNewArgs(['my-svc', '--template', 'graphql'])).toThrow(
+      /unknown template/,
+    );
+  });
+
+  it('rejects a capability the chosen template does not support', () => {
+    // `console` needs an HTTP server; the stdio mcp template has none.
+    expect(() =>
+      parseNewArgs(['my-svc', '--template', 'mcp', '--with', 'console']),
+    ).toThrow(/unknown capability/);
+  });
+
+  it('rejects a missing name and points at the interactive entry point', () => {
+    expect(() => parseNewArgs([])).toThrow(/npm create agentback/);
+  });
+});
 
 describe('parseDeployArgs', () => {
   it('parses target + defaults', () => {
