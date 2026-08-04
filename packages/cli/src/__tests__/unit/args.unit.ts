@@ -3,7 +3,40 @@
 // License text available at https://opensource.org/license/mit/
 
 import {describe, expect, it} from 'vitest';
-import {parseDeployArgs, parseNewArgs} from '../../args.js';
+import {parseDeployArgs, parseNewArgs, parseUpdateArgs} from '../../args.js';
+
+describe('parseUpdateArgs', () => {
+  it('defaults to no target, no dry-run, no force', () => {
+    expect(parseUpdateArgs([])).toEqual({
+      dryRun: false,
+      force: false,
+      help: false,
+    });
+  });
+
+  it('parses --to, --dry-run and --force', () => {
+    expect(parseUpdateArgs(['--to', '0.10.0', '--dry-run', '--force'])).toEqual(
+      {
+        to: '0.10.0',
+        dryRun: true,
+        force: true,
+        help: false,
+      },
+    );
+  });
+
+  it('accepts --to=<version> and a prerelease', () => {
+    expect(parseUpdateArgs(['--to=0.10.0-rc.1']).to).toBe('0.10.0-rc.1');
+  });
+
+  it('rejects a non-exact --to', () => {
+    expect(() => parseUpdateArgs(['--to', '^0.10'])).toThrow(/exact version/);
+  });
+
+  it('rejects an unknown flag', () => {
+    expect(() => parseUpdateArgs(['--yolo'])).toThrow(/unknown flag/);
+  });
+});
 
 describe('parseNewArgs', () => {
   it('defaults to the hybrid template', () => {

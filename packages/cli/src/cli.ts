@@ -7,8 +7,9 @@ import {realpathSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {AgentError} from '@agentback/openapi';
-import {parseDeployArgs, parseNewArgs} from './args.js';
+import {parseDeployArgs, parseNewArgs, parseUpdateArgs} from './args.js';
 import {runNew} from './new.js';
+import {printUpdateReport, runUpdate} from './update/run-update.js';
 import {selfVersion} from './version.js';
 import {nodeExec} from './exec.js';
 import {runDeploy} from './run-deploy.js';
@@ -21,11 +22,28 @@ export const USAGE = `agentback — scaffold, deploy, and upgrade an AgentBack a
 Usage:
   agentback new <name> [--template hybrid|rest|mcp] [--with <caps>]
   agentback deploy (vercel|cloudflare) [options]
+  agentback update [--to <version>] [--dry-run] [--force]
   agentback --version
 
 Run \`agentback <command> --help\` for command-specific options.
 
-Exit codes: 0 success, 1 failure.
+Exit codes: 0 success, 1 failure. Migration notes are advisory and do NOT
+change the exit code.
+`;
+
+export const UPDATE_USAGE = `agentback update — upgrade an app across an AgentBack release
+
+Usage:
+  agentback update [--to <version>] [--dry-run] [--force]
+
+Options:
+  --to <version>   exact target version (default: this CLI's version)
+  --dry-run        report findings and the intended bump; write nothing
+  --force          proceed on a dirty git tree, and permit a downgrade
+  -h, --help       show this help
+
+Because releases are lockstep, the migrations for a release ship with it — run
+\`npx @agentback/cli@latest update\` to migrate to the newest version.
 `;
 
 export const NEW_USAGE = `agentback new — scaffold a new AgentBack app
@@ -93,6 +111,19 @@ export async function main(argv: string[]): Promise<number> {
       return 0;
     }
     if (cmd === 'deploy') return await runDeployCommand(rest);
+    if (cmd === 'update') {
+      const args = parseUpdateArgs(rest);
+      if (args.help) {
+        console.log(UPDATE_USAGE);
+        return 0;
+      }
+      const report = await runUpdate(args, {
+        exec: nodeExec,
+        cwd: process.cwd(),
+        selfVersion: selfVersion(),
+      });
+      return printUpdateReport(report);
+    }
     console.log(USAGE);
     return cmd ? 1 : 0;
   } catch (e) {

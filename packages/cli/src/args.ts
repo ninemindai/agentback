@@ -189,3 +189,38 @@ export function parseNewArgs(argv: string[]): NewArgs {
   if (Object.keys(host).length) out.host = host;
   return out;
 }
+
+export interface UpdateArgs {
+  to?: string;
+  dryRun: boolean;
+  force: boolean;
+  help: boolean;
+}
+
+/** `--to` takes an exact version; lockstep makes a range meaningless. */
+const EXACT_VERSION_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+
+export function parseUpdateArgs(argv: string[]): UpdateArgs {
+  const out: UpdateArgs = {dryRun: false, force: false, help: false};
+  for (let i = 0; i < argv.length; i++) {
+    const f = argv[i];
+    const eq = f.indexOf('=');
+    const flag = eq === -1 ? f : f.slice(0, eq);
+    if (flag === '--to') {
+      const v = eq === -1 ? argv[++i] : f.slice(eq + 1);
+      if (v === undefined || v === '') bad('update: --to needs a value');
+      if (!EXACT_VERSION_RE.test(v))
+        bad(`update: --to needs an exact version like 0.10.0, got '${v}'`);
+      out.to = v;
+    } else if (f === '--dry-run') {
+      out.dryRun = true;
+    } else if (f === '--force') {
+      out.force = true;
+    } else if (f === '-h' || f === '--help') {
+      out.help = true;
+    } else {
+      bad(`update: unknown flag '${f}'`);
+    }
+  }
+  return out;
+}
