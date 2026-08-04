@@ -14,3 +14,13 @@ Claude Desktop / Cursor config:
 ```json
 {"mcpServers": {"{{name}}": {"command": "node", "args": ["dist/main.js"]}}}
 ```
+
+## Upgrading
+
+```bash
+npm run update -- --dry-run   # report what would change, write nothing
+npm run update                # bump @agentback/* and run migrations
+```
+
+Releases are lockstep, so the migrations for a release ship with it — the
+script runs `npx @agentback/cli@latest` rather than a locally installed copy.

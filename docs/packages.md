@@ -62,7 +62,7 @@ Each package also ships its own `README.md` under [`packages/`](../packages/).
 | `@agentback/testing`               | Test harness with typed REST client, supertest, and in-memory MCP                                                                                   |
 | `@agentback/testlab`               | Lower-level test helpers used by the package test suites                                                                                            |
 | `create-agentback`                 | `npm create` scaffold for REST, MCP, and hybrid services                                                                                            |
-| `@agentback/cli`                   | `agentback`/`abc` CLI — `deploy` to Vercel and Cloudflare Workers (bundle doctor + wrangler)                                                        |
+| `@agentback/cli`                   | `agentback`/`abc` lifecycle CLI — `new` (scaffold), `deploy` (Vercel/Cloudflare Workers), `update` (bump lockstep ranges + run migrations)          |
 | `@agentback/command`               | Project `@tool` classes as an operator CLI — argv→Zod coercion, bare stdout result, routed through `callTool` (shares tool selection with `agents`) |
 | `@agentback/console`               | Combined context, schema, REST/OpenAPI, and MCP admin console                                                                                       |
 | `@agentback/console-theme`         | Shared styling for console and explorer UIs                                                                                                         |

@@ -64,6 +64,9 @@ ESM-only, Node 22.13+, TypeScript 7, pnpm workspaces. **Relative imports use
 11. **Turn the app's `@tool` classes into a runnable command-line tool
     (`my-svc forecast --city Tokyo`) for a human operator or a shell script?** →
     Operator CLI ([command.md](references/command.md))
+12. **Scaffold, deploy, or upgrade an app across a breaking AgentBack release
+    (`agentback new` / `deploy` / `update`)?** →
+    Lifecycle CLI ([cli.md](references/cli.md))
 
 ## Getting Started: scaffold a new app
 
@@ -100,8 +103,52 @@ npm start            # run the app
 npm test             # vitest
 ```
 
-Programmatic use (e.g. from another tool) is available too — import `scaffold`
-from `create-agentback` and pass `{name, template?, cwd?, version?}`.
+### Capabilities and host options
+
+Templates compose with opt-in add-ons instead of being hand-wired after the
+fact. `--with` takes a comma-separated list; each has a shorthand:
+
+```bash
+npm create agentback my-service -- --with drizzle,auth
+npm create agentback my-service -- --drizzle          # same, shorthand
+npm create agentback my-service -- --auth
+npm create agentback my-service -- -c                 # --console: dev console at /console
+```
+
+| Capability | Adds                                                                         | Valid for        |
+| ---------- | ---------------------------------------------------------------------------- | ---------------- |
+| `console`  | `@agentback/console` at `/console`, replacing the standalone explorer mounts | `hybrid`, `rest` |
+| `drizzle`  | `@agentback/drizzle` + an example table with a route/tool over it            | all three        |
+| `auth`     | the authentication stack wired into `application.ts`                         | all three        |
+
+Capabilities are **per template** — `console` needs an HTTP server, so it is
+rejected for the stdio `mcp` template.
+
+HTTP host options bake into the scaffolded `RestApplication` config (rejected
+for `mcp`, which has no REST server): `--port <n>`, `--host <h>`,
+`--base-path <p>`.
+
+Run with **no name on a TTY** for an interactive wizard (`@clack/prompts`), or
+pass `-i`/`--interactive` to be prompted for anything left off the command line.
+
+### Programmatic use
+
+`create-agentback` is a library as well as a `bin`:
+
+```ts
+import {scaffold, capabilityNames, TEMPLATES} from 'create-agentback';
+
+const {dir, files} = scaffold({
+  name: 'my-service',
+  template: 'hybrid', // 'hybrid' | 'rest' | 'mcp'
+  cwd: process.cwd(),
+  capabilities: ['drizzle'],
+  host: {port: 8080},
+  version: '^0.9.0', // defaults to a caret range of create-agentback's own version
+});
+```
+
+`capabilityNames(template)` returns the add-ons valid for that template.
 
 ## Quick Start: a hybrid REST + MCP app from shared schemas
 

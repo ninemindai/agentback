@@ -1,15 +1,62 @@
 # @agentback/cli
 
-AgentBack CLI — deploy an AgentBack app to Vercel or Cloudflare Workers.
+The AgentBack **lifecycle** CLI — scaffold an app, deploy it, upgrade it across
+a breaking release. Bins: `agentback` and the short alias `abc`.
+
+> Not `@agentback/command`, which turns an app's own `@tool` classes into a
+> command surface. That makes _your app_ a CLI; this is a CLI that acts _on_
+> your app.
 
 ## Usage
 
 ```bash
+agentback new my-service [--template hybrid|rest|mcp] [--with drizzle,auth]
 agentback deploy vercel [options]
 agentback deploy cloudflare [options]
+agentback update [--to <version>] [--dry-run] [--force]
+agentback --version
 ```
 
-Run `agentback deploy --help` for the full option list.
+Run `agentback <command> --help` for the full option list. Exit codes: `0`
+success, `1` failure — migration notes are advisory and do not change it.
+
+## `new`
+
+Delegates to `create-agentback`'s `scaffold()`; templates are never duplicated,
+and `npm create agentback` keeps working unchanged. Deliberately
+non-interactive — for the wizard, run `npm create agentback`.
+
+## `deploy`
+
+generate → preflight (bundle doctor) → platform CLI → verify `/openapi.json`.
+`--dry-run` stops after preflight; `--eject` writes the platform files and
+stops; `--temporary` (Cloudflare) deploys to a throwaway preview account with no
+signup, and works only when unauthenticated.
+
+## `update`
+
+Three phases: **resolve** the app's current version from its `@agentback/*`
+ranges → **migrate** (every entry in the half-open window `(from, to]`) →
+**bump + install**.
+
+```bash
+npx @agentback/cli@latest update --dry-run
+npx @agentback/cli@latest update
+```
+
+Run it through `npx`. This package is lockstep-versioned, so the copy installed
+in a `0.9` app cannot contain the `0.9 → 0.10` migrations — those ship with
+`0.10`. The CLI refuses when it is older than its target and prints this
+invocation.
+
+A migration is a **codemod** or an **advisory**: most breaking changes cannot be
+transformed (a default flipping, a header no longer existing), so an advisory
+reports what changed and what to do, with `file:line` where it can. As of
+`0.9.0`: three advisories, zero codemods.
+
+Migrations run **before** the bump, so a failed install cannot leave the app on
+a version whose migrations never ran. Git is the undo mechanism — `update`
+refuses a dirty tree unless `--force`.
 
 ## Binaries
 
