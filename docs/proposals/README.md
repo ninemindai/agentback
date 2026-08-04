@@ -46,6 +46,7 @@ tracked in the doc headers.
 | E-2 | [Circuit breaker](circuit-breaker.md) | `@agentback/extension-circuit-breaker` — outbound fault tolerance; the dual of `extension-rate-limit`  |
 | E-3 | [AI SDK agents](harness.md)           | `@agentback/agents` — opt-in AI SDK agent wiring; projects `@tool` classes as host tools (DX-reviewed) |
 | E-4 | [CLI projection](cli-projection.md)   | `@agentback/command` — project `@tool` classes as an operator CLI (argv→callTool); sixth surface — **eng-reviewed, operator-first** |
+| E-5 | [CLI lifecycle](cli-lifecycle.md)     | `agentback new`/`deploy`/`update` — one ops binary; `update` bumps lockstep ranges + runs a codemod-or-advisory migration registry — **design** |
 
 ## Sequencing constraints (from eng review)
 
