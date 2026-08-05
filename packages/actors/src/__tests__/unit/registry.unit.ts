@@ -8,12 +8,19 @@ import {
   inject,
   type Component,
 } from '@agentback/core';
+import {randomBytes} from 'node:crypto';
 import {describe, expect, it} from 'vitest';
 import {z} from 'zod';
 import {InMemoryActorsComponent} from '../../component.js';
 import {actor, actorCommand, actorQuery} from '../../decorators.js';
+import {InMemorySeatKeyStore} from '../../in-memory-seat-key-store.js';
 import {injectActor, type ActorAccessor} from '../../inject-actor.js';
-import {ACTOR_EXTENSIONS, ACTOR_REGISTRY} from '../../keys.js';
+import {
+  ACTOR_EXTENSIONS,
+  ACTOR_REGISTRY,
+  SEAT_KEY_STORE,
+  SEAT_KEY_STORE_KEK,
+} from '../../keys.js';
 import type {Actor, ActorCommandContext, ActorTurn} from '../../types.js';
 
 const CounterState = z.object({value: z.number()});
@@ -250,5 +257,97 @@ describe('decorated actor registry', () => {
     app.component(InMemoryActorsComponent);
     app.component(BadComponent);
     await expect(app.start()).rejects.toThrow("duplicate command 'same'");
+  });
+
+  describe('custodial keypair at birth (capability-os#5)', () => {
+    async function seatApp() {
+      const app = new Application();
+      app.component(InMemoryActorsComponent);
+      app.bind(SEAT_KEY_STORE_KEK).to(randomBytes(32));
+      app.service(InMemorySeatKeyStore);
+      app.bind('services.step').to(1);
+      app.component(CounterComponent);
+      await app.start();
+      return app;
+    }
+
+    it('creating a seat (first command) yields a key row', async () => {
+      const app = await seatApp();
+      const registry = await app.get(ACTOR_REGISTRY);
+      const store = await app.get(SEAT_KEY_STORE);
+
+      await registry.invoke(
+        'counter',
+        'seat-1',
+        {name: 'add', input: {amount: 1}},
+        {requestId: 'r1'},
+      );
+
+      const record = await store.getByActor({type: 'counter', id: 'seat-1'});
+      expect(record?.seatKeyId).toMatch(/^[0-9a-f]{64}$/);
+      expect(record?.exportedAt).toBeNull();
+      await app.stop();
+    });
+
+    it('a query on a never-touched id also yields a key row (initialState materializes on read too)', async () => {
+      const app = await seatApp();
+      const registry = await app.get(ACTOR_REGISTRY);
+      const store = await app.get(SEAT_KEY_STORE);
+
+      await registry.query('counter', 'seat-2', {name: 'peek', input: {}});
+
+      const record = await store.getByActor({type: 'counter', id: 'seat-2'});
+      expect(record).toBeDefined();
+      await app.stop();
+    });
+
+    it('never regenerates a key for an identity that already has one', async () => {
+      const app = await seatApp();
+      const registry = await app.get(ACTOR_REGISTRY);
+      const store = await app.get(SEAT_KEY_STORE);
+
+      await registry.invoke(
+        'counter',
+        'seat-3',
+        {name: 'add', input: {amount: 1}},
+        {requestId: 'r1'},
+      );
+      const first = await store.getByActor({type: 'counter', id: 'seat-3'});
+
+      await registry.invoke(
+        'counter',
+        'seat-3',
+        {name: 'add', input: {amount: 1}},
+        {requestId: 'r2'},
+      );
+      const second = await store.getByActor({type: 'counter', id: 'seat-3'});
+
+      expect(second).toEqual(first);
+      await app.stop();
+    });
+
+    it('creates a seat without error when no SeatKeyStore is bound (degrades gracefully)', async () => {
+      // No SEAT_KEY_STORE_KEK, no InMemorySeatKeyStore — matches every other
+      // test in this file. Asserted explicitly here to document the intent:
+      // apps without the seat layer configured must keep working.
+      const app = new Application();
+      app.component(InMemoryActorsComponent);
+      app.bind('services.step').to(1);
+      app.component(CounterComponent);
+      await app.start();
+      const registry = await app.get(ACTOR_REGISTRY);
+
+      const result = await registry.invoke(
+        'counter',
+        'no-seat-layer',
+        {name: 'add', input: {amount: 5}},
+        {requestId: 'r1'},
+      );
+      expect(result).toEqual({
+        name: 'add',
+        output: {value: 5, requestId: 'r1'},
+      });
+      await app.stop();
+    });
   });
 });

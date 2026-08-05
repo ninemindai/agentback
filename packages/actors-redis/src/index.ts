@@ -5,3 +5,4 @@
 export * from './keys.js';
 export * from './redis-actor-runtime.js';
 export * from './redis-actors.component.js';
+export * from './seat-key-store.js';

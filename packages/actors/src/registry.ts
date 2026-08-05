@@ -2,6 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import {loggers} from '@agentback/common';
 import {
   BindingScope,
   ContextTags,
@@ -19,9 +20,11 @@ import {
   ACTOR_REGISTRY,
   ACTOR_RUNTIME,
   ActorMetadata,
+  SEAT_KEY_STORE,
   type ActorClassMetadata,
   type ActorCommandMetadata,
   type ActorQueryMetadata,
+  type SeatKeyStore,
 } from './keys.js';
 import type {
   Actor,
@@ -55,6 +58,8 @@ type ActorQueryMethod = (
   input: unknown,
   ctx: ActorQueryContext,
 ) => unknown;
+
+const log = loggers('agentback:actors:seatKeys');
 
 /** A class decorated with `@actor` (carrying `@actorCommand` methods). */
 export type ActorClass<T extends object> = abstract new (...args: never[]) => T;
@@ -137,6 +142,10 @@ export class ActorRegistry implements LifeCycleObserver {
     @extensions.view(ACTOR_EXTENSIONS)
     private readonly actorsView: ContextView<object>,
     @inject(ACTOR_RUNTIME) private readonly runtime: ActorRuntime,
+    // Optional: apps without the seat layer configured keep working — no key
+    // row is ever created, and nothing signs regardless (capability-os#5).
+    @inject(SEAT_KEY_STORE, {optional: true})
+    private readonly seatKeyStore?: SeatKeyStore,
   ) {}
 
   async start(): Promise<void> {
@@ -407,6 +416,13 @@ export class ActorRegistry implements LifeCycleObserver {
       command,
       result: z.object({name: z.string(), output: z.unknown()}),
       initialState: async id => {
+        // Custodial keypair at birth, dormant (capability-os#5): every
+        // runtime calls `initialState` the first time an identity's state is
+        // materialized — a command or a bare read on a never-touched id — so
+        // hooking it here covers all three runtimes uniformly. Idempotent via
+        // the store's own `create()`, so a read-triggered call never races a
+        // later command-triggered one into generating a second key.
+        await this.ensureSeatKey(actorMeta.name, id);
         const instance = await this.resolve(bindingKey);
         return instance.initialState(id);
       },
@@ -441,5 +457,19 @@ export class ActorRegistry implements LifeCycleObserver {
 
   private resolve(bindingKey: string): Promise<Actor<unknown>> {
     return this.actorsView.context.get<Actor<unknown>>(bindingKey);
+  }
+
+  /** No-op when no SeatKeyStore is bound; `create()` itself is idempotent. */
+  private async ensureSeatKey(type: string, id: string): Promise<void> {
+    if (!this.seatKeyStore) return;
+    const record = await this.seatKeyStore.create({type, id});
+    if (log.debug.enabled) {
+      log.debug(
+        'Seat key %s ready for actor %s/%s.',
+        record.seatKeyId,
+        type,
+        id,
+      );
+    }
   }
 }

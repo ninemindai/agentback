@@ -6,7 +6,7 @@ import {BindingKey} from '@agentback/core';
 import {MetadataAccessor} from '@agentback/metadata';
 import {z, type ZodType} from 'zod';
 import type {ActorRegistry} from './registry.js';
-import type {ActorRuntime, CommittedActorEvent} from './types.js';
+import type {ActorId, ActorRuntime, CommittedActorEvent} from './types.js';
 
 export const ACTOR_RUNTIME = BindingKey.create<ActorRuntime>('actors.runtime');
 export const ACTOR_REGISTRY =
@@ -83,33 +83,67 @@ export type SeatJournalConsumerProvider = z.infer<
 // -- seat.keyStore (port) ----------------------------------------------
 //
 // Exactly one provider, selected by this binding key. Task 4 implements the
-// store (in-memory + Redis adapters); this is the seam only — the record
-// shape and callable surface a keypair-at-birth flow needs, per #5: private
+// store (in-memory + Redis adapters) and, having full context the Task 0a
+// seam-author didn't, refines the callable surface below: `create()`
+// replaces the original placeholder `put()` because generating and
+// idempotently persisting a keypair is one operation the *store* must own
+// (the registry — a runtime-neutral caller — must never touch raw key
+// material or a KEK), and `get`/`getByActor` return a public projection only,
+// per the security requirement that nothing but `takeCustody()` ever returns
+// private-key material. Custodial keypair at birth, dormant, per #5: private
 // keys are encrypted at rest, never logged, never returned by any API except
 // the one-shot `takeCustody()`.
 
-/** One seat's custodial keypair row. Nothing here ever signs. */
+/** One seat's custodial keypair row, as persisted at rest. Nothing here ever signs. */
 export const SeatKeyRecordSchema = z.object({
   seatKeyId: z.string().min(1),
-  ownerAccountId: z.string().min(1),
+  /** Owner→seat binding, recorded when provided at creation; never enforced. */
+  ownerAccountId: z.string().min(1).optional(),
   publicKey: z.string().min(1),
-  /** Encrypted at rest; only `takeCustody()` ever decrypts it. */
+  /** Encrypted at rest under the store's KEK; only `takeCustody()` ever decrypts it. */
   encryptedPrivateKey: z.string().min(1),
   /** Set once `takeCustody()` has exported the key; `null` while custodied. */
   exportedAt: z.string().nullable(),
 });
 export type SeatKeyRecord = z.infer<typeof SeatKeyRecordSchema>;
 
-/** Callable surface of the `seat.keyStore` port. */
+/**
+ * Public projection of a key row — everything `create`/`get`/`getByActor`
+ * return. Never carries private-key material in any form.
+ */
+export const SeatKeyPublicRecordSchema = SeatKeyRecordSchema.omit({
+  encryptedPrivateKey: true,
+});
+export type SeatKeyPublicRecord = z.infer<typeof SeatKeyPublicRecordSchema>;
+
+export interface SeatKeyCreateOptions {
+  /** Recorded on the key row when provided at creation; never enforced. */
+  ownerAccountId?: string;
+}
+
+/** Callable surface of the `seat.keyStore` port. No method here ever signs. */
 export const SeatKeyStoreContract = z.object({
-  put: z.custom<(record: SeatKeyRecord) => Promise<void>>(
-    value => typeof value === 'function',
-    {message: 'put must be a function'},
-  ),
-  get: z.custom<(seatKeyId: string) => Promise<SeatKeyRecord | undefined>>(
-    value => typeof value === 'function',
-    {message: 'get must be a function'},
-  ),
+  /**
+   * Idempotently materializes one actor identity's custodial keypair: an
+   * identity that already has a key row never regenerates, so this is safe
+   * to call on every turn/read that might be the identity's first.
+   */
+  create: z.custom<
+    (
+      actor: ActorId,
+      options?: SeatKeyCreateOptions,
+    ) => Promise<SeatKeyPublicRecord>
+  >(value => typeof value === 'function', {
+    message: 'create must be a function',
+  }),
+  get: z.custom<
+    (seatKeyId: string) => Promise<SeatKeyPublicRecord | undefined>
+  >(value => typeof value === 'function', {message: 'get must be a function'}),
+  getByActor: z.custom<
+    (actor: ActorId) => Promise<SeatKeyPublicRecord | undefined>
+  >(value => typeof value === 'function', {
+    message: 'getByActor must be a function',
+  }),
   /** One-shot: returns the decrypted private key exactly once, then marks the row exported. */
   takeCustody: z.custom<(seatKeyId: string) => Promise<string>>(
     value => typeof value === 'function',
@@ -119,6 +153,16 @@ export const SeatKeyStoreContract = z.object({
 export type SeatKeyStore = z.infer<typeof SeatKeyStoreContract>;
 
 export const SEAT_KEY_STORE = BindingKey.create<SeatKeyStore>('seat.keyStore');
+
+/**
+ * Key-encryption key (KEK) for the store's AES-256-GCM at-rest encryption of
+ * private-key material. Must decode to exactly 32 bytes; a missing or
+ * mis-sized KEK is a construction-time error for every adapter, never a
+ * silent fallback.
+ */
+export const SEAT_KEY_STORE_KEK = BindingKey.create<Buffer | string>(
+  'seat.keyStore.kek',
+);
 
 export interface ActorClassMetadata {
   name: string;

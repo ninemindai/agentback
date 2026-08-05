@@ -98,6 +98,38 @@ class CartController {
 Never inject the `CartActor` instance and call its methods directly — that
 bypasses the runtime (no serialization, rollback, or persisted state).
 
+## Custodial seat keys (`seat.keyStore`)
+
+Every actor identity gets a platform-held secp256k1 keypair the first time its
+state materializes (a command or a bare read on a never-touched id) —
+**custodial keypair at birth, dormant**. `ActorId` stays the working
+identifier; nothing here signs anything, and no method returns private-key
+material except the one-shot `takeCustody()`:
+
+```ts
+import {
+  InMemorySeatKeyStore,
+  SEAT_KEY_STORE_KEK,
+  SEAT_KEY_STORE,
+  seatKeyKekFromEnv,
+} from '@agentback/actors';
+
+app.bind(SEAT_KEY_STORE_KEK).to(seatKeyKekFromEnv()); // 32-byte AES-256-GCM key
+app.service(InMemorySeatKeyStore); // binds SEAT_KEY_STORE
+await app.start();
+
+const store = await app.get(SEAT_KEY_STORE);
+const record = await store.getByActor({type: 'cart', id: 'ada'}); // {seatKeyId, publicKey, ownerAccountId?, exportedAt}
+const privateKeyHex = await store.takeCustody(record!.seatKeyId); // once only
+```
+
+`SEAT_KEY_STORE` is an **optional** dependency of `ActorRegistry` — an app
+that never binds it keeps working exactly as before; no key row is ever
+created. Private keys are encrypted at rest (AES-256-GCM under the injected
+KEK) and never logged. `@agentback/actors-redis`'s `RedisSeatKeyStore` is the
+durable adapter; both pass `runSeatKeyStoreConformance` from
+`@agentback/actors/testing`.
+
 ## Events (event log)
 
 A command turn may return `events` (domain facts) alongside `state`/`result`.

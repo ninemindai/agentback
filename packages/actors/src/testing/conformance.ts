@@ -5,7 +5,8 @@
 import {describe, expect, it} from 'vitest';
 import {z} from 'zod';
 import {defineActor} from '../define-actor.js';
-import type {ActorRuntime} from '../types.js';
+import type {ActorId, ActorRuntime} from '../types.js';
+import type {SeatKeyStore} from '../keys.js';
 
 const State = z.object({value: z.number()});
 const Command = z.discriminatedUnion('type', [
@@ -181,6 +182,92 @@ export function runActorRuntimeConformance(
           .invoke({type: 'add', amount: 'bad'} as never),
       ).rejects.toThrow();
       expect(turns).toBe(0);
+    });
+  });
+}
+
+/**
+ * Behavioral contract required of every `seat.keyStore` adapter
+ * (capability-os#5: custodial keypair at birth, dormant). `makeStore` must
+ * return a fresh, empty store on each call.
+ */
+export function runSeatKeyStoreConformance(
+  name: string,
+  makeStore: () => SeatKeyStore,
+): void {
+  describe(`SeatKeyStore conformance: ${name}`, () => {
+    const actorA: ActorId = {type: 'conformance.seat', id: 'a'};
+    const actorB: ActorId = {type: 'conformance.seat', id: 'b'};
+
+    it('exposes no sign method on the store surface', () => {
+      const store = makeStore();
+      expect('sign' in store).toBe(false);
+    });
+
+    it('creating a seat yields a dormant key row', async () => {
+      const store = makeStore();
+      const record = await store.create(actorA);
+      expect(record.seatKeyId).toMatch(/^[0-9a-f]{64}$/);
+      expect(record.publicKey).toMatch(/^[0-9a-f]{66}$/);
+      expect(record.exportedAt).toBeNull();
+      expect('encryptedPrivateKey' in record).toBe(false);
+    });
+
+    it('is idempotent — an identity that already has a key row never regenerates', async () => {
+      const store = makeStore();
+      const first = await store.create(actorA);
+      const second = await store.create(actorA);
+      expect(second).toEqual(first);
+
+      const other = await store.create(actorB);
+      expect(other.seatKeyId).not.toBe(first.seatKeyId);
+    });
+
+    it('getByActor resolves the same record as get(seatKeyId)', async () => {
+      const store = makeStore();
+      const created = await store.create(actorA);
+      expect(await store.getByActor(actorA)).toEqual(created);
+      expect(await store.get(created.seatKeyId)).toEqual(created);
+    });
+
+    it('getByActor / get return undefined for an unknown identity', async () => {
+      const store = makeStore();
+      expect(await store.getByActor(actorA)).toBeUndefined();
+      expect(await store.get('unknown-seat-key-id')).toBeUndefined();
+    });
+
+    it('records ownerAccountId when provided, omits it when not', async () => {
+      const store = makeStore();
+      const owned = await store.create(actorA, {ownerAccountId: 'acct_1'});
+      expect(owned.ownerAccountId).toBe('acct_1');
+
+      const unowned = await store.create(actorB);
+      expect(unowned.ownerAccountId).toBeUndefined();
+    });
+
+    it('takeCustody returns the private key exactly once, then fails', async () => {
+      const store = makeStore();
+      const record = await store.create(actorA);
+
+      const privateKey = await store.takeCustody(record.seatKeyId);
+      expect(privateKey).toMatch(/^[0-9a-f]{64}$/);
+
+      await expect(store.takeCustody(record.seatKeyId)).rejects.toThrow();
+    });
+
+    it('takeCustody marks the row exported', async () => {
+      const store = makeStore();
+      const record = await store.create(actorA);
+      expect((await store.get(record.seatKeyId))?.exportedAt).toBeNull();
+
+      await store.takeCustody(record.seatKeyId);
+
+      expect((await store.get(record.seatKeyId))?.exportedAt).not.toBeNull();
+    });
+
+    it('takeCustody on an unknown seatKeyId fails', async () => {
+      const store = makeStore();
+      await expect(store.takeCustody('does-not-exist')).rejects.toThrow();
     });
   });
 }

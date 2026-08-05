@@ -149,6 +149,33 @@ sourcing. Events are not appended on a rolled-back or replayed turn.
 the Redis runtime; the actor and controller don't change. Every adapter passes
 the shared `runActorRuntimeConformance` suite.
 
+## Custodial seat keys (`seat.keyStore`)
+
+Every identity gets a platform-held secp256k1 keypair (Nostr-compatible) the
+first time its state materializes — **custodial, dormant, nothing signs**.
+`ActorRegistry` takes an **optional** `SEAT_KEY_STORE` binding
+(`@agentback/actors`'s `seat.keyStore` port); when bound, key creation is
+idempotent (an identity that already has a key row never regenerates); when
+unbound, no key row is ever created and actors work exactly as before.
+
+```ts
+import {
+  InMemorySeatKeyStore,
+  SEAT_KEY_STORE,
+  SEAT_KEY_STORE_KEK,
+  seatKeyKekFromEnv,
+} from '@agentback/actors';
+
+app.bind(SEAT_KEY_STORE_KEK).to(seatKeyKekFromEnv()); // 32-byte AES-256-GCM key
+app.service(InMemorySeatKeyStore); // or RedisSeatKeyStore from actors-redis
+```
+
+Private keys are encrypted at rest and never logged; only the one-shot
+`store.takeCustody(seatKeyId)` ever returns one (second call fails). `get`/
+`getByActor` return public metadata only. An `ownerAccountId` is recorded on
+the key row when a caller provides one — never enforced. See
+`packages/actors/README.md`'s "Custodial seat keys" section.
+
 ## Key rules
 
 - **Register with `app.service(...)`** (or a component's `services`) — `@actor`

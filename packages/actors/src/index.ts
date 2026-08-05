@@ -12,3 +12,5 @@ export * from './decorators.js';
 export * from './registry.js';
 export * from './inject-actor.js';
 export * from './degradable-extensions.js';
+export * from './seat-keys-crypto.js';
+export * from './in-memory-seat-key-store.js';

@@ -73,3 +73,17 @@ Unit tests run without Redis. Integration and shared conformance tests are gated
 REDIS_URL=redis://localhost:6379 pnpm exec vitest run \
   packages/actors-redis/dist/__tests__
 ```
+
+## Custodial seat keys (`RedisSeatKeyStore`)
+
+The durable adapter for `@agentback/actors`'s `seat.keyStore` port (custodial keypair at birth, dormant — see the base package's README). Shares `REDIS_ACTOR_CONNECTIONS`; a concurrent `create()` race for the same actor resolves atomically to one winning key via a Lua script, mirroring the runtime's lease discipline.
+
+```ts
+import {SEAT_KEY_STORE_KEK, seatKeyKekFromEnv} from '@agentback/actors';
+import {RedisSeatKeyStore} from '@agentback/actors-redis';
+
+app.bind(SEAT_KEY_STORE_KEK).to(seatKeyKekFromEnv());
+app.service(RedisSeatKeyStore); // requires REDIS_ACTOR_CONNECTIONS (RedisActorsComponent)
+```
+
+Not Cluster-safe: `create()`'s Lua script touches an actor-indexed key and a seatKeyId-indexed record key, which are not co-located under one hash tag (unlike the actor runtime's per-identity keys) because `get(seatKeyId)` must stay reachable without knowing the owning actor. Verified against standalone Redis.

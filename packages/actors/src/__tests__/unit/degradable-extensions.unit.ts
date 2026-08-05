@@ -198,8 +198,13 @@ describe('degradable extensions: seat.journal.archiver / seat.journal.consumer',
 describe('seat.keyStore contract', () => {
   it('accepts a well-formed store and a well-formed key record', () => {
     const store = {
-      put: async () => {},
+      create: async () => ({
+        seatKeyId: 'sk_1',
+        publicKey: 'pub',
+        exportedAt: null,
+      }),
       get: async () => undefined,
+      getByActor: async () => undefined,
       takeCustody: async () => 'private-key-material',
     };
     expect(SeatKeyStoreContract.safeParse(store).success).toBe(true);
@@ -212,10 +217,14 @@ describe('seat.keyStore contract', () => {
       exportedAt: null,
     };
     expect(SeatKeyRecordSchema.safeParse(record).success).toBe(true);
+
+    // ownerAccountId is optional — recorded when provided, never required.
+    const {ownerAccountId: _ownerAccountId, ...unowned} = record;
+    expect(SeatKeyRecordSchema.safeParse(unowned).success).toBe(true);
   });
 
   it('rejects a store missing part of the callable surface', () => {
-    const incomplete = {put: async () => {}, get: async () => undefined};
+    const incomplete = {create: async () => {}, get: async () => undefined};
     expect(SeatKeyStoreContract.safeParse(incomplete).success).toBe(false);
   });
 });

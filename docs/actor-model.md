@@ -182,6 +182,14 @@ A command turn may return `events` alongside `state` and `result` — domain fac
 
 This is **state plus an event log**, not full event sourcing: state stays the stored, authoritative value (not a fold of events). It delivers the "Event = fact" persistence — projections, audit, and react-to-what-happened subscribers — without an event-sourced authoring model. Other runtimes ignore a turn's `events`; the in-memory `EventSourcedActorRuntime` is the reference, and a durable adapter must append events in the same transaction as state + dedup.
 
+## Custodial seat keys
+
+Every actor identity ("seat") gets a platform-held secp256k1 keypair, Nostr-compatible, the first time its state materializes — a command or a bare read on a never-touched id. `ActorId` stays the working identifier; the keypair is custodial and **dormant**: nothing in this layer signs anything, and no method returns private-key material except a one-shot `takeCustody()`.
+
+`ActorRegistry` takes an optional `SEAT_KEY_STORE` binding (`@agentback/actors`'s `seat.keyStore` port). When bound, the registry idempotently calls the store's `create({type, id})` before an identity's `initialState` runs — an identity that already has a key row never regenerates. When unbound, no key row is ever created and every other actor behavior is unaffected. `InMemorySeatKeyStore` is the reference adapter; `RedisSeatKeyStore` (`@agentback/actors-redis`) is the durable one, sharing the runtime's Redis connections and resolving a concurrent `create()` race for the same actor to one winning key via a Lua script. Both encrypt private keys at rest (AES-256-GCM under an injected KEK) and pass `runSeatKeyStoreConformance` from `@agentback/actors/testing`. See `packages/actors/README.md`'s "Custodial seat keys" section for the usage snippet.
+
+An owner→seat binding (`ownerAccountId`) is recorded on the key row when a caller provides one at creation — this layer never enforces it.
+
 ## Layer boundary
 
 Decorated services are the application authoring model. `ActorDefinition` remains the normalized runtime port so an in-memory, Durable Objects, Redis, or another adapter does not depend on decorators or DI metadata.

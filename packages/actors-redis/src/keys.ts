@@ -5,6 +5,7 @@
 import {BindingKey} from '@agentback/core';
 import type {RedisConnectionManager} from '@agentback/messaging-bullmq';
 import type {RedisActorRuntimeOptions} from './redis-actor-runtime.js';
+import type {RedisSeatKeyStoreOptions} from './seat-key-store.js';
 
 export const REDIS_ACTOR_CONNECTIONS =
   BindingKey.create<RedisConnectionManager>('actors.redis.connections');
@@ -14,3 +15,5 @@ export const REDIS_ACTOR_OPTIONS = BindingKey.create<RedisActorRuntimeOptions>(
 export const REDIS_ACTOR_OWNS_CONNECTIONS = BindingKey.create<boolean>(
   'actors.redis.ownsConnections',
 );
+export const SEAT_KEY_STORE_OPTIONS =
+  BindingKey.create<RedisSeatKeyStoreOptions>('actors.redis.seatKeys.options');
