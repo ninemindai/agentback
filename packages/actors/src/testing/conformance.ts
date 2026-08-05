@@ -20,10 +20,11 @@ import {
 import {ActorRegistry} from '../registry.js';
 import type {
   Actor,
-  ActorEventReader,
+  ActorEventStore,
   ActorId,
   ActorRuntime,
   ActorTurn,
+  CommittedActorEvent,
 } from '../types.js';
 
 /**
@@ -94,6 +95,28 @@ function nested(runtime: ActorRuntime) {
   runtime.register(inner);
   runtime.register(outer);
   return {runtime, inner, outer};
+}
+
+/**
+ * Poll `check` until it holds, or fail loudly with what was actually seen.
+ * Delivery timing genuinely differs by adapter — the in-process runtimes
+ * deliver synchronously inside the committing turn, Redis tails the durable
+ * log asynchronously on its own connection — so every delivery assertion
+ * below waits rather than asserting immediately, which is honest for both and
+ * favors neither adapter's timing. Mirrors the same helper in
+ * `actors-redis`'s `delivery.integration.ts`.
+ */
+async function waitFor(
+  check: () => boolean,
+  describeState: () => string,
+  timeoutMs = 5_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (check()) return;
+    await new Promise<void>(resolve => setTimeout(resolve, 10));
+  }
+  throw new Error(`timed out waiting: ${describeState()}`);
 }
 
 /** Behavioral contract required of every ActorRuntime adapter. */
@@ -245,6 +268,68 @@ export function runActorRuntimeConformance(
 
       await expect(ref.invoke({})).rejects.toThrow();
       expect(await runtime.state(definition, 'invalid')).toEqual({value: 0});
+    });
+
+    // -- Event JSON-portability at commit -----------------------------
+    //
+    // A journaling runtime persists `turn.events` two different ways —
+    // `EventSourcedActorRuntime` via `structuredClone`, `RedisActorRuntime` via
+    // `JSON.stringify` — and a value that survives one but not the other
+    // (`undefined`, `NaN`/`Infinity`, a `Date`, a non-plain object) would
+    // silently diverge: preserved in process, dropped or coerced on Redis.
+    // Rejecting it at commit, on every runtime including the one below that
+    // keeps no journal at all, means an app first exercised against
+    // `InMemoryActorRuntime` in dev fails loudly before it ever depends on
+    // behavior a journaling adapter cannot reproduce.
+    it('rejects a turn whose event carries a Date, naming the offending path', async () => {
+      const runtime = makeRuntime();
+      const definition = defineActor('conformance.non-json-event.date', {
+        state: State,
+        command: z.object({}),
+        result: Result,
+        initialState: () => ({value: 0}),
+        receive(_ctx, state) {
+          state.value = 10; // must roll back with the rest of the turn
+          return {
+            state,
+            result: {value: state.value},
+            events: [{type: 'Bad', when: new Date()}],
+          };
+        },
+      });
+      runtime.register(definition);
+      const ref = runtime.ref(definition, 'non-json-date');
+
+      await expect(ref.invoke({})).rejects.toThrow(/events\[0\]\.when/);
+      expect(await runtime.state(definition, 'non-json-date')).toEqual({
+        value: 0,
+      });
+    });
+
+    it('rejects a turn whose event carries undefined or a non-finite number, the same way', async () => {
+      const runtime = makeRuntime();
+      const definition = defineActor('conformance.non-json-event.value', {
+        state: State,
+        command: z.object({kind: z.enum(['undef', 'nan'])}),
+        result: Result,
+        initialState: () => ({value: 0}),
+        receive(_ctx, state, command) {
+          const bad = command.kind === 'undef' ? undefined : Number.NaN;
+          return {
+            state,
+            result: {value: state.value},
+            events: [{type: 'Bad', bad}],
+          };
+        },
+      });
+      runtime.register(definition);
+
+      await expect(
+        runtime.ref(definition, 'non-json-undef').invoke({kind: 'undef'}),
+      ).rejects.toThrow(/events\[0\]\.bad/);
+      await expect(
+        runtime.ref(definition, 'non-json-nan').invoke({kind: 'nan'}),
+      ).rejects.toThrow(/events\[0\]\.bad/);
     });
 
     // -- Per-seat-type deadlines (capability-os#7) ------------------------
@@ -608,15 +693,29 @@ export function runActorRuntimeConformance(
 
 /**
  * Behavioral contract required of every runtime that persists an append-only
- * event log per identity (the read/append half of `ActorEventStore`). Every
- * case here is an atomicity claim: a turn's events reach the log exactly when
- * that turn's state and dedup record do — never on a rollback, never twice on
- * a replay. Delivery (`subscribe`) is not covered; a runtime that only reads
- * back its log satisfies this suite.
+ * event log per identity **and** delivers it in process (`ActorEventStore`,
+ * not just its `ActorEventReader` read half). Two kinds of case live here:
+ *
+ * - **Append/read** — every case is an atomicity claim: a turn's events reach
+ *   the log exactly when that turn's state and dedup record do — never on a
+ *   rollback, never twice on a replay.
+ * - **Delivery (`subscribe`)** — a subscriber sees every event its own turns
+ *   commit, in seq order; a handler that throws (synchronously or by
+ *   rejecting) is logged and skipped without affecting a sibling subscriber
+ *   or the committing turn; unsubscribing stops further delivery. Both
+ *   journaling runtimes (`EventSourcedActorRuntime`, `RedisActorRuntime`)
+ *   satisfy this today, so both are enrolled below.
+ *
+ * **What is deliberately NOT shared here, because the semantics genuinely
+ * differ by adapter:** delivery *timing* — the in-process runtime delivers
+ * synchronously inside the committing turn (see `waitFor`'s doc comment) — and
+ * Redis's at-least-once redelivery on reconnect/restart (replaying a durable
+ * log an in-process runtime has no counterpart for). Those stay in
+ * `actors-redis`'s own `delivery.integration.ts`.
  */
 export function runActorEventStoreConformance(
   name: string,
-  makeRuntime: () => ActorRuntime & ActorEventReader,
+  makeRuntime: () => ActorRuntime & ActorEventStore,
 ): void {
   describe(`ActorEventStore conformance: ${name}`, () => {
     const JournalState = z.object({count: z.number()});
@@ -963,6 +1062,166 @@ export function runActorEventStoreConformance(
       const runtime = makeRuntime();
       runtime.register(journal());
       expect(await runtime.events(TYPE, 'never-addressed')).toEqual([]);
+    });
+
+    it('commits a nested JSON event payload exactly, on read-back', async () => {
+      // The portability half of the same check `runActorRuntimeConformance`'s
+      // "rejects a turn whose event carries a Date" pins the rejection side
+      // of: `EventSourcedActorRuntime` persists via `structuredClone`,
+      // `RedisActorRuntime` via `JSON.stringify`. A *valid* JSON-only payload
+      // must read back identical to what was emitted on both, which — since
+      // this same assertion runs against every adapter enrolled below — is
+      // exactly the claim that the two serialize a portable payload the same
+      // way, not merely that each round-trips against itself.
+      const runtime = makeRuntime();
+      const payload = {
+        type: 'Snapshot',
+        nested: {
+          list: [1, 'two', true, null, {three: 3}],
+          flag: false,
+          count: 0,
+        },
+      };
+      const definition = defineActor('conformance.journal.roundtrip', {
+        state: JournalState,
+        command: z.object({}),
+        result: JournalState,
+        initialState: () => ({count: 0}),
+        receive(_ctx, state) {
+          state.count += 1;
+          return {state, result: state, events: [payload]};
+        },
+      });
+      runtime.register(definition);
+
+      await runtime.ref(definition, 'rt').invoke({}, {requestId: 'once'});
+
+      const log = await runtime.events('conformance.journal.roundtrip', 'rt');
+      expect(log).toHaveLength(1);
+      expect(log[0]?.event).toEqual(payload);
+    });
+
+    // -- Delivery (`subscribe`) -------------------------------------------
+    //
+    // See the suite's doc comment above for what is and is not shared here.
+    // Every case below polls with `waitFor` rather than asserting
+    // immediately — delivery is synchronous on the in-process runtime and
+    // asynchronous (a separate tail loop) on Redis, and asserting
+    // immediately would only ever exercise the former.
+    it('delivers every event a turn commits to a subscriber, in seq order', async () => {
+      const runtime = makeRuntime();
+      const definition = journal();
+      runtime.register(definition);
+      const ref = runtime.ref(definition, 'sub-order');
+
+      const seen: CommittedActorEvent[] = [];
+      const off = runtime.subscribe(event => void seen.push(event));
+      try {
+        await ref.invoke({type: 'inc', by: 1}, {requestId: 'r1'});
+        await ref.invoke({type: 'inc', by: 2}, {requestId: 'r2'});
+
+        await waitFor(
+          () => seen.length >= 2,
+          () => `seen=${seen.length}`,
+        );
+        expect(seen.map(e => e.event)).toEqual([
+          {type: 'Incremented', by: 1},
+          {type: 'Incremented', by: 2},
+        ]);
+        expect(seen.map(e => e.seq)).toEqual([0, 1]);
+      } finally {
+        off();
+      }
+    });
+
+    it('logs and skips a subscriber whose handler throws synchronously; a sibling and the committing turn are unaffected', async () => {
+      const runtime = makeRuntime();
+      const definition = journal();
+      runtime.register(definition);
+      const ref = runtime.ref(definition, 'sub-throw');
+
+      const sibling: CommittedActorEvent[] = [];
+      const offThrowing = runtime.subscribe(() => {
+        throw new Error('subscriber boom');
+      });
+      const offGood = runtime.subscribe(event => void sibling.push(event));
+      try {
+        const result = await ref.invoke(
+          {type: 'inc', by: 1},
+          {requestId: 'r1'},
+        );
+        expect(result).toEqual({count: 1}); // the committing turn is unaffected
+
+        await waitFor(
+          () => sibling.length >= 1,
+          () => `sibling=${sibling.length}`,
+        );
+        expect(sibling.map(e => e.event)).toEqual([
+          {type: 'Incremented', by: 1},
+        ]);
+      } finally {
+        offThrowing();
+        offGood();
+      }
+    });
+
+    it('logs and skips a subscriber whose handler rejects; a sibling and the committing turn are unaffected', async () => {
+      // `subscribe`'s handler type is `void | Promise<void>` precisely so an
+      // async handler's rejection is caught the same way as a synchronous
+      // throw (see the ActorEventStore.subscribe doc) rather than escaping as
+      // an unhandled rejection.
+      const runtime = makeRuntime();
+      const definition = journal();
+      runtime.register(definition);
+      const ref = runtime.ref(definition, 'sub-reject');
+
+      const sibling: CommittedActorEvent[] = [];
+      const offRejecting = runtime.subscribe(async () => {
+        await Promise.resolve();
+        throw new Error('async subscriber boom');
+      });
+      const offGood = runtime.subscribe(event => void sibling.push(event));
+      try {
+        const result = await ref.invoke(
+          {type: 'inc', by: 1},
+          {requestId: 'r1'},
+        );
+        expect(result).toEqual({count: 1});
+
+        await waitFor(
+          () => sibling.length >= 1,
+          () => `sibling=${sibling.length}`,
+        );
+        expect(sibling.map(e => e.event)).toEqual([
+          {type: 'Incremented', by: 1},
+        ]);
+      } finally {
+        offRejecting();
+        offGood();
+      }
+    });
+
+    it('stops delivery once unsubscribed', async () => {
+      const runtime = makeRuntime();
+      const definition = journal();
+      runtime.register(definition);
+      const ref = runtime.ref(definition, 'sub-unsub');
+
+      const seen: CommittedActorEvent[] = [];
+      const off = runtime.subscribe(event => void seen.push(event));
+      await ref.invoke({type: 'inc', by: 1}, {requestId: 'r1'});
+      await waitFor(
+        () => seen.length >= 1,
+        () => `seen=${seen.length}`,
+      );
+
+      off();
+      await ref.invoke({type: 'inc', by: 1}, {requestId: 'r2'});
+      // Nothing to poll *for* here — this proves an absence — so give a
+      // would-be delivery generous time to arrive before concluding it never
+      // will.
+      await new Promise<void>(resolve => setTimeout(resolve, 300));
+      expect(seen).toHaveLength(1);
     });
 
     // Every case above uses a raw `defineActor` whose `receive` never sets

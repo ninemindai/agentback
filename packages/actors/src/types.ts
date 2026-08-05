@@ -73,7 +73,14 @@ export interface ActorQueryContext {
   readonly actor: ActorId;
 }
 
-/** A domain fact emitted by a command turn. Must be JSON-serializable. */
+/**
+ * A domain fact emitted by a command turn. Must be plain, finite JSON — no
+ * `undefined`, `NaN`/`Infinity`, `Date`, `BigInt`, function, or non-plain
+ * object anywhere inside it. Enforced at commit on every `ActorRuntime`
+ * adapter (`assertJsonPortableEvents` in `in-memory-runtime.ts`), because the
+ * two journaling adapters persist this value two different ways
+ * (`structuredClone` vs. `JSON.stringify`) that do not agree on any of those.
+ */
 export interface ActorEvent {
   readonly type: string;
   readonly [key: string]: unknown;

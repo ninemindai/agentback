@@ -15,6 +15,7 @@ import {ACTOR_RUNTIME} from './keys.js';
 import {assertActorIdentityPart} from './types.js';
 import type {
   ActorDefinition,
+  ActorEvent,
   ActorId,
   ActorInvokeOptions,
   ActorRef,
@@ -61,6 +62,80 @@ export function actorCommandFingerprint(value: unknown): string {
     throw new Error('Actor commands must be JSON-serializable.');
   };
   return JSON.stringify(canonicalize(value));
+}
+
+/**
+ * A turn's `events` failed to commit because one value inside them is not
+ * plain, finite JSON. `path` names the exact offending location (e.g.
+ * `events[0].when`), the way a schema validation error would.
+ */
+export class NonJsonEventValueError extends Error {
+  readonly code = 'actor_event_not_json_portable';
+  constructor(
+    readonly path: string,
+    reason: string,
+  ) {
+    super(`Actor event value at '${path}' is not JSON-portable: ${reason}.`);
+    this.name = 'NonJsonEventValueError';
+  }
+}
+
+function assertJsonValue(value: unknown, path: string): void {
+  if (value === null) return;
+  const type = typeof value;
+  if (type === 'string' || type === 'boolean') return;
+  if (type === 'number') {
+    if (Number.isFinite(value as number)) return;
+    throw new NonJsonEventValueError(
+      path,
+      `${String(value)} is not a finite number`,
+    );
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertJsonValue(item, `${path}[${index}]`));
+    return;
+  }
+  if (type === 'object') {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      const name = (value as object).constructor?.name ?? 'object';
+      throw new NonJsonEventValueError(
+        path,
+        `is a ${name}, not a plain object`,
+      );
+    }
+    for (const [key, child] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
+      assertJsonValue(child, `${path}.${key}`);
+    }
+    return;
+  }
+  // undefined, function, bigint, symbol.
+  throw new NonJsonEventValueError(
+    path,
+    type === 'undefined' ? 'is undefined' : `is a ${type}`,
+  );
+}
+
+/**
+ * Validate that every event a turn is about to commit is plain, finite JSON.
+ * The two journaling adapters persist `turn.events` two different ways —
+ * `EventSourcedActorRuntime` via `structuredClone`, `RedisActorRuntime` via
+ * `JSON.stringify` — and a value that survives one but not the other
+ * (`undefined`, `NaN`/`Infinity`, a `Date`, a `BigInt`, a non-plain object)
+ * would silently diverge: preserved in process, dropped or coerced on Redis.
+ * Called at the same point in every `ActorRuntime` adapter's commit path,
+ * including `InMemoryActorRuntime`, which keeps no journal and so never
+ * persists the value it rejects — an app first exercised in dev against the
+ * journal-free runtime must still fail loudly, before it ever depends on
+ * behavior a journaling adapter cannot reproduce.
+ */
+export function assertJsonPortableEvents(
+  events: readonly ActorEvent[] | undefined,
+): void {
+  if (!events) return;
+  events.forEach((event, index) => assertJsonValue(event, `events[${index}]`));
 }
 
 export interface InMemoryActorRuntimeOptions {
@@ -176,6 +251,11 @@ export class InMemoryActorRuntime implements ActorRuntime {
         );
         const nextState = definition.state.parse(turn.state);
         const result = definition.result.parse(turn.result);
+        // This runtime keeps no journal and so never persists `turn.events`,
+        // but it still validates them (see `assertJsonPortableEvents`) — a
+        // value that would silently diverge on a journaling adapter must
+        // fail loudly here too, before an app ever depends on it.
+        assertJsonPortableEvents(turn.events);
         // The in-process counterpart of the Redis lease-token check, and the
         // reason an abandoned turn cannot corrupt the seat: the deadline already
         // freed it, so a later turn may have committed off the state this one

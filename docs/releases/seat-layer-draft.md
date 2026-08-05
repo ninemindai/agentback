@@ -121,6 +121,38 @@ breaking the commit.
 already broken at runtime — it now fails loudly at startup. Whole seconds
 between `0` (no expiry) and `MAX_DEDUP_TTL_SECONDS` are accepted.
 
+### `@agentback/actors`: a turn's events must now be plain, finite JSON
+
+`RedisActorRuntime` persists `turn.events` via `JSON.stringify`;
+`EventSourcedActorRuntime` (and, transiently, `InMemoryActorRuntime`, which
+keeps no journal at all) via `structuredClone`. Those two do not agree on
+`undefined`, `NaN`/`Infinity`, `Date`, `BigInt`, a function, or a non-plain
+object: `structuredClone` preserves them as-is, `JSON.stringify` silently
+drops or coerces them (a `Date` becomes an ISO string, `NaN` becomes `null`,
+an `undefined` property vanishes). An app developed and tested against
+`InMemoryActorRuntime`/`EventSourcedActorRuntime` could carry one of these in
+an event and never notice until it ran against Redis in production, where the
+committed event silently differs from the one the turn actually emitted.
+
+Every `ActorRuntime` adapter now validates each event in `turn.events` at
+commit — before anything is written — and rejects a non-JSON value with the
+exact offending path (e.g. `events[0].when`), on every adapter alike,
+including `InMemoryActorRuntime` even though it never persists the value it
+rejects.
+
+**Who this breaks:** an actor whose `receive` emits a `Date` (a timestamp is
+the common case), `NaN`, or an `undefined` field inside an event today. The
+fix is to serialize before emitting:
+
+```diff
+  events: [
+-   {type: 'Snapshotted', at: new Date()},
++   {type: 'Snapshotted', at: new Date().toISOString()},
+  ],
+```
+
+`state` and `result` are unaffected — only `events` is validated this way.
+
 ## ✨ Also in this wave
 
 - **`@agentback/actors`** — `TurnTimeoutError`, `ActorSeatClass`,

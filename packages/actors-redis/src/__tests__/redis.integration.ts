@@ -39,6 +39,11 @@ if (!REDIS_URL) {
       leaseRetryMs: 5,
       acquireTimeoutMs: 2_000,
       dedupTtlSeconds: 60,
+      // Fast polling for the event-store conformance suite's delivery
+      // (`subscribe`) cases — matches `delivery.integration.ts`. Harmless to
+      // the rest of the suite, which never subscribes.
+      blockMs: 50,
+      discoveryIntervalMs: 20,
       ...overrides,
     });
 

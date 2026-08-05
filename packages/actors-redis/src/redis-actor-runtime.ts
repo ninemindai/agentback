@@ -6,6 +6,7 @@ import {
   ACTOR_RUNTIME,
   actorCommandFingerprint,
   assertActorIdentityPart,
+  assertJsonPortableEvents,
   CommittedActorEventSchema,
   isOwnTurnTimeout,
   logTimedOutTurn,
@@ -608,6 +609,13 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventStore {
       }
       const nextState = definition.state.parse(turn.state);
       const result = definition.result.parse(turn.result);
+      // Before the commit script ever sees them: `stringify` below only
+      // catches a top-level `undefined` return from `JSON.stringify` — it
+      // would happily accept a `NaN` (silently becomes `null`) or a nested
+      // `Date`/`undefined` (silently coerced/dropped) that
+      // `EventSourcedActorRuntime`'s `structuredClone` persists as-is. See
+      // `assertJsonPortableEvents`.
+      assertJsonPortableEvents(turn.events);
       if (lease.lost) throw new ActorLeaseLostError(actor);
 
       const stateRecord: StoredState = {state: nextState};

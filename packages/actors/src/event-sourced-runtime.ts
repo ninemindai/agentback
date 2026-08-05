@@ -18,7 +18,10 @@ import {
   TurnTimeoutError,
   type TurnGuard,
 } from './deadlines.js';
-import {actorCommandFingerprint} from './in-memory-runtime.js';
+import {
+  actorCommandFingerprint,
+  assertJsonPortableEvents,
+} from './in-memory-runtime.js';
 import {ACTOR_RUNTIME} from './keys.js';
 import {ActorRegistry} from './registry.js';
 import {assertActorIdentityPart} from './types.js';
@@ -169,6 +172,12 @@ export class EventSourcedActorRuntime implements ActorRuntime, ActorEventStore {
         const turn = await definition.receive(ctx, workingState, parsedCommand);
         const nextState = definition.state.parse(turn.state);
         const result = definition.result.parse(turn.result);
+        // Every event must be plain, finite JSON before it is even eligible
+        // to commit — see `assertJsonPortableEvents` for why this runtime's
+        // own `structuredClone` persistence is not itself a strong enough
+        // guarantee (it happily preserves a Date or `undefined`, which Redis
+        // does not).
+        assertJsonPortableEvents(turn.events);
         // The in-process counterpart of the Redis lease-token check: the seat
         // was freed at the deadline, so this abandoned turn must not commit.
         // Nothing suspends between here and the writes below (see
