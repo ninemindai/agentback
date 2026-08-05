@@ -152,11 +152,15 @@ the shared `runActorRuntimeConformance` suite.
 ## Custodial seat keys (`seat.keyStore`)
 
 Every identity gets a platform-held secp256k1 keypair (Nostr-compatible) the
-first time its state materializes — **custodial, dormant, nothing signs**.
-`ActorRegistry` takes an **optional** `SEAT_KEY_STORE` binding
+first time it **commits a turn** (its first successful command) —
+**custodial, dormant, nothing signs**. A lease-free read/query never creates
+one: reads never persist, and ids are otherwise caller-supplied and
+unauthenticated, so keygen must not be reachable by enumerating read-only
+routes. `ActorRegistry` takes an **optional** `SEAT_KEY_STORE` binding
 (`@agentback/actors`'s `seat.keyStore` port); when bound, key creation is
 idempotent (an identity that already has a key row never regenerates); when
-unbound, no key row is ever created and actors work exactly as before.
+unbound, no key row is ever created and actors work exactly as before; when
+bound but `create()` throws, the triggering turn fails closed.
 
 ```ts
 import {

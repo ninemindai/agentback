@@ -289,15 +289,45 @@ describe('decorated actor registry', () => {
       await app.stop();
     });
 
-    it('a query on a never-touched id also yields a key row (initialState materializes on read too)', async () => {
+    it('a query on a never-committed id does NOT create a key row (reads must not write)', async () => {
       const app = await seatApp();
       const registry = await app.get(ACTOR_REGISTRY);
       const store = await app.get(SEAT_KEY_STORE);
 
-      await registry.query('counter', 'seat-2', {name: 'peek', input: {}});
+      // A lease-free query never persists actor state (in-memory-runtime.ts:
+      // "a read must not mutate"); the seat key store must honor the same
+      // rule, or an unauthenticated caller enumerating ids through a
+      // read-only route could force unbounded, durable keygen.
+      expect(
+        await registry.query('counter', 'seat-2', {name: 'peek', input: {}}),
+      ).toEqual({value: 0});
 
       const record = await store.getByActor({type: 'counter', id: 'seat-2'});
-      expect(record).toBeDefined();
+      expect(record).toBeUndefined();
+      await app.stop();
+    });
+
+    it('the first command turn on that same id then creates the key row', async () => {
+      const app = await seatApp();
+      const registry = await app.get(ACTOR_REGISTRY);
+      const store = await app.get(SEAT_KEY_STORE);
+
+      // Repeat the read from the previous test, then commit a real turn —
+      // proves the store's absence after reads isn't a fluke of ordering.
+      await registry.query('counter', 'seat-2', {name: 'peek', input: {}});
+      expect(
+        await store.getByActor({type: 'counter', id: 'seat-2'}),
+      ).toBeUndefined();
+
+      await registry.invoke(
+        'counter',
+        'seat-2',
+        {name: 'add', input: {amount: 1}},
+        {requestId: 'r1'},
+      );
+
+      const record = await store.getByActor({type: 'counter', id: 'seat-2'});
+      expect(record?.seatKeyId).toMatch(/^[0-9a-f]{64}$/);
       await app.stop();
     });
 

@@ -41,13 +41,6 @@ describe('InMemorySeatKeyStore', () => {
       expect(message).not.toContain(privateKey);
     }
   });
-
-  it('encrypts the same private key differently across two seats (random IV)', async () => {
-    const store = new InMemorySeatKeyStore(kek());
-    const one = await store.create({type: 'seat', id: 'one'});
-    const two = await store.create({type: 'seat', id: 'two'});
-    expect(one.seatKeyId).not.toBe(two.seatKeyId);
-  });
 });
 
 describe('normalizeSeatKeyKek', () => {

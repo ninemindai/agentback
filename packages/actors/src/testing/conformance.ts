@@ -2,6 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import {createECDH} from 'node:crypto';
 import {describe, expect, it} from 'vitest';
 import {z} from 'zod';
 import {defineActor} from '../define-actor.js';
@@ -253,6 +254,24 @@ export function runSeatKeyStoreConformance(
       expect(privateKey).toMatch(/^[0-9a-f]{64}$/);
 
       await expect(store.takeCustody(record.seatKeyId)).rejects.toThrow();
+    });
+
+    it('takeCustody returns the private key that actually matches the stored publicKey', async () => {
+      // A shape-only regex on the returned hex string would pass for an
+      // adapter returning unrelated random bytes. Re-derive the public key
+      // from the exported private key on the real curve and compare — this
+      // also pins the private-key zero-padding fix (a stripped leading zero
+      // byte would derive the wrong point).
+      const store = makeStore();
+      const record = await store.create(actorA);
+      const privateKeyHex = await store.takeCustody(record.seatKeyId);
+
+      const ecdh = createECDH('secp256k1');
+      ecdh.setPrivateKey(Buffer.from(privateKeyHex, 'hex'));
+      const derivedPublicKey = ecdh
+        .getPublicKey(null, 'compressed')
+        .toString('hex');
+      expect(derivedPublicKey).toBe(record.publicKey);
     });
 
     it('takeCustody marks the row exported', async () => {

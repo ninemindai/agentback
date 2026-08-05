@@ -100,11 +100,14 @@ bypasses the runtime (no serialization, rollback, or persisted state).
 
 ## Custodial seat keys (`seat.keyStore`)
 
-Every actor identity gets a platform-held secp256k1 keypair the first time its
-state materializes (a command or a bare read on a never-touched id) —
-**custodial keypair at birth, dormant**. `ActorId` stays the working
-identifier; nothing here signs anything, and no method returns private-key
-material except the one-shot `takeCustody()`:
+Every actor identity gets a platform-held secp256k1 keypair the first time it
+**commits a turn** (its first successful command) — **custodial keypair at
+birth, dormant**. A lease-free read/query never creates one: reads
+deliberately never persist, and unauthenticated callers can supply arbitrary
+ids (REST path params, MCP args), so keygen must never be reachable by
+enumerating read-only routes. `ActorId` stays the working identifier; nothing
+here signs anything, and no method returns private-key material except the
+one-shot `takeCustody()`:
 
 ```ts
 import {
@@ -125,10 +128,12 @@ const privateKeyHex = await store.takeCustody(record!.seatKeyId); // once only
 
 `SEAT_KEY_STORE` is an **optional** dependency of `ActorRegistry` — an app
 that never binds it keeps working exactly as before; no key row is ever
-created. Private keys are encrypted at rest (AES-256-GCM under the injected
-KEK) and never logged. `@agentback/actors-redis`'s `RedisSeatKeyStore` is the
-durable adapter; both pass `runSeatKeyStoreConformance` from
-`@agentback/actors/testing`.
+created. If it _is_ bound and its `create()` throws (store down, KEK
+misconfigured at runtime), the triggering command turn fails closed — no
+state commits — rather than silently skipping key creation. Private keys are
+encrypted at rest (AES-256-GCM under the injected KEK) and never logged.
+`@agentback/actors-redis`'s `RedisSeatKeyStore` is the durable adapter; both
+pass `runSeatKeyStoreConformance` from `@agentback/actors/testing`.
 
 ## Events (event log)
 

@@ -416,13 +416,6 @@ export class ActorRegistry implements LifeCycleObserver {
       command,
       result: z.object({name: z.string(), output: z.unknown()}),
       initialState: async id => {
-        // Custodial keypair at birth, dormant (capability-os#5): every
-        // runtime calls `initialState` the first time an identity's state is
-        // materialized — a command or a bare read on a never-touched id — so
-        // hooking it here covers all three runtimes uniformly. Idempotent via
-        // the store's own `create()`, so a read-triggered call never races a
-        // later command-triggered one into generating a second key.
-        await this.ensureSeatKey(actorMeta.name, id);
         const instance = await this.resolve(bindingKey);
         return instance.initialState(id);
       },
@@ -435,6 +428,19 @@ export class ActorRegistry implements LifeCycleObserver {
             `Unknown command '${command.name}' for actor '${actorMeta.name}'.`,
           );
         }
+        // Custodial keypair at birth, dormant (capability-os#5): a key row is
+        // ensured when an identity first COMMITS a turn, not when it is
+        // merely addressed. `receive` only runs for a schema-validated
+        // command that reached the mailbox and is not a dedup replay (every
+        // runtime short-circuits both before calling `receive`) — never for
+        // a lease-free read/query, which deliberately never persists (see
+        // in-memory-runtime.ts: "a read must not mutate"). Unauthenticated
+        // enumeration of read-only routes therefore cannot force keygen.
+        // Idempotent via the store's own `create()`. If the store is bound
+        // but its `create()` throws, this turn fails closed (no state
+        // commits) rather than silently skipping key creation — a broken
+        // seat key store must not let seats materialize without one.
+        await this.ensureSeatKey(actorMeta.name, ctx.actor.id);
         const instance = await this.resolve(bindingKey);
         const method = (instance as unknown as Record<string, unknown>)[
           String(metadata.methodName)
