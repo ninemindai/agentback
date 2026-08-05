@@ -74,6 +74,33 @@ function notifyHooks(namespace: string, args: unknown[]) {
 }
 
 /**
+ * Notify every registered `onLog` hook for one warn/error record, regardless
+ * of whether `debugger_`'s `DEBUG` namespace is enabled.
+ *
+ * The raw `debug` package gates the whole call ahead of `fn.log` — see
+ * `createDebug` in `debug/src/common.js`, `if (!debug.enabled) return;` — so
+ * when a namespace nobody enabled logs a line, `fn.log` (and the `onLog`
+ * notification inside it) never runs at all. That silently breaks the
+ * contract `onLog`'s own doc promises ("fired on every warn/error log"): a
+ * hook registered to ship events to an external system misses every line
+ * logged under a namespace that is off, which for most namespaces most of the
+ * time is all of them.
+ *
+ * Call this for a record that must reach a registered sink unconditionally —
+ * still call the plain `debugger_(...)` too, so console output stays exactly
+ * as gated as it always was. Safe to call either way: when the namespace
+ * *is* enabled, `fn.log` already notified hooks once via the normal path, so
+ * this is a deliberate no-op rather than a second delivery of the same event.
+ */
+export function notifyLogHooksAlways(
+  debugger_: Debugger,
+  args: unknown[],
+): void {
+  if (isLogEnabled(debugger_.namespace)) return; // already notified by fn.log
+  notifyHooks(debugger_.namespace, redactData(args));
+}
+
+/**
  * Create a debug instance for the given namespace
  * @param namespace - Namespace
  */

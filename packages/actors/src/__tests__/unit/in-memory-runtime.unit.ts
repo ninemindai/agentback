@@ -15,10 +15,13 @@ runActorRuntimeConformance('in-memory', () => new InMemoryActorRuntime());
 /**
  * Collect deadline-namespace warn/error records while `fn` runs.
  *
- * `log.warn(...)` is a no-op unless its debug namespace is enabled (the
- * `debug` package's own gate, which `onLog` hooks sit behind), so this enables
- * it — and restores it afterwards, so the surrounding conformance cases stay
- * quiet rather than logging a wall of expected timeouts.
+ * The **console** line from `log.warn(...)` is a no-op unless its debug
+ * namespace is enabled (the `debug` package's own gate), so this enables it —
+ * and restores it afterwards, so the surrounding conformance cases stay quiet
+ * rather than logging a wall of expected timeouts. `onLog` itself no longer
+ * needs this: `logTimedOutTurn` notifies registered hooks unconditionally
+ * (see `notifyLogHooksAlways`), which the "records a timed-out turn even with
+ * DEBUG unset" case below pins directly, without touching `DEBUG` at all.
  */
 async function captureDeadlineLogs(
   fn: () => Promise<void>,
@@ -107,6 +110,63 @@ describe('InMemoryActorRuntime deadlines', () => {
     expect(captured[0]?.args).toEqual(
       expect.arrayContaining(['in-memory-deadline-inner', 'hangs', 'nested']),
     );
+  });
+
+  // T14b: this runtime's timeout record is otherwise gated behind `DEBUG`
+  // (see `captureDeadlineLogs` above), which would make it entirely invisible
+  // to an operator who never sets it — the ONE record this runtime has, since
+  // it keeps no journal. `logTimedOutTurn` notifies `onLog` directly,
+  // bypassing that gate (`notifyLogHooksAlways`), so this pins delivery with
+  // `DEBUG` left untouched — no `enableDebug` call anywhere in this test.
+  it('records a timed-out turn through onLog even with DEBUG unset', async () => {
+    const previous = process.env.DEBUG ?? '';
+    enableDebug(''); // explicitly nothing enabled — the default a fresh process starts with
+    const captured: {level: LogLevel; args: unknown[]}[] = [];
+    const dispose = onLog((namespace, level, args) => {
+      if (namespace.startsWith('agentback:actors:deadline')) {
+        captured.push({level, args});
+      }
+    });
+
+    const runtime = new InMemoryActorRuntime();
+    const definition = hangingActor('in-memory-deadline-no-debug');
+    runtime.register(definition);
+    try {
+      await expect(
+        runtime.ref(definition, 'wedged').invoke({}, {requestId: 'hangs'}),
+      ).rejects.toBeInstanceOf(TurnTimeoutError);
+    } finally {
+      dispose();
+      enableDebug(previous);
+    }
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.level).toBe(LogLevel.WARN);
+    expect(captured[0]?.args).toEqual(
+      expect.arrayContaining([
+        'in-memory-deadline-no-debug',
+        'wedged',
+        'hangs',
+        50,
+      ]),
+    );
+  });
+
+  // The other half of the guard in `notifyLogHooksAlways`: when the namespace
+  // IS enabled, `fn.log`'s own path already notifies hooks once, so the
+  // explicit call in `logTimedOutTurn` must be a no-op rather than a second
+  // delivery of the same event.
+  it('does not double-notify onLog when DEBUG is enabled', async () => {
+    const captured = await captureDeadlineLogs(async () => {
+      const runtime = new InMemoryActorRuntime();
+      const definition = hangingActor('in-memory-deadline-double');
+      runtime.register(definition);
+      await expect(
+        runtime.ref(definition, 'wedged').invoke({}, {requestId: 'hangs'}),
+      ).rejects.toBeInstanceOf(TurnTimeoutError);
+    });
+
+    expect(captured).toHaveLength(1);
   });
 });
 

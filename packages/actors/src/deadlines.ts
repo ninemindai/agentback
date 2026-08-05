@@ -2,7 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {loggers} from '@agentback/common';
+import {loggers, notifyLogHooksAlways} from '@agentback/common';
 import type {ActorEvent, ActorId} from './types.js';
 
 const log = loggers('agentback:actors:deadline');
@@ -117,20 +117,28 @@ export function isOwnTurnTimeout(
  * entry to the identity's log. It is the whole record on
  * `InMemoryActorRuntime`, which has no journal to append to.
  *
- * Like every `loggers` call it is gated on its debug namespace being enabled
- * (`agentback:actors:deadline:warn`), so it is the *unconditional* half of the
- * record only in the sense that every runtime reaches it — not that a byte is
- * always written. Where the record must survive regardless of log
- * configuration, the journal entry is the one to rely on.
+ * The **console** line is still gated on its debug namespace being enabled
+ * (`agentback:actors:deadline:warn`) like every `loggers` call — nothing
+ * about that changed. What is unconditional is delivery to a registered
+ * `onLog` hook: `notifyLogHooksAlways` bypasses the namespace gate (see its
+ * doc for why the gate would otherwise swallow the hook call too), so an
+ * operator who wires a sink observes every timed-out turn on
+ * `InMemoryActorRuntime` whether or not `DEBUG` happens to be set — which is
+ * the case that matters here, since that runtime has no journal entry to
+ * fall back on. Where the record must survive a process that never even
+ * calls `onLog`, the journal entry on a journaling runtime is the one to
+ * rely on.
  */
 export function logTimedOutTurn(error: TurnTimeoutError): void {
-  log.warn(
+  const args: [string, string, string, string, number] = [
     'Actor turn %s/%s (request %s) exceeded its %dms deadline. Nothing was committed and the seat is free; the abandoned turn keeps running but can no longer commit.',
     error.actor.type,
     error.actor.id,
     error.requestId,
     error.deadlineMs,
-  );
+  ];
+  log.warn(...args);
+  notifyLogHooksAlways(log.warn, args);
 }
 
 /**

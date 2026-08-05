@@ -217,9 +217,11 @@ immediately for the next turn, and the failed turn is recorded: journaling
 runtimes append an `actor.turn.timeout` entry to the identity's log (a reserved
 event type — the `actor.` prefix belongs to the runtime, so never emit one from
 a command), and every runtime logs it under `agentback:actors:deadline` — a
-`loggers` namespace, so that line is only written when `DEBUG` matches it
-(`DEBUG=agentback:actors:deadline:*`); the journal marker is the record that
-survives any log configuration. That append is its **own** write, touching
+`loggers` namespace, so the **console** line is only written when `DEBUG`
+matches it (`DEBUG=agentback:actors:deadline:*`); a registered `onLog` hook,
+however, fires for this record unconditionally, regardless of `DEBUG` — the
+journal marker is the record that survives any log configuration *and* no
+`onLog` hook at all. That append is its **own** write, touching
 neither state nor the dedup record, so:
 
 - the timed-out turn commits nothing — state stands where the last good turn
