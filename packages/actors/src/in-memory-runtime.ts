@@ -210,21 +210,34 @@ export class InMemoryActorRuntime implements ActorRuntime {
     }
   }
 
+  /**
+   * The stored record for one identity, creating it on first touch.
+   *
+   * **First writer wins**, and the re-check after the `await` is load-bearing.
+   * `initialState` may be async, and a turn is no longer guaranteed to be alone
+   * on its seat for as long as it runs: a deadline frees the seat while the
+   * abandoned turn keeps going (see `serialize`). So a *second* turn can create
+   * this identity — and commit state, a dedup record and journal entries to
+   * it — while the first turn is still awaiting the line below. Publishing our
+   * fresh record then would reset committed state, drop the dedup map (letting
+   * an already-committed `requestId` run a second time), and on the event-log
+   * runtime restart `seq` at 0, colliding with `(actor, seq)` pairs subscribers
+   * have already been handed.
+   */
   private async load<S, C, R>(
     definition: ActorDefinition<S, C, R>,
     actor: ActorId,
   ): Promise<StoredActor> {
     const key = actorKey(actor);
-    let stored = this.actors.get(key);
-    if (!stored) {
-      stored = {
-        state: structuredClone(
-          definition.state.parse(await definition.initialState(actor.id)),
-        ),
-        results: new Map(),
-      };
-      this.actors.set(key, stored);
-    }
+    const existing = this.actors.get(key);
+    if (existing) return existing;
+    const state = structuredClone(
+      definition.state.parse(await definition.initialState(actor.id)),
+    );
+    const raced = this.actors.get(key);
+    if (raced) return raced;
+    const stored: StoredActor = {state, results: new Map()};
+    this.actors.set(key, stored);
     return stored;
   }
 

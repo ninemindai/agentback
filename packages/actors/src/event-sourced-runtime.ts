@@ -269,23 +269,28 @@ export class EventSourcedActorRuntime implements ActorRuntime, ActorEventStore {
     }
   }
 
+  /**
+   * First writer wins — see `InMemoryActorRuntime.load` for why the re-check
+   * after the `await` is load-bearing. It matters most here: publishing a
+   * fresh record over one another turn already committed to would restart
+   * `seq` at 0 and hand subscribers a second, different event at an
+   * `(actor, seq)` pair they have already seen, which the consumer contract
+   * (idempotent by `(actor, seq)`) gives them no way to detect.
+   */
   private async load<S, C, R>(
     definition: ActorDefinition<S, C, R>,
     actor: ActorId,
   ): Promise<StoredActor> {
     const key = actorKey(actor);
-    let stored = this.actors.get(key);
-    if (!stored) {
-      stored = {
-        state: structuredClone(
-          definition.state.parse(await definition.initialState(actor.id)),
-        ),
-        seq: 0,
-        events: [],
-        results: new Map(),
-      };
-      this.actors.set(key, stored);
-    }
+    const existing = this.actors.get(key);
+    if (existing) return existing;
+    const state = structuredClone(
+      definition.state.parse(await definition.initialState(actor.id)),
+    );
+    const raced = this.actors.get(key);
+    if (raced) return raced;
+    const stored: StoredActor = {state, seq: 0, events: [], results: new Map()};
+    this.actors.set(key, stored);
     return stored;
   }
 

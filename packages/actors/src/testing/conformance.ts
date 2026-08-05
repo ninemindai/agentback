@@ -367,6 +367,70 @@ export function runActorRuntimeConformance(
       expect(await runtime.state(definition, 'late')).toEqual({value: 7});
     });
 
+    it('never lets a late initialState reset an identity that has committed', async () => {
+      // Freeing the seat at the deadline means a turn is no longer alone on
+      // its identity for as long as it runs, which is exactly the assumption
+      // a check-then-await-then-store `load` rested on. A first turn whose
+      // `initialState` outlives the deadline resolves *after* a second turn
+      // has committed; publishing its fresh record then would reset state and
+      // drop the dedup map.
+      const runtime = makeRuntime();
+      let turns = 0;
+      let slowInit = true;
+      const definition = defineActor('conformance.deadline.cold-init', {
+        state: State,
+        command: z.object({amount: z.number()}),
+        result: Result,
+        deadlineMs: 50,
+        initialState: async () => {
+          // Only the first touch is slow — the turn that replaces it must be
+          // able to initialize the identity promptly.
+          if (slowInit) {
+            slowInit = false;
+            await new Promise<void>(resolve => setTimeout(resolve, 300));
+          }
+          return {value: 0};
+        },
+        receive(_ctx, state, command) {
+          turns++;
+          state.value += command.amount;
+          return {state, result: {value: state.value}};
+        },
+      });
+      runtime.register(definition);
+      const ref = runtime.ref(definition, 'cold');
+
+      // The in-process runtimes race the whole action, so this turn is
+      // abandoned mid-load and its `initialState` keeps running; Redis races
+      // `receive` alone, so there the load simply completes. Both outcomes are
+      // fine — the invariant asserted below holds either way.
+      await ref
+        .invoke({amount: 1}, {requestId: 'first'})
+        .catch(() => undefined);
+
+      const anchor = await ref.invoke({amount: 5}, {requestId: 'anchor'});
+
+      // Past the slow initialState's own resolution. On the in-process
+      // runtimes the abandoned turn resumes in this window: it picks up the
+      // record the anchor turn committed, runs its `receive` — which is why
+      // the turn counter may grow here — and is then refused at the commit by
+      // its expired guard.
+      await new Promise<void>(resolve => setTimeout(resolve, 400));
+
+      // Committed state survives all of that.
+      expect(await runtime.state(definition, 'cold')).toEqual(anchor);
+
+      // And so does the dedup record: replaying the anchor returns the
+      // committed result without running the command again. (A reset identity
+      // would have lost the record and re-run it, moving state past `anchor`.)
+      const turnsBeforeReplay = turns;
+      expect(await ref.invoke({amount: 5}, {requestId: 'anchor'})).toEqual(
+        anchor,
+      );
+      expect(turns).toBe(turnsBeforeReplay);
+      expect(await runtime.state(definition, 'cold')).toEqual(anchor);
+    });
+
     it('attributes a nested timeout to the inner turn, not the caller', async () => {
       // An actor turn may invoke another actor (`@injectActor` is a
       // first-class shape), so an inner `TurnTimeoutError` propagates out
@@ -624,6 +688,57 @@ export function runActorEventStoreConformance(
       expect(await runtime.state(definition, 'timed-out')).toEqual({count: 4});
     });
 
+    it('never lets a late initialState renumber or drop a journal', async () => {
+      // The journal half of the same race. Resetting a stored identity would
+      // restart `seq` at 0 and hand subscribers a second, different event at
+      // an `(actor, seq)` pair they were already given — which the consumer
+      // contract ("be idempotent by `(actor, seq)`") gives them no way to
+      // detect.
+      const runtime = makeRuntime();
+      let slowInit = true;
+      const TYPE_COLD = 'conformance.journal.cold-init';
+      const definition = defineActor(TYPE_COLD, {
+        state: JournalState,
+        command: z.object({by: z.number()}),
+        result: JournalState,
+        deadlineMs: 50,
+        initialState: async () => {
+          if (slowInit) {
+            slowInit = false;
+            await new Promise<void>(resolve => setTimeout(resolve, 300));
+          }
+          return {count: 0};
+        },
+        receive(_ctx, state, command) {
+          state.count += command.by;
+          return {
+            state,
+            result: state,
+            events: [{type: 'Incremented', by: command.by}],
+          };
+        },
+      });
+      runtime.register(definition);
+      const ref = runtime.ref(definition, 'cold');
+
+      await ref.invoke({by: 1}, {requestId: 'first'}).catch(() => undefined);
+      await ref.invoke({by: 2}, {requestId: 'anchor'});
+      const before = await runtime.events(TYPE_COLD, 'cold');
+      expect(before.length).toBeGreaterThan(0);
+
+      // Past the slow initialState's own resolution.
+      await new Promise<void>(resolve => setTimeout(resolve, 400));
+
+      // Nothing lost and nothing renumbered.
+      expect(await runtime.events(TYPE_COLD, 'cold')).toEqual(before);
+
+      // And the log keeps advancing from where it stood — no seq collision.
+      await ref.invoke({by: 3}, {requestId: 'later'});
+      const seqs = (await runtime.events(TYPE_COLD, 'cold')).map(e => e.seq);
+      expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
+      expect(new Set(seqs).size).toBe(seqs.length);
+    });
+
     it('journals a nested timeout once, on the inner actor log only', async () => {
       // One incident, one marker. An inner `TurnTimeoutError` passes through
       // the outer turn's frame on its way to the caller; a runtime that
@@ -668,11 +783,12 @@ export function runActorEventStoreConformance(
       expect(await runtime.events(TYPE, 'never-addressed')).toEqual([]);
     });
 
-    // The two cases above set seatKeyId directly on the turn — they prove
-    // the runtime plumbs it, not that the registry supplies the right one.
-    // These go through ActorRegistry + a real @actor, the same path a
-    // production app uses, so ensureSeatKey's result is what actually
-    // reaches the journal.
+    // Every case above uses a raw `defineActor` whose `receive` never sets
+    // `ctx.seatKeyId`, so each entry they journal carries the `''` sentinel:
+    // they prove the runtime plumbs the field, not that a real key row ever
+    // reaches it. These two go through ActorRegistry + a real @actor, the
+    // same path a production app uses, so `ensureSeatKey`'s result is what
+    // actually lands on the committed event.
     it("stamps the acting seat's key row id on the committed event (registry-driven, key store bound)", async () => {
       const runtime = makeRuntime();
       const app = new Application();
