@@ -4,7 +4,7 @@
 > into `docs/releases/vX.Y.Z.md` when it is, and delete this file. Everything
 > below is already on `main`.
 
-Written now because the seat-layer wave changed three shipped behaviors, and
+Written now because the seat-layer wave changed four shipped behaviors, and
 the first — a default turn deadline on **every** existing actor — is the kind
 of change that is discovered in production if it is not stated in the notes.
 
@@ -79,6 +79,34 @@ workspace are unaffected.
 
 Prefer `defineActor(name, {...})`, which fills both in.
 
+### `@agentback/actors`: `ActorEventStore.subscribe` accepts an async handler
+
+The handler type widened from `(event) => void` to
+`(event) => void | Promise<void>`. An `async` handler was always _accepted_ by
+the old signature — `void` swallows any return type — but a rejection from one
+escaped the runtime's per-subscriber `try`/`catch`, which only sees synchronous
+throws, and surfaced as an unhandled rejection instead of the documented
+"logged and skipped". Naming the promise in the type is what let the delivery
+loop catch it.
+
+**Who this breaks:** callers whose handler is a single expression that returns
+a value — `subscribe(e => seen.push(e))` is the common one, since
+`Array.prototype.push` returns a `number`. `void` accepted that by a special
+TypeScript rule; the union does not, so it is now a compile error.
+
+**The fix is braces** (or an explicit `void`), and it changes no behavior:
+
+```diff
+- runtime.subscribe(event => seen.push(event));
++ runtime.subscribe(event => {
++   seen.push(event);
++ });
+```
+
+Handlers that already return nothing, and every `async` handler, are
+unaffected — those now simply have their rejections logged and skipped like a
+synchronous throw.
+
 ### `@agentback/actors-redis`: `dedupTtlSeconds` is validated at construction
 
 A fractional or out-of-range `dedupTtlSeconds` now throws from the
@@ -103,6 +131,14 @@ between `0` (no expiry) and `MAX_DEDUP_TTL_SECONDS` are accepted.
 - **`@agentback/actors-redis`** — lease renewal is capped at the turn's
   deadline, so a wedged turn's lease lapses and the seat becomes claimable
   across processes instead of being held for as long as the turn runs.
+- **`@agentback/actors`** — an actor **type or id containing a C0 control
+  character** (`U+0000`-`U+001F`) is now rejected at validation, on every
+  runtime. Such ids were silently accepted before and were aliasing-prone: the
+  in-process runtimes and the Redis journal subscriber key a seat on
+  `type + U+0000 + id`, so a NUL inside a caller-supplied id (a REST path
+  param, an MCP tool arg) made two different identities share one seat's state,
+  dedup, journal and cursor. An id that "worked" that way now throws naming the
+  offending half; ordinary ids, punctuation included, are unaffected.
 
 ## Known gaps to mention in the notes
 
