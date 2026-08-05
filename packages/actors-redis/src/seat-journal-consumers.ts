@@ -79,6 +79,14 @@ export class SeatJournalConsumerHost implements LifeCycleObserver {
   private providers: SeatJournalConsumerProvider[] = [];
   /** `provider id -> identity member -> last seq handed to that provider`. */
   private readonly cursors = new Map<string, Map<string, number>>();
+  /**
+   * `provider id -> identity member -> last seq *offered* to that provider`,
+   * in this process only. Deliberately separate from `cursors`, which is the
+   * persisted record of what was successfully handled: the difference between
+   * the two is what distinguishes a consumer that was offered an event and
+   * threw from one that was never offered it because retention deleted it.
+   */
+  private readonly offered = new Map<string, Map<string, number>>();
   private stale = true;
   private started = false;
   private unsubscribe?: () => void;
@@ -180,14 +188,28 @@ export class SeatJournalConsumerHost implements LifeCycleObserver {
       SEAT_JOURNAL_CONSUMER,
       async provider => {
         const cursors = this.cursorsFor(provider.provider);
+        const offered = this.offeredFor(provider.provider);
         const cursor = cursors.get(member);
+        const lastOffered = offered.get(member);
+        offered.set(member, event.seq);
         if (cursor !== undefined && event.seq <= cursor) return;
-        if (cursor !== undefined && event.seq > cursor + 1) {
-          // Retention outran this consumer: the entries between are gone from
-          // the log and cannot be replayed. Say so once — the cursor advances
-          // to this event, so the next one is contiguous — and carry on.
+        // A jump past the cursor is only a *retention* gap if this consumer
+        // was never offered the events in between. A consumer whose handler
+        // threw also leaves its cursor behind while the log keeps moving, and
+        // those events are still there to be replayed — warning about them
+        // would send an operator after data loss that has not happened, on a
+        // path that already logs its own error. Tracking what was offered is
+        // the cheap way to tell the two apart: one Map, no extra Redis I/O,
+        // and no reliance on the runtime exposing an "oldest retained seq".
+        if (
+          cursor !== undefined &&
+          event.seq > cursor + 1 &&
+          (lastOffered === undefined || lastOffered < event.seq - 1)
+        ) {
+          // Said once: the cursor advances to this event, so the next one is
+          // contiguous.
           log.warn(
-            "seat.journal.consumer '%s' resumed %s/%s at seq %d with a cursor at %d: the events between are no longer retained and will not be delivered.",
+            "seat.journal.consumer '%s' resumed %s/%s at seq %d with a cursor at %d: the events between were never offered to it and are no longer in the log, so they will not be delivered.",
             provider.provider,
             event.actor.type,
             event.actor.id,
@@ -212,6 +234,15 @@ export class SeatJournalConsumerHost implements LifeCycleObserver {
       this.cursors.set(provider, cursors);
     }
     return cursors;
+  }
+
+  private offeredFor(provider: string): Map<string, number> {
+    let offered = this.offered.get(provider);
+    if (!offered) {
+      offered = new Map();
+      this.offered.set(provider, offered);
+    }
+    return offered;
   }
 
   /**

@@ -430,12 +430,72 @@ if (!REDIS_URL) {
             line =>
               line.includes('gappy') &&
               line.includes(TYPE) &&
-              line.includes('no longer retained'),
+              line.includes('no longer in the log'),
           ),
         ).toBe(true);
       } finally {
         disposeLog();
         await after.stop();
+        await rt.stopDelivery();
+      }
+    });
+
+    it('does not call a throwing consumer a retention gap', async () => {
+      // A consumer whose handler throws leaves its cursor behind while the log
+      // moves on, which looks exactly like a cursor retention outran — except
+      // the events are still in the log and will be replayed. Warning there
+      // would point an operator at data loss that has not happened.
+      const rt = runtime('gap-false-positive');
+      const definition = journal();
+      rt.register(definition);
+
+      enableDebug('agentback:actors:redis:delivery:*');
+      const warnings: string[] = [];
+      const disposeLog = onLog((namespace, level, args) => {
+        if (
+          namespace.startsWith('agentback:actors:redis:delivery') &&
+          level === LogLevel.WARN
+        ) {
+          warnings.push(args.join(' '));
+        }
+      });
+
+      const app = new Application();
+      let calls = 0;
+      installRedisActors(app, {
+        connections,
+        prefix: `${testPrefix}:gap-false-positive`,
+        leaseMs: 1_000,
+        leaseRetryMs: 5,
+        acquireTimeoutMs: 2_000,
+        blockMs: 50,
+        discoveryIntervalMs: 20,
+      });
+      app.add(
+        Binding.bind('consumers.always-throws')
+          .to({
+            provider: 'always-throws',
+            consume: () => {
+              calls++;
+              throw new Error('consumer boom');
+            },
+          })
+          .apply(extensionFor(SEAT_JOURNAL_CONSUMER)),
+      );
+      await app.start();
+      try {
+        const ref = rt.ref(definition, 'f');
+        for (const n of [0, 1, 2]) {
+          await ref.invoke({by: 1}, {requestId: `r${n}`});
+        }
+        await waitFor(
+          () => calls >= 3,
+          () => `calls=${calls}`,
+        );
+        expect(warnings).toEqual([]);
+      } finally {
+        disposeLog();
+        await app.stop();
         await rt.stopDelivery();
       }
     });

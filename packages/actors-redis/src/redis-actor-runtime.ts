@@ -68,24 +68,71 @@ return redis.call('DEL', KEYS[1])
  */
 const MAX_DEDUP_TTL_SECONDS = Math.floor(Number.MAX_SAFE_INTEGER / 1000);
 
+/**
+ * Largest journal cap accepted. Above `Number.MAX_SAFE_INTEGER` a value can
+ * still pass `Number.isInteger` (`1e21` does) while no longer being an exact
+ * integer, and `String()` starts emitting exponent form there — which is the
+ * one shape `XADD MAXLEN` refuses. The bound is what guarantees the ARGV
+ * string is plain decimal digits well inside Redis's int64.
+ */
+const MAX_JOURNAL_EVENTS = Number.MAX_SAFE_INTEGER;
+
+/** Shared Lua: does `key` exist holding something other than `want`? */
+const WRONG_TYPE_FN = `
+local function wrongType(key, want)
+  local kind = redis.call('TYPE', key)['ok']
+  return kind ~= 'none' and kind ~= want
+end`.trim();
+
+/**
+ * Shared Lua: is this ARGV string exactly what a Redis command expecting a
+ * positive integer count accepts? Plain decimal digits — no sign, no decimal
+ * point, no exponent — and short enough to be an int64. It is the guard that
+ * makes a malformed numeric option skip its branch instead of raising after
+ * earlier writes in the same script have already landed.
+ */
+const POSITIVE_INT_FN = `
+local function positiveInt(text)
+  return string.match(text, '^[1-9]%d*$') ~= nil and string.len(text) <= 18
+end`.trim();
+
 // The one commit point. State, the dedup record and the identity's journal all
 // advance in this single script execution, so they cannot diverge: a turn whose
 // script does not reach the end commits none of them.
 //
 // Redis does *not* roll back a script that fails partway through, so "commits
-// nothing" has to be engineered rather than assumed. Every write below is
-// therefore reached only once it is known to succeed:
+// nothing" has to be engineered rather than assumed. There are two ways a call
+// after the first write can raise — the KEY holds a type the command refuses,
+// and an ARGUMENT the command refuses — and every op below is audited against
+// both:
 //
 //   - the wrong-type preflight runs before the first write, so a squatted key
-//     aborts with WRONG_TYPES having written nothing;
-//   - INCRBY, which still raises against a counter holding a non-integer, runs
-//     *first*, so its failure also leaves nothing behind;
-//   - SET overwrites any type, and HSET/XADD are covered by the preflight;
-//   - EXPIRE raises on a fractional or out-of-range TTL, and it sits after
-//     writes that have already landed — so the TTL is floored and range-checked
-//     here and simply skipped if it is neither. Refreshing dedup retention is
-//     worth less than keeping the commit whole. `dedupTtlSeconds` is validated
-//     at construction too; this is the belt to that pair of braces.
+//     aborts with WRONG_TYPES having written nothing. It covers KEYS[3] (hash)
+//     and KEYS[4] (stream); KEYS[2] is written with SET, which overwrites any
+//     type, and KEYS[5] is covered by ordering instead (next line);
+//   - INCRBY is the one op whose key check cannot be preflighted away (a
+//     counter holding a non-integer string still raises), so it runs *first*:
+//     its failure leaves nothing behind;
+//   - SET / HSET / XADD take their values as strings, and a string argument is
+//     never refused. XADD's `*` id is always valid;
+//   - **every numeric argument is passed as the raw ARGV string, never as a
+//     Lua number.** `redis.call` renders a Lua number with its shortest
+//     round-trip decimal form, so a round value at or above 1e8 arrives as
+//     `1e+8` and any command expecting an integer rejects it — which for
+//     EXPIRE and XADD MAXLEN means raising *after* INCRBY/SET/HSET have
+//     landed, splitting this commit exactly the way it exists to prevent.
+//     (JS `String()` only goes exponential at 1e21, far above every bound
+//     these options are validated against.) Lua numbers survive only as
+//     branch conditions and loop bounds, which never reach Redis;
+//   - the two optional numeric arguments (EXPIRE's TTL, XADD's MAXLEN) are
+//     additionally gated on `positiveInt`, which matches exactly the shape
+//     those commands accept — plain decimal digits, no sign, point or
+//     exponent, short enough for a Redis integer. A value that fails it
+//     **skips its branch** rather than reaching the write: refreshing dedup
+//     retention or trimming the journal is worth less than keeping the commit
+//     whole. Both options are validated at construction too; this is the belt
+//     to that pair of braces, and the third time this exact lesson has been
+//     paid for.
 //
 // Journal retention (`journal.maxEventsPerIdentity`) rides along on the same
 // `XADD` rather than being a second write or a sweeper: a cap that trims
@@ -108,26 +155,23 @@ const MAX_DEDUP_TTL_SECONDS = Math.floor(Number.MAX_SAFE_INTEGER / 1000);
 // dedupTtl, seatKeyId, journalMaxLen, eventCount, event JSON…
 const COMMIT_TURN = `
 if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
-local function wrongType(key, want)
-  local kind = redis.call('TYPE', key)['ok']
-  return kind ~= 'none' and kind ~= want
-end
+${WRONG_TYPE_FN}
+${POSITIVE_INT_FN}
 local count = tonumber(ARGV[8])
-local maxlen = math.floor(tonumber(ARGV[7]) or 0)
 if wrongType(KEYS[2], 'string') or wrongType(KEYS[3], 'hash') then return -1 end
 if count > 0 and wrongType(KEYS[4], 'stream') then return -1 end
 local base = 0
-if count > 0 then base = redis.call('INCRBY', KEYS[5], count) - count end
+if count > 0 then base = redis.call('INCRBY', KEYS[5], ARGV[8]) - count end
 redis.call('SET', KEYS[2], ARGV[2])
 redis.call('HSET', KEYS[3], ARGV[3], ARGV[4])
-local ttl = math.floor(tonumber(ARGV[5]) or 0)
-if ttl > 0 and ttl <= ${MAX_DEDUP_TTL_SECONDS} then
-  redis.call('EXPIRE', KEYS[3], ttl)
+if positiveInt(ARGV[5]) and tonumber(ARGV[5]) <= ${MAX_DEDUP_TTL_SECONDS} then
+  redis.call('EXPIRE', KEYS[3], ARGV[5])
 end
+local trim = positiveInt(ARGV[7])
 for i = 1, count do
-  local seq = tostring(base + i - 1)
-  if maxlen > 0 then
-    redis.call('XADD', KEYS[4], 'MAXLEN', maxlen, '*',
+  local seq = string.format('%d', base + i - 1)
+  if trim then
+    redis.call('XADD', KEYS[4], 'MAXLEN', ARGV[7], '*',
       'seq', seq,
       'requestId', ARGV[3],
       'seatKeyId', ARGV[6],
@@ -163,7 +207,13 @@ return 1
 //
 // INCRBY runs before XADD for the same reason it does in COMMIT_TURN: it is
 // the call that can still raise (a counter holding a non-integer), so a
-// failure leaves nothing half-written.
+// failure leaves nothing half-written. And as there, every numeric argument
+// travels as a string — the increment literally `'1'`, the cap as raw ARGV —
+// because `redis.call` renders a Lua number in shortest round-trip form, which
+// is exponential for round values at or above 1e8 and refused as a count.
+// Here the consequence of raising is quieter and therefore worse:
+// `recordTimedOutTurn` logs and moves on, so the lost record would be the very
+// thing "a timeout is a recorded failed turn" rests on.
 //
 // It honors journal retention for the same reason the commit does: an identity
 // that only ever times out would otherwise grow without bound, and a cap that
@@ -176,22 +226,19 @@ return 1
 //
 // KEYS: log, seq   ARGV: requestId, seatKeyId, event JSON, journalMaxLen
 const APPEND_TURN_FAILURE = `
-local function wrongType(key, want)
-  local kind = redis.call('TYPE', key)['ok']
-  return kind ~= 'none' and kind ~= want
-end
+${WRONG_TYPE_FN}
+${POSITIVE_INT_FN}
 if wrongType(KEYS[1], 'stream') then return -1 end
-local maxlen = math.floor(tonumber(ARGV[4]) or 0)
-local seq = redis.call('INCRBY', KEYS[2], 1) - 1
-if maxlen > 0 then
-  redis.call('XADD', KEYS[1], 'MAXLEN', maxlen, '*',
-    'seq', tostring(seq),
+local seq = string.format('%d', redis.call('INCRBY', KEYS[2], '1') - 1)
+if positiveInt(ARGV[4]) then
+  redis.call('XADD', KEYS[1], 'MAXLEN', ARGV[4], '*',
+    'seq', seq,
     'requestId', ARGV[1],
     'seatKeyId', ARGV[2],
     'event', ARGV[3])
 else
   redis.call('XADD', KEYS[1], '*',
-    'seq', tostring(seq),
+    'seq', seq,
     'requestId', ARGV[1],
     'seatKeyId', ARGV[2],
     'event', ARGV[3])
@@ -894,10 +941,18 @@ function wholeSeconds(value: number, name: string): number {
   return value;
 }
 
-/** A whole positive count. Rejected at construction like every other option. */
+/**
+ * A whole positive count Redis will accept as a count. Bounded on both sides
+ * at construction, like every other numeric option: the upper bound is what
+ * keeps `String(value)` a plain decimal integer (past `Number.MAX_SAFE_INTEGER`
+ * a value can pass `Number.isInteger` without being an exact integer, and
+ * `String()` turns exponential at 1e21 — the one shape `XADD MAXLEN` refuses).
+ */
 function wholeCount(value: number, name: string): number {
-  if (!Number.isInteger(value) || value < 1) {
-    throw new Error(`${name} must be a positive integer.`);
+  if (!Number.isInteger(value) || value < 1 || value > MAX_JOURNAL_EVENTS) {
+    throw new Error(
+      `${name} must be a positive integer no greater than ${MAX_JOURNAL_EVENTS}.`,
+    );
   }
   return value;
 }

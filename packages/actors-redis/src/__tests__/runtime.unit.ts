@@ -42,7 +42,17 @@ describe('RedisActorRuntime configuration', () => {
   });
 
   it('rejects a journal cap that is not a whole number of events', () => {
-    for (const maxEventsPerIdentity of [0, -1, 2.5, Number.NaN, Infinity]) {
+    // The upper bound is not cosmetic: past MAX_SAFE_INTEGER a value can pass
+    // `Number.isInteger` without being an exact integer, and `String()` turns
+    // exponential at 1e21 — the one shape `XADD MAXLEN` refuses.
+    for (const maxEventsPerIdentity of [
+      0,
+      -1,
+      2.5,
+      Number.NaN,
+      Infinity,
+      1e21,
+    ]) {
       expect(
         () =>
           new RedisActorRuntime(connections, {journal: {maxEventsPerIdentity}}),

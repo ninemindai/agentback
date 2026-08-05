@@ -410,6 +410,85 @@ if (!REDIS_URL) {
       ).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     });
 
+    it('keeps the commit whole at a cap Lua would render in exponent form', async () => {
+      // `redis.call` converts a Lua number with its *shortest* round-trip
+      // decimal form, so a round value at or above 1e8 arrives as `1e+8` and
+      // XADD rejects it as a non-integer — after INCRBY, SET and HSET have
+      // already landed. That splits the one commit point: state and dedup
+      // committed, the journal entry lost, the seq burned, and the caller told
+      // its committed turn failed. The numeric arguments therefore travel as
+      // the raw ARGV strings.
+      const prefix = `${testPrefix}:exponent-cap`;
+      const base = keyBase(prefix, 'redis-journal', 'huge');
+      const capped = runtime('exponent-cap', {
+        journal: {maxEventsPerIdentity: 100_000_000},
+      });
+      const definition = journal();
+      capped.register(definition);
+
+      expect(
+        await capped.ref(definition, 'huge').invoke({by: 1}, {requestId: 'r0'}),
+      ).toEqual({count: 1});
+      const log = await capped.events('redis-journal', 'huge');
+      expect(log.map(entry => entry.seq)).toEqual([0]);
+      expect(await capped.state(definition, 'huge')).toEqual({count: 1});
+      expect(await connections.base.hlen(`${base}:dedup`)).toBe(1);
+    });
+
+    it('journals a failed turn at a cap Lua would render in exponent form', async () => {
+      // The marker append has the same shape and the same hazard, and it fails
+      // more quietly: `recordTimedOutTurn` logs and moves on, so a raising XADD
+      // costs the record that "a timeout is a recorded failed turn" depends on.
+      const capped = runtime('exponent-cap-marker', {
+        journal: {maxEventsPerIdentity: 100_000_000},
+      });
+      const definition = defineActor('redis-marker-exponent', {
+        state: JournalState,
+        command: JournalCommand,
+        result: JournalState,
+        deadlineMs: 30,
+        initialState: () => ({count: 0}),
+        async receive() {
+          await new Promise<never>(() => {});
+          throw new Error('unreachable');
+        },
+      });
+      capped.register(definition);
+
+      await expect(
+        capped.ref(definition, 'wedged').invoke({by: 1}, {requestId: 'r0'}),
+      ).rejects.toBeInstanceOf(TurnTimeoutError);
+      const log = await capped.events('redis-marker-exponent', 'wedged');
+      expect(log.map(entry => entry.event.type)).toEqual([
+        ACTOR_TURN_TIMEOUT_EVENT,
+      ]);
+      expect(log.map(entry => entry.seq)).toEqual([0]);
+    });
+
+    it('applies a dedup TTL Lua would render in exponent form', async () => {
+      // Same defect, same script, older write: EXPIRE runs *after* state and
+      // dedup are written, so a TTL that arrives as `1e+8` raises mid-commit
+      // and loses the journal entry. 100_000_000 is a legal `dedupTtlSeconds`
+      // (~3 years), well inside MAX_DEDUP_TTL_SECONDS.
+      const prefix = `${testPrefix}:exponent-ttl`;
+      const base = keyBase(prefix, 'redis-journal', 'ttl');
+      const ttlRuntime = runtime('exponent-ttl', {
+        dedupTtlSeconds: 100_000_000,
+      });
+      const definition = journal();
+      ttlRuntime.register(definition);
+
+      await ttlRuntime
+        .ref(definition, 'ttl')
+        .invoke({by: 1}, {requestId: 'r0'});
+
+      expect(await connections.base.ttl(`${base}:dedup`)).toBeGreaterThan(0);
+      expect(await ttlRuntime.state(definition, 'ttl')).toEqual({count: 1});
+      expect(
+        (await ttlRuntime.events('redis-journal', 'ttl')).map(e => e.seq),
+      ).toEqual([0]);
+    });
+
     it('caps a journal made only of failed-turn markers too', async () => {
       // The marker is its own write, outside the commit script, so retention
       // has to be applied there as well — otherwise an identity that only ever

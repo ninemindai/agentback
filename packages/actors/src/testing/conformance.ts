@@ -472,10 +472,13 @@ export function runActorRuntimeConformance(
       const ref = runtime.ref(definition, 'cold');
 
       // Every runtime races the state load, so this turn is abandoned mid-load
-      // and its `initialState` keeps running. What the abandoned continuation
-      // does next differs — the in-process runtimes go on to `receive`, Redis
-      // discards the load's value at the settled race — and the invariant
-      // asserted below holds either way.
+      // and its `initialState` keeps running. On every one of them the
+      // abandoned continuation then goes on to call `receive` — abandoned is
+      // not cancelled, and only the *return value* is dropped (in process by
+      // the expired guard at the commit, on Redis by the settled race, which
+      // means the value never reaches the commit code at all). Which is why
+      // the turn counter may grow below, and why the invariant asserted there
+      // is about committed state rather than about what stopped running.
       await ref
         .invoke({amount: 1}, {requestId: 'first'})
         .catch(() => undefined);
