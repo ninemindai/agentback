@@ -39,9 +39,13 @@ export interface ActorTurn<S, R> {
   events?: readonly ActorEvent[];
   /**
    * Seat key identity of the acting seat, journaled with each of this turn's
-   * events. `ActorRegistry` sets it from the bound `SeatKeyStore` on the turn
-   * it hands the runtime — an `@actorCommand` method's own value is
-   * overwritten — and leaves it unset when no store is bound.
+   * events.
+   *
+   * On the decorated path (`@actor` classes driven by `ActorRegistry`) this is
+   * not the actor's to set: the registry ensures the key row and overwrites
+   * whatever the `@actorCommand` method returned here, leaving it unset when no
+   * `SeatKeyStore` is bound. A raw `defineActor` caller is the trusted
+   * low-level layer and owns the field outright — nothing checks it.
    */
   seatKeyId?: string;
 }

@@ -138,9 +138,8 @@ pass `runSeatKeyStoreConformance` from `@agentback/actors/testing`.
 ## Events (event log)
 
 A command turn may return `events` (domain facts) alongside `state`/`result`.
-`EventSourcedActorsComponent` is a superset of the in-memory adapter that
-persists them to a per-identity append-only log **atomically** with the
-state/dedup commit, then delivers them to subscribers:
+An event-log runtime persists them to a per-identity append-only log
+**atomically** with the state/dedup commit:
 
 ```ts
 app.component(EventSourcedActorsComponent);
@@ -151,6 +150,17 @@ registry.subscribe(({actor, event}) => log(event.type));
 const events = await registry.events('cart', 'ada'); // CommittedActorEvent[]
 ```
 
+Two runtimes journal. `EventSourcedActorsComponent` is a superset of the
+in-memory adapter and does both halves — it stores the log and delivers each
+event to subscribers. `RedisActorsComponent`
+([`@agentback/actors-redis`](../actors-redis)) journals **durably**, appending
+to a per-identity Redis Stream inside the same Lua script that writes state and
+the dedup record; it has no in-process delivery, so `registry.events(...)` works
+against it and `registry.subscribe(...)` does not. That split is the exported
+`ActorEventReader` (read the log) versus `ActorEventStore` (read **and**
+subscribe); `runActorEventStoreConformance` from `@agentback/actors/testing` is
+the shared contract both runtimes pass.
+
 State stays authoritative — this is "state + event log", not full event
 sourcing. Events are not appended on a rolled-back or replayed turn.
 
@@ -159,8 +169,8 @@ sourcing. Events are not appended on a rolled-back or replayed turn.
 | Component                                                             | Adapter               | Use                                         |
 | --------------------------------------------------------------------- | --------------------- | ------------------------------------------- |
 | `InMemoryActorsComponent`                                             | in-memory             | tests, dev, single-instance                 |
-| `EventSourcedActorsComponent`                                         | in-memory + event log | the above **plus** a per-identity event log |
-| `RedisActorsComponent` ([`@agentback/actors-redis`](../actors-redis)) | Redis                 | cross-process serialization + durable state |
+| `EventSourcedActorsComponent`                                         | in-memory + event log | the above **plus** a per-identity event log, delivered to subscribers |
+| `RedisActorsComponent` ([`@agentback/actors-redis`](../actors-redis)) | Redis                 | cross-process serialization + durable state **and** a durable event log (no in-process delivery) |
 
 `ActorRuntime` is the package boundary. Every adapter must pass
 `runActorRuntimeConformance` from `@agentback/actors/testing` and provide: one

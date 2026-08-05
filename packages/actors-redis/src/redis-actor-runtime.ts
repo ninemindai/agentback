@@ -38,17 +38,30 @@ if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
 return redis.call('DEL', KEYS[1])
 `;
 
+/**
+ * Largest dedup TTL that keeps `seconds * 1000` a safe integer, and so stays
+ * far inside the range `EXPIRE` accepts. Past it, `EXPIRE` raises.
+ */
+const MAX_DEDUP_TTL_SECONDS = Math.floor(Number.MAX_SAFE_INTEGER / 1000);
+
 // The one commit point. State, the dedup record and the identity's journal all
 // advance in this single script execution, so they cannot diverge: a turn whose
 // script does not reach the end commits none of them.
 //
 // Redis does *not* roll back a script that fails partway through, so "commits
-// nothing" has to be engineered rather than assumed. Two rules keep it true:
-// every fallible check happens before the first write (a wrong-typed target key
-// aborts with WRONG_TYPES having written nothing), and the one write that can
-// still raise — INCRBY against a counter someone left holding a non-integer —
-// runs first, so its failure also leaves nothing behind. Everything after it is
-// type-checked and cannot fail.
+// nothing" has to be engineered rather than assumed. Every write below is
+// therefore reached only once it is known to succeed:
+//
+//   - the wrong-type preflight runs before the first write, so a squatted key
+//     aborts with WRONG_TYPES having written nothing;
+//   - INCRBY, which still raises against a counter holding a non-integer, runs
+//     *first*, so its failure also leaves nothing behind;
+//   - SET overwrites any type, and HSET/XADD are covered by the preflight;
+//   - EXPIRE raises on a fractional or out-of-range TTL, and it sits after
+//     writes that have already landed — so the TTL is floored and range-checked
+//     here and simply skipped if it is neither. Refreshing dedup retention is
+//     worth less than keeping the commit whole. `dedupTtlSeconds` is validated
+//     at construction too; this is the belt to that pair of braces.
 //
 // KEYS: lease, state, dedup, log, seq   ARGV: token, state, requestId, result,
 // dedupTtl, seatKeyId, eventCount, event JSON…
@@ -65,8 +78,10 @@ local base = 0
 if count > 0 then base = redis.call('INCRBY', KEYS[5], count) - count end
 redis.call('SET', KEYS[2], ARGV[2])
 redis.call('HSET', KEYS[3], ARGV[3], ARGV[4])
-local ttl = tonumber(ARGV[5])
-if ttl and ttl > 0 then redis.call('EXPIRE', KEYS[3], ttl) end
+local ttl = math.floor(tonumber(ARGV[5]) or 0)
+if ttl > 0 and ttl <= ${MAX_DEDUP_TTL_SECONDS} then
+  redis.call('EXPIRE', KEYS[3], ttl)
+end
 for i = 1, count do
   redis.call('XADD', KEYS[4], '*',
     'seq', tostring(base + i - 1),
@@ -169,7 +184,7 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventReader {
       options.acquireTimeoutMs ?? 15_000,
       'acquireTimeoutMs',
     );
-    this.dedupTtlSeconds = nonNegative(
+    this.dedupTtlSeconds = wholeSeconds(
       options.dedupTtlSeconds ?? 86_400,
       'dedupTtlSeconds',
     );
@@ -414,9 +429,17 @@ function toCommittedEvent(
   for (let i = 0; i + 1 < fields.length; i += 2) {
     record[fields[i]!] = fields[i + 1]!;
   }
+  const seq = Number(record.seq);
+  if (!Number.isInteger(seq)) {
+    // Something other than this runtime wrote to the log key. Fail loudly
+    // rather than hand back an entry with a NaN position.
+    throw new Error(
+      `Journal entry for actor '${actor.type}/${actor.id}' has a non-numeric seq.`,
+    );
+  }
   const committed: CommittedActorEvent = {
     actor,
-    seq: Number(record.seq),
+    seq,
     requestId: record.requestId ?? '',
     event: JSON.parse(record.event ?? 'null') as ActorEvent,
   };
@@ -444,9 +467,16 @@ function positive(value: number, name: string): number {
   return value;
 }
 
-function nonNegative(value: number, name: string): number {
-  if (!Number.isFinite(value) || value < 0) {
-    throw new Error(`${name} must be a non-negative finite number.`);
+/**
+ * A TTL `EXPIRE` will accept. Rejected here, at construction, because `EXPIRE`
+ * runs mid-commit: a fractional or out-of-range TTL would raise after state and
+ * the dedup record had already been written, splitting the one commit point.
+ */
+function wholeSeconds(value: number, name: string): number {
+  if (!Number.isInteger(value) || value < 0 || value > MAX_DEDUP_TTL_SECONDS) {
+    throw new Error(
+      `${name} must be a whole number of seconds between 0 and ${MAX_DEDUP_TTL_SECONDS}.`,
+    );
   }
   return value;
 }

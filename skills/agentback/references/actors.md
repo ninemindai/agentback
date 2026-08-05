@@ -120,10 +120,9 @@ serialization, rollback, or persisted state).
 
 ## Events (event log)
 
-A command turn may return `events` (domain facts). `EventSourcedActorsComponent`
-(a superset of the in-memory adapter) persists them to a per-identity
-append-only log **atomically** with the state/dedup commit and delivers them to
-subscribers:
+A command turn may return `events` (domain facts). An event-log runtime persists
+them to a per-identity append-only log **atomically** with the state/dedup
+commit:
 
 ```ts
 app.component(EventSourcedActorsComponent);
@@ -134,6 +133,16 @@ registry.subscribe(({actor, event}) => log(event.type));
 const events = await registry.events('cart', 'ada'); // CommittedActorEvent[]
 ```
 
+Both `EventSourcedActorsComponent` and `RedisActorsComponent` journal.
+`EventSourcedActorsComponent` does both halves in memory (log + delivery to
+subscribers). `RedisActorsComponent` journals **durably** — a turn's events are
+appended to a per-identity Redis Stream inside the same Lua script that writes
+state and the dedup record — but has no in-process delivery: `registry.events()`
+works against it, `registry.subscribe()` throws. That is the difference between
+the exported `ActorEventReader` (read the log) and `ActorEventStore` (read
+**and** subscribe). Both runtimes pass `runActorEventStoreConformance` from
+`@agentback/actors/testing`.
+
 State stays authoritative — this is "state + event log", not full event
 sourcing. Events are not appended on a rolled-back or replayed turn.
 
@@ -142,8 +151,8 @@ sourcing. Events are not appended on a rolled-back or replayed turn.
 | Component                                          | Adapter               | Use                                         |
 | -------------------------------------------------- | --------------------- | ------------------------------------------- |
 | `InMemoryActorsComponent`                          | in-memory             | tests, dev, single-instance                 |
-| `EventSourcedActorsComponent`                      | in-memory + event log | the above **plus** a per-identity event log |
-| `RedisActorsComponent` (`@agentback/actors-redis`) | Redis                 | cross-process serialization + durable state |
+| `EventSourcedActorsComponent`                      | in-memory + event log | the above **plus** a per-identity event log, delivered to subscribers |
+| `RedisActorsComponent` (`@agentback/actors-redis`) | Redis                 | cross-process serialization + durable state **and** a durable event log (no in-process delivery) |
 
 `installRedisActors(app, {connection: {url: process.env.REDIS_URL}})` swaps in
 the Redis runtime; the actor and controller don't change. Every adapter passes

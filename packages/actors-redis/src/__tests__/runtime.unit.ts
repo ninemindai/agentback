@@ -22,6 +22,25 @@ describe('RedisActorRuntime configuration', () => {
     ).toThrow('dedupTtlSeconds');
   });
 
+  // EXPIRE runs mid-commit, after state and the dedup record are written, and
+  // raises on a fractional or out-of-range TTL. A rejected constructor is what
+  // keeps that from ever splitting the commit.
+  it('rejects a dedup TTL that EXPIRE would refuse', () => {
+    for (const dedupTtlSeconds of [0.5, 1e16, Number.NaN, Infinity]) {
+      expect(
+        () => new RedisActorRuntime(connections, {dedupTtlSeconds}),
+      ).toThrow('dedupTtlSeconds must be a whole number of seconds');
+    }
+  });
+
+  it('accepts whole-second TTLs, including 0 (no expiry)', () => {
+    for (const dedupTtlSeconds of [0, 1, 86_400]) {
+      expect(
+        () => new RedisActorRuntime(connections, {dedupTtlSeconds}),
+      ).not.toThrow();
+    }
+  });
+
   it('binds a singleton runtime without taking ownership of a shared manager', async () => {
     const app = new Application();
     installRedisActors(app, {connections});

@@ -208,6 +208,68 @@ if (!REDIS_URL) {
       expect(await connections.base.get(`${base}:log`)).toBe('not-a-stream');
     });
 
+    it('applies the dedup TTL without breaking the commit apart', async () => {
+      const prefix = `${testPrefix}:ttl`;
+      const base = keyBase(prefix, 'redis-journal', 'ttl');
+      const ttlRuntime = new RedisActorRuntime(connections, {
+        prefix,
+        dedupTtlSeconds: 60,
+      });
+      const definition = journal();
+      ttlRuntime.register(definition);
+
+      await ttlRuntime
+        .ref(definition, 'ttl')
+        .invoke({by: 1}, {requestId: 'r1'});
+
+      expect(await connections.base.ttl(`${base}:dedup`)).toBeGreaterThan(0);
+      expect(await ttlRuntime.events('redis-journal', 'ttl')).toHaveLength(1);
+    });
+
+    it('keeps the commit whole even if a fractional TTL reaches the script', async () => {
+      // The constructor rejects this value, so reach past it — a future config
+      // path must not be able to reopen the hole. EXPIRE raises on '0.5' and it
+      // runs after state and dedup are written, so an unguarded script would
+      // commit those two and lose the events. The script floors the TTL
+      // instead: retention is skipped, the commit stays whole.
+      const prefix = `${testPrefix}:ttl-fractional`;
+      const base = keyBase(prefix, 'redis-journal', 'fractional');
+      const ttlRuntime = new RedisActorRuntime(connections, {prefix});
+      Object.defineProperty(ttlRuntime, 'dedupTtlSeconds', {value: 0.5});
+      const definition = journal();
+      ttlRuntime.register(definition);
+
+      await ttlRuntime
+        .ref(definition, 'fractional')
+        .invoke({by: 1}, {requestId: 'r1'});
+
+      expect(await ttlRuntime.state(definition, 'fractional')).toEqual({
+        count: 1,
+      });
+      expect(await connections.base.hlen(`${base}:dedup`)).toBe(1);
+      expect(await connections.base.ttl(`${base}:dedup`)).toBe(-1); // no expiry
+      const log = await ttlRuntime.events('redis-journal', 'fractional');
+      expect(log.map(entry => entry.seq)).toEqual([0]);
+    });
+
+    it('rejects a journal entry whose seq is not a number', async () => {
+      const prefix = `${testPrefix}:foreign-entry`;
+      const base = keyBase(prefix, 'redis-journal', 'foreign');
+      await connections.base.xadd(
+        `${base}:log`,
+        '*',
+        'seq',
+        'not-a-number',
+        'event',
+        '{"type":"Foreign"}',
+      );
+
+      const foreignRuntime = new RedisActorRuntime(connections, {prefix});
+      await expect(
+        foreignRuntime.events('redis-journal', 'foreign'),
+      ).rejects.toThrow(/non-numeric seq/);
+    });
+
     it('journals the acting seat key id, and omits it when there is none', async () => {
       const signedRuntime = runtime('seat-key');
       const withSeat = journal({seatKeyId: 'seat-key-abc'});
