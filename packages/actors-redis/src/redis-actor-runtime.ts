@@ -6,6 +6,7 @@ import {
   ACTOR_RUNTIME,
   actorCommandFingerprint,
   CommittedActorEventSchema,
+  type ActorCommandContext,
   type ActorDefinition,
   type ActorEvent,
   type ActorEventReader,
@@ -274,11 +275,10 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventReader {
 
       const state = await this.readState(definition, actor, keys);
       const workingState = structuredClone(state);
-      const turn = await definition.receive(
-        {actor, requestId},
-        workingState,
-        parsedCommand,
-      );
+      // Held onto (not inlined) so the seat key stamped onto it by `receive`
+      // — see ActorCommandContext.seatKeyId — is still readable afterward.
+      const ctx: ActorCommandContext = {actor, requestId};
+      const turn = await definition.receive(ctx, workingState, parsedCommand);
       const nextState = definition.state.parse(turn.state);
       const result = definition.result.parse(turn.result);
       if (lease.lost) throw new ActorLeaseLostError(actor);
@@ -298,9 +298,9 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventReader {
           requestId,
           stringify(resultRecord),
           String(this.dedupTtlSeconds),
-          // No key row (no SeatKeyStore bound) journals an empty string; the
-          // read side drops the field rather than report a seat that has none.
-          turn.seatKeyId ?? '',
+          // No key row (no SeatKeyStore bound) journals an empty string —
+          // see ActorCommandContext.seatKeyId.
+          ctx.seatKeyId ?? '',
           String(events.length),
           ...events.map(event => stringify(event)),
         ],

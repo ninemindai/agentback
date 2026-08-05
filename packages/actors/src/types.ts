@@ -14,6 +14,23 @@ export interface ActorId {
 export interface ActorCommandContext {
   readonly actor: ActorId;
   readonly requestId: string;
+  /**
+   * Seat key identity of the acting seat, journaled with each of this turn's
+   * events. Runtime-owned, not `ActorTurn`'s: a runtime constructs `ctx` and
+   * passes it into `receive` by reference, then — *after* `receive` resolves
+   * — reads `ctx.seatKeyId` back out to stamp the committed event. A command
+   * method's return value can never carry this (it is not a field of
+   * `ActorTurn`); it can only mutate `ctx.seatKeyId` in place during the
+   * call, and the compiled `@actor` path (`ActorRegistry`) always overwrites
+   * that mutation once `receive` returns (see the "discards a ctx.seatKeyId
+   * mutation" test in `registry.unit.ts`).
+   *
+   * `ActorRegistry` sets this from `ensureSeatKey`, leaving it unset when no
+   * `SeatKeyStore` is bound. A raw `defineActor` caller is the trusted
+   * low-level layer: nothing stops its own `receive` from setting
+   * `ctx.seatKeyId` itself, and a runtime honors that exactly the same way.
+   */
+  seatKeyId?: string;
 }
 
 /** Context for one query. Queries are read-only, so there is no `requestId`. */
@@ -37,17 +54,6 @@ export interface ActorTurn<S, R> {
    * atomically with the state/dedup commit; other runtimes ignore them.
    */
   events?: readonly ActorEvent[];
-  /**
-   * Seat key identity of the acting seat, journaled with each of this turn's
-   * events.
-   *
-   * On the decorated path (`@actor` classes driven by `ActorRegistry`) this is
-   * not the actor's to set: the registry ensures the key row and overwrites
-   * whatever the `@actorCommand` method returned here, leaving it unset when no
-   * `SeatKeyStore` is bound. A raw `defineActor` caller is the trusted
-   * low-level layer and owns the field outright — nothing checks it.
-   */
-  seatKeyId?: string;
 }
 
 /** One committed event with its position in an identity's append-only log. */

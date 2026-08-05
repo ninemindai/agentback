@@ -12,6 +12,7 @@ import {actorCommandFingerprint} from './in-memory-runtime.js';
 import {ACTOR_RUNTIME} from './keys.js';
 import {ActorRegistry} from './registry.js';
 import type {
+  ActorCommandContext,
   ActorDefinition,
   ActorEventStore,
   ActorId,
@@ -140,11 +141,10 @@ export class EventSourcedActorRuntime implements ActorRuntime, ActorEventStore {
       }
 
       const workingState = structuredClone(stored.state) as S;
-      const turn = await definition.receive(
-        {actor, requestId},
-        workingState,
-        parsedCommand,
-      );
+      // Held onto (not inlined) so the seat key stamped onto it by `receive`
+      // — see ActorCommandContext.seatKeyId — is still readable afterward.
+      const ctx: ActorCommandContext = {actor, requestId};
+      const turn = await definition.receive(ctx, workingState, parsedCommand);
       const nextState = definition.state.parse(turn.state);
       const result = definition.result.parse(turn.result);
 
@@ -166,8 +166,8 @@ export class EventSourcedActorRuntime implements ActorRuntime, ActorEventStore {
           seq: stored.seq++,
           requestId,
           // No key row (no SeatKeyStore bound) commits the documented ''
-          // sentinel — see CommittedActorEvent.seatKeyId.
-          seatKeyId: turn.seatKeyId ?? '',
+          // sentinel — see ActorCommandContext.seatKeyId.
+          seatKeyId: ctx.seatKeyId ?? '',
           event: structuredClone(event),
         };
         stored.events.push(committedEvent);

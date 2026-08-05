@@ -56,7 +56,12 @@ class CounterComponent implements Component {
   services = [CounterActor];
 }
 
-/** Returns a seat key id of its own choosing; the registry must discard it. */
+/**
+ * Mutates `ctx.seatKeyId` to a seat key id of its own choosing; the registry
+ * must discard the mutation once this method returns. `seatKeyId` is not a
+ * field of `ActorTurn` — it can no longer be returned on the turn at all —
+ * so `ctx` mutation is the only channel left to attempt a spoof through.
+ */
 @actor('spoof', {state: CounterState})
 class SpoofActor implements Actor<Counter> {
   initialState(): Counter {
@@ -64,8 +69,13 @@ class SpoofActor implements Actor<Counter> {
   }
 
   @actorCommand('go', {input: z.object({}), output: CounterState})
-  go(state: Counter): ActorTurn<Counter, Counter> {
-    return {state, result: state, seatKeyId: 'someone-elses-seat'};
+  go(
+    state: Counter,
+    _input: unknown,
+    ctx: ActorCommandContext,
+  ): ActorTurn<Counter, Counter> {
+    ctx.seatKeyId = 'someone-elses-seat';
+    return {state, result: state};
   }
 }
 
@@ -397,50 +407,54 @@ describe('decorated actor registry', () => {
       await app.stop();
     });
 
-    // The seat key id reaches a journaling runtime on the turn itself: the
+    // The seat key id reaches a journaling runtime on ctx, not the turn: the
     // registry ensures the key row anyway, so it is the one place that can
-    // name the acting seat without a second lookup.
-    it('hands the runtime the acting seat key id on the turn', async () => {
+    // name the acting seat without a second lookup. `ctx` is constructed by
+    // the caller (here, the test) and passed by reference into `receive`, so
+    // it is still readable after `receive` resolves.
+    it("hands the runtime the acting seat's key id via ctx", async () => {
       const app = await seatApp();
       const registry = await app.get(ACTOR_REGISTRY);
       const store = await app.get(SEAT_KEY_STORE);
       const actor = {type: 'counter', id: 'seat-journal'};
+      const ctx: ActorCommandContext = {actor, requestId: 'r1'};
 
-      const turn = await registry
-        .definition('counter')
-        .receive({actor, requestId: 'r1'}, {value: 0}, {
-          name: 'add',
-          input: {amount: 1},
-        } as never);
+      await registry.definition('counter').receive(ctx, {value: 0}, {
+        name: 'add',
+        input: {amount: 1},
+      } as never);
 
       const record = await store.getByActor(actor);
       expect(record?.seatKeyId).toMatch(/^[0-9a-f]{64}$/);
-      expect(turn.seatKeyId).toBe(record?.seatKeyId);
+      expect(ctx.seatKeyId).toBe(record?.seatKeyId);
       await app.stop();
     });
 
-    it('leaves the turn seat key id unset when no store is bound', async () => {
+    it('leaves ctx.seatKeyId unset when no store is bound', async () => {
       const app = new Application();
       app.component(InMemoryActorsComponent);
       app.bind('services.step').to(1);
       app.component(CounterComponent);
       await app.start();
       const registry = await app.get(ACTOR_REGISTRY);
+      const ctx: ActorCommandContext = {
+        actor: {type: 'counter', id: 'keyless'},
+        requestId: 'r1',
+      };
 
-      const turn = await registry
+      await registry
         .definition('counter')
-        .receive(
-          {actor: {type: 'counter', id: 'keyless'}, requestId: 'r1'},
-          {value: 0},
-          {name: 'add', input: {amount: 1}} as never,
-        );
+        .receive(ctx, {value: 0}, {name: 'add', input: {amount: 1}} as never);
 
-      expect(turn.seatKeyId).toBeUndefined();
+      expect(ctx.seatKeyId).toBeUndefined();
       await app.stop();
     });
 
-    it('ignores a seat key id returned by the command method', async () => {
+    it('discards a ctx.seatKeyId mutation made by the command method', async () => {
       // Otherwise an actor could journal its events under another seat.
+      // seatKeyId is not a field of ActorTurn, so the only channel a command
+      // method has left to attempt this is mutating ctx in place — SpoofActor
+      // does exactly that, and the registry must still win.
       const app = new Application();
       app.component(InMemoryActorsComponent);
       app.bind(SEAT_KEY_STORE_KEK).to(randomBytes(32));
@@ -450,17 +464,16 @@ describe('decorated actor registry', () => {
       const registry = await app.get(ACTOR_REGISTRY);
       const store = await app.get(SEAT_KEY_STORE);
       const actor = {type: 'spoof', id: 'seat-spoof'};
+      const ctx: ActorCommandContext = {actor, requestId: 'r1'};
 
-      const turn = await registry
-        .definition('spoof')
-        .receive({actor, requestId: 'r1'}, {value: 0}, {
-          name: 'go',
-          input: {},
-        } as never);
+      await registry.definition('spoof').receive(ctx, {value: 0}, {
+        name: 'go',
+        input: {},
+      } as never);
 
       const record = await store.getByActor(actor);
-      expect(turn.seatKeyId).toBe(record?.seatKeyId);
-      expect(turn.seatKeyId).not.toBe('someone-elses-seat');
+      expect(ctx.seatKeyId).toBe(record?.seatKeyId);
+      expect(ctx.seatKeyId).not.toBe('someone-elses-seat');
       await app.stop();
     });
   });

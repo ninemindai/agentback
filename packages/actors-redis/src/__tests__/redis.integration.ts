@@ -106,14 +106,17 @@ if (!REDIS_URL) {
         command: JournalCommand,
         result: JournalState,
         initialState: () => ({count: 0}),
-        receive(_ctx, state, command) {
+        receive(ctx, state, command) {
           options.onTurn?.();
           state.count += command.by;
+          // seatKeyId is a raw defineActor caller's to set — but on ctx, not
+          // the turn (see ActorCommandContext.seatKeyId); the runtime reads
+          // it back after receive() resolves.
+          if (options.seatKeyId !== undefined) ctx.seatKeyId = options.seatKeyId;
           return {
             state,
             result: state,
             events: [{type: 'Incremented', by: command.by}],
-            seatKeyId: options.seatKeyId,
           };
         },
       });

@@ -464,15 +464,17 @@ export class ActorRegistry implements LifeCycleObserver {
         }
         const turn = await method.call(instance, state, command.input, ctx);
         const output = metadata.output.parse(turn.result);
+        // The acting seat, journaled with this turn's events. Set on ctx —
+        // not returned on the turn — and only *after* the command method has
+        // returned, so nothing it did to `ctx.seatKeyId` during the call can
+        // survive: whatever it mutated is overwritten here. A runtime reads
+        // this back off `ctx` once `receive` resolves (see
+        // ActorCommandContext.seatKeyId).
+        ctx.seatKeyId = seatKeyId;
         return {
           state: turn.state,
           result: {name: metadata.name, output},
           events: turn.events, // passed through to an event-log runtime
-          // The acting seat, journaled with those events. Sourced here rather
-          // than in the runtime because this is where the key row is ensured —
-          // one lookup, on the path that already made it. A command method
-          // cannot spoof it: whatever it returned is replaced.
-          seatKeyId,
         };
       },
     });
