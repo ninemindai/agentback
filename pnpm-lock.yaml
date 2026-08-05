@@ -584,6 +584,9 @@ importers:
 
   packages/actors:
     dependencies:
+      '@agentback/common':
+        specifier: workspace:~
+        version: link:../common
       '@agentback/core':
         specifier: workspace:~
         version: link:../core

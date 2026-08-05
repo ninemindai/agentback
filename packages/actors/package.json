@@ -24,6 +24,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@agentback/common": "workspace:~",
     "@agentback/core": "workspace:~",
     "@agentback/metadata": "workspace:~",
     "tslib": "^2.8.1",

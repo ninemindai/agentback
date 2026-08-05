@@ -11,3 +11,4 @@ export * from './component.js';
 export * from './decorators.js';
 export * from './registry.js';
 export * from './inject-actor.js';
+export * from './degradable-extensions.js';

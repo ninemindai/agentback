@@ -7,5 +7,9 @@
   },
   "include": ["src/**/*"],
   "exclude": ["dist", "node_modules"],
-  "references": [{"path": "../core"}, {"path": "../metadata"}]
+  "references": [
+    {"path": "../common"},
+    {"path": "../core"},
+    {"path": "../metadata"}
+  ]
 }
