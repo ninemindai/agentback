@@ -10,7 +10,7 @@ alike.
 
 - **`loggers(namespace)`** — returns a `{error, warn, info, debug, trace}` record of `debug`-compatible loggers, routing to pino when `PINO_LOGGER=1`, otherwise to the `debug` module with optional log hooks.
 - **`debugFactory(namespace)`** — single-level logger factory underlying `loggers`.
-- **`onLog(hook)`** — register a `(namespace, level, args) => void` hook fired on every `warn`/`error` log; returns a dispose function.
+- **`onLog(hook)`** — register a `(namespace, level, args) => void` hook fired on every `warn`/`error` log; returns a dispose function. Gated by the same `DEBUG` enabled-check as the console line itself (the `debug` package short-circuits before a disabled namespace's hook notification ever runs) — a call site that needs guaranteed delivery regardless of `DEBUG` calls `notifyLogHooksAlways(debugger, args)` instead, the deliberate escape hatch (see `@agentback/actors`' `logTimedOutTurn` for a real caller).
 - **`pMap(input, mapper, opts?)`** — concurrency-capped async map (default `concurrency: 5`), wrapping `p-map`.
 - **`pMapByPage`** / **`pMapByRange`** / **`pMapByPageOffsetAndLimit`** — paginated async-map helpers for large collections.
 - **`fetchIterator`** / **`fetchIteratorByPage`** / **`fetchIteratorByBatch`** — async generator utilities for cursor-based pagination.

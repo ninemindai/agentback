@@ -80,7 +80,26 @@ export class NonJsonEventValueError extends Error {
   }
 }
 
-function assertJsonValue(value: unknown, path: string): void {
+/**
+ * Comfortably above any sane event payload. `turn.events` is bug- or
+ * attacker-controlled (a caller-supplied command can shape what a `receive`
+ * emits), and the walk below recurses once per nesting level, so without a
+ * cap a deeply-nested-enough event would blow the stack on every commit path,
+ * on all three runtimes alike — worse than the value it exists to reject,
+ * since a `RangeError` here carries no offending path at all. Same posture as
+ * the pre-existing, unguarded `actorCommandFingerprint` canonicalizer above
+ * (and `defineActor`'s command-side walk it shares the shape with) — not
+ * touched here, out of this change's scope, but worth the same fix later.
+ */
+const MAX_EVENT_JSON_DEPTH = 64;
+
+function assertJsonValue(value: unknown, path: string, depth = 0): void {
+  if (depth > MAX_EVENT_JSON_DEPTH) {
+    throw new NonJsonEventValueError(
+      path,
+      `nesting exceeds the ${MAX_EVENT_JSON_DEPTH}-level limit`,
+    );
+  }
   if (value === null) return;
   const type = typeof value;
   if (type === 'string' || type === 'boolean') return;
@@ -92,7 +111,9 @@ function assertJsonValue(value: unknown, path: string): void {
     );
   }
   if (Array.isArray(value)) {
-    value.forEach((item, index) => assertJsonValue(item, `${path}[${index}]`));
+    value.forEach((item, index) =>
+      assertJsonValue(item, `${path}[${index}]`, depth + 1),
+    );
     return;
   }
   if (type === 'object') {
@@ -107,7 +128,7 @@ function assertJsonValue(value: unknown, path: string): void {
     for (const [key, child] of Object.entries(
       value as Record<string, unknown>,
     )) {
-      assertJsonValue(child, `${path}.${key}`);
+      assertJsonValue(child, `${path}.${key}`, depth + 1);
     }
     return;
   }

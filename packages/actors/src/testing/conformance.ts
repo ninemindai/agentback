@@ -3,6 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 import {createECDH, randomBytes} from 'node:crypto';
+import {enableDebug, LogLevel, onLog} from '@agentback/common';
 import {Application} from '@agentback/core';
 import {describe, expect, it} from 'vitest';
 import {z} from 'zod';
@@ -117,6 +118,43 @@ async function waitFor(
     await new Promise<void>(resolve => setTimeout(resolve, 10));
   }
   throw new Error(`timed out waiting: ${describeState()}`);
+}
+
+/**
+ * Capture "...and was skipped: ..." warn/error records logged while the
+ * returned `restore` has not yet been called. The two journaling adapters log
+ * a throwing/rejecting subscriber under different namespaces
+ * (`agentback:actors:events` in process, `agentback:actors:redis:delivery`
+ * over Redis) but with the identical phrase (see `logSkippedSubscriber` /
+ * `RedisJournalSubscription.offer`), so matching on that phrase — rather than
+ * a namespace, which would only ever fit one adapter — is what makes "logged
+ * and skipped" a runtime-neutral assertion in this shared suite. Mirrors
+ * `captureDeadlineLogs` in `in-memory-runtime.unit.ts`: same save/restore of
+ * `DEBUG`, generalized to every `agentback:actors:*` namespace since the
+ * caller doesn't know which adapter it's running against.
+ */
+function captureSkippedSubscriberLogs(): {
+  skipped: unknown[][];
+  restore: () => void;
+} {
+  const skipped: unknown[][] = [];
+  const previous = process.env.DEBUG ?? '';
+  enableDebug('agentback:actors:*');
+  const dispose = onLog((_namespace, level, args) => {
+    if (
+      (level === LogLevel.WARN || level === LogLevel.ERROR) &&
+      String(args[0]).includes('was skipped')
+    ) {
+      skipped.push(args);
+    }
+  });
+  return {
+    skipped,
+    restore: () => {
+      dispose();
+      enableDebug(previous);
+    },
+  };
 }
 
 /** Behavioral contract required of every ActorRuntime adapter. */
@@ -330,6 +368,60 @@ export function runActorRuntimeConformance(
       await expect(
         runtime.ref(definition, 'non-json-nan').invoke({kind: 'nan'}),
       ).rejects.toThrow(/events\[0\]\.bad/);
+    });
+
+    it('names a deeply-nested offending path through both object and array levels', async () => {
+      // Proves the recursive path-building itself, not just a one-level
+      // `events[0].x` — the bad value sits two objects and one array deep.
+      const runtime = makeRuntime();
+      const definition = defineActor('conformance.non-json-event.deep-path', {
+        state: State,
+        command: z.object({}),
+        result: Result,
+        initialState: () => ({value: 0}),
+        receive(_ctx, state) {
+          return {
+            state,
+            result: {value: state.value},
+            events: [{type: 'Bad', nested: {deep: [{x: 1}, {x: new Date()}]}}],
+          };
+        },
+      });
+      runtime.register(definition);
+
+      await expect(
+        runtime.ref(definition, 'deep-path').invoke({}),
+      ).rejects.toThrow(/events\[0\]\.nested\.deep\[1\]\.x/);
+    });
+
+    it('rejects an event nested deeper than the depth guard allows, without a stack overflow', async () => {
+      // `turn.events` is bug-/caller-shaped (a command can drive what
+      // `receive` emits), and the walk recurses once per level, so an
+      // unbounded depth would blow the stack on every commit path — worse
+      // than the divergence bug the check exists to catch, since a
+      // `RangeError` names no offending path. 100 levels comfortably clears
+      // the 64-level guard.
+      const runtime = makeRuntime();
+      let deep: unknown = {leaf: true};
+      for (let i = 0; i < 100; i++) deep = {nested: deep};
+      const definition = defineActor('conformance.non-json-event.deep', {
+        state: State,
+        command: z.object({}),
+        result: Result,
+        initialState: () => ({value: 0}),
+        receive(_ctx, state) {
+          return {
+            state,
+            result: {value: state.value},
+            events: [{type: 'Bad', deep}],
+          };
+        },
+      });
+      runtime.register(definition);
+
+      await expect(
+        runtime.ref(definition, 'too-deep').invoke({}),
+      ).rejects.toThrow(/nesting exceeds the 64-level limit/);
     });
 
     // -- Per-seat-type deadlines (capability-os#7) ------------------------
@@ -1141,6 +1233,7 @@ export function runActorEventStoreConformance(
       const ref = runtime.ref(definition, 'sub-throw');
 
       const sibling: CommittedActorEvent[] = [];
+      const {skipped, restore} = captureSkippedSubscriberLogs();
       const offThrowing = runtime.subscribe(() => {
         throw new Error('subscriber boom');
       });
@@ -1153,8 +1246,8 @@ export function runActorEventStoreConformance(
         expect(result).toEqual({count: 1}); // the committing turn is unaffected
 
         await waitFor(
-          () => sibling.length >= 1,
-          () => `sibling=${sibling.length}`,
+          () => sibling.length >= 1 && skipped.length >= 1,
+          () => `sibling=${sibling.length} skipped=${skipped.length}`,
         );
         expect(sibling.map(e => e.event)).toEqual([
           {type: 'Incremented', by: 1},
@@ -1162,6 +1255,7 @@ export function runActorEventStoreConformance(
       } finally {
         offThrowing();
         offGood();
+        restore();
       }
     });
 
@@ -1176,6 +1270,7 @@ export function runActorEventStoreConformance(
       const ref = runtime.ref(definition, 'sub-reject');
 
       const sibling: CommittedActorEvent[] = [];
+      const {skipped, restore} = captureSkippedSubscriberLogs();
       const offRejecting = runtime.subscribe(async () => {
         await Promise.resolve();
         throw new Error('async subscriber boom');
@@ -1189,8 +1284,8 @@ export function runActorEventStoreConformance(
         expect(result).toEqual({count: 1});
 
         await waitFor(
-          () => sibling.length >= 1,
-          () => `sibling=${sibling.length}`,
+          () => sibling.length >= 1 && skipped.length >= 1,
+          () => `sibling=${sibling.length} skipped=${skipped.length}`,
         );
         expect(sibling.map(e => e.event)).toEqual([
           {type: 'Incremented', by: 1},
@@ -1198,6 +1293,7 @@ export function runActorEventStoreConformance(
       } finally {
         offRejecting();
         offGood();
+        restore();
       }
     });
 
