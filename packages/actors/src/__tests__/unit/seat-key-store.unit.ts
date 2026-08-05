@@ -28,6 +28,28 @@ describe('InMemorySeatKeyStore', () => {
     expect(record.seatKeyId).toMatch(/^[0-9a-f]{64}$/);
   });
 
+  it('does not consume the one-shot when the decrypt fails', async () => {
+    // The conformance suite runs this against adapters whose storage outlives
+    // the instance (see `reopenWithWrongKek`); this store keeps its records in
+    // the object, so the rotation is staged on the instance itself. Either way
+    // the invariant is the same: a wrong or rotated KEK must not burn custody
+    // on its way to throwing, or a single misconfiguration makes the escape
+    // hatch fail forever.
+    const good = kek();
+    const store = new InMemorySeatKeyStore(good);
+    const record = await store.create({type: 'seat', id: 'one'});
+    const rotated = store as unknown as {kek: Buffer};
+
+    rotated.kek = kek();
+    await expect(store.takeCustody(record.seatKeyId)).rejects.toThrow();
+    expect((await store.get(record.seatKeyId))?.exportedAt).toBeNull();
+
+    rotated.kek = good;
+    await expect(store.takeCustody(record.seatKeyId)).resolves.toMatch(
+      /^[0-9a-f]{64}$/,
+    );
+  });
+
   it('never leaks private-key material through the thrown error on a second takeCustody', async () => {
     const store = new InMemorySeatKeyStore(kek());
     const record = await store.create({type: 'seat', id: 'one'});

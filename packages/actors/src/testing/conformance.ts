@@ -273,6 +273,32 @@ export function runActorRuntimeConformance(
       });
     }
 
+    /**
+     * A `receive` that overruns its deadline **synchronously**. The spin is
+     * short (80ms against a 50ms deadline) but it blocks the event loop
+     * outright, so no timer — the deadline's, or Redis's lease renewal — can
+     * fire while it runs.
+     */
+    function spinning(spins: () => boolean) {
+      return defineActor('conformance.deadline.sync', {
+        state: State,
+        command: z.object({amount: z.number()}),
+        result: Result,
+        deadlineMs: 50,
+        initialState: () => ({value: 0}),
+        receive(_ctx, state, command) {
+          if (spins()) {
+            const until = Date.now() + 80;
+            while (Date.now() < until) {
+              /* deliberately blocking */
+            }
+          }
+          state.value += command.amount;
+          return {state, result: {value: state.value}};
+        },
+      });
+    }
+
     it('fails a turn that outlives its deadline, committing nothing', async () => {
       const runtime = makeRuntime();
       const definition = hanging(() => true);
@@ -457,6 +483,62 @@ export function runActorRuntimeConformance(
       // The outer turn rolled back like any other failed turn, and its seat is
       // free — it was never itself late.
       expect(await runtime.state(outer, 'caller')).toEqual({value: 0});
+    });
+
+    it('fails a turn that blows its deadline synchronously, committing nothing', async () => {
+      // A busy `receive` is the case a timer cannot see: nothing preempts
+      // synchronous CPU work, and the continuation that follows it runs as a
+      // microtask, ahead of the expired timer's callback. Without an
+      // elapsed-time re-check at the commit boundary this turn commits
+      // normally (and on Redis it fails as a *lost lease* instead, with no
+      // timeout recorded anywhere).
+      const runtime = makeRuntime();
+      let spins = true;
+      const definition = spinning(() => spins);
+      runtime.register(definition);
+      const ref = runtime.ref(definition, 'sync-overrun');
+
+      await expect(
+        ref.invoke({amount: 1}, {requestId: 'spin'}),
+      ).rejects.toBeInstanceOf(TurnTimeoutError);
+      expect(await runtime.state(definition, 'sync-overrun')).toEqual({
+        value: 0,
+      });
+
+      // And the seat is free, exactly as after an async timeout.
+      spins = false;
+      expect(await ref.invoke({amount: 2}, {requestId: 'next'})).toEqual({
+        value: 2,
+      });
+    });
+
+    it('rejects an actor id carrying a control character', async () => {
+      // The in-process runtimes and the Redis journal subscriber key a seat on
+      // `type + U+0000 + id`, so an unchecked control character in a
+      // caller-supplied id aliases two identities onto one seat. Rejected at
+      // the shared validation choke point, on every runtime at once.
+      const runtime = makeRuntime();
+      const definition = counter();
+      runtime.register(definition);
+
+      expect(() => runtime.ref(definition, 'a\u0000b')).toThrow(
+        /control characters/,
+      );
+      await expect(runtime.state(definition, 'a\u0000b')).rejects.toThrow(
+        /control characters/,
+      );
+      expect(() => runtime.ref(definition, 'a\u001Fb')).toThrow(
+        /control characters/,
+      );
+
+      // An ordinary id is untouched, punctuation and all.
+      expect(
+        await runtime.ref(definition, 'ada:lovelace-1').invoke({
+          type: 'add',
+          amount: 1,
+          waitMs: 0,
+        }),
+      ).toEqual({value: 1});
     });
 
     it('validates commands before delivery', async () => {
@@ -688,6 +770,57 @@ export function runActorEventStoreConformance(
       expect(await runtime.state(definition, 'timed-out')).toEqual({count: 4});
     });
 
+    it('journals a synchronous deadline overrun as a failed turn too', async () => {
+      // The commit-boundary elapsed check must produce the *same* record as
+      // the timer path — otherwise a sync-heavy turn either commits despite
+      // missing its deadline or (on Redis) fails as a lost lease with nothing
+      // in the log to say why.
+      const runtime = makeRuntime();
+      let spins = true;
+      const TYPE_SYNC = 'conformance.journal.deadline.sync';
+      const definition = defineActor(TYPE_SYNC, {
+        state: JournalState,
+        command: z.object({by: z.number()}),
+        result: JournalState,
+        deadlineMs: 50,
+        initialState: () => ({count: 0}),
+        receive(_ctx, state, command) {
+          if (spins) {
+            const until = Date.now() + 80;
+            while (Date.now() < until) {
+              /* deliberately blocking */
+            }
+          }
+          state.count += command.by;
+          return {
+            state,
+            result: state,
+            events: [{type: 'Incremented', by: command.by}],
+          };
+        },
+      });
+      runtime.register(definition);
+      const ref = runtime.ref(definition, 'spun');
+
+      await expect(
+        ref.invoke({by: 1}, {requestId: 'spin'}),
+      ).rejects.toBeInstanceOf(TurnTimeoutError);
+
+      const afterTimeout = await runtime.events(TYPE_SYNC, 'spun');
+      expect(afterTimeout).toHaveLength(1);
+      expect(afterTimeout[0]?.event.type).toBe(ACTOR_TURN_TIMEOUT_EVENT);
+      expect(afterTimeout[0]?.requestId).toBe('spin');
+      expect(await runtime.state(definition, 'spun')).toEqual({count: 0});
+
+      // Still retryable, and the log keeps advancing from the marker.
+      spins = false;
+      await ref.invoke({by: 4}, {requestId: 'spin'});
+      expect(
+        (await runtime.events(TYPE_SYNC, 'spun')).map(e => e.event.type),
+      ).toEqual([ACTOR_TURN_TIMEOUT_EVENT, 'Incremented']);
+      expect(await runtime.state(definition, 'spun')).toEqual({count: 4});
+    });
+
     it('never lets a late initialState renumber or drop a journal', async () => {
       // The journal half of the same race. Resetting a stored identity would
       // restart `seq` at 0 and hand subscribers a second, different event at
@@ -851,6 +984,21 @@ export function runActorEventStoreConformance(
   });
 }
 
+export interface SeatKeyStoreConformanceOptions {
+  /**
+   * Open a second view over the **same** backing storage under a different
+   * KEK — the shape of a rotated or mis-configured key. Supply it and the
+   * suite additionally pins that a failed decrypt does not consume the
+   * one-shot export.
+   *
+   * Optional because only an adapter whose storage lives outside the instance
+   * can express it. `InMemorySeatKeyStore` keeps its records in the object
+   * itself, so a second instance is a second, empty store; it covers the same
+   * invariant in `seat-key-store.unit.ts` instead.
+   */
+  reopenWithWrongKek?: (store: SeatKeyStore) => SeatKeyStore;
+}
+
 /**
  * Behavioral contract required of every `seat.keyStore` adapter
  * (capability-os#5: custodial keypair at birth, dormant). `makeStore` must
@@ -859,6 +1007,7 @@ export function runActorEventStoreConformance(
 export function runSeatKeyStoreConformance(
   name: string,
   makeStore: () => SeatKeyStore,
+  options: SeatKeyStoreConformanceOptions = {},
 ): void {
   describe(`SeatKeyStore conformance: ${name}`, () => {
     const actorA: ActorId = {type: 'conformance.seat', id: 'a'};
@@ -951,6 +1100,47 @@ export function runSeatKeyStoreConformance(
     it('takeCustody on an unknown seatKeyId fails', async () => {
       const store = makeStore();
       await expect(store.takeCustody('does-not-exist')).rejects.toThrow();
+    });
+
+    const describeRekey = options.reopenWithWrongKek ? describe : describe.skip;
+    describeRekey('under a wrong or rotated KEK', () => {
+      it('does not consume the one-shot when the decrypt fails', async () => {
+        // The escape hatch must not burn itself down on a misconfiguration.
+        // A store that marked the row exported before decrypting would leave
+        // the key unrecoverable forever, from a single bad KEK.
+        const store = makeStore();
+        const record = await store.create(actorA);
+        const wrongKek = options.reopenWithWrongKek!(store);
+
+        await expect(store.get(record.seatKeyId)).resolves.toBeDefined();
+        await expect(wrongKek.takeCustody(record.seatKeyId)).rejects.toThrow();
+
+        // Untouched: still dormant, and still exportable with the real KEK.
+        expect((await store.get(record.seatKeyId))?.exportedAt).toBeNull();
+        await expect(store.takeCustody(record.seatKeyId)).resolves.toMatch(
+          /^[0-9a-f]{64}$/,
+        );
+      });
+    });
+
+    it('yields exactly one winner when takeCustody races itself', async () => {
+      // Reordering decrypt ahead of the mark must not weaken exactly-once:
+      // the mark is still an atomic compare-and-set, so a loser throws rather
+      // than returning the key it already decrypted.
+      const store = makeStore();
+      const record = await store.create(actorA);
+
+      const outcomes = await Promise.allSettled([
+        store.takeCustody(record.seatKeyId),
+        store.takeCustody(record.seatKeyId),
+        store.takeCustody(record.seatKeyId),
+      ]);
+
+      const won = outcomes.filter(o => o.status === 'fulfilled');
+      expect(won).toHaveLength(1);
+      expect((won[0] as PromiseFulfilledResult<string>).value).toMatch(
+        /^[0-9a-f]{64}$/,
+      );
     });
   });
 }

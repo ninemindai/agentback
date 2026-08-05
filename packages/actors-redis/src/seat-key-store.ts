@@ -32,11 +32,14 @@ redis.call('SET', KEYS[2], ARGV[2])
 return ARGV[1]
 `;
 
-// Atomic export: GET-then-SET is not enough (two concurrent takeCustody calls
-// could both observe exportedAt == null), so the check-and-mark runs as one
-// Lua script. `cjson.decode('null')` is the sentinel `cjson.null`, not Lua
+// Atomic export mark: GET-then-SET is not enough (two concurrent takeCustody
+// calls could both observe exportedAt == null), so the check-and-mark runs as
+// one Lua script. `cjson.decode('null')` is the sentinel `cjson.null`, not Lua
 // `nil` — it is truthy, so the guard must check for it explicitly.
-const TAKE_CUSTODY = `
+//
+// It returns nothing but a flag: the record is read (and decrypted) by the
+// caller *before* this runs. See `takeCustody`.
+const MARK_EXPORTED = `
 local raw = redis.call('GET', KEYS[1])
 if not raw then return redis.error_reply('seat_key_not_found') end
 local record = cjson.decode(raw)
@@ -45,7 +48,7 @@ if record.exportedAt ~= nil and record.exportedAt ~= cjson.null then
 end
 record.exportedAt = ARGV[1]
 redis.call('SET', KEYS[1], cjson.encode(record))
-return raw
+return 1
 `;
 
 export interface RedisSeatKeyStoreOptions {
@@ -132,16 +135,42 @@ export class RedisSeatKeyStore implements SeatKeyStore {
     return seatKeyId ? this.get(seatKeyId) : undefined;
   }
 
+  /**
+   * Hand the private key over once, then burn the one-shot.
+   *
+   * **Decrypt first, mark second.** Marking first reads as the safer order and
+   * is the opposite: a wrong or rotated KEK, or ciphertext corrupted at rest,
+   * makes the decrypt throw *after* custody has already been consumed — so the
+   * escape hatch fails permanently in exactly the situation it exists for, and
+   * no later call with the right KEK can ever recover the key. Doing the
+   * fallible work before the irreversible mark means a failed export leaves the
+   * row untouched and retryable.
+   *
+   * Exactly-once survives the reordering because the mark is still an atomic
+   * compare-and-set: a caller that loses the race to another `takeCustody`
+   * discards the plaintext it decrypted and throws the already-exported error.
+   * The key is never returned on a lost race.
+   */
   async takeCustody(seatKeyId: string): Promise<string> {
-    let raw: string;
+    const raw = await this.connections.base.get(this.recordKey(seatKeyId));
+    if (raw === null) throw new Error(`Unknown seat key '${seatKeyId}'.`);
+    const record = JSON.parse(raw) as SeatKeyRecord;
+    if (record.exportedAt) {
+      throw new Error(`Seat key '${seatKeyId}' has already been exported.`);
+    }
+    const privateKey = decryptSeatPrivateKey(
+      record.encryptedPrivateKey,
+      this.kek,
+    );
     try {
-      raw = (await this.connections.base.eval(
-        TAKE_CUSTODY,
+      await this.connections.base.eval(
+        MARK_EXPORTED,
         1,
         this.recordKey(seatKeyId),
         new Date().toISOString(),
-      )) as string;
+      );
     } catch (err) {
+      privateKey.fill(0); // lost the race: the plaintext leaves with nobody
       const message = err instanceof Error ? err.message : String(err);
       if (message.includes('seat_key_not_found')) {
         throw new Error(`Unknown seat key '${seatKeyId}'.`);
@@ -151,10 +180,7 @@ export class RedisSeatKeyStore implements SeatKeyStore {
       }
       throw err;
     }
-    const record = JSON.parse(raw) as SeatKeyRecord;
-    return decryptSeatPrivateKey(record.encryptedPrivateKey, this.kek).toString(
-      'hex',
-    );
+    return privateKey.toString('hex');
   }
 
   private actorIndexKey(actor: ActorId): string {

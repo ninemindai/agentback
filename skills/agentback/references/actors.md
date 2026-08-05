@@ -181,7 +181,9 @@ seat immediately (the next turn runs at once). The failed turn is then
 recorded: journaling runtimes append an `actor.turn.timeout` entry to the
 identity's log — a **reserved** event type, so never emit an `actor.`-prefixed
 event from a command — and every runtime logs it under
-`agentback:actors:deadline`.
+`agentback:actors:deadline`. That log line is debug-gated like every `loggers`
+call, so it only appears when `DEBUG` matches the namespace; the journal marker
+is the record that survives any log configuration.
 
 That record is its own write, touching neither state nor dedup, so the timed-out
 turn commits nothing **and its `requestId` stays retryable** — a timeout is not
@@ -190,8 +192,11 @@ a cached failure result; retrying the same id runs the command again.
 The turn is **abandoned, not cancelled**: nothing interrupts a running
 `receive`, and side effects it already performed still happened. It simply can
 never commit — every runtime re-checks its mutual-exclusion guard (the Redis
-lease token, an equivalent per-turn guard in process) immediately before the
-commit, with no suspension point in between. On Redis the lease also stops
+lease token, an equivalent per-turn guard in process) **and the elapsed time**
+immediately before the commit, with no suspension point in between. The clock
+check covers what a timer cannot: synchronous work is not preemptible, so a
+`receive` that busy-spins past its deadline would otherwise reach the commit
+with the guard still unexpired. On Redis the lease also stops
 renewing once the turn has run for its deadline, so the seat becomes claimable
 across processes even if the holder never returns; there the deadline bounds
 `receive`, not the commit (a stalled commit makes one caller wait, but the
@@ -216,9 +221,13 @@ the shared `runActorRuntimeConformance` suite.
 
 ## Custodial seat keys (`seat.keyStore`)
 
-Every identity gets a platform-held secp256k1 keypair (Nostr-compatible) the
-first time it **commits a turn** (its first successful command) —
-**custodial, dormant, nothing signs**. A lease-free read/query never creates
+Every identity gets a platform-held secp256k1 keypair (Nostr-compatible) at
+its first **command turn** — **custodial, dormant, nothing signs**. The row is
+created inside the compiled actor's `receive`, post-validation and post-dedup
+but *before* the command method runs, so it is not commit-gated: a first turn
+that throws or times out rolls back and still leaves a dormant key row behind
+(accepted — `create()` is idempotent, so the retry reuses it). A lease-free
+read/query never creates
 one: reads never persist, and ids are otherwise caller-supplied and
 unauthenticated, so keygen must not be reachable by enumerating read-only
 routes. `ActorRegistry` takes an **optional** `SEAT_KEY_STORE` binding
@@ -240,7 +249,9 @@ app.service(InMemorySeatKeyStore); // or RedisSeatKeyStore from actors-redis
 ```
 
 Private keys are encrypted at rest and never logged; only the one-shot
-`store.takeCustody(seatKeyId)` ever returns one (second call fails). `get`/
+`store.takeCustody(seatKeyId)` ever returns one (second call fails). It
+decrypts before marking the row exported, so a wrong or rotated KEK fails
+without consuming the one-shot. `get`/
 `getByActor` return public metadata only. An `ownerAccountId` is recorded on
 the key row when a caller provides one — never enforced. See
 `packages/actors/README.md`'s "Custodial seat keys" section.
@@ -260,5 +271,11 @@ the key row when a caller provides one — never enforced. See
   or HTTP call made inside a turn — use an outbox / idempotent downstreams.
 - **Every turn is deadlined** (capability 30s / worker 10min). A hung `receive`
   is a recorded failed turn, not a wedged seat; the `requestId` stays retryable.
+  A `receive` that busy-spins past the deadline is caught too, at the commit
+  boundary — a timer cannot preempt synchronous work.
+- **Actor types and ids reject blanks and control characters** (`U+0000`-
+  `U+001F`). Runtimes key a seat on `type + U+0000 + id`, so an unchecked
+  control character in a caller-supplied id would alias two identities onto one
+  seat.
 - See [`docs/actor-model.md`](../../../docs/actor-model.md) and
   `examples/hello-actors` for the full model.

@@ -5,10 +5,12 @@
 import {
   ACTOR_RUNTIME,
   actorCommandFingerprint,
+  assertActorIdentityPart,
   CommittedActorEventSchema,
   isOwnTurnTimeout,
   logTimedOutTurn,
   raceTurnDeadline,
+  turnDeadlinePassed,
   turnTimeoutEvent,
   TurnTimeoutError,
   type ActorCommandContext,
@@ -307,6 +309,7 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventStore {
     type: string,
     id: string,
   ): Promise<readonly CommittedActorEvent[]> {
+    assertActorIdentityPart('type', type);
     assertId(id);
     const actor = {type, id};
     const entries = await this.connections.base.xrange(
@@ -408,16 +411,18 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventStore {
       // That is what makes the two outcomes mutually exclusive: when the
       // deadline fires, the commit script has not been issued, so a turn can
       // never both commit normally and be recorded as failed. Once `receive`
-      // wins the race we are past the deadline check for good, and the
-      // lease-token check inside COMMIT_TURN is the only thing that can still
-      // refuse the write. (The corollary: this deadline bounds the seat, not
-      // the caller, once `receive` has returned — a commit that stalls is
-      // bounded instead by the renewal cap in `startRenewal`.)
+      // wins the race, the elapsed-time re-check below is the last deadline
+      // gate, and after it the lease-token check inside COMMIT_TURN is the
+      // only thing that can still refuse the write. (The corollary: this
+      // deadline bounds the seat, not the caller, once the commit script has
+      // been issued — a commit that stalls is bounded instead by the renewal
+      // cap in `startRenewal`.)
       //
       // The failed-turn record is written HERE, still inside `withLease`, so
       // no other process can claim the seat and commit between the deadline
       // and the append. Recording it after the release would let the journal
       // report issue order rather than incident order.
+      const startedAt = Date.now();
       const turn = await raceTurnDeadline(
         Promise.resolve(definition.receive(ctx, workingState, parsedCommand)),
         actor,
@@ -433,6 +438,27 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventStore {
         }
         throw err;
       });
+      // The synchronous half of the same deadline. `raceTurnDeadline` cannot
+      // see a `receive` that busy-spins past it — its timer callback is a
+      // macrotask, so it has not run yet when an already-settled promise hands
+      // control back here. Without this check such a turn would go straight to
+      // COMMIT_TURN having plainly missed its deadline, and the renewal timers
+      // it also starved would have lapsed the lease, so the caller would get
+      // `ActorLeaseLostError` and *no* timeout record at all. Reading the clock
+      // gets the same outcome as the async path instead: recorded failed turn,
+      // rollback, seat freed. Still inside `withLease`, so the marker lands
+      // under this holder's lease (and degrades to a log line if a starved
+      // renewal already lost it — see `recordTimedOutTurn`).
+      if (turnDeadlinePassed(startedAt, definition.deadlineMs)) {
+        const timeout = new TurnTimeoutError(
+          actor,
+          requestId,
+          definition.deadlineMs,
+        );
+        logTimedOutTurn(timeout);
+        await this.recordTimedOutTurn(timeout);
+        throw timeout;
+      }
       const nextState = definition.state.parse(turn.state);
       const result = definition.result.parse(turn.result);
       if (lease.lost) throw new ActorLeaseLostError(actor);
@@ -480,10 +506,12 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventStore {
    * it.) The append is still un-gated by the token, so a lease lost early to a
    * failed renewal cannot swallow the record.
    *
-   * Reachable only from the deadline path, which by construction runs before
-   * the commit script is ever issued (see the `raceTurnDeadline` note in
-   * `invoke`) — so this can never mark a turn whose commit already landed, and
-   * a committed turn can never also be marked failed.
+   * Reachable only from the two deadline paths — the `raceTurnDeadline`
+   * rejection and the elapsed-time re-check that catches a synchronous
+   * overrun — both of which by construction run before the commit script is
+   * ever issued (see the notes in `invoke`). So this can never mark a turn
+   * whose commit already landed, and a committed turn can never also be
+   * marked failed.
    *
    * Best effort in one direction only: if the append itself fails, the caller
    * still gets its `TurnTimeoutError` — a deadline must never surface as some
@@ -726,7 +754,7 @@ function toCommittedEvent(
 }
 
 function assertId(id: string): void {
-  if (!id.trim()) throw new Error('Actor id must not be empty.');
+  assertActorIdentityPart('id', id);
 }
 
 function stringify(value: unknown): string {

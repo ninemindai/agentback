@@ -18,12 +18,23 @@ if (!REDIS_URL) {
   const connections = new RedisConnectionManager({url: REDIS_URL});
   const testPrefix = `agentback:test:actors:seatKeys:${crypto.randomUUID()}`;
   let storeNumber = 0;
-  const store = (kek: Buffer = randomBytes(32)) =>
-    new RedisSeatKeyStore(connections, kek, {
-      prefix: `${testPrefix}:${storeNumber++}`,
-    });
+  // Records live in Redis, not in the instance, so a second store over the
+  // same prefix is a second *view* of one storage — which is what lets the
+  // conformance suite open the rotated-KEK case here.
+  const prefixes = new WeakMap<RedisSeatKeyStore, string>();
+  const store = (kek: Buffer = randomBytes(32)) => {
+    const prefix = `${testPrefix}:${storeNumber++}`;
+    const created = new RedisSeatKeyStore(connections, kek, {prefix});
+    prefixes.set(created, prefix);
+    return created;
+  };
 
-  runSeatKeyStoreConformance('redis', () => store());
+  runSeatKeyStoreConformance('redis', () => store(), {
+    reopenWithWrongKek: opened =>
+      new RedisSeatKeyStore(connections, randomBytes(32), {
+        prefix: prefixes.get(opened as RedisSeatKeyStore)!,
+      }),
+  });
 
   describe('RedisSeatKeyStore distributed semantics', () => {
     it('resolves a concurrent create() race for the same actor to one winning key', async () => {

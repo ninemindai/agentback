@@ -3,6 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 import {DEFAULT_ACTOR_SEAT_CLASS, resolveDeadlineMs} from './deadlines.js';
+import {assertActorIdentityPart} from './types.js';
 import type {ActorDefinition, DefineActorOptions} from './types.js';
 
 /**
@@ -17,7 +18,10 @@ export function defineActor<S, C, R>(
   name: string,
   options: DefineActorOptions<S, C, R>,
 ): ActorDefinition<S, C, R> {
-  if (!name.trim()) throw new Error('Actor name must not be empty.');
+  // The actor type half of the identity check every runtime applies to the id
+  // (see `assertActorIdentityPart`): a type is fixed at definition time, so
+  // this is where it is validated once, for every runtime.
+  assertActorIdentityPart('type', name);
   const {seatClass = DEFAULT_ACTOR_SEAT_CLASS, deadlineMs, ...rest} = options;
   return {
     name,

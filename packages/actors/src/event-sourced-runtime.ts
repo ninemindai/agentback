@@ -13,6 +13,7 @@ import {
   isOwnTurnTimeout,
   logTimedOutTurn,
   raceTurnDeadline,
+  turnDeadlinePassed,
   turnTimeoutEvent,
   TurnTimeoutError,
   type TurnGuard,
@@ -20,6 +21,7 @@ import {
 import {actorCommandFingerprint} from './in-memory-runtime.js';
 import {ACTOR_RUNTIME} from './keys.js';
 import {ActorRegistry} from './registry.js';
+import {assertActorIdentityPart} from './types.js';
 import type {
   ActorCommandContext,
   ActorDefinition,
@@ -64,7 +66,9 @@ export class EventSourcedActorRuntime implements ActorRuntime, ActorEventStore {
   private readonly definitions = new Map<string, object>();
   private readonly actors = new Map<string, StoredActor>();
   private readonly tails = new Map<string, Promise<void>>();
-  private readonly subscribers = new Set<(e: CommittedActorEvent) => void>();
+  private readonly subscribers = new Set<
+    (e: CommittedActorEvent) => void | Promise<void>
+  >();
   private readonly dedupLimit: number;
 
   constructor(options: EventSourcedActorRuntimeOptions = {}) {
@@ -88,7 +92,7 @@ export class EventSourcedActorRuntime implements ActorRuntime, ActorEventStore {
     id: string,
   ): ActorRef<C, R> {
     this.assertRegistered(definition);
-    if (!id.trim()) throw new Error('Actor id must not be empty.');
+    assertActorIdentityPart('id', id);
     const actor = {type: definition.name, id};
     return {
       actor,
@@ -102,7 +106,7 @@ export class EventSourcedActorRuntime implements ActorRuntime, ActorEventStore {
     id: string,
   ): Promise<S> {
     this.assertRegistered(definition);
-    if (!id.trim()) throw new Error('Actor id must not be empty.');
+    assertActorIdentityPart('id', id);
     // Lease-free read (see InMemoryActorRuntime): no mailbox slot.
     const stored = this.actors.get(actorKey({type: definition.name, id}));
     if (!stored) {
@@ -117,12 +121,15 @@ export class EventSourcedActorRuntime implements ActorRuntime, ActorEventStore {
     type: string,
     id: string,
   ): Promise<readonly CommittedActorEvent[]> {
-    if (!id.trim()) throw new Error('Actor id must not be empty.');
+    assertActorIdentityPart('type', type);
+    assertActorIdentityPart('id', id);
     const stored = this.actors.get(actorKey({type, id}));
     return stored ? stored.events.map(event => structuredClone(event)) : [];
   }
 
-  subscribe(handler: (event: CommittedActorEvent) => void): () => void {
+  subscribe(
+    handler: (event: CommittedActorEvent) => void | Promise<void>,
+  ): () => void {
     this.subscribers.add(handler);
     return () => this.subscribers.delete(handler);
   }
@@ -165,8 +172,13 @@ export class EventSourcedActorRuntime implements ActorRuntime, ActorEventStore {
         // The in-process counterpart of the Redis lease-token check: the seat
         // was freed at the deadline, so this abandoned turn must not commit.
         // Nothing suspends between here and the writes below (see
-        // InMemoryActorRuntime for the full note).
-        if (guard.expired) {
+        // InMemoryActorRuntime for the full note). The clock is checked
+        // alongside the flag because a timer cannot preempt synchronous work
+        // — see `turnDeadlinePassed`.
+        if (
+          guard.expired ||
+          turnDeadlinePassed(guard.startedAt, definition.deadlineMs)
+        ) {
           throw new TurnTimeoutError(actor, requestId, definition.deadlineMs);
         }
 
@@ -203,22 +215,44 @@ export class EventSourcedActorRuntime implements ActorRuntime, ActorEventStore {
     );
   }
 
+  /**
+   * Hand one committed event to every subscriber, skipping the ones that fail.
+   *
+   * Handlers are **not awaited**, and a returned promise is caught rather than
+   * sequenced. Delivery runs inside the committing turn here (unlike the Redis
+   * adapter, where it is a separate tail loop that can afford to await), so
+   * awaiting would make a slow subscriber hold up the turn — the one thing
+   * `ActorEventStore.subscribe` promises delivery never does. Attaching a
+   * `.catch` keeps that fire-and-forget shape while bringing an async
+   * handler's rejection under the same "logged and skipped" contract as a
+   * synchronous throw; without it the rejection escaped this frame entirely
+   * and surfaced as an unhandled rejection.
+   */
   private deliver(committedEvent: CommittedActorEvent): void {
     for (const handler of this.subscribers) {
       try {
-        handler(structuredClone(committedEvent));
+        void Promise.resolve(handler(structuredClone(committedEvent))).catch(
+          err => this.logSkippedSubscriber(committedEvent, err),
+        );
       } catch (err) {
         // Skipped, but never silently: the port documents a throwing
         // subscriber as "logged and skipped".
-        log.error(
-          'subscriber threw on %s/%s#%d and was skipped: %s',
-          committedEvent.actor.type,
-          committedEvent.actor.id,
-          committedEvent.seq,
-          err,
-        );
+        this.logSkippedSubscriber(committedEvent, err);
       }
     }
+  }
+
+  private logSkippedSubscriber(
+    committedEvent: CommittedActorEvent,
+    err: unknown,
+  ): void {
+    log.error(
+      'subscriber threw on %s/%s#%d and was skipped: %s',
+      committedEvent.actor.type,
+      committedEvent.actor.id,
+      committedEvent.seq,
+      err,
+    );
   }
 
   /**
@@ -312,7 +346,9 @@ export class EventSourcedActorRuntime implements ActorRuntime, ActorEventStore {
     this.tails.set(key, current);
 
     await previous;
-    const guard: TurnGuard = {expired: false};
+    // Stamped with the flag: the deadline starts once the seat is free, and
+    // both halves of the commit-boundary check measure from the same instant.
+    const guard: TurnGuard = {expired: false, startedAt: Date.now()};
     try {
       return await raceTurnDeadline(
         action(guard),

@@ -44,8 +44,8 @@ export const ACTOR_TURN_TIMEOUT_EVENT = 'actor.turn.timeout';
  * **abandoned, not cancelled** — nothing interrupts a `receive` that is still
  * running — but it can no longer commit: every runtime re-checks its
  * mutual-exclusion guard (the lease token on Redis, the equivalent per-turn
- * guard in process) immediately before the commit, with no suspension point
- * in between.
+ * guard in process) *and* the elapsed time (`turnDeadlinePassed`) immediately
+ * before the commit, with no suspension point in between.
  */
 export class TurnTimeoutError extends Error {
   readonly code = 'actor_turn_timeout';
@@ -142,6 +142,39 @@ export function logTimedOutTurn(error: TurnTimeoutError): void {
  */
 export interface TurnGuard {
   expired: boolean;
+  /**
+   * `Date.now()` at the moment the deadline started — once the seat was free,
+   * never when the call arrived. Read back at the commit boundary by
+   * `turnDeadlinePassed`, which is the half of the check `expired` cannot
+   * cover.
+   */
+  startedAt: number;
+}
+
+/**
+ * Has this turn already spent its whole deadline? The **synchronous** half of
+ * the deadline, and the reason it is a separate check from `TurnGuard.expired`.
+ *
+ * A JS timer cannot preempt synchronous CPU work, and microtasks drain before
+ * macrotasks. So a `receive` that busy-spins past `deadlineMs` hands control
+ * back through an already-settled promise, and the continuation — the guard
+ * check and the commit — runs *before* the expired timer's callback ever
+ * fires. `expired` is still `false` at that point, and the turn would commit
+ * having plainly missed its deadline (on Redis it is worse: the renewal timers
+ * did not fire either, so the lease lapses and the caller gets
+ * `ActorLeaseLostError` with no timeout recorded anywhere).
+ *
+ * Reading the clock instead of a flag closes that, because elapsed time does
+ * not depend on the event loop having had a turn. Every runtime therefore
+ * tests both immediately before its commit, and treats either one as the same
+ * expired turn: `TurnTimeoutError`, a recorded failed turn, rollback, seat
+ * freed.
+ */
+export function turnDeadlinePassed(
+  startedAt: number,
+  deadlineMs: number,
+): boolean {
+  return Date.now() - startedAt > deadlineMs;
 }
 
 /**

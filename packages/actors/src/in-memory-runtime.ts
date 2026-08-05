@@ -7,10 +7,12 @@ import {
   isOwnTurnTimeout,
   logTimedOutTurn,
   raceTurnDeadline,
+  turnDeadlinePassed,
   TurnTimeoutError,
   type TurnGuard,
 } from './deadlines.js';
 import {ACTOR_RUNTIME} from './keys.js';
+import {assertActorIdentityPart} from './types.js';
 import type {
   ActorDefinition,
   ActorId,
@@ -108,7 +110,7 @@ export class InMemoryActorRuntime implements ActorRuntime {
     id: string,
   ): ActorRef<C, R> {
     this.assertRegistered(definition);
-    if (!id.trim()) throw new Error('Actor id must not be empty.');
+    assertActorIdentityPart('id', id);
     const actor = {type: definition.name, id};
     return {
       actor,
@@ -122,7 +124,7 @@ export class InMemoryActorRuntime implements ActorRuntime {
     id: string,
   ): Promise<S> {
     this.assertRegistered(definition);
-    if (!id.trim()) throw new Error('Actor id must not be empty.');
+    assertActorIdentityPart('id', id);
     // Reads take no mailbox slot: commit reassigns `stored.state` atomically, so
     // a lone read observes either the pre- or post-commit value (never torn) and
     // runs concurrently with turns and other reads. An absent actor returns its
@@ -180,7 +182,16 @@ export class InMemoryActorRuntime implements ActorRuntime {
         // read. Nothing suspends between here and the writes below, so the flag
         // cannot flip mid-commit. The throw lands in a race that settled at the
         // deadline and is discarded there; the caller already has its error.
-        if (guard.expired) {
+        //
+        // The clock is checked alongside the flag because a timer cannot
+        // preempt synchronous work: a `receive` that busy-spins past the
+        // deadline arrives here with `expired` still false, since the
+        // continuation runs as a microtask ahead of the expired timer. See
+        // `turnDeadlinePassed`.
+        if (
+          guard.expired ||
+          turnDeadlinePassed(guard.startedAt, definition.deadlineMs)
+        ) {
           throw new TurnTimeoutError(actor, requestId, definition.deadlineMs);
         }
 
@@ -267,7 +278,10 @@ export class InMemoryActorRuntime implements ActorRuntime {
     this.tails.set(key, current);
 
     await previous;
-    const guard: TurnGuard = {expired: false};
+    // `startedAt` is stamped here, with the flag: the deadline starts once the
+    // seat is free, and both halves of the check must measure from the same
+    // instant.
+    const guard: TurnGuard = {expired: false, startedAt: Date.now()};
     try {
       return await raceTurnDeadline(
         action(guard),
@@ -279,7 +293,9 @@ export class InMemoryActorRuntime implements ActorRuntime {
     } catch (err) {
       // A timeout is a recorded failed turn. This runtime keeps no journal,
       // so the log line is the whole record (`EventSourcedActorRuntime` also
-      // appends an `actor.turn.timeout` entry to the identity's log).
+      // appends an `actor.turn.timeout` entry to the identity's log) — and,
+      // like every `loggers` call, it is only actually written when its
+      // namespace is enabled (`DEBUG=agentback:actors:deadline:*`).
       //
       // Gated on identity, not just type: a `TurnTimeoutError` from a nested
       // actor call passes through this frame, and it is already recorded by

@@ -100,9 +100,14 @@ bypasses the runtime (no serialization, rollback, or persisted state).
 
 ## Custodial seat keys (`seat.keyStore`)
 
-Every actor identity gets a platform-held secp256k1 keypair the first time it
-**commits a turn** (its first successful command) — **custodial keypair at
-birth, dormant**. A lease-free read/query never creates one: reads
+Every actor identity gets a platform-held secp256k1 keypair at its first
+**command turn** — **custodial keypair at birth, dormant**. Precisely: the row
+is created inside the compiled actor's `receive`, after the command passes
+schema validation and dedup but *before* the command method runs, so it is not
+commit-gated — a first turn that throws or times out rolls its state back and
+still leaves a dormant key row behind. Accepted design, not an accident
+(`create()` is idempotent, so the retry reuses that row), but worth knowing.
+A lease-free read/query never creates one: reads
 deliberately never persist, and unauthenticated callers can supply arbitrary
 ids (REST path params, MCP args), so keygen must never be reachable by
 enumerating read-only routes. `ActorId` stays the working identifier; nothing
@@ -134,6 +139,12 @@ state commits — rather than silently skipping key creation. Private keys are
 encrypted at rest (AES-256-GCM under the injected KEK) and never logged.
 `@agentback/actors-redis`'s `RedisSeatKeyStore` is the durable adapter; both
 pass `runSeatKeyStoreConformance` from `@agentback/actors/testing`.
+
+`takeCustody()` decrypts **before** it marks the row exported. A wrong or
+rotated KEK therefore fails without consuming the one-shot — the export stays
+available once the KEK is fixed — while exactly-once is unchanged, because the
+mark is still an atomic compare-and-set that makes a concurrent loser throw
+rather than return the key it decrypted.
 
 ## Events (event log)
 
@@ -205,8 +216,11 @@ deadline the caller gets a typed `TurnTimeoutError`, the seat is released
 immediately for the next turn, and the failed turn is recorded: journaling
 runtimes append an `actor.turn.timeout` entry to the identity's log (a reserved
 event type — the `actor.` prefix belongs to the runtime, so never emit one from
-a command), and every runtime logs it under `agentback:actors:deadline`. That
-append is its **own** write, touching neither state nor the dedup record, so:
+a command), and every runtime logs it under `agentback:actors:deadline` — a
+`loggers` namespace, so that line is only written when `DEBUG` matches it
+(`DEBUG=agentback:actors:deadline:*`); the journal marker is the record that
+survives any log configuration. That append is its **own** write, touching
+neither state nor the dedup record, so:
 
 - the timed-out turn commits nothing — state stands where the last good turn
   left it;
@@ -217,8 +231,12 @@ The turn is **abandoned, not cancelled** — nothing interrupts a `receive` that
 is still running, and any side effect it already performed still happened (as
 ever, the runtime rolls back actor state, not the world). What it can no longer
 do is commit: each runtime re-checks its mutual-exclusion guard — the Redis
-lease token, an equivalent per-turn guard in process — immediately before the
-commit, with no suspension point in between. On Redis the lease also stops
+lease token, an equivalent per-turn guard in process — **and the elapsed time**
+immediately before the commit, with no suspension point in between. The clock
+check is not redundant: a JS timer cannot preempt synchronous work, so a
+`receive` that busy-spins past its deadline reaches the commit with the guard
+still unexpired, and would otherwise commit anyway (on Redis it would fail as a
+lost lease, with no timeout recorded at all). On Redis the lease also stops
 renewing once the turn has run for its deadline, so the seat becomes claimable
 across processes even if the holder never comes back. (On Redis the deadline
 bounds `receive`, not the commit: a commit that stalls after `receive` returned

@@ -15,6 +15,7 @@ import {
 import {MetadataInspector} from '@agentback/metadata';
 import {z} from 'zod';
 import {defineActor} from './define-actor.js';
+import {assertActorIdentityPart} from './types.js';
 import {
   ACTOR_EXTENSIONS,
   ACTOR_REGISTRY,
@@ -319,7 +320,7 @@ export class ActorRegistry implements LifeCycleObserver {
     if (!entry || !metadata) {
       throw new Error(`Unknown query '${queryName}' for actor '${actorName}'.`);
     }
-    if (!id.trim()) throw new Error('Actor id must not be empty.');
+    assertActorIdentityPart('id', id);
     const parsedInput = metadata.input.parse(input);
     const state = await this.runtime.state(this.definition(actorName), id);
     const instance = await this.resolve(entry.bindingKey);

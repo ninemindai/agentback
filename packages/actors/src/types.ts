@@ -11,6 +11,40 @@ export interface ActorId {
   readonly id: string;
 }
 
+/**
+ * Validate one half of an actor identity. The single choke point every runtime
+ * and the registry route through, so a rule added here holds everywhere at
+ * once.
+ *
+ * Blank is rejected because an unnamed seat is a bug. **Control characters are
+ * rejected because they alias identities.** The in-process runtimes and the
+ * Redis journal subscriber address a seat by joining `{type, id}` with a
+ * `U+0000` separator, so without this rule `{type: 'a', id: 'b\u0000c'}` and
+ * `{type: 'a\u0000b', id: 'c'}` name the *same* state, dedup, journal and
+ * cursor entries. Ids are caller-supplied (REST path params, MCP tool args),
+ * which makes that a cross-identity hole rather than a typo. Rejecting the
+ * whole C0 range here closes it on every runtime without re-encoding the join
+ * sites, and the seat key stores' actor index keys inherit it for free — every
+ * `create()` reaches them through this same path.
+ */
+export function assertActorIdentityPart(
+  part: 'type' | 'id',
+  value: string,
+): void {
+  if (!value.trim()) throw new Error(`Actor ${part} must not be empty.`);
+  const control = /[\u0000-\u001F]/.exec(value);
+  if (control) {
+    const codePoint = control[0]
+      .charCodeAt(0)
+      .toString(16)
+      .toUpperCase()
+      .padStart(4, '0');
+    throw new Error(
+      `Actor ${part} must not contain control characters (found U+${codePoint}).`,
+    );
+  }
+}
+
 /** Metadata for one command delivery. */
 export interface ActorCommandContext {
   readonly actor: ActorId;
@@ -137,8 +171,20 @@ export interface ActorEventStore extends ActorEventReader {
    * stalls the tail, fails the committing turn, or affects another
    * subscriber — and its event is not retried, because the log is still there
    * to be replayed by `seq`.
+   *
+   * **An async handler is a first-class handler**, which is why the return
+   * type is `void | Promise<void>` rather than `void`: a `void`-returning
+   * signature accepts an `async` function silently, and a rejection from one
+   * would have escaped the "logged and skipped" contract as an unhandled
+   * rejection. A rejected promise is now logged and skipped exactly like a
+   * synchronous throw. What differs between adapters is *timing*: the durable
+   * tail loop awaits each handler (a slow consumer only slows its own tail),
+   * while the in-process runtime delivers after the commit without awaiting,
+   * so a slow handler never holds up the committing turn.
    */
-  subscribe(handler: (event: CommittedActorEvent) => void): () => void;
+  subscribe(
+    handler: (event: CommittedActorEvent) => void | Promise<void>,
+  ): () => void;
 }
 
 /** Service-class contract used by the decorated actor authoring model. */

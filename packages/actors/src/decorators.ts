@@ -21,6 +21,7 @@ import {
   type ActorCommandMetadata,
   type ActorQueryMetadata,
 } from './keys.js';
+import {assertActorIdentityPart} from './types.js';
 
 export interface ActorOptions<S> {
   state: ZodType<S>;
@@ -40,7 +41,9 @@ export function actor<S>(
   name: string,
   options: ActorOptions<S>,
 ): ClassDecorator {
-  if (!name.trim()) throw new Error('Actor name must not be empty.');
+  // Same check `defineActor` applies when the registry compiles this class —
+  // run here too so a bad actor type names the class that declared it.
+  assertActorIdentityPart('type', name);
   // Validated at decoration time, not at start(): a bad deadline should name
   // the actor that declared it, and the resolved value is recomputed by
   // `defineActor` when the registry compiles this class.

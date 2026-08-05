@@ -92,6 +92,11 @@ export class InMemorySeatKeyStore implements SeatKeyStore {
     if (record.exportedAt) {
       throw new Error(`Seat key '${seatKeyId}' has already been exported.`);
     }
+    // Decrypt before the mark, never after: a wrong or rotated KEK must not
+    // consume the one-shot on its way to throwing, or the escape hatch fails
+    // forever in exactly the case it exists for. (Both statements below run in
+    // one synchronous span, so the ordering costs no atomicity here; see
+    // `RedisSeatKeyStore.takeCustody` for the distributed version.)
     const privateKey = decryptSeatPrivateKey(
       record.encryptedPrivateKey,
       this.kek,
