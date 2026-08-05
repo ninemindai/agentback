@@ -30,6 +30,7 @@ import type {
   Actor,
   ActorCommandContext,
   ActorDefinition,
+  ActorEventReader,
   ActorEventStore,
   ActorInvokeOptions,
   ActorQueryContext,
@@ -196,7 +197,7 @@ export class ActorRegistry implements LifeCycleObserver {
   events(name: string, id: string): Promise<readonly CommittedActorEvent[]> {
     if (!this.started) throw new Error('Actor registry has not started.');
     this.definition(name); // validate the actor type exists
-    return this.eventStore().events(name, id);
+    return this.eventReader().events(name, id);
   }
 
   /** Observe every committed event (requires an event-log runtime). */
@@ -205,17 +206,25 @@ export class ActorRegistry implements LifeCycleObserver {
     return this.eventStore().subscribe(handler);
   }
 
-  private eventStore(): ActorEventStore {
+  /** Reading a durable log needs no delivery half (see `ActorEventReader`). */
+  private eventReader(): ActorEventReader {
     const runtime = this.runtime as Partial<ActorEventStore>;
-    if (
-      typeof runtime.events !== 'function' ||
-      typeof runtime.subscribe !== 'function'
-    ) {
+    if (typeof runtime.events !== 'function') {
       throw new Error(
         'The bound ActorRuntime does not persist events. Use EventSourcedActorsComponent.',
       );
     }
-    return runtime as ActorEventStore;
+    return runtime as ActorEventReader;
+  }
+
+  private eventStore(): ActorEventStore {
+    const runtime = this.runtime as Partial<ActorEventStore>;
+    if (typeof runtime.subscribe !== 'function') {
+      throw new Error(
+        'The bound ActorRuntime does not deliver events in process. Use EventSourcedActorsComponent.',
+      );
+    }
+    return this.eventReader() as ActorEventStore;
   }
 
   invoke(
@@ -440,7 +449,10 @@ export class ActorRegistry implements LifeCycleObserver {
         // but its `create()` throws, this turn fails closed (no state
         // commits) rather than silently skipping key creation — a broken
         // seat key store must not let seats materialize without one.
-        await this.ensureSeatKey(actorMeta.name, ctx.actor.id);
+        const seatKeyId = await this.ensureSeatKey(
+          actorMeta.name,
+          ctx.actor.id,
+        );
         const instance = await this.resolve(bindingKey);
         const method = (instance as unknown as Record<string, unknown>)[
           String(metadata.methodName)
@@ -456,6 +468,11 @@ export class ActorRegistry implements LifeCycleObserver {
           state: turn.state,
           result: {name: metadata.name, output},
           events: turn.events, // passed through to an event-log runtime
+          // The acting seat, journaled with those events. Sourced here rather
+          // than in the runtime because this is where the key row is ensured —
+          // one lookup, on the path that already made it. A command method
+          // cannot spoof it: whatever it returned is replaced.
+          seatKeyId,
         };
       },
     });
@@ -465,9 +482,16 @@ export class ActorRegistry implements LifeCycleObserver {
     return this.actorsView.context.get<Actor<unknown>>(bindingKey);
   }
 
-  /** No-op when no SeatKeyStore is bound; `create()` itself is idempotent. */
-  private async ensureSeatKey(type: string, id: string): Promise<void> {
-    if (!this.seatKeyStore) return;
+  /**
+   * Returns the acting seat's key id, or `undefined` when no SeatKeyStore is
+   * bound (the deliberate degrade: the app keeps working, keyless).
+   * `create()` itself is idempotent.
+   */
+  private async ensureSeatKey(
+    type: string,
+    id: string,
+  ): Promise<string | undefined> {
+    if (!this.seatKeyStore) return undefined;
     const record = await this.seatKeyStore.create({type, id});
     if (log.debug.enabled) {
       log.debug(
@@ -477,5 +501,6 @@ export class ActorRegistry implements LifeCycleObserver {
         id,
       );
     }
+    return record.seatKeyId;
   }
 }

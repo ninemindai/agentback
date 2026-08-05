@@ -1,6 +1,6 @@
 # @agentback/actors-redis
 
-> Redis-backed `ActorRuntime` with renewable per-identity leases, JSON state persistence, and atomic state/dedup commits.
+> Redis-backed `ActorRuntime` with renewable per-identity leases, JSON state persistence, and atomic state/dedup/journal commits.
 
 This is the first durable adapter for `@agentback/actors`. Actor behavior stays local to each application process; Redis coordinates turns and persists state so multiple instances can address the same logical actor.
 
@@ -35,10 +35,20 @@ For `{actorType, actorId}` the adapter:
 3. checks the Redis dedup hash for `requestId` replay;
 4. loads and validates JSON state, or calls `initialState`;
 5. executes and validates the local actor definition;
-6. runs one Lua script that verifies the lease and atomically writes state plus the request result;
+6. runs one Lua script that verifies the lease and atomically writes state, the request result, and the turn's events;
 7. releases the lease with compare-and-delete.
 
 If a process crashes before commit, no state changes. If it crashes after commit but before replying, a retry sees the dedup record and returns the committed result. An expired lease holder cannot commit stale state.
+
+## Journal
+
+A command turn's `events` are appended to a per-identity Redis Stream (`…:log`) **inside the commit script** — one entry per event, carrying `seq`, `requestId`, `seatKeyId` and the event JSON. There is no second write to go wrong: a turn either commits its state, its dedup record and its events, or none of the three. `seq` is a gap-free per-identity counter (`…:seq`), advanced in that same script.
+
+```ts
+const log = await registry.events('cart', 'cart-42'); // CommittedActorEvent[]
+```
+
+Reads are lease-free (`XRANGE` over the whole log). This adapter journals and reads back; it does not deliver events in process, so `registry.subscribe(...)` requires `EventSourcedActorsComponent` instead. Nothing trims the stream yet — retention is not implemented.
 
 ## Options
 
@@ -57,7 +67,8 @@ State and results must be JSON-serializable. The dedup hash TTL is refreshed on 
 
 ## Guarantees and limits
 
-- State commit and request-result recording are atomic.
+- State commit, request-result recording, and the event-log append are one atomic commit.
+- Redis does not roll back a script that fails midway, so the commit script type-checks every target key before its first write and puts the only remaining fallible write (the `seq` `INCRBY`) first. A failing commit leaves state, dedup and the log exactly as they were.
 - The commit Lua re-checks lease ownership (`GET(lease) == token`), so an expired lease holder cannot commit — the lease token is the sole mutual-exclusion guard.
 - The same actor is serialized across processes under normal Redis availability.
 - Contending callers are not guaranteed strict FIFO ordering.

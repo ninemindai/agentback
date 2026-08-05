@@ -6,7 +6,7 @@ import {createECDH} from 'node:crypto';
 import {describe, expect, it} from 'vitest';
 import {z} from 'zod';
 import {defineActor} from '../define-actor.js';
-import type {ActorId, ActorRuntime} from '../types.js';
+import type {ActorEventReader, ActorId, ActorRuntime} from '../types.js';
 import type {SeatKeyStore} from '../keys.js';
 
 const State = z.object({value: z.number()});
@@ -183,6 +183,173 @@ export function runActorRuntimeConformance(
           .invoke({type: 'add', amount: 'bad'} as never),
       ).rejects.toThrow();
       expect(turns).toBe(0);
+    });
+  });
+}
+
+/**
+ * Behavioral contract required of every runtime that persists an append-only
+ * event log per identity (the read/append half of `ActorEventStore`). Every
+ * case here is an atomicity claim: a turn's events reach the log exactly when
+ * that turn's state and dedup record do — never on a rollback, never twice on
+ * a replay. Delivery (`subscribe`) is not covered; a runtime that only reads
+ * back its log satisfies this suite.
+ */
+export function runActorEventStoreConformance(
+  name: string,
+  makeRuntime: () => ActorRuntime & ActorEventReader,
+): void {
+  describe(`ActorEventStore conformance: ${name}`, () => {
+    const JournalState = z.object({count: z.number()});
+    const JournalCommand = z.discriminatedUnion('type', [
+      z.object({type: z.literal('inc'), by: z.number()}),
+      z.object({type: z.literal('quiet')}),
+      z.object({type: z.literal('boom')}),
+    ]);
+
+    const TYPE = 'conformance.journal';
+
+    function journal() {
+      return defineActor(TYPE, {
+        state: JournalState,
+        command: JournalCommand,
+        result: JournalState,
+        initialState: () => ({count: 0}),
+        receive(_ctx, state, command) {
+          if (command.type === 'boom') {
+            state.count = 999;
+            throw new Error('turn failed');
+          }
+          // `quiet` still commits state + dedup, but emits no event: the log
+          // is per event, not per turn.
+          if (command.type === 'quiet') {
+            state.count += 1;
+            return {state, result: state};
+          }
+          state.count += command.by;
+          return {
+            state,
+            result: state,
+            events: [{type: 'Incremented', by: command.by}],
+          };
+        },
+      });
+    }
+
+    it('appends a turn events to the identity log, in order', async () => {
+      const runtime = makeRuntime();
+      const definition = journal();
+      runtime.register(definition);
+      const ref = runtime.ref(definition, 'a');
+
+      await ref.invoke({type: 'inc', by: 3}, {requestId: 'r1'});
+      await ref.invoke({type: 'inc', by: 2}, {requestId: 'r2'});
+
+      const log = await runtime.events(TYPE, 'a');
+      expect(log.map(entry => entry.event)).toEqual([
+        {type: 'Incremented', by: 3},
+        {type: 'Incremented', by: 2},
+      ]);
+      expect(log.map(entry => entry.seq)).toEqual([0, 1]);
+      expect(log.map(entry => entry.requestId)).toEqual(['r1', 'r2']);
+      expect(log.every(entry => entry.actor.type === TYPE)).toBe(true);
+      expect(log.every(entry => entry.actor.id === 'a')).toBe(true);
+    });
+
+    it('appends one entry per event, not per turn', async () => {
+      const runtime = makeRuntime();
+      const definition = defineActor('conformance.journal.multi', {
+        state: JournalState,
+        command: z.object({}),
+        result: JournalState,
+        initialState: () => ({count: 0}),
+        receive(_ctx, state) {
+          state.count += 1;
+          return {
+            state,
+            result: state,
+            events: [{type: 'First'}, {type: 'Second'}, {type: 'Third'}],
+          };
+        },
+      });
+      runtime.register(definition);
+
+      await runtime.ref(definition, 'multi').invoke({}, {requestId: 'once'});
+
+      const log = await runtime.events('conformance.journal.multi', 'multi');
+      expect(log.map(entry => entry.event.type)).toEqual([
+        'First',
+        'Second',
+        'Third',
+      ]);
+      // Gap-free and monotonic across a multi-event turn.
+      expect(log.map(entry => entry.seq)).toEqual([0, 1, 2]);
+      expect(log.every(entry => entry.requestId === 'once')).toBe(true);
+    });
+
+    it('appends nothing when a turn rolls back', async () => {
+      const runtime = makeRuntime();
+      const definition = journal();
+      runtime.register(definition);
+      const ref = runtime.ref(definition, 'b');
+
+      await ref.invoke({type: 'inc', by: 1});
+      await expect(ref.invoke({type: 'boom'})).rejects.toThrow('turn failed');
+
+      // State, dedup and log all stand where the last good turn left them.
+      expect(await runtime.state(definition, 'b')).toEqual({count: 1});
+      expect(await runtime.events(TYPE, 'b')).toHaveLength(1);
+    });
+
+    it('does not re-append events on an idempotent replay', async () => {
+      const runtime = makeRuntime();
+      const definition = journal();
+      runtime.register(definition);
+      const ref = runtime.ref(definition, 'c');
+
+      await ref.invoke({type: 'inc', by: 5}, {requestId: 'once'});
+      await ref.invoke({type: 'inc', by: 5}, {requestId: 'once'});
+
+      const log = await runtime.events(TYPE, 'c');
+      expect(log).toHaveLength(1);
+      expect(log[0]?.requestId).toBe('once');
+      expect(await runtime.state(definition, 'c')).toEqual({count: 5});
+    });
+
+    it('commits a turn that emits no events, appending nothing', async () => {
+      const runtime = makeRuntime();
+      const definition = journal();
+      runtime.register(definition);
+      const ref = runtime.ref(definition, 'd');
+
+      const first = await ref.invoke({type: 'quiet'}, {requestId: 'quiet-1'});
+      const replay = await ref.invoke({type: 'quiet'}, {requestId: 'quiet-1'});
+
+      expect(first).toEqual({count: 1});
+      expect(replay).toEqual(first); // dedup still committed
+      expect(await runtime.state(definition, 'd')).toEqual({count: 1});
+      expect(await runtime.events(TYPE, 'd')).toEqual([]);
+
+      // A later event-emitting turn still starts the log at seq 0.
+      await ref.invoke({type: 'inc', by: 1});
+      expect((await runtime.events(TYPE, 'd')).map(e => e.seq)).toEqual([0]);
+    });
+
+    it('keeps each identity log independent', async () => {
+      const runtime = makeRuntime();
+      const definition = journal();
+      runtime.register(definition);
+
+      await runtime.ref(definition, 'x').invoke({type: 'inc', by: 1});
+
+      expect(await runtime.events(TYPE, 'y')).toEqual([]);
+      expect((await runtime.events(TYPE, 'x')).map(e => e.seq)).toEqual([0]);
+    });
+
+    it('reads an unknown identity log as empty', async () => {
+      const runtime = makeRuntime();
+      runtime.register(journal());
+      expect(await runtime.events(TYPE, 'never-addressed')).toEqual([]);
     });
   });
 }

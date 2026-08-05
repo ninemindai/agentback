@@ -180,7 +180,9 @@ This mode persists completed turns but does not durably queue pending commands. 
 
 A command turn may return `events` alongside `state` and `result` — domain facts (`{type, …}`) describing what happened. `EventSourcedActorsComponent` binds an `ActorRuntime` that **persists those events to a per-identity append-only log atomically with the state/dedup commit**, then delivers them to subscribers. Read a log with `registry.events(type, id)` or react with `registry.subscribe(handler)`; each `CommittedActorEvent` carries the `actor`, a 0-based `seq`, and the producing `requestId`. Events are not appended on a rolled-back or replayed turn.
 
-This is **state plus an event log**, not full event sourcing: state stays the stored, authoritative value (not a fold of events). It delivers the "Event = fact" persistence — projections, audit, and react-to-what-happened subscribers — without an event-sourced authoring model. Other runtimes ignore a turn's `events`; the in-memory `EventSourcedActorRuntime` is the reference, and a durable adapter must append events in the same transaction as state + dedup.
+This is **state plus an event log**, not full event sourcing: state stays the stored, authoritative value (not a fold of events). It delivers the "Event = fact" persistence — projections, audit, and react-to-what-happened subscribers — without an event-sourced authoring model.
+
+`RedisActorRuntime` journals durably: it appends a turn's events to a per-identity Redis Stream **inside the same Lua script** that writes state and the dedup record, so the three cannot diverge, and `registry.events(type, id)` reads that log back. It does not deliver in process — `registry.subscribe(handler)` needs `EventSourcedActorsComponent`, which is the in-memory reference for both halves. The remaining runtimes ignore a turn's `events`. Any further durable adapter must hold the same line: append in the same transaction as state + dedup, or not at all.
 
 ## Custodial seat keys
 

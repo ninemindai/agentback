@@ -6,10 +6,13 @@ import {
   ACTOR_RUNTIME,
   actorCommandFingerprint,
   type ActorDefinition,
+  type ActorEvent,
+  type ActorEventReader,
   type ActorId,
   type ActorInvokeOptions,
   type ActorRef,
   type ActorRuntime,
+  type CommittedActorEvent,
 } from '@agentback/actors';
 import {BindingScope, ContextTags, inject, injectable} from '@agentback/core';
 import type {RedisConnectionManager} from '@agentback/messaging-bullmq';
@@ -35,14 +38,47 @@ if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
 return redis.call('DEL', KEYS[1])
 `;
 
+// The one commit point. State, the dedup record and the identity's journal all
+// advance in this single script execution, so they cannot diverge: a turn whose
+// script does not reach the end commits none of them.
+//
+// Redis does *not* roll back a script that fails partway through, so "commits
+// nothing" has to be engineered rather than assumed. Two rules keep it true:
+// every fallible check happens before the first write (a wrong-typed target key
+// aborts with WRONG_TYPES having written nothing), and the one write that can
+// still raise — INCRBY against a counter someone left holding a non-integer —
+// runs first, so its failure also leaves nothing behind. Everything after it is
+// type-checked and cannot fail.
+//
+// KEYS: lease, state, dedup, log, seq   ARGV: token, state, requestId, result,
+// dedupTtl, seatKeyId, eventCount, event JSON…
 const COMMIT_TURN = `
 if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
+local function wrongType(key, want)
+  local kind = redis.call('TYPE', key)['ok']
+  return kind ~= 'none' and kind ~= want
+end
+local count = tonumber(ARGV[7])
+if wrongType(KEYS[2], 'string') or wrongType(KEYS[3], 'hash') then return -1 end
+if count > 0 and wrongType(KEYS[4], 'stream') then return -1 end
+local base = 0
+if count > 0 then base = redis.call('INCRBY', KEYS[5], count) - count end
 redis.call('SET', KEYS[2], ARGV[2])
 redis.call('HSET', KEYS[3], ARGV[3], ARGV[4])
 local ttl = tonumber(ARGV[5])
 if ttl and ttl > 0 then redis.call('EXPIRE', KEYS[3], ttl) end
+for i = 1, count do
+  redis.call('XADD', KEYS[4], '*',
+    'seq', tostring(base + i - 1),
+    'requestId', ARGV[3],
+    'seatKeyId', ARGV[6],
+    'event', ARGV[7 + i])
+end
 return 1
 `;
+
+/** COMMIT_TURN aborted: a target key exists holding an unexpected type. */
+const WRONG_TYPES = -1;
 
 interface StoredState {
   state: unknown;
@@ -57,6 +93,10 @@ interface ActorKeys {
   state: string;
   dedup: string;
   lease: string;
+  /** Per-identity journal (a Redis Stream), one entry per committed event. */
+  log: string;
+  /** Journal sequence counter, advanced inside the commit script. */
+  seq: string;
 }
 
 interface Lease {
@@ -97,12 +137,18 @@ export class ActorLeaseLostError extends Error {
 /**
  * Redis-backed ActorRuntime. Actor definitions and behavior remain local to the
  * process; Redis coordinates one turn per identity and persists state/results.
+ *
+ * It also journals: a command turn's `events` are appended to a per-identity
+ * Redis Stream *inside* the same Lua script that writes state and the dedup
+ * record, and read back with `events()`. In-process delivery (`subscribe`) is
+ * not offered here — a durable log is read, or tailed by a consumer, rather
+ * than pushed to callbacks in one process.
  */
 @injectable({
   scope: BindingScope.SINGLETON,
   tags: {[ContextTags.KEY]: ACTOR_RUNTIME.key},
 })
-export class RedisActorRuntime implements ActorRuntime {
+export class RedisActorRuntime implements ActorRuntime, ActorEventReader {
   private readonly definitions = new Map<string, object>();
   private readonly prefix: string;
   private readonly leaseMs: number;
@@ -167,6 +213,25 @@ export class RedisActorRuntime implements ActorRuntime {
     );
   }
 
+  /**
+   * The committed journal for one identity, in commit order. Like `state()`
+   * this is a lease-free read: entries only ever appear whole, appended by a
+   * commit that already succeeded.
+   */
+  async events(
+    type: string,
+    id: string,
+  ): Promise<readonly CommittedActorEvent[]> {
+    assertId(id);
+    const actor = {type, id};
+    const entries = await this.connections.base.xrange(
+      this.keys(actor).log,
+      '-',
+      '+',
+    );
+    return entries.map(([, fields]) => toCommittedEvent(actor, fields));
+  }
+
   private async invoke<S, C, R>(
     definition: ActorDefinition<S, C, R>,
     actor: ActorId,
@@ -207,17 +272,28 @@ export class RedisActorRuntime implements ActorRuntime {
         commandFingerprint: fingerprint,
         result,
       };
+      const events = turn.events ?? [];
       const committed = await this.evalNumber(
         COMMIT_TURN,
-        [keys.lease, keys.state, keys.dedup],
+        [keys.lease, keys.state, keys.dedup, keys.log, keys.seq],
         [
           lease.value,
           stringify(stateRecord),
           requestId,
           stringify(resultRecord),
           String(this.dedupTtlSeconds),
+          // No key row (no SeatKeyStore bound) journals an empty string; the
+          // read side drops the field rather than report a seat that has none.
+          turn.seatKeyId ?? '',
+          String(events.length),
+          ...events.map(event => stringify(event)),
         ],
       );
+      if (committed === WRONG_TYPES) {
+        throw new Error(
+          `Redis keys for actor '${actor.type}/${actor.id}' hold unexpected types; nothing was committed.`,
+        );
+      }
       if (!committed) throw new ActorLeaseLostError(actor);
       return structuredClone(result);
     });
@@ -294,11 +370,15 @@ export class RedisActorRuntime implements ActorRuntime {
   }
 
   private keys(actor: ActorId): ActorKeys {
+    // The `{type:id}` hash tag is load-bearing: every key below is written by
+    // one Lua script, so on Redis Cluster they must share a slot.
     const base = `${this.prefix}:{${encodeURIComponent(actor.type)}:${encodeURIComponent(actor.id)}}`;
     return {
       state: `${base}:state`,
       dedup: `${base}:dedup`,
       lease: `${base}:lease`,
+      log: `${base}:log`,
+      seq: `${base}:seq`,
     };
   }
 
@@ -323,6 +403,26 @@ export class RedisActorRuntime implements ActorRuntime {
       throw new Error(`Actor type '${definition.name}' is not registered.`);
     }
   }
+}
+
+/** Rebuild one journal entry from a stream entry's flat field/value list. */
+function toCommittedEvent(
+  actor: ActorId,
+  fields: string[],
+): CommittedActorEvent {
+  const record: Record<string, string> = {};
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    record[fields[i]!] = fields[i + 1]!;
+  }
+  const committed: CommittedActorEvent = {
+    actor,
+    seq: Number(record.seq),
+    requestId: record.requestId ?? '',
+    event: JSON.parse(record.event ?? 'null') as ActorEvent,
+  };
+  return record.seatKeyId
+    ? {...committed, seatKeyId: record.seatKeyId}
+    : committed;
 }
 
 function assertId(id: string): void {

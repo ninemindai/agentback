@@ -37,6 +37,13 @@ export interface ActorTurn<S, R> {
    * atomically with the state/dedup commit; other runtimes ignore them.
    */
   events?: readonly ActorEvent[];
+  /**
+   * Seat key identity of the acting seat, journaled with each of this turn's
+   * events. `ActorRegistry` sets it from the bound `SeatKeyStore` on the turn
+   * it hands the runtime — an `@actorCommand` method's own value is
+   * overwritten — and leaves it unset when no store is bound.
+   */
+  seatKeyId?: string;
 }
 
 /** One committed event with its position in an identity's append-only log. */
@@ -46,16 +53,30 @@ export interface CommittedActorEvent {
   readonly seq: number;
   /** The `requestId` of the turn that produced it. */
   readonly requestId: string;
+  /**
+   * Seat key identity of the seat that committed the turn, when the acting
+   * identity had a key row. Optional only while runtimes differ in whether
+   * they journal it.
+   */
+  readonly seatKeyId?: string;
   readonly event: ActorEvent;
 }
 
 /**
- * Capability of a runtime that persists an append-only event log per identity
- * (Event = fact). `ActorRegistry.events`/`.subscribe` delegate to it.
+ * Read half of an identity's append-only event log (Event = fact). Split from
+ * `ActorEventStore` so a runtime can persist and read back its journal without
+ * also offering in-process delivery. `ActorRegistry.events` delegates to it.
  */
-export interface ActorEventStore {
+export interface ActorEventReader {
   /** The committed events for one identity, in order. */
   events(type: string, id: string): Promise<readonly CommittedActorEvent[]>;
+}
+
+/**
+ * Capability of a runtime that persists an append-only event log per identity
+ * **and** delivers each event in process. `ActorRegistry.subscribe` requires it.
+ */
+export interface ActorEventStore extends ActorEventReader {
   /** Observe every event as it commits. Returns an unsubscribe function. */
   subscribe(handler: (event: CommittedActorEvent) => void): () => void;
 }

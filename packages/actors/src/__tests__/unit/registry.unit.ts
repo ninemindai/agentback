@@ -56,6 +56,23 @@ class CounterComponent implements Component {
   services = [CounterActor];
 }
 
+/** Returns a seat key id of its own choosing; the registry must discard it. */
+@actor('spoof', {state: CounterState})
+class SpoofActor implements Actor<Counter> {
+  initialState(): Counter {
+    return {value: 0};
+  }
+
+  @actorCommand('go', {input: z.object({}), output: CounterState})
+  go(state: Counter): ActorTurn<Counter, Counter> {
+    return {state, result: state, seatKeyId: 'someone-elses-seat'};
+  }
+}
+
+class SpoofComponent implements Component {
+  services = [SpoofActor];
+}
+
 describe('decorated actor registry', () => {
   it('tags @actor classes as extensions', () => {
     const app = new Application();
@@ -377,6 +394,73 @@ describe('decorated actor registry', () => {
         name: 'add',
         output: {value: 5, requestId: 'r1'},
       });
+      await app.stop();
+    });
+
+    // The seat key id reaches a journaling runtime on the turn itself: the
+    // registry ensures the key row anyway, so it is the one place that can
+    // name the acting seat without a second lookup.
+    it('hands the runtime the acting seat key id on the turn', async () => {
+      const app = await seatApp();
+      const registry = await app.get(ACTOR_REGISTRY);
+      const store = await app.get(SEAT_KEY_STORE);
+      const actor = {type: 'counter', id: 'seat-journal'};
+
+      const turn = await registry
+        .definition('counter')
+        .receive({actor, requestId: 'r1'}, {value: 0}, {
+          name: 'add',
+          input: {amount: 1},
+        } as never);
+
+      const record = await store.getByActor(actor);
+      expect(record?.seatKeyId).toMatch(/^[0-9a-f]{64}$/);
+      expect(turn.seatKeyId).toBe(record?.seatKeyId);
+      await app.stop();
+    });
+
+    it('leaves the turn seat key id unset when no store is bound', async () => {
+      const app = new Application();
+      app.component(InMemoryActorsComponent);
+      app.bind('services.step').to(1);
+      app.component(CounterComponent);
+      await app.start();
+      const registry = await app.get(ACTOR_REGISTRY);
+
+      const turn = await registry
+        .definition('counter')
+        .receive(
+          {actor: {type: 'counter', id: 'keyless'}, requestId: 'r1'},
+          {value: 0},
+          {name: 'add', input: {amount: 1}} as never,
+        );
+
+      expect(turn.seatKeyId).toBeUndefined();
+      await app.stop();
+    });
+
+    it('ignores a seat key id returned by the command method', async () => {
+      // Otherwise an actor could journal its events under another seat.
+      const app = new Application();
+      app.component(InMemoryActorsComponent);
+      app.bind(SEAT_KEY_STORE_KEK).to(randomBytes(32));
+      app.service(InMemorySeatKeyStore);
+      app.component(SpoofComponent);
+      await app.start();
+      const registry = await app.get(ACTOR_REGISTRY);
+      const store = await app.get(SEAT_KEY_STORE);
+      const actor = {type: 'spoof', id: 'seat-spoof'};
+
+      const turn = await registry
+        .definition('spoof')
+        .receive({actor, requestId: 'r1'}, {value: 0}, {
+          name: 'go',
+          input: {},
+        } as never);
+
+      const record = await store.getByActor(actor);
+      expect(turn.seatKeyId).toBe(record?.seatKeyId);
+      expect(turn.seatKeyId).not.toBe('someone-elses-seat');
       await app.stop();
     });
   });

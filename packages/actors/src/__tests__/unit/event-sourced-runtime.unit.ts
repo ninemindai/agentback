@@ -6,11 +6,20 @@ import {describe, expect, it} from 'vitest';
 import {z} from 'zod';
 import {defineActor} from '../../define-actor.js';
 import {EventSourcedActorRuntime} from '../../event-sourced-runtime.js';
-import {runActorRuntimeConformance} from '../../testing/conformance.js';
+import {
+  runActorEventStoreConformance,
+  runActorRuntimeConformance,
+} from '../../testing/conformance.js';
 import type {CommittedActorEvent} from '../../types.js';
 
 // It is a conformant ActorRuntime first (serialization, rollback, dedup, …).
 runActorRuntimeConformance(
+  'event-sourced',
+  () => new EventSourcedActorRuntime(),
+);
+// …and the reference implementation of the journal contract every durable
+// event-log adapter must also satisfy.
+runActorEventStoreConformance(
   'event-sourced',
   () => new EventSourcedActorRuntime(),
 );
@@ -43,7 +52,9 @@ describe('EventSourcedActorRuntime events', () => {
     });
   }
 
-  it('appends events atomically and exposes the ordered log', async () => {
+  // Append/ordering/rollback/replay live in the shared journal conformance
+  // above; what is unique to this runtime is in-process delivery.
+  it('delivers each committed event to subscribers until they unsubscribe', async () => {
     const runtime = new EventSourcedActorRuntime();
     const definition = counter();
     runtime.register(definition);
@@ -54,53 +65,27 @@ describe('EventSourcedActorRuntime events', () => {
     await ref.invoke({type: 'inc', by: 3});
     await ref.invoke({type: 'inc', by: 2});
 
+    // The subscriber saw the same events, in the same order, as the log.
     const log = await runtime.events('es.counter', 'a');
-    expect(log.map(e => e.event)).toEqual([
-      {type: 'Incremented', by: 3},
-      {type: 'Incremented', by: 2},
-    ]);
-    expect(log.map(e => e.seq)).toEqual([0, 1]);
-    expect(log.every(e => e.actor.id === 'a')).toBe(true);
-
-    // The subscriber saw the same events as they committed.
     expect(seen.map(e => e.event)).toEqual(log.map(e => e.event));
+    expect(seen.map(e => e.seq)).toEqual([0, 1]);
+
     unsubscribe();
     await ref.invoke({type: 'inc', by: 1});
     expect(seen).toHaveLength(2); // no more after unsubscribe
   });
 
-  it('does not append events when a turn rolls back', async () => {
+  it('does not deliver events from a turn that rolls back', async () => {
     const runtime = new EventSourcedActorRuntime();
     const definition = counter();
     runtime.register(definition);
-    const ref = runtime.ref(definition, 'b');
+    const seen: CommittedActorEvent[] = [];
+    runtime.subscribe(event => seen.push(event));
 
-    await expect(ref.invoke({type: 'boom'})).rejects.toThrow('turn failed');
-    expect(await runtime.events('es.counter', 'b')).toEqual([]);
-    expect(await runtime.state(definition, 'b')).toEqual({count: 0});
-  });
+    await expect(
+      runtime.ref(definition, 'b').invoke({type: 'boom'}),
+    ).rejects.toThrow('turn failed');
 
-  it('does not re-append events on idempotent replay', async () => {
-    const runtime = new EventSourcedActorRuntime();
-    const definition = counter();
-    runtime.register(definition);
-    const ref = runtime.ref(definition, 'c');
-
-    await ref.invoke({type: 'inc', by: 5}, {requestId: 'once'});
-    await ref.invoke({type: 'inc', by: 5}, {requestId: 'once'}); // replay
-
-    const log = await runtime.events('es.counter', 'c');
-    expect(log).toHaveLength(1);
-    expect(log[0]?.requestId).toBe('once');
-    expect(await runtime.state(definition, 'c')).toEqual({count: 5});
-  });
-
-  it('keeps each identity log independent', async () => {
-    const runtime = new EventSourcedActorRuntime();
-    const definition = counter();
-    runtime.register(definition);
-
-    await runtime.ref(definition, 'x').invoke({type: 'inc', by: 1});
-    expect(await runtime.events('es.counter', 'y')).toEqual([]);
+    expect(seen).toEqual([]);
   });
 });
