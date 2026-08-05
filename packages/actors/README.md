@@ -178,6 +178,47 @@ by the journaling runtime from the acting seat's key row (see "Custodial seat
 keys" above). `''` is the documented sentinel for no seat layer — an app that
 never binds a `SeatKeyStore` still journals, just keyless.
 
+## Turn deadlines (per seat type)
+
+Every turn runs under a deadline, so a `receive` that never resolves can never
+wedge a seat. Two bands, chosen by `seatClass` on the definition:
+
+| `seatClass`              | Deadline | For                                                    |
+| ------------------------ | -------- | ------------------------------------------------------ |
+| `'capability'` (default) | 30s      | a caller is waiting — a REST request, MCP tool, agent turn |
+| `'worker'`               | 10min    | back-office work nobody is blocked on                  |
+
+```ts
+@actor('import', {state: ImportState, seatClass: 'worker'})
+class ImportActor {…}
+
+// …or set the number yourself; an explicit deadlineMs always wins.
+@actor('cart', {state: CartState, deadlineMs: 5_000})
+class CartActor {…}
+```
+
+**A timeout is a recorded failed turn, never a wedge.** When a turn outlives its
+deadline the caller gets a typed `TurnTimeoutError`, the seat is released
+immediately for the next turn, and the failed turn is recorded: journaling
+runtimes append an `actor.turn.timeout` entry to the identity's log (a reserved
+event type — the `actor.` prefix belongs to the runtime, so never emit one from
+a command), and every runtime logs it under `agentback:actors:deadline`. That
+append is its **own** write, touching neither state nor the dedup record, so:
+
+- the timed-out turn commits nothing — state stands where the last good turn
+  left it;
+- the `requestId` stays retryable. A timeout is not a cached failure result;
+  retrying the same id runs the command again rather than replaying anything.
+
+The turn is **abandoned, not cancelled** — nothing interrupts a `receive` that
+is still running, and any side effect it already performed still happened (as
+ever, the runtime rolls back actor state, not the world). What it can no longer
+do is commit: each runtime re-checks its mutual-exclusion guard — the Redis
+lease token, an equivalent per-turn guard in process — immediately before the
+commit, with no suspension point in between. On Redis the lease also stops
+renewing once the turn has run for its deadline, so the seat becomes claimable
+across processes even if the holder never comes back.
+
 ## Runtimes (the `ActorRuntime` port)
 
 | Component                                                             | Adapter               | Use                                         |
@@ -190,7 +231,9 @@ never binds a `SeatKeyStore` still journals, just keyless.
 `runActorRuntimeConformance` from `@agentback/actors/testing` and provide: one
 active turn per `{type, id}`; atomic commit of state + request id + result;
 rollback on a thrown/invalid turn; replay of a committed `requestId`; concurrency
-across unrelated ids; and lease-free reads.
+across unrelated ids; lease-free reads; and the definition's turn deadline —
+`TurnTimeoutError` to the caller, nothing committed, the seat free at once, and
+the `requestId` still retryable.
 
 ## Non-goals
 

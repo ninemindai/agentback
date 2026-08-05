@@ -3,6 +3,12 @@
 // License text available at https://opensource.org/license/mit/
 
 import {BindingScope, ContextTags, injectable} from '@agentback/core';
+import {
+  logTimedOutTurn,
+  raceTurnDeadline,
+  TurnTimeoutError,
+  type TurnGuard,
+} from './deadlines.js';
 import {ACTOR_RUNTIME} from './keys.js';
 import type {
   ActorDefinition,
@@ -141,44 +147,58 @@ export class InMemoryActorRuntime implements ActorRuntime {
     if (!requestId.trim())
       throw new Error('Actor requestId must not be empty.');
 
-    return this.serialize(actorKey(actor), async () => {
-      const stored = await this.load(definition, actor);
-      const committed = stored.results.get(requestId);
-      if (committed) {
-        if (committed.commandFingerprint !== fingerprint) {
-          throw new Error(
-            `Actor requestId '${requestId}' was already used for a different command.`,
-          );
+    return this.serialize(
+      actor,
+      requestId,
+      definition.deadlineMs,
+      async guard => {
+        const stored = await this.load(definition, actor);
+        const committed = stored.results.get(requestId);
+        if (committed) {
+          if (committed.commandFingerprint !== fingerprint) {
+            throw new Error(
+              `Actor requestId '${requestId}' was already used for a different command.`,
+            );
+          }
+          return structuredClone(committed.result) as R;
         }
-        return structuredClone(committed.result) as R;
-      }
 
-      // The handler receives a clone. Mutation followed by throw cannot leak
-      // into committed state, which is essential for retry-safe actor turns.
-      const workingState = structuredClone(stored.state) as S;
-      const turn = await definition.receive(
-        {actor, requestId},
-        workingState,
-        parsedCommand,
-      );
-      const nextState = definition.state.parse(turn.state);
-      const result = definition.result.parse(turn.result);
+        // The handler receives a clone. Mutation followed by throw cannot leak
+        // into committed state, which is essential for retry-safe actor turns.
+        const workingState = structuredClone(stored.state) as S;
+        const turn = await definition.receive(
+          {actor, requestId},
+          workingState,
+          parsedCommand,
+        );
+        const nextState = definition.state.parse(turn.state);
+        const result = definition.result.parse(turn.result);
+        // The in-process counterpart of the Redis lease-token check, and the
+        // reason an abandoned turn cannot corrupt the seat: the deadline already
+        // freed it, so a later turn may have committed off the state this one
+        // read. Nothing suspends between here and the writes below, so the flag
+        // cannot flip mid-commit. The throw lands in a race that settled at the
+        // deadline and is discarded there; the caller already has its error.
+        if (guard.expired) {
+          throw new TurnTimeoutError(actor, requestId, definition.deadlineMs);
+        }
 
-      // One in-memory commit point. A durable adapter must make these writes
-      // atomic with acknowledgement of the command envelope.
-      stored.state = structuredClone(nextState);
-      stored.results.set(requestId, {
-        commandFingerprint: fingerprint,
-        result: structuredClone(result),
-      });
-      // Bound the dedup map. Map preserves insertion order, so the first key is
-      // the oldest; the entry just added is newest and survives eviction.
-      while (stored.results.size > this.dedupLimit) {
-        const oldest = stored.results.keys().next().value as string;
-        stored.results.delete(oldest);
-      }
-      return structuredClone(result);
-    });
+        // One in-memory commit point. A durable adapter must make these writes
+        // atomic with acknowledgement of the command envelope.
+        stored.state = structuredClone(nextState);
+        stored.results.set(requestId, {
+          commandFingerprint: fingerprint,
+          result: structuredClone(result),
+        });
+        // Bound the dedup map. Map preserves insertion order, so the first key is
+        // the oldest; the entry just added is newest and survives eviction.
+        while (stored.results.size > this.dedupLimit) {
+          const oldest = stored.results.keys().next().value as string;
+          stored.results.delete(oldest);
+        }
+        return structuredClone(result);
+      },
+    );
   }
 
   private assertRegistered<S, C, R>(
@@ -207,10 +227,24 @@ export class InMemoryActorRuntime implements ActorRuntime {
     return stored;
   }
 
+  /**
+   * Run one turn with the seat to itself, under the definition's deadline.
+   *
+   * The deadline starts once the seat is free, not when the call arrives:
+   * queueing behind another turn must never count against a turn's own budget.
+   * When it fires, the seat is released immediately (the `finally` below) —
+   * the abandoned action is no longer awaited by anyone, so the next turn runs
+   * at once rather than queueing behind a promise that may never settle. That
+   * is the whole "never a wedge" half of the invariant; the `guard` is the
+   * other half, and stops the abandoned turn from committing later.
+   */
   private async serialize<T>(
-    key: string,
-    action: () => Promise<T>,
+    actor: ActorId,
+    requestId: string,
+    deadlineMs: number,
+    action: (guard: TurnGuard) => Promise<T>,
   ): Promise<T> {
+    const key = actorKey(actor);
     const previous = this.tails.get(key) ?? Promise.resolve();
     let release!: () => void;
     const current = new Promise<void>(resolve => {
@@ -219,8 +253,21 @@ export class InMemoryActorRuntime implements ActorRuntime {
     this.tails.set(key, current);
 
     await previous;
+    const guard: TurnGuard = {expired: false};
     try {
-      return await action();
+      return await raceTurnDeadline(
+        action(guard),
+        actor,
+        requestId,
+        deadlineMs,
+        guard,
+      );
+    } catch (err) {
+      // A timeout is a recorded failed turn. This runtime keeps no journal,
+      // so the log line is the whole record (`EventSourcedActorRuntime` also
+      // appends an `actor.turn.timeout` entry to the identity's log).
+      if (err instanceof TurnTimeoutError) logTimedOutTurn(err);
+      throw err;
     } finally {
       release();
       if (this.tails.get(key) === current) this.tails.delete(key);

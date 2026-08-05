@@ -2,13 +2,62 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import {enableDebug, LogLevel, onLog} from '@agentback/common';
 import {describe, expect, it} from 'vitest';
 import {z} from 'zod';
+import {TurnTimeoutError} from '../../deadlines.js';
 import {defineActor} from '../../define-actor.js';
 import {InMemoryActorRuntime} from '../../in-memory-runtime.js';
 import {runActorRuntimeConformance} from '../../testing/conformance.js';
 
+// `log.warn(...)` is a no-op unless its debug namespace is enabled (the
+// `debug` package's own gate, which `onLog` hooks sit behind) — enable it so
+// the "recorded failed turn" gate can actually observe the record.
+enableDebug('agentback:actors:deadline:*');
+
 runActorRuntimeConformance('in-memory', () => new InMemoryActorRuntime());
+
+describe('InMemoryActorRuntime deadlines', () => {
+  // This runtime has no journal, so the failed-turn record a journaling
+  // runtime writes as an `actor.turn.timeout` entry is, here, the log line —
+  // emitted by the same shared `logTimedOutTurn` all three runtimes call.
+  it('records a timed-out turn in the log', async () => {
+    const runtime = new InMemoryActorRuntime();
+    const definition = defineActor('in-memory-deadline', {
+      state: z.object({}),
+      command: z.object({}),
+      result: z.object({}),
+      deadlineMs: 50,
+      initialState: () => ({}),
+      async receive() {
+        await new Promise<never>(() => {});
+        throw new Error('unreachable');
+      },
+    });
+    runtime.register(definition);
+
+    const captured: {level: LogLevel; args: unknown[]}[] = [];
+    const dispose = onLog((namespace, level, args) => {
+      if (namespace.startsWith('agentback:actors:deadline')) {
+        captured.push({level, args});
+      }
+    });
+    try {
+      await expect(
+        runtime.ref(definition, 'wedged').invoke({}, {requestId: 'hangs'}),
+      ).rejects.toBeInstanceOf(TurnTimeoutError);
+    } finally {
+      dispose();
+    }
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.level).toBe(LogLevel.WARN);
+    // The record identifies the turn: actor type, id, requestId, deadline.
+    expect(captured[0]?.args).toEqual(
+      expect.arrayContaining(['in-memory-deadline', 'wedged', 'hangs', 50]),
+    );
+  });
+});
 
 describe('InMemoryActorRuntime ordering', () => {
   it('runs turns for one identity in submission order (FIFO)', async () => {

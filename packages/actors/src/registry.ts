@@ -422,6 +422,10 @@ export class ActorRegistry implements LifeCycleObserver {
 
     return defineActor(actorMeta.name, {
       state: actorMeta.state,
+      // The seat class / deadline the class declared on `@actor`, resolved by
+      // `defineActor` exactly as a raw `defineActor` caller's would be.
+      seatClass: actorMeta.seatClass,
+      deadlineMs: actorMeta.deadlineMs,
       command,
       result: z.object({name: z.string(), output: z.unknown()}),
       initialState: async id => {

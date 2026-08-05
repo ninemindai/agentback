@@ -9,6 +9,13 @@ import {
   injectable,
   type Component,
 } from '@agentback/core';
+import {
+  logTimedOutTurn,
+  raceTurnDeadline,
+  turnTimeoutEvent,
+  TurnTimeoutError,
+  type TurnGuard,
+} from './deadlines.js';
 import {actorCommandFingerprint} from './in-memory-runtime.js';
 import {ACTOR_RUNTIME} from './keys.js';
 import {ActorRegistry} from './registry.js';
@@ -131,72 +138,117 @@ export class EventSourcedActorRuntime implements ActorRuntime, ActorEventStore {
     if (!requestId.trim())
       throw new Error('Actor requestId must not be empty.');
 
-    return this.serialize(actorKey(actor), async () => {
-      const stored = await this.load(definition, actor);
-      const committed = stored.results.get(requestId);
-      if (committed) {
-        if (committed.commandFingerprint !== fingerprint) {
-          throw new Error(
-            `Actor requestId '${requestId}' was already used for a different command.`,
-          );
-        }
-        return structuredClone(committed.result) as R;
-      }
-
-      const workingState = structuredClone(stored.state) as S;
-      // Held onto (not inlined) so the seat key stamped onto it by `receive`
-      // — see ActorCommandContext.seatKeyId — is still readable afterward.
-      const ctx: ActorCommandContext = {actor, requestId};
-      const turn = await definition.receive(ctx, workingState, parsedCommand);
-      const nextState = definition.state.parse(turn.state);
-      const result = definition.result.parse(turn.result);
-
-      // One commit point: state, dedup result, and the event log all advance
-      // together. A durable adapter must make these writes atomic.
-      stored.state = structuredClone(nextState);
-      stored.results.set(requestId, {
-        commandFingerprint: fingerprint,
-        result: structuredClone(result),
-      });
-      while (stored.results.size > this.dedupLimit) {
-        const oldest = stored.results.keys().next().value as string;
-        stored.results.delete(oldest);
-      }
-      const delivered: CommittedActorEvent[] = [];
-      for (const event of turn.events ?? []) {
-        const committedEvent: CommittedActorEvent = {
-          actor,
-          seq: stored.seq++,
-          requestId,
-          // No key row (no SeatKeyStore bound) commits the documented ''
-          // sentinel — see ActorCommandContext.seatKeyId.
-          seatKeyId: ctx.seatKeyId ?? '',
-          event: structuredClone(event),
-        };
-        stored.events.push(committedEvent);
-        delivered.push(committedEvent);
-      }
-
-      // Notify after the commit; a throwing subscriber must not fail the turn.
-      for (const committedEvent of delivered) {
-        for (const handler of this.subscribers) {
-          try {
-            handler(structuredClone(committedEvent));
-          } catch (err) {
-            // Skipped, but never silently: the port documents a throwing
-            // subscriber as "logged and skipped".
-            log.error(
-              'subscriber threw on %s/%s#%d and was skipped: %s',
-              actor.type,
-              actor.id,
-              committedEvent.seq,
-              err,
+    return this.serialize(
+      actor,
+      requestId,
+      definition.deadlineMs,
+      async guard => {
+        const stored = await this.load(definition, actor);
+        const committed = stored.results.get(requestId);
+        if (committed) {
+          if (committed.commandFingerprint !== fingerprint) {
+            throw new Error(
+              `Actor requestId '${requestId}' was already used for a different command.`,
             );
           }
+          return structuredClone(committed.result) as R;
         }
+
+        const workingState = structuredClone(stored.state) as S;
+        // Held onto (not inlined) so the seat key stamped onto it by `receive`
+        // — see ActorCommandContext.seatKeyId — is still readable afterward.
+        const ctx: ActorCommandContext = {actor, requestId};
+        const turn = await definition.receive(ctx, workingState, parsedCommand);
+        const nextState = definition.state.parse(turn.state);
+        const result = definition.result.parse(turn.result);
+        // The in-process counterpart of the Redis lease-token check: the seat
+        // was freed at the deadline, so this abandoned turn must not commit.
+        // Nothing suspends between here and the writes below (see
+        // InMemoryActorRuntime for the full note).
+        if (guard.expired) {
+          throw new TurnTimeoutError(actor, requestId, definition.deadlineMs);
+        }
+
+        // One commit point: state, dedup result, and the event log all advance
+        // together. A durable adapter must make these writes atomic.
+        stored.state = structuredClone(nextState);
+        stored.results.set(requestId, {
+          commandFingerprint: fingerprint,
+          result: structuredClone(result),
+        });
+        while (stored.results.size > this.dedupLimit) {
+          const oldest = stored.results.keys().next().value as string;
+          stored.results.delete(oldest);
+        }
+        const delivered: CommittedActorEvent[] = [];
+        for (const event of turn.events ?? []) {
+          const committedEvent: CommittedActorEvent = {
+            actor,
+            seq: stored.seq++,
+            requestId,
+            // No key row (no SeatKeyStore bound) commits the documented ''
+            // sentinel — see ActorCommandContext.seatKeyId.
+            seatKeyId: ctx.seatKeyId ?? '',
+            event: structuredClone(event),
+          };
+          stored.events.push(committedEvent);
+          delivered.push(committedEvent);
+        }
+
+        // Notify after the commit; a throwing subscriber must not fail the turn.
+        for (const committedEvent of delivered) this.deliver(committedEvent);
+        return structuredClone(result);
+      },
+    );
+  }
+
+  private deliver(committedEvent: CommittedActorEvent): void {
+    for (const handler of this.subscribers) {
+      try {
+        handler(structuredClone(committedEvent));
+      } catch (err) {
+        // Skipped, but never silently: the port documents a throwing
+        // subscriber as "logged and skipped".
+        log.error(
+          'subscriber threw on %s/%s#%d and was skipped: %s',
+          committedEvent.actor.type,
+          committedEvent.actor.id,
+          committedEvent.seq,
+          err,
+        );
       }
-      return structuredClone(result);
-    });
+    }
+  }
+
+  /**
+   * "A timeout is a recorded failed turn": append the failed turn to the
+   * identity's journal, alongside the log line every runtime emits.
+   *
+   * This is its **own** write. It touches neither state nor the dedup record,
+   * so the one commit point is untouched and the timed-out `requestId` stays
+   * free to run on retry rather than replaying a failure it never committed.
+   * It consumes a seq, so the log reads in the order things actually
+   * happened.
+   *
+   * `seatKeyId` is the `''` sentinel: the acting seat's key row is stamped on
+   * `ctx` only once `receive` returns, and a timed-out turn's never did.
+   *
+   * An identity with no stored record yet — a deadline that fired inside
+   * `initialState`, before the turn ever reached `receive` — gets the log
+   * line only: there is no journal to append to until the identity is loaded.
+   */
+  private recordTimedOutTurn(error: TurnTimeoutError): void {
+    const stored = this.actors.get(actorKey(error.actor));
+    if (!stored) return;
+    const committedEvent: CommittedActorEvent = {
+      actor: error.actor,
+      seq: stored.seq++,
+      requestId: error.requestId,
+      seatKeyId: '',
+      event: turnTimeoutEvent(error.deadlineMs),
+    };
+    stored.events.push(committedEvent);
+    this.deliver(committedEvent);
   }
 
   private assertRegistered<S, C, R>(
@@ -227,10 +279,16 @@ export class EventSourcedActorRuntime implements ActorRuntime, ActorEventStore {
     return stored;
   }
 
+  /** One turn, seat to itself, under the definition's deadline. See
+   * `InMemoryActorRuntime.serialize` for why the seat is freed at the deadline
+   * and what the `guard` is for. */
   private async serialize<T>(
-    key: string,
-    action: () => Promise<T>,
+    actor: ActorId,
+    requestId: string,
+    deadlineMs: number,
+    action: (guard: TurnGuard) => Promise<T>,
   ): Promise<T> {
+    const key = actorKey(actor);
     const previous = this.tails.get(key) ?? Promise.resolve();
     let release!: () => void;
     const current = new Promise<void>(resolve => {
@@ -239,8 +297,21 @@ export class EventSourcedActorRuntime implements ActorRuntime, ActorEventStore {
     this.tails.set(key, current);
 
     await previous;
+    const guard: TurnGuard = {expired: false};
     try {
-      return await action();
+      return await raceTurnDeadline(
+        action(guard),
+        actor,
+        requestId,
+        deadlineMs,
+        guard,
+      );
+    } catch (err) {
+      if (err instanceof TurnTimeoutError) {
+        logTimedOutTurn(err);
+        this.recordTimedOutTurn(err);
+      }
+      throw err;
     } finally {
       release();
       if (this.tails.get(key) === current) this.tails.delete(key);

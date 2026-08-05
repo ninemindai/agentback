@@ -13,6 +13,7 @@ import {
   MethodDecoratorFactory,
 } from '@agentback/metadata';
 import type {ZodType} from 'zod';
+import {resolveDeadlineMs, type ActorSeatClass} from './deadlines.js';
 import {
   ACTOR_EXTENSIONS,
   ActorMetadata,
@@ -23,6 +24,10 @@ import {
 
 export interface ActorOptions<S> {
   state: ZodType<S>;
+  /** Deadline band. Default `'capability'` (30s); `'worker'` is 10 minutes. */
+  seatClass?: ActorSeatClass;
+  /** Explicit per-turn deadline in ms. Overrides the seat class's default. */
+  deadlineMs?: number;
   scope?: BindingScope;
   tags?: TagMap;
 }
@@ -36,9 +41,15 @@ export function actor<S>(
   options: ActorOptions<S>,
 ): ClassDecorator {
   if (!name.trim()) throw new Error('Actor name must not be empty.');
+  // Validated at decoration time, not at start(): a bad deadline should name
+  // the actor that declared it, and the resolved value is recomputed by
+  // `defineActor` when the registry compiles this class.
+  resolveDeadlineMs(options);
   const metadata: ActorClassMetadata = {
     name,
     state: options.state as ZodType<unknown>,
+    seatClass: options.seatClass,
+    deadlineMs: options.deadlineMs,
   };
   const markClass = ClassDecoratorFactory.createDecorator<ActorClassMetadata>(
     ActorMetadata.CLASS,

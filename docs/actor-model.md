@@ -152,6 +152,25 @@ For each invocation the runtime:
 
 If resolution, the handler, or validation fails, the state clone is discarded and the request ID remains retryable.
 
+## Turn deadlines
+
+Every turn runs under a deadline drawn from its definition's **seat class**: `'capability'` (the default — a caller is waiting, so 30 seconds) or `'worker'` (back-office work nobody is blocked on, so 10 minutes). Declare it on `@actor`/`defineActor`, or set `deadlineMs` yourself; an explicit `deadlineMs` always wins.
+
+```ts
+@actor('nightly-import', {state: ImportState, seatClass: 'worker'})
+class ImportActor {…}
+```
+
+**A timeout is a recorded failed turn, never a wedge.** A `receive` that outlives its deadline rejects the caller with a typed `TurnTimeoutError` and frees the seat immediately, so the next turn runs at once instead of queueing behind a promise that may never settle. The failed turn is then recorded: a journaling runtime appends an `actor.turn.timeout` entry (a reserved event type; the `actor.` prefix is the runtime's) to the identity's log, and every runtime logs the same line under the `agentback:actors:deadline` namespace — which is the whole record on `InMemoryActorRuntime`, the one runtime with no journal.
+
+That record is deliberately its **own** write, touching neither state nor the dedup record. Three consequences, all intentional:
+
+- the timed-out turn commits nothing — the one commit point (state + dedup + journal) is untouched, and state stands where the last good turn left it;
+- the `requestId` stays retryable. A timeout is not a cached failure result: retrying the same id runs the command again rather than replaying anything;
+- the marker consumes a `seq`, so a journal reads in the order things actually happened.
+
+The turn is **abandoned, not cancelled**. Nothing interrupts a `receive` that is still running, and side effects it already performed still happened. What it can no longer do is commit: each runtime re-checks its mutual-exclusion guard — the Redis lease token, an equivalent per-turn guard in process — immediately before the commit, with **no suspension point in between**. On Redis the deadline races `receive` and only `receive`, never the commit script, so a turn can never both commit normally and be recorded as failed, and a turn whose commit already landed can never be marked failed.
+
 ## Concurrency and idempotency
 
 ```text
@@ -173,6 +192,8 @@ Production actors should persist an outbox with state, call idempotent services 
 ## Redis adapter
 
 `@agentback/actors-redis` rebinds `ACTOR_RUNTIME` to a singleton `RedisActorRuntime`. It reuses the exported `RedisConnectionManager` from `messaging-bullmq`, coordinates each identity with a renewable lease token, and atomically commits JSON state plus the dedup result in Lua. The lease token is the sole mutual-exclusion guard: the commit script re-checks lease ownership in the same Lua call (`GET(lease) == token`), so a stale holder cannot write — no separate fencing token is needed when the store does the check-and-set atomically. Reads (`state()`) take no lease. `installRedisActors` can own its manager or share `BullMQMessagingComponent.connections`.
+
+Renewal is capped by the turn's deadline (see "Turn deadlines"). The lease renews every `leaseMs / 3` for as long as the turn runs, but only up to `deadlineMs`; past that it stops and the lease lapses within one `leaseMs`, so a wedged turn releases its seat cluster-wide rather than holding it while every other caller fails on `acquireTimeoutMs`. Reaching the cap also flows into the existing `ActorLeaseLostError` path — a turn whose lease is on its way out must not commit, and `COMMIT_TURN`'s token check refuses it in any case.
 
 This mode persists completed turns but does not durably queue pending commands. Durable request/reply queuing remains separate because the current `JobQueue` port has no result channel.
 

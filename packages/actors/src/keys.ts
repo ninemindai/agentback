@@ -5,6 +5,7 @@
 import {BindingKey} from '@agentback/core';
 import {MetadataAccessor} from '@agentback/metadata';
 import {z, type ZodType} from 'zod';
+import type {ActorSeatClass} from './deadlines.js';
 import type {ActorRegistry} from './registry.js';
 import type {ActorId, ActorRuntime, CommittedActorEvent} from './types.js';
 
@@ -167,6 +168,10 @@ export const SEAT_KEY_STORE_KEK = BindingKey.create<Buffer | string>(
 export interface ActorClassMetadata {
   name: string;
   state: ZodType<unknown>;
+  /** Deadline band for this actor's turns. Default `'capability'`. */
+  seatClass?: ActorSeatClass;
+  /** Explicit per-turn deadline in ms. Overrides the seat class's default. */
+  deadlineMs?: number;
 }
 
 export interface ActorCommandMetadata {

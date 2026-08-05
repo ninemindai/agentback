@@ -158,6 +158,41 @@ Every `CommittedActorEvent` carries a required `seatKeyId`, stamped at commit
 by the journaling runtime from the acting seat's key row. `''` is the
 documented sentinel for no seat layer bound — journaling still works, keyless.
 
+## Turn deadlines (per seat type)
+
+Every turn runs under a deadline drawn from the definition's **seat class**:
+`'capability'` (default, 30s — a caller is waiting) or `'worker'` (10min —
+back-office work). Declare it on `@actor`/`defineActor`; an explicit
+`deadlineMs` always wins.
+
+```ts
+@actor('nightly-import', {state: ImportState, seatClass: 'worker'})
+class ImportActor {…}
+
+@actor('cart', {state: CartState, deadlineMs: 5_000}) // explicit wins
+class CartActor {…}
+```
+
+**A timeout is a recorded failed turn, never a wedge.** A `receive` that
+outlives its deadline rejects the caller with `TurnTimeoutError` and frees the
+seat immediately (the next turn runs at once). The failed turn is then
+recorded: journaling runtimes append an `actor.turn.timeout` entry to the
+identity's log — a **reserved** event type, so never emit an `actor.`-prefixed
+event from a command — and every runtime logs it under
+`agentback:actors:deadline`.
+
+That record is its own write, touching neither state nor dedup, so the timed-out
+turn commits nothing **and its `requestId` stays retryable** — a timeout is not
+a cached failure result; retrying the same id runs the command again.
+
+The turn is **abandoned, not cancelled**: nothing interrupts a running
+`receive`, and side effects it already performed still happened. It simply can
+never commit — every runtime re-checks its mutual-exclusion guard (the Redis
+lease token, an equivalent per-turn guard in process) immediately before the
+commit, with no suspension point in between. On Redis the lease also stops
+renewing once the turn has run for its deadline, so the seat becomes claimable
+across processes even if the holder never returns.
+
 ## Runtimes (the `ActorRuntime` port)
 
 | Component                                          | Adapter               | Use                                         |
@@ -214,5 +249,7 @@ the key row when a caller provides one — never enforced. See
   `actors.invoke(...)`.
 - **No transactional side effects.** Rollback undoes actor state, not an email
   or HTTP call made inside a turn — use an outbox / idempotent downstreams.
+- **Every turn is deadlined** (capability 30s / worker 10min). A hung `receive`
+  is a recorded failed turn, not a wedged seat; the `requestId` stays retryable.
 - See [`docs/actor-model.md`](../../../docs/actor-model.md) and
   `examples/hello-actors` for the full model.

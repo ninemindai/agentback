@@ -2,7 +2,11 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {defineActor} from '@agentback/actors';
+import {
+  ACTOR_TURN_TIMEOUT_EVENT,
+  defineActor,
+  TurnTimeoutError,
+} from '@agentback/actors';
 import {
   runActorEventStoreConformance,
   runActorRuntimeConformance,
@@ -112,7 +116,8 @@ if (!REDIS_URL) {
           // seatKeyId is a raw defineActor caller's to set — but on ctx, not
           // the turn (see ActorCommandContext.seatKeyId); the runtime reads
           // it back after receive() resolves.
-          if (options.seatKeyId !== undefined) ctx.seatKeyId = options.seatKeyId;
+          if (options.seatKeyId !== undefined)
+            ctx.seatKeyId = options.seatKeyId;
           return {
             state,
             result: state,
@@ -255,6 +260,47 @@ if (!REDIS_URL) {
       expect(log.map(entry => entry.seq)).toEqual([0]);
     });
 
+    it('releases the seat in Redis when a turn misses its deadline', async () => {
+      // The conformance suite proves the next turn runs; this proves the
+      // distributed mechanism behind it — the lease key itself is gone, so
+      // any process may claim the seat, not just this one.
+      const prefix = `${testPrefix}:deadline`;
+      const base = keyBase(prefix, 'redis-deadline', 'wedged');
+      const deadlineRuntime = new RedisActorRuntime(connections, {
+        prefix,
+        leaseMs: 1_000,
+        leaseRetryMs: 5,
+        acquireTimeoutMs: 2_000,
+      });
+      const definition = defineActor('redis-deadline', {
+        state: JournalState,
+        command: JournalCommand,
+        result: JournalState,
+        deadlineMs: 50,
+        initialState: () => ({count: 0}),
+        async receive() {
+          await new Promise<never>(() => {});
+          throw new Error('unreachable');
+        },
+      });
+      deadlineRuntime.register(definition);
+
+      await expect(
+        deadlineRuntime
+          .ref(definition, 'wedged')
+          .invoke({by: 1}, {requestId: 'hangs'}),
+      ).rejects.toBeInstanceOf(TurnTimeoutError);
+
+      expect(await connections.base.exists(`${base}:lease`)).toBe(0);
+      // Nothing of the failed turn reached state or dedup — only the journal.
+      expect(await connections.base.exists(`${base}:state`)).toBe(0);
+      expect(await connections.base.exists(`${base}:dedup`)).toBe(0);
+      const journal = await deadlineRuntime.events('redis-deadline', 'wedged');
+      expect(journal.map(entry => entry.event.type)).toEqual([
+        ACTOR_TURN_TIMEOUT_EVENT,
+      ]);
+    });
+
     it('rejects a journal entry whose seq is not a number', async () => {
       const prefix = `${testPrefix}:foreign-entry`;
       const base = keyBase(prefix, 'redis-journal', 'foreign');
@@ -273,7 +319,7 @@ if (!REDIS_URL) {
       ).rejects.toThrow(/non-numeric seq/);
     });
 
-    it('journals the acting seat key id, and the \'\' sentinel when there is none', async () => {
+    it("journals the acting seat key id, and the '' sentinel when there is none", async () => {
       const signedRuntime = runtime('seat-key');
       const withSeat = journal({seatKeyId: 'seat-key-abc'});
       signedRuntime.register(withSeat);

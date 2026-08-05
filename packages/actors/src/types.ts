@@ -3,6 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 import {z, type ZodType} from 'zod';
+import type {ActorSeatClass} from './deadlines.js';
 
 /** Stable identity of one logical actor instance. */
 export interface ActorId {
@@ -161,6 +162,15 @@ export interface ActorDefinition<S, C, R> {
     state: S,
     command: C,
   ) => ActorTurn<S, R> | Promise<ActorTurn<S, R>>;
+  /** Deadline band these turns run under. See `ActorSeatClass`. */
+  readonly seatClass: ActorSeatClass;
+  /**
+   * Resolved per-turn deadline in milliseconds — always a number, because
+   * `defineActor` folds the seat-class default in. A turn that outlives it is
+   * abandoned with a `TurnTimeoutError` and recorded as a failed turn; it can
+   * never commit afterwards.
+   */
+  readonly deadlineMs: number;
   readonly __kind: 'actor';
 }
 
@@ -170,6 +180,10 @@ export interface DefineActorOptions<S, C, R> {
   result: ZodType<R>;
   initialState: (id: string) => S | Promise<S>;
   receive: ActorDefinition<S, C, R>['receive'];
+  /** Deadline band. Default `'capability'` (30s); `'worker'` is 10 minutes. */
+  seatClass?: ActorSeatClass;
+  /** Explicit per-turn deadline in ms. Overrides the seat class's default. */
+  deadlineMs?: number;
 }
 
 /** Options controlling one actor command. */

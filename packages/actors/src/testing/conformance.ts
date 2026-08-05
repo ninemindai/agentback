@@ -6,6 +6,7 @@ import {createECDH, randomBytes} from 'node:crypto';
 import {Application} from '@agentback/core';
 import {describe, expect, it} from 'vitest';
 import {z} from 'zod';
+import {ACTOR_TURN_TIMEOUT_EVENT, TurnTimeoutError} from '../deadlines.js';
 import {actor, actorCommand} from '../decorators.js';
 import {defineActor} from '../define-actor.js';
 import {InMemorySeatKeyStore} from '../in-memory-seat-key-store.js';
@@ -211,6 +212,126 @@ export function runActorRuntimeConformance(
       expect(await runtime.state(definition, 'invalid')).toEqual({value: 0});
     });
 
+    // -- Per-seat-type deadlines (capability-os#7) ------------------------
+    //
+    // A timeout is a recorded failed turn, never a wedge. These cases pin the
+    // caller-visible half on every adapter (typed error, free seat, nothing
+    // committed, retryable requestId); the journaled half is in
+    // `runActorEventStoreConformance`, and the log-only record that stands in
+    // for it on the journal-free runtime is in `in-memory-runtime.unit.ts`.
+    //
+    // Deadlines here are tiny on purpose — the shipped defaults are 30s and
+    // 10min, and no suite should wait for either.
+    function hanging(hangs: () => boolean) {
+      return defineActor('conformance.deadline', {
+        state: State,
+        command: z.object({amount: z.number()}),
+        result: Result,
+        deadlineMs: 50,
+        initialState: () => ({value: 0}),
+        async receive(_ctx, state, command) {
+          // Abandoned, not cancelled: nothing ever settles this.
+          if (hangs()) await new Promise<never>(() => {});
+          state.value += command.amount;
+          return {state, result: {value: state.value}};
+        },
+      });
+    }
+
+    it('fails a turn that outlives its deadline, committing nothing', async () => {
+      const runtime = makeRuntime();
+      const definition = hanging(() => true);
+      runtime.register(definition);
+      const ref = runtime.ref(definition, 'wedged');
+
+      await expect(
+        ref.invoke({amount: 1}, {requestId: 'hangs'}),
+      ).rejects.toBeInstanceOf(TurnTimeoutError);
+      expect(await runtime.state(definition, 'wedged')).toEqual({value: 0});
+    });
+
+    it('frees the seat immediately after a deadline, for the next turn', async () => {
+      const runtime = makeRuntime();
+      let hangs = true;
+      const definition = hanging(() => hangs);
+      runtime.register(definition);
+      const ref = runtime.ref(definition, 'freed');
+
+      await expect(
+        ref.invoke({amount: 1}, {requestId: 'hangs'}),
+      ).rejects.toBeInstanceOf(TurnTimeoutError);
+
+      // The next turn must not queue behind the abandoned one, which never
+      // settles: it runs now, off the state the timed-out turn did not move.
+      hangs = false;
+      const started = Date.now();
+      expect(await ref.invoke({amount: 2}, {requestId: 'next'})).toEqual({
+        value: 2,
+      });
+      expect(Date.now() - started).toBeLessThan(1_000);
+      expect(await runtime.state(definition, 'freed')).toEqual({value: 2});
+    });
+
+    it('lets a timed-out requestId run on retry (a timeout is not a cached result)', async () => {
+      const runtime = makeRuntime();
+      let hangs = true;
+      const definition = hanging(() => hangs);
+      runtime.register(definition);
+      const ref = runtime.ref(definition, 'retried');
+
+      await expect(
+        ref.invoke({amount: 3}, {requestId: 'once'}),
+      ).rejects.toBeInstanceOf(TurnTimeoutError);
+
+      // The failed turn wrote no dedup record — it touched neither state nor
+      // dedup — so the same requestId is free to run rather than replaying a
+      // "failure result" it never committed.
+      hangs = false;
+      expect(await ref.invoke({amount: 3}, {requestId: 'once'})).toEqual({
+        value: 3,
+      });
+      expect(await runtime.state(definition, 'retried')).toEqual({value: 3});
+    });
+
+    it('never lets an abandoned turn commit over the turn that replaced it', async () => {
+      // The moat case. A turn that merely runs *late* — not forever — resolves
+      // after its seat has already been handed to someone else. Committing it
+      // then would silently overwrite the newer state off a stale read, so the
+      // abandoned turn must be refused at the commit, not merely un-awaited.
+      // Each adapter refuses it with the same guard it uses for everything
+      // else: the lease token on Redis, its in-process counterpart otherwise.
+      const runtime = makeRuntime();
+      const definition = defineActor('conformance.deadline.late', {
+        state: State,
+        command: z.object({amount: z.number(), waitMs: z.number()}),
+        result: Result,
+        deadlineMs: 50,
+        initialState: () => ({value: 0}),
+        async receive(_ctx, state, command) {
+          if (command.waitMs) {
+            await new Promise<void>(resolve =>
+              setTimeout(resolve, command.waitMs),
+            );
+          }
+          state.value += command.amount;
+          return {state, result: {value: state.value}};
+        },
+      });
+      runtime.register(definition);
+      const ref = runtime.ref(definition, 'late');
+
+      await expect(
+        ref.invoke({amount: 100, waitMs: 400}, {requestId: 'late'}),
+      ).rejects.toBeInstanceOf(TurnTimeoutError);
+      expect(
+        await ref.invoke({amount: 7, waitMs: 0}, {requestId: 'next'}),
+      ).toEqual({value: 7});
+
+      // Well past the abandoned turn's own completion.
+      await new Promise<void>(resolve => setTimeout(resolve, 500));
+      expect(await runtime.state(definition, 'late')).toEqual({value: 7});
+    });
+
     it('validates commands before delivery', async () => {
       const runtime = makeRuntime();
       let turns = 0;
@@ -373,6 +494,71 @@ export function runActorEventStoreConformance(
       // A later event-emitting turn still starts the log at seq 0.
       await ref.invoke({type: 'inc', by: 1});
       expect((await runtime.events(TYPE, 'd')).map(e => e.seq)).toEqual([0]);
+    });
+
+    // -- Per-seat-type deadlines (capability-os#7) ------------------------
+    //
+    // "A timeout is a recorded failed turn": on a runtime that has a journal,
+    // the record IS a journal entry. It consumes a seq and carries the
+    // requestId, and it is its own write — it touches neither state nor the
+    // dedup record, so the one commit point is untouched and the requestId
+    // stays retryable (see the retry case in the runtime suite).
+    function hangingJournal(hangs: () => boolean) {
+      return defineActor('conformance.journal.deadline', {
+        state: JournalState,
+        command: z.object({by: z.number()}),
+        result: JournalState,
+        deadlineMs: 50,
+        initialState: () => ({count: 0}),
+        async receive(_ctx, state, command) {
+          if (hangs()) await new Promise<never>(() => {});
+          state.count += command.by;
+          return {
+            state,
+            result: state,
+            events: [{type: 'Incremented', by: command.by}],
+          };
+        },
+      });
+    }
+
+    it('journals a timed-out turn as a failed turn, and nothing else', async () => {
+      const runtime = makeRuntime();
+      let hangs = true;
+      const definition = hangingJournal(() => hangs);
+      runtime.register(definition);
+      const ref = runtime.ref(definition, 'timed-out');
+
+      await expect(
+        ref.invoke({by: 1}, {requestId: 'hangs'}),
+      ).rejects.toBeInstanceOf(TurnTimeoutError);
+
+      const afterTimeout = await runtime.events(
+        'conformance.journal.deadline',
+        'timed-out',
+      );
+      expect(afterTimeout).toHaveLength(1);
+      expect(afterTimeout[0]?.event.type).toBe(ACTOR_TURN_TIMEOUT_EVENT);
+      expect(afterTimeout[0]?.event.deadlineMs).toBe(50);
+      expect(afterTimeout[0]?.requestId).toBe('hangs');
+      expect(afterTimeout[0]?.seq).toBe(0);
+      // The failed turn moved no state.
+      expect(await runtime.state(definition, 'timed-out')).toEqual({count: 0});
+
+      // The marker consumed a seq, so the next real turn journals after it —
+      // one append-only log, system records and domain facts in commit order.
+      hangs = false;
+      await ref.invoke({by: 4}, {requestId: 'hangs'});
+      const afterRetry = await runtime.events(
+        'conformance.journal.deadline',
+        'timed-out',
+      );
+      expect(afterRetry.map(entry => entry.event.type)).toEqual([
+        ACTOR_TURN_TIMEOUT_EVENT,
+        'Incremented',
+      ]);
+      expect(afterRetry.map(entry => entry.seq)).toEqual([0, 1]);
+      expect(await runtime.state(definition, 'timed-out')).toEqual({count: 4});
     });
 
     it('keeps each identity log independent', async () => {

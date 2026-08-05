@@ -3,6 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 export * from './types.js';
+export * from './deadlines.js';
 export * from './define-actor.js';
 export * from './keys.js';
 export * from './in-memory-runtime.js';
