@@ -164,6 +164,11 @@ the shared contract both runtimes pass.
 State stays authoritative — this is "state + event log", not full event
 sourcing. Events are not appended on a rolled-back or replayed turn.
 
+Every `CommittedActorEvent` carries a required `seatKeyId`, stamped at commit
+by the journaling runtime from the acting seat's key row (see "Custodial seat
+keys" above). `''` is the documented sentinel for no seat layer — an app that
+never binds a `SeatKeyStore` still journals, just keyless.
+
 ## Runtimes (the `ActorRuntime` port)
 
 | Component                                                             | Adapter               | Use                                         |

@@ -2,7 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import type {ZodType} from 'zod';
+import {z, type ZodType} from 'zod';
 
 /** Stable identity of one logical actor instance. */
 export interface ActorId {
@@ -58,13 +58,30 @@ export interface CommittedActorEvent {
   /** The `requestId` of the turn that produced it. */
   readonly requestId: string;
   /**
-   * Seat key identity of the seat that committed the turn, when the acting
-   * identity had a key row. Optional only while runtimes differ in whether
-   * they journal it.
+   * Seat key identity of the seat that committed the turn. Always present —
+   * every journaling runtime stamps it at commit. `''` is the documented "no
+   * seat layer" sentinel: the acting identity had no key row because no
+   * `SeatKeyStore` was bound (an app without the seat layer configured keeps
+   * working; see `ActorRegistry`'s `ensureSeatKey`). A non-empty value names
+   * the row in the bound `SeatKeyStore`.
    */
-  readonly seatKeyId?: string;
+  readonly seatKeyId: string;
   readonly event: ActorEvent;
 }
+
+/**
+ * Runtime validator for `CommittedActorEvent`. `seatKeyId` must be a string
+ * (the `''` sentinel is valid) — an event object that omits the field
+ * entirely, as a pre-seat-layer wire format would, fails
+ * `.parse()`/`.safeParse()`.
+ */
+export const CommittedActorEventSchema = z.object({
+  actor: z.object({type: z.string(), id: z.string()}),
+  seq: z.number(),
+  requestId: z.string(),
+  seatKeyId: z.string(),
+  event: z.object({type: z.string()}).catchall(z.unknown()),
+});
 
 /**
  * Read half of an identity's append-only event log (Event = fact). Split from

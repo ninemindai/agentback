@@ -2,12 +2,52 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {createECDH} from 'node:crypto';
+import {createECDH, randomBytes} from 'node:crypto';
+import {Application} from '@agentback/core';
 import {describe, expect, it} from 'vitest';
 import {z} from 'zod';
+import {actor, actorCommand} from '../decorators.js';
 import {defineActor} from '../define-actor.js';
-import type {ActorEventReader, ActorId, ActorRuntime} from '../types.js';
-import type {SeatKeyStore} from '../keys.js';
+import {InMemorySeatKeyStore} from '../in-memory-seat-key-store.js';
+import {
+  ACTOR_REGISTRY,
+  ACTOR_RUNTIME,
+  SEAT_KEY_STORE,
+  SEAT_KEY_STORE_KEK,
+  type SeatKeyStore,
+} from '../keys.js';
+import {ActorRegistry} from '../registry.js';
+import type {
+  Actor,
+  ActorEventReader,
+  ActorId,
+  ActorRuntime,
+  ActorTurn,
+} from '../types.js';
+
+/**
+ * A minimal `@actor` used only to exercise the registry-driven path (its
+ * `ensureSeatKey` + `receive` wiring) against a journaling runtime — as
+ * opposed to the raw `defineActor` cases above, which set `seatKeyId`
+ * themselves and so never prove the registry actually plumbs the store's key
+ * row onto the turn.
+ */
+const SeatedJournalState = z.object({});
+type SeatedJournalStateT = z.infer<typeof SeatedJournalState>;
+
+@actor('conformance.journal.seated', {state: SeatedJournalState})
+class SeatedJournalActor implements Actor<SeatedJournalStateT> {
+  initialState(): SeatedJournalStateT {
+    return {};
+  }
+
+  @actorCommand('go', {input: z.object({}), output: z.object({})})
+  go(
+    state: SeatedJournalStateT,
+  ): ActorTurn<SeatedJournalStateT, SeatedJournalStateT> {
+    return {state, result: {}, events: [{type: 'Seated'}]};
+  }
+}
 
 const State = z.object({value: z.number()});
 const Command = z.discriminatedUnion('type', [
@@ -350,6 +390,71 @@ export function runActorEventStoreConformance(
       const runtime = makeRuntime();
       runtime.register(journal());
       expect(await runtime.events(TYPE, 'never-addressed')).toEqual([]);
+    });
+
+    // The two cases above set seatKeyId directly on the turn — they prove
+    // the runtime plumbs it, not that the registry supplies the right one.
+    // These go through ActorRegistry + a real @actor, the same path a
+    // production app uses, so ensureSeatKey's result is what actually
+    // reaches the journal.
+    it("stamps the acting seat's key row id on the committed event (registry-driven, key store bound)", async () => {
+      const runtime = makeRuntime();
+      const app = new Application();
+      app.bind(ACTOR_RUNTIME).to(runtime);
+      app.service(ActorRegistry);
+      app.bind(SEAT_KEY_STORE_KEK).to(randomBytes(32));
+      app.service(InMemorySeatKeyStore);
+      app.service(SeatedJournalActor);
+      await app.start();
+
+      const registry = await app.get(ACTOR_REGISTRY);
+      const store = await app.get(SEAT_KEY_STORE);
+      const seated: ActorId = {
+        type: 'conformance.journal.seated',
+        id: 'seated-a',
+      };
+
+      await registry.invoke(
+        seated.type,
+        seated.id,
+        {name: 'go', input: {}},
+        {requestId: 'r1'},
+      );
+
+      const record = await store.getByActor(seated);
+      const log = await registry.events(seated.type, seated.id);
+
+      expect(record?.seatKeyId).toBeTruthy();
+      expect(log).toHaveLength(1);
+      expect(log[0]?.seatKeyId).toBe(record?.seatKeyId);
+      await app.stop();
+    });
+
+    it("carries the '' sentinel on the committed event when no key store is bound (registry-driven)", async () => {
+      const runtime = makeRuntime();
+      const app = new Application();
+      app.bind(ACTOR_RUNTIME).to(runtime);
+      app.service(ActorRegistry);
+      app.service(SeatedJournalActor);
+      await app.start();
+
+      const registry = await app.get(ACTOR_REGISTRY);
+      const seated: ActorId = {
+        type: 'conformance.journal.seated',
+        id: 'seated-b',
+      };
+
+      await registry.invoke(
+        seated.type,
+        seated.id,
+        {name: 'go', input: {}},
+        {requestId: 'r1'},
+      );
+
+      const log = await registry.events(seated.type, seated.id);
+      expect(log).toHaveLength(1);
+      expect(log[0]?.seatKeyId).toBe('');
+      await app.stop();
     });
   });
 }

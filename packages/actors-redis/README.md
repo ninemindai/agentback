@@ -42,7 +42,7 @@ If a process crashes before commit, no state changes. If it crashes after commit
 
 ## Journal
 
-A command turn's `events` are appended to a per-identity Redis Stream (`…:log`) **inside the commit script** — one entry per event, carrying `seq`, `requestId`, `seatKeyId` and the event JSON. There is no second write to go wrong: a turn either commits its state, its dedup record and its events, or none of the three. `seq` is a gap-free per-identity counter (`…:seq`), advanced in that same script.
+A command turn's `events` are appended to a per-identity Redis Stream (`…:log`) **inside the commit script** — one entry per event, carrying `seq`, `requestId`, `seatKeyId` and the event JSON. There is no second write to go wrong: a turn either commits its state, its dedup record and its events, or none of the three. `seq` is a gap-free per-identity counter (`…:seq`), advanced in that same script. `seatKeyId` is always written, `''` when the acting identity had no key row; `events()` surfaces it as a required field on every `CommittedActorEvent` and validates the read back against `CommittedActorEventSchema`, rejecting a stream entry that predates this field entirely.
 
 ```ts
 const log = await registry.events('cart', 'cart-42'); // CommittedActorEvent[]

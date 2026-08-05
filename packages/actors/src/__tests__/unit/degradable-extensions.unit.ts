@@ -34,6 +34,7 @@ const event: CommittedActorEvent = {
   actor: {type: 'seat', id: 'one'},
   seq: 0,
   requestId: 'r1',
+  seatKeyId: '',
   event: {type: 'created'},
 };
 

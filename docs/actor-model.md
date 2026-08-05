@@ -178,7 +178,7 @@ This mode persists completed turns but does not durably queue pending commands. 
 
 ## Events (event log)
 
-A command turn may return `events` alongside `state` and `result` — domain facts (`{type, …}`) describing what happened. `EventSourcedActorsComponent` binds an `ActorRuntime` that **persists those events to a per-identity append-only log atomically with the state/dedup commit**, then delivers them to subscribers. Read a log with `registry.events(type, id)` or react with `registry.subscribe(handler)`; each `CommittedActorEvent` carries the `actor`, a 0-based `seq`, and the producing `requestId`. Events are not appended on a rolled-back or replayed turn.
+A command turn may return `events` alongside `state` and `result` — domain facts (`{type, …}`) describing what happened. `EventSourcedActorsComponent` binds an `ActorRuntime` that **persists those events to a per-identity append-only log atomically with the state/dedup commit**, then delivers them to subscribers. Read a log with `registry.events(type, id)` or react with `registry.subscribe(handler)`; each `CommittedActorEvent` carries the `actor`, a 0-based `seq`, the producing `requestId`, and the committing seat's `seatKeyId` (a required string; `''` is the documented sentinel when no `SeatKeyStore` is bound). Events are not appended on a rolled-back or replayed turn.
 
 This is **state plus an event log**, not full event sourcing: state stays the stored, authoritative value (not a fold of events). It delivers the "Event = fact" persistence — projections, audit, and react-to-what-happened subscribers — without an event-sourced authoring model.
 

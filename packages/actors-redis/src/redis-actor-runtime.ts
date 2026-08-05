@@ -5,6 +5,7 @@
 import {
   ACTOR_RUNTIME,
   actorCommandFingerprint,
+  CommittedActorEventSchema,
   type ActorDefinition,
   type ActorEvent,
   type ActorEventReader,
@@ -437,15 +438,18 @@ function toCommittedEvent(
       `Journal entry for actor '${actor.type}/${actor.id}' has a non-numeric seq.`,
     );
   }
-  const committed: CommittedActorEvent = {
+  // seatKeyId is not defaulted here: the commit script always writes the
+  // field (empty string when no key row — see the COMMIT_TURN ARGV[6]
+  // comment), so a genuinely missing field means a foreign/pre-seat-layer
+  // entry, and CommittedActorEventSchema rejects it rather than silently
+  // coercing it to the '' sentinel.
+  return CommittedActorEventSchema.parse({
     actor,
     seq,
     requestId: record.requestId ?? '',
+    seatKeyId: record.seatKeyId,
     event: JSON.parse(record.event ?? 'null') as ActorEvent,
-  };
-  return record.seatKeyId
-    ? {...committed, seatKeyId: record.seatKeyId}
-    : committed;
+  });
 }
 
 function assertId(id: string): void {

@@ -146,6 +146,10 @@ the exported `ActorEventReader` (read the log) and `ActorEventStore` (read
 State stays authoritative — this is "state + event log", not full event
 sourcing. Events are not appended on a rolled-back or replayed turn.
 
+Every `CommittedActorEvent` carries a required `seatKeyId`, stamped at commit
+by the journaling runtime from the acting seat's key row. `''` is the
+documented sentinel for no seat layer bound — journaling still works, keyless.
+
 ## Runtimes (the `ActorRuntime` port)
 
 | Component                                          | Adapter               | Use                                         |

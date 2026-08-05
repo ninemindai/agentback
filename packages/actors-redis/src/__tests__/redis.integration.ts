@@ -270,7 +270,7 @@ if (!REDIS_URL) {
       ).rejects.toThrow(/non-numeric seq/);
     });
 
-    it('journals the acting seat key id, and omits it when there is none', async () => {
+    it('journals the acting seat key id, and the \'\' sentinel when there is none', async () => {
       const signedRuntime = runtime('seat-key');
       const withSeat = journal({seatKeyId: 'seat-key-abc'});
       signedRuntime.register(withSeat);
@@ -292,7 +292,7 @@ if (!REDIS_URL) {
         'unsigned',
       );
       expect(unsigned).toBeDefined();
-      expect(unsigned).not.toHaveProperty('seatKeyId');
+      expect(unsigned?.seatKeyId).toBe('');
     });
   });
 
