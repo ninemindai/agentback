@@ -56,7 +56,9 @@ Reads are lease-free (`XRANGE` over the whole log). Nothing trims the stream yet
 
 **The durable log is the source of truth; live delivery is best effort.** A subscription is one tail loop on its own connection, reading all known journals in a single multi-stream `XREAD`. It keeps the last `seq` it delivered per identity, and whenever it (re)connects it re-reads each log from the start and replays everything past that cursor before going live. A restarted process holds no cursor, so it replays from `seq` 0 — normal operation, not an error path. **Delivery is therefore at-least-once and consumers must be idempotent by `(actor, seq)`.** Order is guaranteed per identity, unspecified across identities. Nothing filters between the log and a handler: every consumer is offered every event.
 
-Finding the streams to tail needs to know which identities exist, so the runtime keeps one `…:identities` set, written *before* a turn commits (once per identity per process). It is deliberately outside the commit script: the script's keys all carry the `{type:id}` hash tag and one shared index key would make the commit cross-slot on Redis Cluster. Writing it first is what makes it safe — a committed event's identity is always indexed; an addressed-but-never-committed one may also be listed, which costs an empty stream in the `XREAD` and delivers nothing.
+Finding the streams to tail needs to know which identities exist, so the runtime keeps one `…:identities` set, re-written *before* the commit on **every** turn. It is deliberately outside the commit script: the script's keys all carry the `{type:id}` hash tag and one shared index key would make the commit cross-slot on Redis Cluster. Ordering is what makes it safe — the `SADD` is awaited before the script runs, so a turn that commits an event was preceded by an index write in that same call, and an addressed-but-never-committed identity may also be listed (an empty stream in the `XREAD`, delivering nothing).
+
+What that does **not** give you is an inductive claim about the past. There is no per-process memo precisely so that a lost entry — an operator `DEL`, an eviction (this is the cold key while the journal streams stay hot), a failover that keeps a commit but loses the `SADD` — **self-heals on that identity's next turn**. An identity whose entry is lost and that never takes another turn stays undiscoverable to a *new* subscriber until it does; `events(type, id)` addresses the log directly and is unaffected.
 
 DI-registered `seat.journal.consumer` extensions are hosted by `SeatJournalConsumerHost`, which takes **one** subscription and fans out to every provider — so a consumer costs a callback, not a connection. Providers are Zod-validated when discovered and one that throws degrades to skip + log, leaving its siblings running. `subscribe(fn)` remains the programmatic surface for non-extension callers.
 
@@ -97,7 +99,7 @@ State and results must be JSON-serializable. The dedup hash TTL is refreshed on 
 - Commands are synchronous request/reply calls; pending commands are not durably queued. A future BullMQ mode needs a result channel beyond the current `JobQueue` port.
 - Actor keys use a Redis hash tag, keeping each turn's Lua keys in one Redis Cluster slot.
 - Delivery is best-effort and at-least-once; consumers must be idempotent by `(actor, seq)`. A handler that throws is logged and skipped — its event is not retried, because the log can be replayed by `seq`.
-- The identity index is written before the commit, never inside it: an event's identity is always discoverable, and the index may over-approximate.
+- The identity index is written before the commit, never inside it, and re-asserted on every turn (no memo). It may over-approximate, and a lost entry self-heals on the identity's next turn — but an identity that never takes another turn stays undiscoverable to a new subscriber until it does.
 
 ## Testing
 

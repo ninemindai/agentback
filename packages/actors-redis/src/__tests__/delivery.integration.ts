@@ -14,7 +14,10 @@ import {Application, Binding, extensionFor} from '@agentback/core';
 import {RedisConnectionManager} from '@agentback/messaging-bullmq';
 import {afterAll, describe, expect, it} from 'vitest';
 import {z} from 'zod';
-import {RedisActorRuntime} from '../redis-actor-runtime.js';
+import {
+  RedisActorRuntime,
+  type RedisActorRuntimeOptions,
+} from '../redis-actor-runtime.js';
 import {installRedisActors} from '../redis-actors.component.js';
 
 const REDIS_URL = process.env.REDIS_URL;
@@ -67,7 +70,10 @@ if (!REDIS_URL) {
    * against the same durable journal — which is how the restart gate below
    * gets a genuinely fresh in-process cursor.
    */
-  const runtime = (suffix: string) =>
+  const runtime = (
+    suffix: string,
+    overrides: Partial<RedisActorRuntimeOptions> = {},
+  ) =>
     new RedisActorRuntime(connections, {
       prefix: `${testPrefix}:${suffix}`,
       leaseMs: 1_000,
@@ -76,6 +82,7 @@ if (!REDIS_URL) {
       dedupTtlSeconds: 60,
       blockMs: 50,
       discoveryIntervalMs: 20,
+      ...overrides,
     });
 
   const eventKey = (event: CommittedActorEvent) =>
@@ -195,6 +202,71 @@ if (!REDIS_URL) {
       } finally {
         off();
         await resumed.stopDelivery();
+      }
+    });
+
+    it('indexes the identity before every commit, never memoized', async () => {
+      // The load-bearing property of the discovery index is an *ordering*:
+      // the SADD resolves before the commit script is issued, so a committed
+      // event's identity is always discoverable. Nothing else in this file
+      // fails if the SADD moves below the EVAL, so pin it here — recording
+      // the SADD when it RESOLVES and the commit EVAL when it is ISSUED,
+      // which is the strict form of "before".
+      const trace: string[] = [];
+      const base = new Proxy(connections.base, {
+        get(target, property, receiver) {
+          const value = Reflect.get(target, property, receiver) as unknown;
+          if (typeof value !== 'function') return value;
+          const fn = value as (...args: unknown[]) => Promise<unknown>;
+          if (property === 'sadd') {
+            return async (...args: unknown[]) => {
+              const result = await fn.apply(target, args);
+              trace.push('sadd:resolved');
+              return result;
+            };
+          }
+          if (property === 'eval') {
+            return (...args: unknown[]) => {
+              // The commit script is the only one that appends to the log.
+              if (String(args[0]).includes('XADD')) trace.push('commit:issued');
+              return fn.apply(target, args);
+            };
+          }
+          return fn.bind(target);
+        },
+      });
+      const traced = new RedisActorRuntime(
+        {
+          base,
+          duplicate: (...args: never[]) => connections.duplicate(...args),
+          release: (conn: never) => connections.release(conn),
+        } as unknown as RedisConnectionManager,
+        {prefix: `${testPrefix}:ordering`, leaseMs: 1_000, leaseRetryMs: 5},
+      );
+      const definition = journal();
+      traced.register(definition);
+
+      await traced.ref(definition, 'o').invoke({by: 1}, {requestId: 'r0'});
+      await traced.ref(definition, 'o').invoke({by: 1}, {requestId: 'r1'});
+
+      expect(trace).toEqual([
+        'sadd:resolved',
+        'commit:issued',
+        // Re-asserted on the second turn of the same identity: no per-process
+        // memo, so an index entry lost after the first turn self-heals.
+        'sadd:resolved',
+        'commit:issued',
+      ]);
+      expect(
+        await connections.base.smembers(`${testPrefix}:ordering:identities`),
+      ).toEqual([`${encodeURIComponent(TYPE)}:o`]);
+    });
+
+    it('rejects a delivery interval that would spin or block forever', () => {
+      for (const options of [{blockMs: 0}, {discoveryIntervalMs: -1}]) {
+        expect(() => runtime('bad', options)).toThrow(
+          /must be a positive finite number/,
+        );
       }
     });
 

@@ -178,8 +178,6 @@ export class ActorLeaseLostError extends Error {
 export class RedisActorRuntime implements ActorRuntime, ActorEventStore {
   private readonly definitions = new Map<string, object>();
   private readonly subscriptions = new Set<RedisJournalSubscription>();
-  /** Identities this instance has already added to the discovery index. */
-  private readonly indexed = new Set<string>();
   private readonly prefix: string;
   private readonly leaseMs: number;
   private readonly leaseRetryMs: number;
@@ -194,9 +192,15 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventStore {
     options: RedisActorRuntimeOptions = {},
   ) {
     this.prefix = options.prefix ?? 'agentback:actors';
+    // Resolved and range-checked here, like every other numeric option: a
+    // `blockMs` of 0 means "block forever" and a `discoveryIntervalMs` of 0
+    // spins the tail loop.
     this.deliveryDefaults = {
-      blockMs: options.blockMs,
-      discoveryIntervalMs: options.discoveryIntervalMs,
+      blockMs: positive(options.blockMs ?? 1_000, 'blockMs'),
+      discoveryIntervalMs: positive(
+        options.discoveryIntervalMs ?? 1_000,
+        'discoveryIntervalMs',
+      ),
     };
     this.leaseMs = positive(options.leaseMs ?? 30_000, 'leaseMs');
     this.leaseRetryMs = positive(options.leaseRetryMs ?? 25, 'leaseRetryMs');
@@ -467,28 +471,37 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventStore {
   }
 
   /**
-   * Record this identity in the discovery index, once per process.
+   * Re-assert this identity in the discovery index. Runs on **every** turn,
+   * before the commit — deliberately not memoized per process.
    *
-   * Deliberately **not** part of `COMMIT_TURN`, for two reasons. It cannot be:
+   * Deliberately **not** part of `COMMIT_TURN` either, because it cannot be:
    * the index is one key for the whole prefix while every commit key carries
    * the `{type:id}` hash tag, so adding it to the script would make the
-   * commit cross-slot on Redis Cluster. And it does not need to be: this runs
-   * *before* the commit, so `an event exists` implies `its identity is
-   * indexed`, which is the only direction delivery depends on. The other
-   * direction is allowed to be loose — an identity that was addressed but
-   * never committed leaves an empty stream for a tail loop to read, which
-   * costs one key in an `XREAD` and delivers nothing. The one commit point
-   * stays exactly one script; this is an over-approximating hint beside it,
-   * not a second half of it.
+   * commit cross-slot on Redis Cluster. It does not need to be, because
+   * ordering carries the invariant instead — the `SADD` is awaited before the
+   * script runs, so a turn that commits an event was preceded by an index
+   * write in this same call. The one commit point stays exactly one script;
+   * this is an over-approximating hint beside it, not a second half of it
+   * (an identity addressed but never committed may be listed, which costs one
+   * empty stream in an `XREAD` and delivers nothing).
+   *
+   * **What holds, precisely:** every committed turn re-writes the entry, so
+   * an index lost afterwards (an operator `DEL`, an eviction — this is the
+   * cold key while the journal streams stay hot, a failover replaying only
+   * part of the window) self-heals on that identity's next turn. It is *not*
+   * an inductive guarantee about the past: an identity whose entry is lost
+   * and that never takes another turn stays undiscoverable to a **new**
+   * subscriber until it does. `events(type, id)` addresses the log directly
+   * and is unaffected either way. A memo here would trade exactly that
+   * self-healing for one saved round trip per identity per process, next to
+   * the two lease round trips every turn already pays — not a trade worth
+   * making.
    */
   private async indexIdentity(actor: ActorId): Promise<void> {
-    const key = `${actor.type} ${actor.id}`;
-    if (this.indexed.has(key)) return;
     await this.connections.base.sadd(
       this.identityIndexKey,
       `${encodeURIComponent(actor.type)}:${encodeURIComponent(actor.id)}`,
     );
-    this.indexed.add(key);
   }
 
   private keys(actor: ActorId): ActorKeys {

@@ -2,6 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import {loggers} from '@agentback/common';
 import {
   BindingScope,
   ContextTags,
@@ -21,6 +22,8 @@ import type {
   ActorRuntime,
   CommittedActorEvent,
 } from './types.js';
+
+const log = loggers('agentback:actors:events');
 
 interface StoredActor {
   state: unknown;
@@ -179,8 +182,16 @@ export class EventSourcedActorRuntime implements ActorRuntime, ActorEventStore {
         for (const handler of this.subscribers) {
           try {
             handler(structuredClone(committedEvent));
-          } catch {
-            // a subscriber error is its own problem
+          } catch (err) {
+            // Skipped, but never silently: the port documents a throwing
+            // subscriber as "logged and skipped".
+            log.error(
+              'subscriber threw on %s/%s#%d and was skipped: %s',
+              actor.type,
+              actor.id,
+              committedEvent.seq,
+              err,
+            );
           }
         }
       }
