@@ -166,6 +166,16 @@ export interface ActorEventStore extends ActorEventReader {
    * idempotency key derived from it) sees each fact once, and one that
    * assumes single delivery double-counts on the first reconnect.
    *
+   * **Replay-from-zero is only guaranteed while the whole log is retained.**
+   * An adapter may cap a journal (`@agentback/actors-redis`'s opt-in
+   * `journal.maxEventsPerIdentity`), and a capped log is a *suffix*: `seq`
+   * still comes from the identity's counter, so the surviving entries keep
+   * their committed numbering, but a consumer whose cursor predates the oldest
+   * retained entry has a real **gap** and cannot close it from the log. That
+   * is a property of the deployment, not of this port — a consumer that needs
+   * complete history must archive (the `seat.journal.archiver` extension
+   * point) or run with retention unset.
+   *
    * Ordering is guaranteed per identity (`seq` ascending) and unspecified
    * across identities. A handler that throws is logged and skipped — it never
    * stalls the tail, fails the committing turn, or affects another

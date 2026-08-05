@@ -149,7 +149,20 @@ handlers are called at least once per event — the Redis adapter replays by
 `seq` on every reconnect, and a restarted process replays from the start. A
 handler that throws is logged and skipped; it never stalls the tail or fails
 the committing turn. DI-registered `seat.journal.consumer` providers are hosted
-on **one** shared subscription and degrade to skip + log individually.
+on **one** shared subscription and degrade to skip + log individually; on Redis
+the host also **persists a cursor per consumer id**, so a restart resumes each
+consumer rather than replaying every identity's history to all of them (written
+after the handler returns, so delivery stays at-least-once; an unknown consumer
+id starts from `seq` 0).
+
+**Journal retention is opt-in** — `installRedisActors(app, {journal:
+{maxEventsPerIdentity: n}})` caps each identity's log inside the same commit
+that appends to it; unset (the default) keeps everything. `seq` comes from the
+identity's counter, never from stream length, so a capped log is a _suffix_
+with its committed numbering intact. What it costs is replay-from-zero: a
+consumer whose cursor predates the oldest retained entry has a real gap (the
+host logs it and continues from the oldest retained entry). Consumers needing
+full history archive via `seat.journal.archiver` or run with retention unset.
 
 State stays authoritative — this is "state + event log", not full event
 sourcing. Events are not appended on a rolled-back or replayed turn.
@@ -213,10 +226,10 @@ caller it is an ordinary thrown turn that rolls back. One incident, one marker.
 
 ## Runtimes (the `ActorRuntime` port)
 
-| Component                                          | Adapter               | Use                                         |
-| -------------------------------------------------- | --------------------- | ------------------------------------------- |
-| `InMemoryActorsComponent`                          | in-memory             | tests, dev, single-instance                 |
-| `EventSourcedActorsComponent`                      | in-memory + event log | the above **plus** a per-identity event log, delivered to subscribers |
+| Component                                          | Adapter               | Use                                                                                                              |
+| -------------------------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `InMemoryActorsComponent`                          | in-memory             | tests, dev, single-instance                                                                                      |
+| `EventSourcedActorsComponent`                      | in-memory + event log | the above **plus** a per-identity event log, delivered to subscribers                                            |
 | `RedisActorsComponent` (`@agentback/actors-redis`) | Redis                 | cross-process serialization + durable state **and** a durable event log, delivered by tailing it (at-least-once) |
 
 `installRedisActors(app, {connection: {url: process.env.REDIS_URL}})` swaps in
@@ -228,7 +241,7 @@ the shared `runActorRuntimeConformance` suite.
 Every identity gets a platform-held secp256k1 keypair (Nostr-compatible) at
 its first **command turn** — **custodial, dormant, nothing signs**. The row is
 created inside the compiled actor's `receive`, post-validation and post-dedup
-but *before* the command method runs, so it is not commit-gated: a first turn
+but _before_ the command method runs, so it is not commit-gated: a first turn
 that throws or times out rolls back and still leaves a dormant key row behind
 (accepted — `create()` is idempotent, so the retry reuses it). A lease-free
 read/query never creates

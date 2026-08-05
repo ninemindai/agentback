@@ -136,6 +136,21 @@ between `0` (no expiry) and `MAX_DEDUP_TTL_SECONDS` are accepted.
   identity whose `initialState` hangs used to yield no `TurnTimeoutError`, no
   marker, and an `invoke()` promise that never settled; it is now an ordinary
   recorded failed turn (marker journaled, seat freed, `requestId` retryable).
+- **`@agentback/actors-redis`** — **opt-in journal retention**
+  (`journal: {maxEventsPerIdentity}`). Unset — the default, and every prior
+  release's behavior — keeps every event. When set, the cap is applied by the
+  same `XADD` that appends, so the one commit point stays one script. `seq`
+  still comes from the identity's counter, so a trimmed log reads as a suffix
+  with its numbering intact; what it costs is replay-from-zero, since a
+  consumer whose cursor predates the oldest retained entry has a real gap.
+  Archive (`seat.journal.archiver`) or leave retention unset if you need the
+  full history.
+- **`@agentback/actors-redis`** — `SeatJournalConsumerHost` **persists a cursor
+  per consumer id**, so a restart no longer replays every identity's whole
+  history to every DI-registered consumer. Delivery stays at-least-once (the
+  cursor is written after the handler returns), and a consumer id the store has
+  never seen still starts from `seq` 0. A cursor that retention has outrun is
+  logged as a gap and resumed from the oldest retained entry, never thrown.
 - **`@agentback/actors`** — an actor **type or id containing a C0 control
   character** (`U+0000`-`U+001F`) is now rejected at validation, on every
   runtime. Such ids were silently accepted before and were aliasing-prone: the
@@ -149,7 +164,7 @@ between `0` (no expiry) and `MAX_DEDUP_TTL_SECONDS` are accepted.
 
 - On Redis the deadline stops at the commit boundary. Once the commit script
   has been issued, a commit that stalls in Redis makes that one caller wait —
-  the *seat* is still bounded by the renewal cap, so the identity cannot wedge.
+  the _seat_ is still bounded by the renewal cap, so the identity cannot wedge.
   In process there is no such gap (the commit is synchronous).
   _(The `initialState` gap listed here before is closed: the Redis race now
   covers the state load, so a hanging cold start is a `TurnTimeoutError` plus a

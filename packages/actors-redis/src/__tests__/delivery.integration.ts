@@ -262,6 +262,184 @@ if (!REDIS_URL) {
       ).toEqual([`${encodeURIComponent(TYPE)}:o`]);
     });
 
+    /**
+     * One application with one `seat.journal.consumer` provider, on a shared
+     * prefix — two of these in sequence model a process restart, which is the
+     * only way to prove a cursor outlived the process that wrote it.
+     */
+    async function bootHost(
+      prefix: string,
+      provider: string,
+      seen: string[],
+      overrides: Partial<RedisActorRuntimeOptions> = {},
+    ): Promise<Application> {
+      const app = new Application();
+      installRedisActors(app, {
+        connections,
+        prefix: `${testPrefix}:${prefix}`,
+        leaseMs: 1_000,
+        leaseRetryMs: 5,
+        acquireTimeoutMs: 2_000,
+        blockMs: 50,
+        discoveryIntervalMs: 20,
+        ...overrides,
+      });
+      app.add(
+        Binding.bind(`consumers.${provider}`)
+          .to({
+            provider,
+            consume: (event: CommittedActorEvent) => {
+              seen.push(eventKey(event));
+            },
+          })
+          .apply(extensionFor(SEAT_JOURNAL_CONSUMER)),
+      );
+      await app.start();
+      return app;
+    }
+
+    it('resumes a DI consumer from its persisted cursor after a restart', async () => {
+      // Without a persisted cursor every boot replays every identity's whole
+      // history to every consumer — fine for an idempotent projection, ruinous
+      // for one that fans out (webhooks, indexing) on a log that has grown.
+      const rt = runtime('cursor-ep');
+      const definition = journal();
+      rt.register(definition);
+      const ref = rt.ref(definition, 'p');
+
+      const first: string[] = [];
+      const before = await bootHost('cursor-ep', 'projection', first);
+      await ref.invoke({by: 1}, {requestId: 'r0'});
+      await ref.invoke({by: 1}, {requestId: 'r1'});
+      await waitFor(
+        () => first.length >= 2,
+        () => `first=${first.join(',')}`,
+      );
+      await before.stop();
+
+      // The journal keeps growing while nothing is listening.
+      await ref.invoke({by: 1}, {requestId: 'r2'});
+      await ref.invoke({by: 1}, {requestId: 'r3'});
+
+      const second: string[] = [];
+      const after = await bootHost('cursor-ep', 'projection', second);
+      try {
+        await waitFor(
+          () => second.length >= 2,
+          () => `second=${second.join(',')}`,
+        );
+        // Only what it had not already handled — the first two are not
+        // replayed, even though they are still in the durable log.
+        expect([...new Set(second)].sort()).toEqual([
+          `${TYPE}/p#2`,
+          `${TYPE}/p#3`,
+        ]);
+      } finally {
+        await after.stop();
+        await rt.stopDelivery();
+      }
+    });
+
+    it('replays from the start for a consumer id the store has never seen', async () => {
+      // Today's behavior is the default for a new consumer: no cursor means
+      // the whole retained log, so a projection added later backfills itself.
+      const rt = runtime('cursor-new');
+      const definition = journal();
+      rt.register(definition);
+      const ref = rt.ref(definition, 'n');
+      await ref.invoke({by: 1}, {requestId: 'r0'});
+      await ref.invoke({by: 1}, {requestId: 'r1'});
+
+      const known: string[] = [];
+      const first = await bootHost('cursor-new', 'known', known);
+      await waitFor(
+        () => known.length >= 2,
+        () => `known=${known.join(',')}`,
+      );
+      await first.stop();
+
+      const fresh: string[] = [];
+      const second = await bootHost('cursor-new', 'newcomer', fresh);
+      try {
+        await waitFor(
+          () => fresh.length >= 2,
+          () => `fresh=${fresh.join(',')}`,
+        );
+        expect([...new Set(fresh)].sort()).toEqual([
+          `${TYPE}/n#0`,
+          `${TYPE}/n#1`,
+        ]);
+      } finally {
+        await second.stop();
+        await rt.stopDelivery();
+      }
+    });
+
+    it('logs the gap and continues when retention outran a persisted cursor', async () => {
+      // Retention + a persisted cursor is the one combination that produces a
+      // hole the consumer contract cannot paper over: the events between the
+      // cursor and the oldest retained entry are simply gone. The host must
+      // say so and keep going — never throw, never stall the tail.
+      const retention = {journal: {maxEventsPerIdentity: 2}};
+      const rt = runtime('cursor-gap', retention);
+      const definition = journal();
+      rt.register(definition);
+      const ref = rt.ref(definition, 'g');
+
+      const early: string[] = [];
+      const before = await bootHost('cursor-gap', 'gappy', early, retention);
+      await ref.invoke({by: 1}, {requestId: 'r0'});
+      await waitFor(
+        () => early.length >= 1,
+        () => `early=${early.join(',')}`,
+      );
+      await before.stop();
+
+      // Four more turns against a cap of two: seq 0 and 1 are trimmed away,
+      // so the cursor at seq 0 can never be caught up from the log.
+      for (const n of [1, 2, 3, 4]) {
+        await ref.invoke({by: 1}, {requestId: `r${n}`});
+      }
+      expect((await rt.events(TYPE, 'g')).map(e => e.seq)).toEqual([3, 4]);
+
+      enableDebug('agentback:actors:redis:delivery:*');
+      const warnings: string[] = [];
+      const disposeLog = onLog((namespace, level, args) => {
+        if (
+          namespace.startsWith('agentback:actors:redis:delivery') &&
+          level === LogLevel.WARN
+        ) {
+          warnings.push(args.join(' '));
+        }
+      });
+      const late: string[] = [];
+      const after = await bootHost('cursor-gap', 'gappy', late, retention);
+      try {
+        await waitFor(
+          () => late.length >= 2,
+          () => `late=${late.join(',')}`,
+        );
+        // It continues from the oldest entry that still exists.
+        expect([...new Set(late)].sort()).toEqual([
+          `${TYPE}/g#3`,
+          `${TYPE}/g#4`,
+        ]);
+        // `onLog` hands over the raw format string and args, uninterpolated.
+        expect(
+          warnings.some(
+            line =>
+              line.includes('gappy') &&
+              line.includes(TYPE) &&
+              line.includes('no longer retained'),
+          ),
+        ).toBe(true);
+      } finally {
+        disposeLog();
+        await after.stop();
+        await rt.stopDelivery();
+      }
+    });
+
     it('rejects a delivery interval that would spin or block forever', () => {
       for (const options of [{blockMs: 0}, {discoveryIntervalMs: -1}]) {
         expect(() => runtime('bad', options)).toThrow(
@@ -358,10 +536,16 @@ if (!REDIS_URL) {
       await rt.ref(definition, 'ep').invoke({by: 1}, {requestId: 'r0'});
       await rt.ref(definition, 'ep').invoke({by: 1}, {requestId: 'r1'});
 
+      // The throwing sibling is waited for too: it is dispatched *after* the
+      // good one, so waiting only on `consumed` can observe the moment
+      // between the two and assert on a count that has not happened yet.
       await waitFor(
-        () => consumed.length >= 2 && programmatic.length >= 2,
         () =>
-          `consumed=${consumed.join(',')} programmatic=${programmatic.join(',')}`,
+          consumed.length >= 2 &&
+          programmatic.length >= 2 &&
+          throwingCalls >= 2,
+        () =>
+          `consumed=${consumed.join(',')} programmatic=${programmatic.join(',')} throwing=${throwingCalls}`,
       );
       expect([...new Set(consumed)].sort()).toEqual([
         `${TYPE}/ep#0`,

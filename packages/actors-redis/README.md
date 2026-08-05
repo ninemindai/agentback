@@ -50,7 +50,22 @@ A command turn's `events` are appended to a per-identity Redis Stream (`…:log`
 const log = await registry.events('cart', 'cart-42'); // CommittedActorEvent[]
 ```
 
-Reads are lease-free (`XRANGE` over the whole log). Nothing trims the stream yet — retention is not implemented.
+Reads are lease-free (`XRANGE` over the whole log).
+
+### Retention (opt-in)
+
+By default nothing trims a journal — every event an identity ever committed is kept, which is the behavior every release so far has had. `journal.maxEventsPerIdentity` caps it:
+
+```ts
+installRedisActors(app, {
+  connections: messaging.connections,
+  journal: {maxEventsPerIdentity: 10_000}, // unset = keep everything
+});
+```
+
+The trim rides along on the commit's own `XADD` (and on the failed-turn marker's), so retention is still **one write** — the commit point stays one script, and there is no sweeper to fall behind. It is an exact `MAXLEN`, not `MAXLEN ~`: approximate trimming only drops whole macro nodes (`stream-node-max-entries`, 100 by default), so a cap below that would silently never apply and the meaning of the number would depend on a server setting the caller does not control. The cost is one evicted entry per append at steady state; the one expensive moment is enabling retention over an already-long journal, whose backlog the first commit pays for in a single trim.
+
+**`seq` is unaffected — it comes from the counter, never from stream length.** A trimmed journal reads as a _suffix_: surviving entries keep the seq values they were committed with, and numbering keeps advancing across the trim. What retention does change is replay: **a consumer whose cursor predates the oldest retained entry has a genuine gap**, and replay-from-zero is no longer available. Late/partial replay was always normal (delivery is at-least-once), but "the whole log can always be replayed" stops being true the moment a cap is set. Consumers that need full history must either archive (the `seat.journal.archiver` extension point exists for exactly this) or run with retention unset.
 
 ## Delivery
 
@@ -58,11 +73,15 @@ Reads are lease-free (`XRANGE` over the whole log). Nothing trims the stream yet
 
 **The durable log is the source of truth; live delivery is best effort.** A subscription is one tail loop on its own connection, reading all known journals in a single multi-stream `XREAD`. It keeps the last `seq` it delivered per identity, and whenever it (re)connects it re-reads each log from the start and replays everything past that cursor before going live. A restarted process holds no cursor, so it replays from `seq` 0 — normal operation, not an error path. **Delivery is therefore at-least-once and consumers must be idempotent by `(actor, seq)`.** Order is guaranteed per identity, unspecified across identities. Nothing filters between the log and a handler: every consumer is offered every event.
 
-Finding the streams to tail needs to know which identities exist, so the runtime keeps one `…:identities` set, re-written *before* the commit on **every** turn. It is deliberately outside the commit script: the script's keys all carry the `{type:id}` hash tag and one shared index key would make the commit cross-slot on Redis Cluster. Ordering is what makes it safe — the `SADD` is awaited before the script runs, so a turn that commits an event was preceded by an index write in that same call, and an addressed-but-never-committed identity may also be listed (an empty stream in the `XREAD`, delivering nothing).
+Finding the streams to tail needs to know which identities exist, so the runtime keeps one `…:identities` set, re-written _before_ the commit on **every** turn. It is deliberately outside the commit script: the script's keys all carry the `{type:id}` hash tag and one shared index key would make the commit cross-slot on Redis Cluster. Ordering is what makes it safe — the `SADD` is awaited before the script runs, so a turn that commits an event was preceded by an index write in that same call, and an addressed-but-never-committed identity may also be listed (an empty stream in the `XREAD`, delivering nothing).
 
-What that does **not** give you is an inductive claim about the past. There is no per-process memo precisely so that a lost entry — an operator `DEL`, an eviction (this is the cold key while the journal streams stay hot), a failover that keeps a commit but loses the `SADD` — **self-heals on that identity's next turn**. An identity whose entry is lost and that never takes another turn stays undiscoverable to a *new* subscriber until it does; `events(type, id)` addresses the log directly and is unaffected.
+What that does **not** give you is an inductive claim about the past. There is no per-process memo precisely so that a lost entry — an operator `DEL`, an eviction (this is the cold key while the journal streams stay hot), a failover that keeps a commit but loses the `SADD` — **self-heals on that identity's next turn**. An identity whose entry is lost and that never takes another turn stays undiscoverable to a _new_ subscriber until it does; `events(type, id)` addresses the log directly and is unaffected.
 
 DI-registered `seat.journal.consumer` extensions are hosted by `SeatJournalConsumerHost`, which takes **one** subscription and fans out to every provider — so a consumer costs a callback, not a connection. Providers are Zod-validated when discovered and one that throws degrades to skip + log, leaving its siblings running. `subscribe(fn)` remains the programmatic surface for non-extension callers.
+
+**The host persists a cursor per consumer id** (`…:consumers:<provider>`, a hash of identity → last delivered `seq`), so a restart resumes each consumer where it left off instead of replaying every identity's whole history to every consumer on every boot. The shared subscription reads from the earliest cursor any provider still needs and each provider filters to its own, so one lagging consumer never starves another. It is a cursor, not a broker — no consumer groups, no acks. The write happens _after_ a handler returns, which keeps delivery **at-least-once**: a crash between handling an event and recording it redelivers that event, and a provider whose handler throws does not advance (its event comes back on the next replay). A consumer id the store has never seen starts from `seq` 0 — the behavior before cursors existed, so a projection added later still backfills itself.
+
+With retention on, a cursor can fall below the oldest retained entry. The host logs that gap — naming the consumer, the identity, its cursor and the seq it actually resumed at — and continues from the oldest retained entry. It never throws: a gap is a fact about the deployment, not a delivery failure.
 
 ```ts
 const off = registry.subscribe(({actor, seq, event}) => {
@@ -83,6 +102,7 @@ new RedisActorsComponent({
   leaseRetryMs: 25,
   acquireTimeoutMs: 15_000,
   dedupTtlSeconds: 86_400,
+  journal: {maxEventsPerIdentity: 10_000}, // unset = keep every event
   blockMs: 1_000, // delivery: XREAD BLOCK window
   discoveryIntervalMs: 1_000, // delivery: how often new identities are picked up
 });
@@ -101,6 +121,7 @@ State and results must be JSON-serializable. The dedup hash TTL is refreshed on 
 - Commands are synchronous request/reply calls; pending commands are not durably queued. A future BullMQ mode needs a result channel beyond the current `JobQueue` port.
 - Actor keys use a Redis hash tag, keeping each turn's Lua keys in one Redis Cluster slot.
 - Delivery is best-effort and at-least-once; consumers must be idempotent by `(actor, seq)`. A handler that throws is logged and skipped — its event is not retried, because the log can be replayed by `seq`.
+- Journal retention is opt-in and off by default. With it on, `events()` returns a suffix and a consumer whose cursor predates the oldest retained entry has a gap — `SeatJournalConsumerHost` logs that gap and continues from the oldest retained entry rather than failing.
 - The identity index is written before the commit, never inside it, and re-asserted on every turn (no memo). It may over-approximate, and a lost entry self-heals on the identity's next turn — but an identity that never takes another turn stays undiscoverable to a new subscriber until it does.
 
 ## Testing

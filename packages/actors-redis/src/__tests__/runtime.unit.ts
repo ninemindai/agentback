@@ -41,6 +41,19 @@ describe('RedisActorRuntime configuration', () => {
     }
   });
 
+  it('rejects a journal cap that is not a whole number of events', () => {
+    for (const maxEventsPerIdentity of [0, -1, 2.5, Number.NaN, Infinity]) {
+      expect(
+        () =>
+          new RedisActorRuntime(connections, {journal: {maxEventsPerIdentity}}),
+      ).toThrow('journal.maxEventsPerIdentity must be a positive integer');
+    }
+    // Unset is the shipped default: keep every event forever.
+    expect(
+      () => new RedisActorRuntime(connections, {journal: {}}),
+    ).not.toThrow();
+  });
+
   it('binds a singleton runtime without taking ownership of a shared manager', async () => {
     const app = new Application();
     installRedisActors(app, {connections});

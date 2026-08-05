@@ -14,7 +14,10 @@ import {
 import {RedisConnectionManager} from '@agentback/messaging-bullmq';
 import {afterAll, describe, expect, it} from 'vitest';
 import {z} from 'zod';
-import {RedisActorRuntime} from '../redis-actor-runtime.js';
+import {
+  RedisActorRuntime,
+  type RedisActorRuntimeOptions,
+} from '../redis-actor-runtime.js';
 
 const REDIS_URL = process.env.REDIS_URL;
 
@@ -26,13 +29,17 @@ if (!REDIS_URL) {
   const connections = new RedisConnectionManager({url: REDIS_URL});
   const testPrefix = `agentback:test:actors:${crypto.randomUUID()}`;
   let runtimeNumber = 0;
-  const runtime = (suffix = String(runtimeNumber++)) =>
+  const runtime = (
+    suffix = String(runtimeNumber++),
+    overrides: Partial<RedisActorRuntimeOptions> = {},
+  ) =>
     new RedisActorRuntime(connections, {
       prefix: `${testPrefix}:${suffix}`,
       leaseMs: 1_000,
       leaseRetryMs: 5,
       acquireTimeoutMs: 2_000,
       dedupTtlSeconds: 60,
+      ...overrides,
     });
 
   runActorRuntimeConformance('redis', () => runtime());
@@ -354,9 +361,12 @@ if (!REDIS_URL) {
       // The next turn loads fast and commits immediately, after the marker.
       slowInit = false;
       expect(
-        await coldRuntime.ref(definition, 'cold').invoke({by: 2}, {
-          requestId: 'r1',
-        }),
+        await coldRuntime.ref(definition, 'cold').invoke(
+          {by: 2},
+          {
+            requestId: 'r1',
+          },
+        ),
       ).toEqual({count: 2});
       const log = await coldRuntime.events('redis-cold-init', 'cold');
       expect(log.map(entry => entry.event.type)).toEqual([
@@ -364,6 +374,75 @@ if (!REDIS_URL) {
         'Incremented',
       ]);
       expect(log.map(entry => entry.seq)).toEqual([0, 1]);
+    });
+
+    it('trims a capped journal to its tail, leaving seq numbering alone', async () => {
+      // Retention is opt-in and lands inside the commit script, so the one
+      // commit point stays one script. What must survive it is the numbering:
+      // `seq` comes from the counter, never from stream length, so a trimmed
+      // log reads as a *suffix* — the surviving entries keep the seq values
+      // they were committed with.
+      const capped = runtime('retention', {
+        journal: {maxEventsPerIdentity: 5},
+      });
+      const definition = journal();
+      capped.register(definition);
+      for (let n = 0; n < 10; n++) {
+        await capped
+          .ref(definition, 'trim')
+          .invoke({by: 1}, {requestId: `r${n}`});
+      }
+
+      const log = await capped.events('redis-journal', 'trim');
+      expect(log.map(entry => entry.seq)).toEqual([5, 6, 7, 8, 9]);
+      // Trimming touches the journal and nothing else.
+      expect(await capped.state(definition, 'trim')).toEqual({count: 10});
+
+      // Unset (the default) keeps everything, on the same shape of turn.
+      const uncapped = runtime('retention-off');
+      const kept = journal();
+      uncapped.register(kept);
+      for (let n = 0; n < 10; n++) {
+        await uncapped.ref(kept, 'keep').invoke({by: 1}, {requestId: `r${n}`});
+      }
+      expect(
+        (await uncapped.events('redis-journal', 'keep')).map(e => e.seq),
+      ).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    });
+
+    it('caps a journal made only of failed-turn markers too', async () => {
+      // The marker is its own write, outside the commit script, so retention
+      // has to be applied there as well — otherwise an identity that only ever
+      // times out grows without bound and the cap is not a cap.
+      const capped = runtime('retention-markers', {
+        journal: {maxEventsPerIdentity: 2},
+      });
+      const definition = defineActor('redis-marker-retention', {
+        state: JournalState,
+        command: JournalCommand,
+        result: JournalState,
+        deadlineMs: 30,
+        initialState: () => ({count: 0}),
+        async receive() {
+          await new Promise<never>(() => {});
+          throw new Error('unreachable');
+        },
+      });
+      capped.register(definition);
+      for (const n of [0, 1, 2]) {
+        await expect(
+          capped
+            .ref(definition, 'wedged')
+            .invoke({by: 1}, {requestId: `r${n}`}),
+        ).rejects.toBeInstanceOf(TurnTimeoutError);
+      }
+
+      const log = await capped.events('redis-marker-retention', 'wedged');
+      expect(log.map(entry => entry.seq)).toEqual([1, 2]);
+      expect(log.map(entry => entry.event.type)).toEqual([
+        ACTOR_TURN_TIMEOUT_EVENT,
+        ACTOR_TURN_TIMEOUT_EVENT,
+      ]);
     });
 
     it('rejects a journal entry whose seq is not a number', async () => {

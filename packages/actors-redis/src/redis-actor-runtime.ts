@@ -35,6 +35,13 @@ import {
 
 const log = loggers('agentback:actors:redis');
 
+/**
+ * Redis key prefix every key of this package hangs off. Shared with
+ * `SeatJournalConsumerHost`, which stores its cursors alongside the journals
+ * they point into, so the two cannot drift onto different keyspaces.
+ */
+export const DEFAULT_ACTOR_PREFIX = 'agentback:actors';
+
 // The lease token (a UUID held in KEYS[1]) is the sole mutual-exclusion guard.
 // Acquire is one atomic `SET NX PX`. A separate fencing token is unnecessary:
 // every state write goes through COMMIT_TURN, which re-checks `GET(lease) ==
@@ -80,15 +87,33 @@ const MAX_DEDUP_TTL_SECONDS = Math.floor(Number.MAX_SAFE_INTEGER / 1000);
 //     worth less than keeping the commit whole. `dedupTtlSeconds` is validated
 //     at construction too; this is the belt to that pair of braces.
 //
+// Journal retention (`journal.maxEventsPerIdentity`) rides along on the same
+// `XADD` rather than being a second write or a sweeper: a cap that trims
+// outside the commit could observe a log the commit had not finished writing,
+// and the one commit point would stop being one script.
+//
+// The trim is **exact** (`MAXLEN`), not approximate (`MAXLEN ~`). Approximate
+// trimming only drops whole macro nodes — `stream-node-max-entries`, 100 by
+// default — so a cap below that is silently never honored, and what the cap
+// means at all would depend on a server config the caller does not set. Exact
+// trimming costs one evicted entry per append at steady state; the expensive
+// case is turning retention *on* over an existing long journal, where the
+// first commit pays for the whole backlog at once.
+//
+// What retention must NOT do is disturb the numbering: `seq` comes from the
+// counter (KEYS[5]), never from stream length, so a trimmed journal reads as a
+// suffix whose entries keep the seq values they were committed with.
+//
 // KEYS: lease, state, dedup, log, seq   ARGV: token, state, requestId, result,
-// dedupTtl, seatKeyId, eventCount, event JSON…
+// dedupTtl, seatKeyId, journalMaxLen, eventCount, event JSON…
 const COMMIT_TURN = `
 if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
 local function wrongType(key, want)
   local kind = redis.call('TYPE', key)['ok']
   return kind ~= 'none' and kind ~= want
 end
-local count = tonumber(ARGV[7])
+local count = tonumber(ARGV[8])
+local maxlen = math.floor(tonumber(ARGV[7]) or 0)
 if wrongType(KEYS[2], 'string') or wrongType(KEYS[3], 'hash') then return -1 end
 if count > 0 and wrongType(KEYS[4], 'stream') then return -1 end
 local base = 0
@@ -100,11 +125,20 @@ if ttl > 0 and ttl <= ${MAX_DEDUP_TTL_SECONDS} then
   redis.call('EXPIRE', KEYS[3], ttl)
 end
 for i = 1, count do
-  redis.call('XADD', KEYS[4], '*',
-    'seq', tostring(base + i - 1),
-    'requestId', ARGV[3],
-    'seatKeyId', ARGV[6],
-    'event', ARGV[7 + i])
+  local seq = tostring(base + i - 1)
+  if maxlen > 0 then
+    redis.call('XADD', KEYS[4], 'MAXLEN', maxlen, '*',
+      'seq', seq,
+      'requestId', ARGV[3],
+      'seatKeyId', ARGV[6],
+      'event', ARGV[8 + i])
+  else
+    redis.call('XADD', KEYS[4], '*',
+      'seq', seq,
+      'requestId', ARGV[3],
+      'seatKeyId', ARGV[6],
+      'event', ARGV[8 + i])
+  end
 end
 return 1
 `;
@@ -131,19 +165,37 @@ return 1
 // the call that can still raise (a counter holding a non-integer), so a
 // failure leaves nothing half-written.
 //
-// KEYS: log, seq   ARGV: requestId, seatKeyId, event JSON
+// It honors journal retention for the same reason the commit does: an identity
+// that only ever times out would otherwise grow without bound, and a cap that
+// some appends ignore is not a cap.
+//
+// On a **cold** identity this is the first write of any kind — the race covers
+// the state load, so a hanging `initialState` times out before anything exists
+// for the seat. Nothing extra is needed: an absent counter `INCRBY`s to 1 (so
+// the marker is seq 0) and `XADD` creates the stream.
+//
+// KEYS: log, seq   ARGV: requestId, seatKeyId, event JSON, journalMaxLen
 const APPEND_TURN_FAILURE = `
 local function wrongType(key, want)
   local kind = redis.call('TYPE', key)['ok']
   return kind ~= 'none' and kind ~= want
 end
 if wrongType(KEYS[1], 'stream') then return -1 end
+local maxlen = math.floor(tonumber(ARGV[4]) or 0)
 local seq = redis.call('INCRBY', KEYS[2], 1) - 1
-redis.call('XADD', KEYS[1], '*',
-  'seq', tostring(seq),
-  'requestId', ARGV[1],
-  'seatKeyId', ARGV[2],
-  'event', ARGV[3])
+if maxlen > 0 then
+  redis.call('XADD', KEYS[1], 'MAXLEN', maxlen, '*',
+    'seq', tostring(seq),
+    'requestId', ARGV[1],
+    'seatKeyId', ARGV[2],
+    'event', ARGV[3])
+else
+  redis.call('XADD', KEYS[1], '*',
+    'seq', tostring(seq),
+    'requestId', ARGV[1],
+    'seatKeyId', ARGV[2],
+    'event', ARGV[3])
+end
 return 1
 `;
 
@@ -175,6 +227,23 @@ interface Lease {
   timer?: ReturnType<typeof setInterval>;
 }
 
+export interface RedisJournalRetentionOptions {
+  /**
+   * Keep at most this many entries in each identity's journal, trimmed as
+   * part of the same commit that appends.
+   *
+   * **Unset — the default — keeps everything**, which is the behavior every
+   * release so far has had. Setting it makes `events()` return a *suffix* of
+   * the log: `seq` still comes from the counter, so surviving entries keep
+   * their committed numbering, but the entries below the window are gone.
+   * A consumer whose cursor predates the oldest retained entry therefore has
+   * a genuine **gap** — replay-from-zero is no longer available. Consumers
+   * that need the full history must either archive (the `seat.journal.archiver`
+   * extension point exists for exactly this) or run with retention unset.
+   */
+  maxEventsPerIdentity?: number;
+}
+
 export interface RedisActorRuntimeOptions
   // Defaults for every subscription's tail loop; `since` stays per-call,
   // because a cursor belongs to one consumer and not to the runtime.
@@ -189,6 +258,8 @@ export interface RedisActorRuntimeOptions
   acquireTimeoutMs?: number;
   /** Sliding TTL for request/result dedup records. Default 24 hours. */
   dedupTtlSeconds?: number;
+  /** Opt-in per-identity journal retention. Unset keeps every event. */
+  journal?: RedisJournalRetentionOptions;
 }
 
 export class ActorLeaseTimeoutError extends Error {
@@ -231,6 +302,8 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventStore {
   private readonly leaseRetryMs: number;
   private readonly acquireTimeoutMs: number;
   private readonly dedupTtlSeconds: number;
+  /** Journal cap passed to both `XADD` paths; 0 means "keep everything". */
+  private readonly journalMaxLen: number;
   private readonly deliveryDefaults: JournalSubscribeOptions;
 
   constructor(
@@ -239,7 +312,7 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventStore {
     @inject(REDIS_ACTOR_OPTIONS, {optional: true})
     options: RedisActorRuntimeOptions = {},
   ) {
-    this.prefix = options.prefix ?? 'agentback:actors';
+    this.prefix = options.prefix ?? DEFAULT_ACTOR_PREFIX;
     // Resolved and range-checked here, like every other numeric option: a
     // `blockMs` of 0 means "block forever" and a `discoveryIntervalMs` of 0
     // spins the tail loop.
@@ -260,6 +333,13 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventStore {
       options.dedupTtlSeconds ?? 86_400,
       'dedupTtlSeconds',
     );
+    const maxEvents = options.journal?.maxEventsPerIdentity;
+    // Unset is the only way to keep everything; `0` would read as "keep
+    // nothing", which no `XADD MAXLEN` can express and nobody wants.
+    this.journalMaxLen =
+      maxEvents === undefined
+        ? 0
+        : wholeCount(maxEvents, 'journal.maxEventsPerIdentity');
   }
 
   register<S, C, R>(definition: ActorDefinition<S, C, R>): void {
@@ -501,6 +581,7 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventStore {
           // No key row (no SeatKeyStore bound) journals an empty string —
           // see ActorCommandContext.seatKeyId.
           ctx.seatKeyId ?? '',
+          String(this.journalMaxLen),
           String(events.length),
           ...events.map(event => stringify(event)),
         ],
@@ -555,6 +636,7 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventStore {
           // only once `receive` returns, and a timed-out turn's never did.
           '',
           stringify(turnTimeoutEvent(error.deadlineMs)),
+          String(this.journalMaxLen),
         ],
       );
       if (appended === WRONG_TYPES) {
@@ -808,6 +890,14 @@ function wholeSeconds(value: number, name: string): number {
     throw new Error(
       `${name} must be a whole number of seconds between 0 and ${MAX_DEDUP_TTL_SECONDS}.`,
     );
+  }
+  return value;
+}
+
+/** A whole positive count. Rejected at construction like every other option. */
+function wholeCount(value: number, name: string): number {
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`${name} must be a positive integer.`);
   }
   return value;
 }
