@@ -239,8 +239,13 @@ still unexpired, and would otherwise commit anyway (on Redis it would fail as a
 lost lease, with no timeout recorded at all). On Redis the lease also stops
 renewing once the turn has run for its deadline, so the seat becomes claimable
 across processes even if the holder never comes back. (On Redis the deadline
-bounds `receive`, not the commit: a commit that stalls after `receive` returned
-makes that one caller wait, but the renewal cap still bounds the *seat*.)
+bounds the turn up to the commit boundary, not the commit: a commit that stalls
+after `receive` returned makes that one caller wait, but the renewal cap still
+bounds the *seat*.)
+
+The deadline covers the **state load** as well as `receive`, on every runtime —
+a cold identity whose `initialState` hangs is a recorded failed turn, not a
+caller that waits forever.
 
 A **nested** timeout attributes to the turn that actually timed out. An actor
 turn may invoke another actor (`@injectActor`); an inner `TurnTimeoutError`

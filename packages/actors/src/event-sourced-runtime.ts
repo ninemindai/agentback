@@ -275,11 +275,11 @@ export class EventSourcedActorRuntime implements ActorRuntime, ActorEventStore {
    * `initialState`, included — so a deadline can fire before the turn ever
    * reaches `receive`.
    *
-   * `RedisActorRuntime` races `receive` alone, so its `initialState` runs
-   * outside any deadline: a hanging one there yields no `TurnTimeoutError` and
-   * no marker at all, and is a known follow-up gap rather than a difference in
-   * how the two journal. Every marker for a turn that reached `receive` lands
-   * on both.
+   * `RedisActorRuntime` races the state load too, and differs only in what it
+   * can record for that case: its journal is a Redis Stream the marker's own
+   * `XADD` creates, so a cold identity that times out mid-load gets a marker
+   * there and a log line here. Every marker for a turn that reached `receive`
+   * lands on both.
    */
   private recordTimedOutTurn(error: TurnTimeoutError): void {
     const stored = this.actors.get(actorKey(error.actor));

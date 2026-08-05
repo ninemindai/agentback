@@ -131,6 +131,11 @@ between `0` (no expiry) and `MAX_DEDUP_TTL_SECONDS` are accepted.
 - **`@agentback/actors-redis`** — lease renewal is capped at the turn's
   deadline, so a wedged turn's lease lapses and the seat becomes claimable
   across processes instead of being held for as long as the turn runs.
+- **`@agentback/actors-redis`** — the turn deadline now covers the **state
+  load**, not just `receive`, matching the in-process runtimes. A cold
+  identity whose `initialState` hangs used to yield no `TurnTimeoutError`, no
+  marker, and an `invoke()` promise that never settled; it is now an ordinary
+  recorded failed turn (marker journaled, seat freed, `requestId` retryable).
 - **`@agentback/actors`** — an actor **type or id containing a C0 control
   character** (`U+0000`-`U+001F`) is now rejected at validation, on every
   runtime. Such ids were silently accepted before and were aliasing-prone: the
@@ -142,7 +147,10 @@ between `0` (no expiry) and `MAX_DEDUP_TTL_SECONDS` are accepted.
 
 ## Known gaps to mention in the notes
 
-- On Redis the deadline covers `receive` only. A hanging `initialState` (which
-  `readState` calls outside the race) is not deadline-guarded there — the seat
-  is still bounded by the renewal cap, but that one caller waits indefinitely.
-  Tracked as a follow-up.
+- On Redis the deadline stops at the commit boundary. Once the commit script
+  has been issued, a commit that stalls in Redis makes that one caller wait —
+  the *seat* is still bounded by the renewal cap, so the identity cannot wedge.
+  In process there is no such gap (the commit is synchronous).
+  _(The `initialState` gap listed here before is closed: the Redis race now
+  covers the state load, so a hanging cold start is a `TurnTimeoutError` plus a
+  journaled marker like any other failed turn.)_

@@ -301,6 +301,71 @@ if (!REDIS_URL) {
       ]);
     });
 
+    it('journals a cold identity whose initialState misses the deadline', async () => {
+      // The state load is inside the race now, so this turn times out before
+      // `receive` is ever reached — on an identity that has NO stream yet.
+      // `APPEND_TURN_FAILURE` has to create both the counter and the stream
+      // for the marker to exist at all, which is what makes the caller-visible
+      // half (the conformance case) a *recorded* failed turn here.
+      const prefix = `${testPrefix}:cold-init`;
+      const base = keyBase(prefix, 'redis-cold-init', 'cold');
+      const coldRuntime = new RedisActorRuntime(connections, {
+        prefix,
+        leaseMs: 1_000,
+        leaseRetryMs: 5,
+        acquireTimeoutMs: 2_000,
+      });
+      let slowInit = true;
+      const definition = defineActor('redis-cold-init', {
+        state: JournalState,
+        command: JournalCommand,
+        result: JournalState,
+        deadlineMs: 50,
+        initialState: async () => {
+          if (slowInit) await new Promise<never>(() => {});
+          return {count: 0};
+        },
+        receive(_ctx, state, command) {
+          state.count += command.by;
+          return {
+            state,
+            result: state,
+            events: [{type: 'Incremented', by: command.by}],
+          };
+        },
+      });
+      coldRuntime.register(definition);
+
+      await expect(
+        coldRuntime.ref(definition, 'cold').invoke({by: 1}, {requestId: 'r0'}),
+      ).rejects.toBeInstanceOf(TurnTimeoutError);
+
+      // Recorded, rolled back, and the seat left claimable by any process.
+      const marker = await coldRuntime.events('redis-cold-init', 'cold');
+      expect(marker.map(entry => entry.event.type)).toEqual([
+        ACTOR_TURN_TIMEOUT_EVENT,
+      ]);
+      expect(marker[0]?.seq).toBe(0);
+      expect(marker[0]?.requestId).toBe('r0');
+      expect(await connections.base.exists(`${base}:lease`)).toBe(0);
+      expect(await connections.base.exists(`${base}:state`)).toBe(0);
+      expect(await connections.base.exists(`${base}:dedup`)).toBe(0);
+
+      // The next turn loads fast and commits immediately, after the marker.
+      slowInit = false;
+      expect(
+        await coldRuntime.ref(definition, 'cold').invoke({by: 2}, {
+          requestId: 'r1',
+        }),
+      ).toEqual({count: 2});
+      const log = await coldRuntime.events('redis-cold-init', 'cold');
+      expect(log.map(entry => entry.event.type)).toEqual([
+        ACTOR_TURN_TIMEOUT_EVENT,
+        'Incremented',
+      ]);
+      expect(log.map(entry => entry.seq)).toEqual([0, 1]);
+    });
+
     it('rejects a journal entry whose seq is not a number', async () => {
       const prefix = `${testPrefix}:foreign-entry`;
       const base = keyBase(prefix, 'redis-journal', 'foreign');

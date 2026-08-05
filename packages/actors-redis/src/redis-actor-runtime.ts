@@ -402,21 +402,38 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventStore {
         return definition.result.parse(committed.result);
       }
 
-      const state = await this.readState(definition, actor, keys);
-      const workingState = structuredClone(state);
       // Held onto (not inlined) so the seat key stamped onto it by `receive`
       // — see ActorCommandContext.seatKeyId — is still readable afterward.
       const ctx: ActorCommandContext = {actor, requestId};
-      // The deadline races `receive` and *only* `receive` — never the commit.
-      // That is what makes the two outcomes mutually exclusive: when the
-      // deadline fires, the commit script has not been issued, so a turn can
-      // never both commit normally and be recorded as failed. Once `receive`
-      // wins the race, the elapsed-time re-check below is the last deadline
-      // gate, and after it the lease-token check inside COMMIT_TURN is the
-      // only thing that can still refuse the write. (The corollary: this
-      // deadline bounds the seat, not the caller, once the commit script has
-      // been issued — a commit that stalls is bounded instead by the renewal
-      // cap in `startRenewal`.)
+      // The deadline races the **state load and `receive`** — never the
+      // commit. Covering the load is what closes the cold-start hole: a
+      // hanging `initialState` used to run outside the race entirely, so it
+      // produced no `TurnTimeoutError`, no marker, and an `invoke()` promise
+      // that never settled. `readState` is inside the raced work for that
+      // reason, and the in-process runtimes have always raced their whole
+      // action the same way.
+      //
+      // Stopping short of the commit is what makes the two outcomes mutually
+      // exclusive: when the deadline fires, the commit script has not been
+      // issued, so a turn can never both commit normally and be recorded as
+      // failed. Once the raced work wins, the elapsed-time re-check below is
+      // the last deadline gate, and after it the lease-token check inside
+      // COMMIT_TURN is the only thing that can still refuse the write. (The
+      // corollary: this deadline bounds the seat, not the caller, once the
+      // commit script has been issued — a commit that stalls is bounded
+      // instead by the renewal cap in `startRenewal`.)
+      //
+      // Abandoning the load is safe for the same reason abandoning `receive`
+      // is. `readState` writes nothing — one `GET` and a `parse` — and the
+      // abandoned continuation's value is discarded by the already-settled
+      // race, so it never reaches the commit code at all. Nothing it can do
+      // later touches Redis, and COMMIT_TURN's token check would refuse it
+      // even if something did.
+      //
+      // `startedAt` is stamped with the race, not at the top of `invoke`:
+      // waiting for the seat must never count against a turn's own budget
+      // (and both halves of the deadline — the timer and the clock re-check
+      // below — must measure the same window).
       //
       // The failed-turn record is written HERE, still inside `withLease`, so
       // no other process can claim the seat and commit between the deadline
@@ -424,7 +441,10 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventStore {
       // report issue order rather than incident order.
       const startedAt = Date.now();
       const turn = await raceTurnDeadline(
-        Promise.resolve(definition.receive(ctx, workingState, parsedCommand)),
+        (async () => {
+          const state = await this.readState(definition, actor, keys);
+          return definition.receive(ctx, structuredClone(state), parsedCommand);
+        })(),
         actor,
         requestId,
         definition.deadlineMs,
@@ -512,6 +532,12 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventStore {
    * ever issued (see the notes in `invoke`). So this can never mark a turn
    * whose commit already landed, and a committed turn can never also be
    * marked failed.
+   *
+   * The identity may have **no journal yet**: the race covers the state load,
+   * so a cold identity whose `initialState` hangs times out before anything
+   * has ever been written for it. `APPEND_TURN_FAILURE` handles that — an
+   * absent counter `INCRBY`s to 1 (seq 0) and `XADD` creates the stream — so
+   * the marker is the identity's first entry rather than a lost record.
    *
    * Best effort in one direction only: if the append itself fails, the caller
    * still gets its `TurnTimeoutError` — a deadline must never surface as some

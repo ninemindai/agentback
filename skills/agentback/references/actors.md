@@ -199,8 +199,12 @@ check covers what a timer cannot: synchronous work is not preemptible, so a
 with the guard still unexpired. On Redis the lease also stops
 renewing once the turn has run for its deadline, so the seat becomes claimable
 across processes even if the holder never returns; there the deadline bounds
-`receive`, not the commit (a stalled commit makes one caller wait, but the
-renewal cap still bounds the seat).
+the turn up to the commit boundary, not the commit itself (a stalled commit
+makes one caller wait, but the renewal cap still bounds the seat).
+
+**The deadline covers the state load too**, on every runtime, so a cold
+identity whose `initialState` hangs is a recorded failed turn rather than a
+caller that never settles.
 
 **Nested calls attribute to the inner turn.** An actor turn may invoke another
 actor (`@injectActor`); the inner `TurnTimeoutError` propagates out still naming

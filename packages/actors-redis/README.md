@@ -40,6 +40,8 @@ For `{actorType, actorId}` the adapter:
 
 If a process crashes before commit, no state changes. If it crashes after commit but before replying, a retry sees the dedup record and returns the committed result. An expired lease holder cannot commit stale state.
 
+The turn's deadline covers steps 4 and 5 — the state load (so `initialState` on a cold identity is deadline-guarded too) and the actor method — and stops before step 6: a turn can never both commit and be recorded as failed. Once the commit script is issued the caller waits on Redis, while the seat stays bounded by the lease renewal cap.
+
 ## Journal
 
 A command turn's `events` are appended to a per-identity Redis Stream (`…:log`) **inside the commit script** — one entry per event, carrying `seq`, `requestId`, `seatKeyId` and the event JSON. There is no second write to go wrong: a turn either commits its state, its dedup record and its events, or none of the three. `seq` is a gap-free per-identity counter (`…:seq`), advanced in that same script. `seatKeyId` is always written, `''` when the acting identity had no key row; `events()` surfaces it as a required field on every `CommittedActorEvent` and validates the read back against `CommittedActorEventSchema`, rejecting a stream entry that predates this field entirely.

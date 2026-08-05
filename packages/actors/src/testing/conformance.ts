@@ -393,6 +393,51 @@ export function runActorRuntimeConformance(
       expect(await runtime.state(definition, 'late')).toEqual({value: 7});
     });
 
+    it('fails a turn whose cold-start state load outlives its deadline', async () => {
+      // The deadline covers the **whole** turn, and a cold identity's
+      // `initialState` is part of it. Redis used to race `receive` alone, so a
+      // hanging `initialState` produced no `TurnTimeoutError`, no marker, and
+      // an `invoke()` promise that never settled — the one shape of wedge the
+      // deadline exists to rule out, reachable through the one phase it did
+      // not cover.
+      const runtime = makeRuntime();
+      let slowInit = true;
+      let turns = 0;
+      const definition = defineActor('conformance.deadline.slow-init', {
+        state: State,
+        command: z.object({amount: z.number()}),
+        result: Result,
+        deadlineMs: 50,
+        initialState: async () => {
+          // Abandoned, not cancelled: nothing ever settles this.
+          if (slowInit) await new Promise<never>(() => {});
+          return {value: 0};
+        },
+        receive(_ctx, state, command) {
+          turns++;
+          state.value += command.amount;
+          return {state, result: {value: state.value}};
+        },
+      });
+      runtime.register(definition);
+      const ref = runtime.ref(definition, 'cold-hang');
+
+      await expect(
+        ref.invoke({amount: 1}, {requestId: 'hangs'}),
+      ).rejects.toBeInstanceOf(TurnTimeoutError);
+      // The turn never reached `receive`, so nothing could have committed.
+      expect(turns).toBe(0);
+
+      // And the seat is free: the next turn runs at once, off a fast load.
+      slowInit = false;
+      const started = Date.now();
+      expect(await ref.invoke({amount: 2}, {requestId: 'next'})).toEqual({
+        value: 2,
+      });
+      expect(Date.now() - started).toBeLessThan(1_000);
+      expect(await runtime.state(definition, 'cold-hang')).toEqual({value: 2});
+    });
+
     it('never lets a late initialState reset an identity that has committed', async () => {
       // Freeing the seat at the deadline means a turn is no longer alone on
       // its identity for as long as it runs, which is exactly the assumption
@@ -426,10 +471,11 @@ export function runActorRuntimeConformance(
       runtime.register(definition);
       const ref = runtime.ref(definition, 'cold');
 
-      // The in-process runtimes race the whole action, so this turn is
-      // abandoned mid-load and its `initialState` keeps running; Redis races
-      // `receive` alone, so there the load simply completes. Both outcomes are
-      // fine — the invariant asserted below holds either way.
+      // Every runtime races the state load, so this turn is abandoned mid-load
+      // and its `initialState` keeps running. What the abandoned continuation
+      // does next differs — the in-process runtimes go on to `receive`, Redis
+      // discards the load's value at the settled race — and the invariant
+      // asserted below holds either way.
       await ref
         .invoke({amount: 1}, {requestId: 'first'})
         .catch(() => undefined);
