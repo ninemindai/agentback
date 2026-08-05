@@ -235,15 +235,17 @@ export class EventSourcedActorRuntime implements ActorRuntime, ActorEventStore {
    * `ctx` only once `receive` returns, and a timed-out turn's never did. See
    * `CommittedActorEvent.seatKeyId`, which documents both meanings of `''`.
    *
-   * An identity with no stored record yet — a deadline that fired inside
-   * `initialState`, before the turn ever reached `receive` — gets the log
-   * line only: there is no journal to append to until the identity is loaded.
-   * **This is the one place the two journaling runtimes diverge**:
-   * `RedisActorRuntime` addresses its log by key, so its append creates the
-   * stream and does journal that case. The divergence is confined to a
-   * deadline inside `initialState` and is documented in
-   * `docs/actor-model.md`; every marker for a turn that reached `receive`
-   * lands on both.
+   * An identity with no stored record yet gets the log line only: there is no
+   * journal to append to until the identity is loaded. That is reachable here
+   * because `serialize` races the **whole** action — the state load, and so
+   * `initialState`, included — so a deadline can fire before the turn ever
+   * reaches `receive`.
+   *
+   * `RedisActorRuntime` races `receive` alone, so its `initialState` runs
+   * outside any deadline: a hanging one there yields no `TurnTimeoutError` and
+   * no marker at all, and is a known follow-up gap rather than a difference in
+   * how the two journal. Every marker for a turn that reached `receive` lands
+   * on both.
    */
   private recordTimedOutTurn(error: TurnTimeoutError): void {
     const stored = this.actors.get(actorKey(error.actor));
