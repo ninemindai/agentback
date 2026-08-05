@@ -87,11 +87,41 @@ export function turnTimeoutEvent(deadlineMs: number): ActorEvent {
 }
 
 /**
- * The always-present half of "a timeout is a recorded failed turn". Every
- * runtime emits it under one namespace so an operator sees the same line
- * whichever adapter is bound; a journaling runtime *additionally* appends an
- * `actor.turn.timeout` entry to the identity's log. It is the whole record on
+ * Is this error **this** turn's own deadline?
+ *
+ * Classifying by type alone is not enough. An actor turn may invoke another
+ * actor (`@injectActor` is a first-class shape), so a `TurnTimeoutError` raised
+ * by an inner turn propagates out through the outer turn's `receive`. Recording
+ * on type alone would append a *second* marker for the inner turn — to the
+ * inner actor's journal, consuming another seq — from a runtime frame that
+ * belongs to the outer one. A pass-through timeout is, to the outer turn, an
+ * ordinary thrown turn: it rolls back and is not a deadline of its own.
+ */
+export function isOwnTurnTimeout(
+  error: unknown,
+  actor: ActorId,
+  requestId: string,
+): error is TurnTimeoutError {
+  return (
+    error instanceof TurnTimeoutError &&
+    error.actor.type === actor.type &&
+    error.actor.id === actor.id &&
+    error.requestId === requestId
+  );
+}
+
+/**
+ * The half of "a timeout is a recorded failed turn" that every runtime emits,
+ * under one namespace, so an operator sees the same line whichever adapter is
+ * bound; a journaling runtime *additionally* appends an `actor.turn.timeout`
+ * entry to the identity's log. It is the whole record on
  * `InMemoryActorRuntime`, which has no journal to append to.
+ *
+ * Like every `loggers` call it is gated on its debug namespace being enabled
+ * (`agentback:actors:deadline:warn`), so it is the *unconditional* half of the
+ * record only in the sense that every runtime reaches it — not that a byte is
+ * always written. Where the record must survive regardless of log
+ * configuration, the journal entry is the one to rely on.
  */
 export function logTimedOutTurn(error: TurnTimeoutError): void {
   log.warn(

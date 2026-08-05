@@ -4,6 +4,7 @@
 
 import {BindingScope, ContextTags, injectable} from '@agentback/core';
 import {
+  isOwnTurnTimeout,
   logTimedOutTurn,
   raceTurnDeadline,
   TurnTimeoutError,
@@ -266,7 +267,11 @@ export class InMemoryActorRuntime implements ActorRuntime {
       // A timeout is a recorded failed turn. This runtime keeps no journal,
       // so the log line is the whole record (`EventSourcedActorRuntime` also
       // appends an `actor.turn.timeout` entry to the identity's log).
-      if (err instanceof TurnTimeoutError) logTimedOutTurn(err);
+      //
+      // Gated on identity, not just type: a `TurnTimeoutError` from a nested
+      // actor call passes through this frame, and it is already recorded by
+      // the turn that owns it. See `isOwnTurnTimeout`.
+      if (isOwnTurnTimeout(err, actor, requestId)) logTimedOutTurn(err);
       throw err;
     } finally {
       release();

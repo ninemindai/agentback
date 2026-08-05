@@ -10,12 +10,49 @@ import {defineActor} from '../../define-actor.js';
 import {InMemoryActorRuntime} from '../../in-memory-runtime.js';
 import {runActorRuntimeConformance} from '../../testing/conformance.js';
 
-// `log.warn(...)` is a no-op unless its debug namespace is enabled (the
-// `debug` package's own gate, which `onLog` hooks sit behind) — enable it so
-// the "recorded failed turn" gate can actually observe the record.
-enableDebug('agentback:actors:deadline:*');
-
 runActorRuntimeConformance('in-memory', () => new InMemoryActorRuntime());
+
+/**
+ * Collect deadline-namespace warn/error records while `fn` runs.
+ *
+ * `log.warn(...)` is a no-op unless its debug namespace is enabled (the
+ * `debug` package's own gate, which `onLog` hooks sit behind), so this enables
+ * it — and restores it afterwards, so the surrounding conformance cases stay
+ * quiet rather than logging a wall of expected timeouts.
+ */
+async function captureDeadlineLogs(
+  fn: () => Promise<void>,
+): Promise<{level: LogLevel; args: unknown[]}[]> {
+  const captured: {level: LogLevel; args: unknown[]}[] = [];
+  const previous = process.env.DEBUG ?? '';
+  const dispose = onLog((namespace, level, args) => {
+    if (namespace.startsWith('agentback:actors:deadline')) {
+      captured.push({level, args});
+    }
+  });
+  enableDebug('agentback:actors:deadline:*');
+  try {
+    await fn();
+  } finally {
+    dispose();
+    enableDebug(previous);
+  }
+  return captured;
+}
+
+function hangingActor(name: string) {
+  return defineActor(name, {
+    state: z.object({}),
+    command: z.object({}),
+    result: z.object({}),
+    deadlineMs: 50,
+    initialState: () => ({}),
+    async receive() {
+      await new Promise<never>(() => {});
+      throw new Error('unreachable');
+    },
+  });
+}
 
 describe('InMemoryActorRuntime deadlines', () => {
   // This runtime has no journal, so the failed-turn record a journaling
@@ -23,38 +60,52 @@ describe('InMemoryActorRuntime deadlines', () => {
   // emitted by the same shared `logTimedOutTurn` all three runtimes call.
   it('records a timed-out turn in the log', async () => {
     const runtime = new InMemoryActorRuntime();
-    const definition = defineActor('in-memory-deadline', {
-      state: z.object({}),
-      command: z.object({}),
-      result: z.object({}),
-      deadlineMs: 50,
-      initialState: () => ({}),
-      async receive() {
-        await new Promise<never>(() => {});
-        throw new Error('unreachable');
-      },
-    });
+    const definition = hangingActor('in-memory-deadline');
     runtime.register(definition);
 
-    const captured: {level: LogLevel; args: unknown[]}[] = [];
-    const dispose = onLog((namespace, level, args) => {
-      if (namespace.startsWith('agentback:actors:deadline')) {
-        captured.push({level, args});
-      }
-    });
-    try {
+    const captured = await captureDeadlineLogs(async () => {
       await expect(
         runtime.ref(definition, 'wedged').invoke({}, {requestId: 'hangs'}),
       ).rejects.toBeInstanceOf(TurnTimeoutError);
-    } finally {
-      dispose();
-    }
+    });
 
     expect(captured).toHaveLength(1);
     expect(captured[0]?.level).toBe(LogLevel.WARN);
     // The record identifies the turn: actor type, id, requestId, deadline.
     expect(captured[0]?.args).toEqual(
       expect.arrayContaining(['in-memory-deadline', 'wedged', 'hangs', 50]),
+    );
+  });
+
+  // The journal-free analogue of "exactly ONE marker, on the inner actor's
+  // log": one incident crossing two turn frames must still produce one record,
+  // naming the identity whose deadline actually fired.
+  it('records a nested timeout once, naming the inner turn', async () => {
+    const runtime = new InMemoryActorRuntime();
+    const inner = hangingActor('in-memory-deadline-inner');
+    const outer = defineActor('in-memory-deadline-outer', {
+      state: z.object({}),
+      command: z.object({}),
+      result: z.object({}),
+      deadlineMs: 5_000,
+      initialState: () => ({}),
+      async receive(_ctx, state) {
+        await runtime.ref(inner, 'hangs').invoke({}, {requestId: 'nested'});
+        return {state, result: {}};
+      },
+    });
+    runtime.register(inner);
+    runtime.register(outer);
+
+    const captured = await captureDeadlineLogs(async () => {
+      await expect(
+        runtime.ref(outer, 'caller').invoke({}, {requestId: 'outer-call'}),
+      ).rejects.toBeInstanceOf(TurnTimeoutError);
+    });
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]?.args).toEqual(
+      expect.arrayContaining(['in-memory-deadline-inner', 'hangs', 'nested']),
     );
   });
 });

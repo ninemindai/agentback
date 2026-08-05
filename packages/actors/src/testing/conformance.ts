@@ -61,6 +61,41 @@ const Command = z.discriminatedUnion('type', [
 ]);
 const Result = z.object({value: z.number()});
 
+/**
+ * An outer actor whose turn invokes an inner actor that hangs — the shape an
+ * `@injectActor` call takes at the runtime layer. Two identities, one seat
+ * each, with the *inner* one's deadline firing inside the outer one's turn.
+ * The outer deadline is long enough that it can never be the one that fires.
+ */
+function nested(runtime: ActorRuntime) {
+  const inner = defineActor('conformance.deadline.inner', {
+    state: State,
+    command: z.object({}),
+    result: Result,
+    deadlineMs: 50,
+    initialState: () => ({value: 0}),
+    async receive() {
+      await new Promise<never>(() => {});
+      throw new Error('unreachable');
+    },
+  });
+  const outer = defineActor('conformance.deadline.outer', {
+    state: State,
+    command: z.object({}),
+    result: Result,
+    deadlineMs: 5_000,
+    initialState: () => ({value: 0}),
+    async receive(_ctx, state) {
+      state.value = 99; // must roll back with the rest of the turn
+      await runtime.ref(inner, 'hangs').invoke({}, {requestId: 'nested'});
+      return {state, result: state};
+    },
+  });
+  runtime.register(inner);
+  runtime.register(outer);
+  return {runtime, inner, outer};
+}
+
 /** Behavioral contract required of every ActorRuntime adapter. */
 export function runActorRuntimeConformance(
   name: string,
@@ -332,6 +367,34 @@ export function runActorRuntimeConformance(
       expect(await runtime.state(definition, 'late')).toEqual({value: 7});
     });
 
+    it('attributes a nested timeout to the inner turn, not the caller', async () => {
+      // An actor turn may invoke another actor (`@injectActor` is a
+      // first-class shape), so an inner `TurnTimeoutError` propagates out
+      // through the outer turn's `receive`. To the outer turn that is an
+      // ordinary thrown turn — it rolls back — and the error must keep naming
+      // the identity whose deadline actually fired, or a runtime classifying
+      // by error type alone would record the incident twice.
+      const {runtime, outer} = nested(makeRuntime());
+
+      const error = await runtime
+        .ref(outer, 'caller')
+        .invoke({}, {requestId: 'outer-call'})
+        .catch((err: unknown) => err);
+
+      expect(error).toBeInstanceOf(TurnTimeoutError);
+      const timeout = error as TurnTimeoutError;
+      expect(timeout.actor).toEqual({
+        type: 'conformance.deadline.inner',
+        id: 'hangs',
+      });
+      expect(timeout.requestId).toBe('nested');
+      expect(timeout.deadlineMs).toBe(50);
+
+      // The outer turn rolled back like any other failed turn, and its seat is
+      // free — it was never itself late.
+      expect(await runtime.state(outer, 'caller')).toEqual({value: 0});
+    });
+
     it('validates commands before delivery', async () => {
       const runtime = makeRuntime();
       let turns = 0;
@@ -559,6 +622,33 @@ export function runActorEventStoreConformance(
       ]);
       expect(afterRetry.map(entry => entry.seq)).toEqual([0, 1]);
       expect(await runtime.state(definition, 'timed-out')).toEqual({count: 4});
+    });
+
+    it('journals a nested timeout once, on the inner actor log only', async () => {
+      // One incident, one marker. An inner `TurnTimeoutError` passes through
+      // the outer turn's frame on its way to the caller; a runtime that
+      // recorded on error type alone would append a *second* marker — to the
+      // inner actor's own log, consuming another seq — from the outer frame,
+      // while the outer turn (an ordinary rollback) got none.
+      const runtime = makeRuntime();
+      const {outer} = nested(runtime);
+
+      await expect(
+        runtime.ref(outer, 'caller').invoke({}, {requestId: 'outer-call'}),
+      ).rejects.toBeInstanceOf(TurnTimeoutError);
+
+      const innerLog = await runtime.events(
+        'conformance.deadline.inner',
+        'hangs',
+      );
+      expect(innerLog).toHaveLength(1);
+      expect(innerLog[0]?.event.type).toBe(ACTOR_TURN_TIMEOUT_EVENT);
+      expect(innerLog[0]?.requestId).toBe('nested');
+
+      // The caller's own log stays empty: it rolled back, it did not time out.
+      expect(
+        await runtime.events('conformance.deadline.outer', 'caller'),
+      ).toEqual([]);
     });
 
     it('keeps each identity log independent', async () => {

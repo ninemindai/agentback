@@ -66,11 +66,23 @@ export interface CommittedActorEvent {
   readonly requestId: string;
   /**
    * Seat key identity of the seat that committed the turn. Always present —
-   * every journaling runtime stamps it at commit. `''` is the documented "no
-   * seat layer" sentinel: the acting identity had no key row because no
-   * `SeatKeyStore` was bound (an app without the seat layer configured keeps
-   * working; see `ActorRegistry`'s `ensureSeatKey`). A non-empty value names
-   * the row in the bound `SeatKeyStore`.
+   * every journaling runtime stamps it at commit. A non-empty value names the
+   * row in the bound `SeatKeyStore`.
+   *
+   * `''` is the "no attributable seat key" sentinel, and it has **two**
+   * meanings — both of which mean "do not read a seat identity off this
+   * entry", neither of which is an error:
+   *
+   * 1. **No seat layer.** The acting identity had no key row because no
+   *    `SeatKeyStore` was bound; an app without the seat layer configured
+   *    keeps working (see `ActorRegistry`'s `ensureSeatKey`).
+   * 2. **A system marker recorded outside a completed turn.** A turn-timeout
+   *    marker (`actor.turn.timeout`) always carries `''`, even when the seat
+   *    does have a real key row: `ActorRegistry` stamps `ctx.seatKeyId` only
+   *    *after* the command method returns, and a timed-out turn's never did.
+   *    The runtime that appends the marker never touches the `SeatKeyStore`
+   *    itself — only the registry does — so it has nothing truer to write.
+   *    The marker still identifies the turn by `actor` + `requestId`.
    */
   readonly seatKeyId: string;
   readonly event: ActorEvent;

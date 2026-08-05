@@ -6,6 +6,7 @@ import {
   ACTOR_RUNTIME,
   actorCommandFingerprint,
   CommittedActorEventSchema,
+  isOwnTurnTimeout,
   logTimedOutTurn,
   raceTurnDeadline,
   turnTimeoutEvent,
@@ -108,16 +109,21 @@ return 1
 
 // The failed-turn record for a turn that missed its deadline (capability-os#7).
 //
-// Deliberately NOT part of COMMIT_TURN and deliberately NOT lease-gated:
+// Deliberately NOT part of COMMIT_TURN: it is its own write, touching neither
+// state nor dedup, so the one commit point stays exactly one script and a
+// timed-out `requestId` remains free to run on retry rather than replaying a
+// failure it never committed.
 //
-//   - it is its own write, touching neither state nor dedup, so the one commit
-//     point stays exactly one script and a timed-out `requestId` remains free
-//     to run on retry rather than replaying a failure it never committed;
-//   - by the time a deadline fires the holder's lease is at or past its
-//     renewal cap, so gating this append on the lease token would drop the
-//     record in precisely the case it exists for. It is an append to an
-//     append-only log — it cannot corrupt state or dedup no matter who writes
-//     it.
+// Deliberately NOT lease-gated either — but that is safe only because of
+// *where* it runs: inside `withLease`, before the release, while this holder
+// still owns the lease. Ordering is protected by the lease, not by this
+// script. Run after the release instead and another process could land a full
+// commit in the round trip between, so the journal would record issue order
+// rather than incident order. It is left un-gated because a renewal that
+// failed mid-turn can lapse the lease early, and dropping the record in
+// exactly that case would break the invariant this exists to uphold; an append
+// to an append-only log cannot corrupt state or dedup regardless of who writes
+// it.
 //
 // INCRBY runs before XADD for the same reason it does in COMMIT_TURN: it is
 // the call that can still raise (a counter holding a non-integer), so a
@@ -381,91 +387,98 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventStore {
       throw new Error('Actor requestId must not be empty.');
 
     await this.indexIdentity(actor);
-    const seatTurn = this.withLease(
-      actor,
-      definition.deadlineMs,
-      async (lease, keys) => {
-        const replay = await this.connections.base.hget(keys.dedup, requestId);
-        if (replay !== null) {
-          const committed = JSON.parse(replay) as StoredResult;
-          if (committed.commandFingerprint !== fingerprint) {
-            throw new Error(
-              `Actor requestId '${requestId}' was already used for a different command.`,
-            );
-          }
-          return definition.result.parse(committed.result);
-        }
-
-        const state = await this.readState(definition, actor, keys);
-        const workingState = structuredClone(state);
-        // Held onto (not inlined) so the seat key stamped onto it by `receive`
-        // — see ActorCommandContext.seatKeyId — is still readable afterward.
-        const ctx: ActorCommandContext = {actor, requestId};
-        // The deadline races `receive` and *only* `receive` — never the commit.
-        // That is what makes the two outcomes mutually exclusive: when the
-        // deadline fires, the commit script has not been issued, so a turn can
-        // never both commit normally and be recorded as failed. Once `receive`
-        // wins the race we are past the deadline check for good, and the
-        // lease-token check inside COMMIT_TURN is the only thing that can still
-        // refuse the write.
-        const turn = await raceTurnDeadline(
-          Promise.resolve(definition.receive(ctx, workingState, parsedCommand)),
-          actor,
-          requestId,
-          definition.deadlineMs,
-        );
-        const nextState = definition.state.parse(turn.state);
-        const result = definition.result.parse(turn.result);
-        if (lease.lost) throw new ActorLeaseLostError(actor);
-
-        const stateRecord: StoredState = {state: nextState};
-        const resultRecord: StoredResult = {
-          commandFingerprint: fingerprint,
-          result,
-        };
-        const events = turn.events ?? [];
-        const committed = await this.evalNumber(
-          COMMIT_TURN,
-          [keys.lease, keys.state, keys.dedup, keys.log, keys.seq],
-          [
-            lease.value,
-            stringify(stateRecord),
-            requestId,
-            stringify(resultRecord),
-            String(this.dedupTtlSeconds),
-            // No key row (no SeatKeyStore bound) journals an empty string —
-            // see ActorCommandContext.seatKeyId.
-            ctx.seatKeyId ?? '',
-            String(events.length),
-            ...events.map(event => stringify(event)),
-          ],
-        );
-        if (committed === WRONG_TYPES) {
+    return this.withLease(actor, definition.deadlineMs, async (lease, keys) => {
+      const replay = await this.connections.base.hget(keys.dedup, requestId);
+      if (replay !== null) {
+        const committed = JSON.parse(replay) as StoredResult;
+        if (committed.commandFingerprint !== fingerprint) {
           throw new Error(
-            `Redis keys for actor '${actor.type}/${actor.id}' hold unexpected types; nothing was committed.`,
+            `Actor requestId '${requestId}' was already used for a different command.`,
           );
         }
-        if (!committed) throw new ActorLeaseLostError(actor);
-        return structuredClone(result);
-      },
-    );
-
-    try {
-      return await seatTurn;
-    } catch (err) {
-      // A timeout is a recorded failed turn, on every runtime. Here the record
-      // is a journal entry (see `recordTimedOutTurn`) plus the log line every
-      // runtime emits.
-      if (err instanceof TurnTimeoutError) {
-        logTimedOutTurn(err);
-        await this.recordTimedOutTurn(err);
+        return definition.result.parse(committed.result);
       }
-      throw err;
-    }
+
+      const state = await this.readState(definition, actor, keys);
+      const workingState = structuredClone(state);
+      // Held onto (not inlined) so the seat key stamped onto it by `receive`
+      // — see ActorCommandContext.seatKeyId — is still readable afterward.
+      const ctx: ActorCommandContext = {actor, requestId};
+      // The deadline races `receive` and *only* `receive` — never the commit.
+      // That is what makes the two outcomes mutually exclusive: when the
+      // deadline fires, the commit script has not been issued, so a turn can
+      // never both commit normally and be recorded as failed. Once `receive`
+      // wins the race we are past the deadline check for good, and the
+      // lease-token check inside COMMIT_TURN is the only thing that can still
+      // refuse the write. (The corollary: this deadline bounds the seat, not
+      // the caller, once `receive` has returned — a commit that stalls is
+      // bounded instead by the renewal cap in `startRenewal`.)
+      //
+      // The failed-turn record is written HERE, still inside `withLease`, so
+      // no other process can claim the seat and commit between the deadline
+      // and the append. Recording it after the release would let the journal
+      // report issue order rather than incident order.
+      const turn = await raceTurnDeadline(
+        Promise.resolve(definition.receive(ctx, workingState, parsedCommand)),
+        actor,
+        requestId,
+        definition.deadlineMs,
+      ).catch(async (err: unknown) => {
+        // Gated on identity, not just type: a `TurnTimeoutError` from a
+        // nested actor call passes through this frame, already recorded by
+        // the turn that owns it. See `isOwnTurnTimeout`.
+        if (isOwnTurnTimeout(err, actor, requestId)) {
+          logTimedOutTurn(err);
+          await this.recordTimedOutTurn(err);
+        }
+        throw err;
+      });
+      const nextState = definition.state.parse(turn.state);
+      const result = definition.result.parse(turn.result);
+      if (lease.lost) throw new ActorLeaseLostError(actor);
+
+      const stateRecord: StoredState = {state: nextState};
+      const resultRecord: StoredResult = {
+        commandFingerprint: fingerprint,
+        result,
+      };
+      const events = turn.events ?? [];
+      const committed = await this.evalNumber(
+        COMMIT_TURN,
+        [keys.lease, keys.state, keys.dedup, keys.log, keys.seq],
+        [
+          lease.value,
+          stringify(stateRecord),
+          requestId,
+          stringify(resultRecord),
+          String(this.dedupTtlSeconds),
+          // No key row (no SeatKeyStore bound) journals an empty string —
+          // see ActorCommandContext.seatKeyId.
+          ctx.seatKeyId ?? '',
+          String(events.length),
+          ...events.map(event => stringify(event)),
+        ],
+      );
+      if (committed === WRONG_TYPES) {
+        throw new Error(
+          `Redis keys for actor '${actor.type}/${actor.id}' hold unexpected types; nothing was committed.`,
+        );
+      }
+      if (!committed) throw new ActorLeaseLostError(actor);
+      return structuredClone(result);
+    });
   }
 
   /**
    * Append the failed turn to this identity's journal.
+   *
+   * **Called from inside `withLease`, before the release**, so this holder
+   * still owns the seat while the record lands: no other process can claim the
+   * lease and commit in between, and the journal therefore records incident
+   * order rather than issue order. (The lease is genuinely live at that point —
+   * renewals cover the whole deadline and the cap tick fires strictly after
+   * it.) The append is still un-gated by the token, so a lease lost early to a
+   * failed renewal cannot swallow the record.
    *
    * Reachable only from the deadline path, which by construction runs before
    * the commit script is ever issued (see the `raceTurnDeadline` note in

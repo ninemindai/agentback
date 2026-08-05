@@ -171,6 +171,12 @@ That record is deliberately its **own** write, touching neither state nor the de
 
 The turn is **abandoned, not cancelled**. Nothing interrupts a `receive` that is still running, and side effects it already performed still happened. What it can no longer do is commit: each runtime re-checks its mutual-exclusion guard — the Redis lease token, an equivalent per-turn guard in process — immediately before the commit, with **no suspension point in between**. On Redis the deadline races `receive` and only `receive`, never the commit script, so a turn can never both commit normally and be recorded as failed, and a turn whose commit already landed can never be marked failed.
 
+That placement has a deliberate corollary: **on Redis the deadline bounds `receive`, not the commit.** Once `receive` has returned, a commit that stalls will not produce a `TurnTimeoutError` — the caller waits on Redis. The *seat* is still bounded, by the renewal cap below, so a stalled commit cannot wedge the identity; only that one caller waits. In process there is no such gap: the commit is synchronous, so the deadline covers the whole turn.
+
+Nested calls attribute to the turn that actually timed out. An actor turn may invoke another actor (`@injectActor`), so an inner `TurnTimeoutError` propagates out through the outer turn's `receive`. It keeps naming the **inner** identity and request, and only the inner turn is recorded — to the outer turn a pass-through timeout is an ordinary thrown turn, and it rolls back like any other. One incident, one marker.
+
+Two small edges worth knowing. A timeout marker's `seatKeyId` is always the `''` sentinel, even when the seat has a real key row: the registry stamps the acting key onto the turn context only *after* the command method returns, and a timed-out turn's never did (the marker still identifies the turn by `actor` + `requestId`). And a deadline that fires inside `initialState` — before the turn ever reaches `receive` — is journaled by `RedisActorRuntime`, which addresses its log by key, but not by `EventSourcedActorRuntime`, which has no stored identity to append to yet; that case gets the log line only. Every marker for a turn that reached `receive` lands on both.
+
 ## Concurrency and idempotency
 
 ```text
@@ -199,7 +205,7 @@ This mode persists completed turns but does not durably queue pending commands. 
 
 ## Events (event log)
 
-A command turn may return `events` alongside `state` and `result` — domain facts (`{type, …}`) describing what happened. `EventSourcedActorsComponent` binds an `ActorRuntime` that **persists those events to a per-identity append-only log atomically with the state/dedup commit**, then delivers them to subscribers. Read a log with `registry.events(type, id)` or react with `registry.subscribe(handler)`; each `CommittedActorEvent` carries the `actor`, a 0-based `seq`, the producing `requestId`, and the committing seat's `seatKeyId` (a required string; `''` is the documented sentinel when no `SeatKeyStore` is bound). Events are not appended on a rolled-back or replayed turn.
+A command turn may return `events` alongside `state` and `result` — domain facts (`{type, …}`) describing what happened. `EventSourcedActorsComponent` binds an `ActorRuntime` that **persists those events to a per-identity append-only log atomically with the state/dedup commit**, then delivers them to subscribers. Read a log with `registry.events(type, id)` or react with `registry.subscribe(handler)`; each `CommittedActorEvent` carries the `actor`, a 0-based `seq`, the producing `requestId`, and the committing seat's `seatKeyId` (a required string; `''` is the "no attributable seat key" sentinel — either no `SeatKeyStore` is bound, or the entry is a system marker recorded outside a completed turn, which is always the case for a timeout marker). Events are not appended on a rolled-back or replayed turn.
 
 This is **state plus an event log**, not full event sourcing: state stays the stored, authoritative value (not a fold of events). It delivers the "Event = fact" persistence — projections, audit, and react-to-what-happened subscribers — without an event-sourced authoring model.
 

@@ -10,6 +10,7 @@ import {
   type Component,
 } from '@agentback/core';
 import {
+  isOwnTurnTimeout,
   logTimedOutTurn,
   raceTurnDeadline,
   turnTimeoutEvent,
@@ -231,11 +232,18 @@ export class EventSourcedActorRuntime implements ActorRuntime, ActorEventStore {
    * happened.
    *
    * `seatKeyId` is the `''` sentinel: the acting seat's key row is stamped on
-   * `ctx` only once `receive` returns, and a timed-out turn's never did.
+   * `ctx` only once `receive` returns, and a timed-out turn's never did. See
+   * `CommittedActorEvent.seatKeyId`, which documents both meanings of `''`.
    *
    * An identity with no stored record yet — a deadline that fired inside
    * `initialState`, before the turn ever reached `receive` — gets the log
    * line only: there is no journal to append to until the identity is loaded.
+   * **This is the one place the two journaling runtimes diverge**:
+   * `RedisActorRuntime` addresses its log by key, so its append creates the
+   * stream and does journal that case. The divergence is confined to a
+   * deadline inside `initialState` and is documented in
+   * `docs/actor-model.md`; every marker for a turn that reached `receive`
+   * lands on both.
    */
   private recordTimedOutTurn(error: TurnTimeoutError): void {
     const stored = this.actors.get(actorKey(error.actor));
@@ -307,7 +315,12 @@ export class EventSourcedActorRuntime implements ActorRuntime, ActorEventStore {
         guard,
       );
     } catch (err) {
-      if (err instanceof TurnTimeoutError) {
+      // Gated on identity, not just type: a `TurnTimeoutError` from a nested
+      // actor call passes through this frame on its way out, and the turn that
+      // owns it already journaled it. Recording here would append a second
+      // marker — to the *inner* actor's log — for one incident. See
+      // `isOwnTurnTimeout`.
+      if (isOwnTurnTimeout(err, actor, requestId)) {
         logTimedOutTurn(err);
         this.recordTimedOutTurn(err);
       }

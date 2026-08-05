@@ -155,8 +155,10 @@ State stays authoritative — this is "state + event log", not full event
 sourcing. Events are not appended on a rolled-back or replayed turn.
 
 Every `CommittedActorEvent` carries a required `seatKeyId`, stamped at commit
-by the journaling runtime from the acting seat's key row. `''` is the
-documented sentinel for no seat layer bound — journaling still works, keyless.
+by the journaling runtime from the acting seat's key row. `''` is the "no
+attributable seat key" sentinel, with two meanings: no seat layer bound
+(journaling still works, keyless), **or** a system marker recorded outside a
+completed turn — timeout markers always carry `''`.
 
 ## Turn deadlines (per seat type)
 
@@ -191,7 +193,14 @@ never commit — every runtime re-checks its mutual-exclusion guard (the Redis
 lease token, an equivalent per-turn guard in process) immediately before the
 commit, with no suspension point in between. On Redis the lease also stops
 renewing once the turn has run for its deadline, so the seat becomes claimable
-across processes even if the holder never returns.
+across processes even if the holder never returns; there the deadline bounds
+`receive`, not the commit (a stalled commit makes one caller wait, but the
+renewal cap still bounds the seat).
+
+**Nested calls attribute to the inner turn.** An actor turn may invoke another
+actor (`@injectActor`); the inner `TurnTimeoutError` propagates out still naming
+the **inner** identity and request, and only the inner turn is recorded — to the
+caller it is an ordinary thrown turn that rolls back. One incident, one marker.
 
 ## Runtimes (the `ActorRuntime` port)
 
