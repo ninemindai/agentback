@@ -609,6 +609,9 @@ importers:
       '@agentback/actors':
         specifier: workspace:~
         version: link:../actors
+      '@agentback/common':
+        specifier: workspace:~
+        version: link:../common
       '@agentback/core':
         specifier: workspace:~
         version: link:../core

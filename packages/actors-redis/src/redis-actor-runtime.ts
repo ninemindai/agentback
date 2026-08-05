@@ -9,7 +9,7 @@ import {
   type ActorCommandContext,
   type ActorDefinition,
   type ActorEvent,
-  type ActorEventReader,
+  type ActorEventStore,
   type ActorId,
   type ActorInvokeOptions,
   type ActorRef,
@@ -19,6 +19,11 @@ import {
 import {BindingScope, ContextTags, inject, injectable} from '@agentback/core';
 import type {RedisConnectionManager} from '@agentback/messaging-bullmq';
 import {REDIS_ACTOR_CONNECTIONS, REDIS_ACTOR_OPTIONS} from './keys.js';
+import {
+  RedisJournalSubscription,
+  type JournalSource,
+  type JournalSubscribeOptions,
+} from './stream-subscriber.js';
 
 // The lease token (a UUID held in KEYS[1]) is the sole mutual-exclusion guard.
 // Acquire is one atomic `SET NX PX`. A separate fencing token is unnecessary:
@@ -122,7 +127,10 @@ interface Lease {
   timer?: ReturnType<typeof setInterval>;
 }
 
-export interface RedisActorRuntimeOptions {
+export interface RedisActorRuntimeOptions
+  // Defaults for every subscription's tail loop; `since` stays per-call,
+  // because a cursor belongs to one consumer and not to the runtime.
+  extends Pick<JournalSubscribeOptions, 'blockMs' | 'discoveryIntervalMs'> {
   /** Redis key prefix. Default `agentback:actors`. */
   prefix?: string;
   /** Lease duration for one actor turn. Default 30 seconds. */
@@ -157,21 +165,27 @@ export class ActorLeaseLostError extends Error {
  *
  * It also journals: a command turn's `events` are appended to a per-identity
  * Redis Stream *inside* the same Lua script that writes state and the dedup
- * record, and read back with `events()`. In-process delivery (`subscribe`) is
- * not offered here — a durable log is read, or tailed by a consumer, rather
- * than pushed to callbacks in one process.
+ * record, and read back with `events()`. `subscribe()` completes the
+ * `ActorEventStore` port by tailing those streams (see
+ * `RedisJournalSubscription`): the durable log is the source of truth, live
+ * delivery is best effort, and a reconnecting or restarted consumer replays
+ * by `seq` — so handlers must be idempotent by `(actor, seq)`.
  */
 @injectable({
   scope: BindingScope.SINGLETON,
   tags: {[ContextTags.KEY]: ACTOR_RUNTIME.key},
 })
-export class RedisActorRuntime implements ActorRuntime, ActorEventReader {
+export class RedisActorRuntime implements ActorRuntime, ActorEventStore {
   private readonly definitions = new Map<string, object>();
+  private readonly subscriptions = new Set<RedisJournalSubscription>();
+  /** Identities this instance has already added to the discovery index. */
+  private readonly indexed = new Set<string>();
   private readonly prefix: string;
   private readonly leaseMs: number;
   private readonly leaseRetryMs: number;
   private readonly acquireTimeoutMs: number;
   private readonly dedupTtlSeconds: number;
+  private readonly deliveryDefaults: JournalSubscribeOptions;
 
   constructor(
     @inject(REDIS_ACTOR_CONNECTIONS)
@@ -180,6 +194,10 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventReader {
     options: RedisActorRuntimeOptions = {},
   ) {
     this.prefix = options.prefix ?? 'agentback:actors';
+    this.deliveryDefaults = {
+      blockMs: options.blockMs,
+      discoveryIntervalMs: options.discoveryIntervalMs,
+    };
     this.leaseMs = positive(options.leaseMs ?? 30_000, 'leaseMs');
     this.leaseRetryMs = positive(options.leaseRetryMs ?? 25, 'leaseRetryMs');
     this.acquireTimeoutMs = positive(
@@ -249,6 +267,63 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventReader {
     return entries.map(([, fields]) => toCommittedEvent(actor, fields));
   }
 
+  /**
+   * Every identity that has taken a turn under this prefix, from the
+   * discovery index (see `indexIdentity`). Delivery needs it because the
+   * journal is per identity: without an index, finding the streams to tail
+   * would mean scanning the keyspace.
+   */
+  async identities(): Promise<readonly ActorId[]> {
+    const members = await this.connections.base.smembers(this.identityIndexKey);
+    return members.map(member => {
+      const [type = '', id = ''] = member.split(':');
+      return {type: decodeURIComponent(type), id: decodeURIComponent(id)};
+    });
+  }
+
+  /**
+   * Tail every identity journal and hand each committed event to `handler`.
+   * Returns an unsubscribe function.
+   *
+   * Delivery is best effort and at-least-once — see the consumer contract on
+   * `ActorEventStore.subscribe`. Each subscription is an independent tail
+   * loop with its own connection and its own cursor, and there is no filter
+   * between the log and the handler, so every consumer sees every event and
+   * dedups by `(actor, seq)` itself. Multiplex several consumers onto one
+   * loop rather than subscribing per consumer: that is what
+   * `SeatJournalConsumerHost` does for the `seat.journal.consumer` extension
+   * point. An async handler is awaited, so a slow consumer only slows its own
+   * tail — never the committing turn, which delivery never touches.
+   */
+  subscribe(
+    handler: (event: CommittedActorEvent) => void | Promise<void>,
+    options: JournalSubscribeOptions = {},
+  ): () => void {
+    const source: JournalSource = {
+      identities: () => this.identities(),
+      logKey: actor => this.keys(actor).log,
+      readEntry: (actor, fields) => toCommittedEvent(actor, fields),
+    };
+    const subscription = new RedisJournalSubscription(
+      this.connections,
+      source,
+      handler,
+      {...this.deliveryDefaults, ...options},
+    );
+    this.subscriptions.add(subscription);
+    return () => {
+      if (!this.subscriptions.delete(subscription)) return;
+      void subscription.close();
+    };
+  }
+
+  /** Close every live tail loop. Called by the component's stop observer. */
+  async stopDelivery(): Promise<void> {
+    const live = [...this.subscriptions];
+    this.subscriptions.clear();
+    await Promise.all(live.map(subscription => subscription.close()));
+  }
+
   private async invoke<S, C, R>(
     definition: ActorDefinition<S, C, R>,
     actor: ActorId,
@@ -261,6 +336,7 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventReader {
     if (!requestId.trim())
       throw new Error('Actor requestId must not be empty.');
 
+    await this.indexIdentity(actor);
     return this.withLease(actor, async (lease, keys) => {
       const replay = await this.connections.base.hget(keys.dedup, requestId);
       if (replay !== null) {
@@ -383,6 +459,36 @@ export class RedisActorRuntime implements ActorRuntime, ActorEventReader {
         });
     }, interval);
     lease.timer.unref?.();
+  }
+
+  /** The one set naming every identity with a journal under this prefix. */
+  private get identityIndexKey(): string {
+    return `${this.prefix}:identities`;
+  }
+
+  /**
+   * Record this identity in the discovery index, once per process.
+   *
+   * Deliberately **not** part of `COMMIT_TURN`, for two reasons. It cannot be:
+   * the index is one key for the whole prefix while every commit key carries
+   * the `{type:id}` hash tag, so adding it to the script would make the
+   * commit cross-slot on Redis Cluster. And it does not need to be: this runs
+   * *before* the commit, so `an event exists` implies `its identity is
+   * indexed`, which is the only direction delivery depends on. The other
+   * direction is allowed to be loose — an identity that was addressed but
+   * never committed leaves an empty stream for a tail loop to read, which
+   * costs one key in an `XREAD` and delivers nothing. The one commit point
+   * stays exactly one script; this is an over-approximating hint beside it,
+   * not a second half of it.
+   */
+  private async indexIdentity(actor: ActorId): Promise<void> {
+    const key = `${actor.type} ${actor.id}`;
+    if (this.indexed.has(key)) return;
+    await this.connections.base.sadd(
+      this.identityIndexKey,
+      `${encodeURIComponent(actor.type)}:${encodeURIComponent(actor.id)}`,
+    );
+    this.indexed.add(key);
   }
 
   private keys(actor: ActorId): ActorKeys {

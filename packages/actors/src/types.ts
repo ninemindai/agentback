@@ -104,7 +104,27 @@ export interface ActorEventReader {
  * **and** delivers each event in process. `ActorRegistry.subscribe` requires it.
  */
 export interface ActorEventStore extends ActorEventReader {
-  /** Observe every event as it commits. Returns an unsubscribe function. */
+  /**
+   * Observe every event as it commits. Returns an unsubscribe function.
+   *
+   * **The consumer contract: be idempotent by `(actor, seq)`, and expect late
+   * replay.** The durable log is the source of truth and live delivery is
+   * best effort, so a handler is called *at least* once per committed event,
+   * never exactly once. A durable adapter (`RedisActorRuntime`) tails the log
+   * and, whenever it (re)connects — a dropped socket, a redeployed process —
+   * resumes by replaying everything after the cursor it still holds; a
+   * restarted process holds none, so it replays the identity's log from
+   * `seq` 0. That is normal operation, not an error path: a consumer that
+   * keeps its own `(actor, seq)` high-water mark (or writes with an
+   * idempotency key derived from it) sees each fact once, and one that
+   * assumes single delivery double-counts on the first reconnect.
+   *
+   * Ordering is guaranteed per identity (`seq` ascending) and unspecified
+   * across identities. A handler that throws is logged and skipped — it never
+   * stalls the tail, fails the committing turn, or affects another
+   * subscriber — and its event is not retried, because the log is still there
+   * to be replayed by `seq`.
+   */
   subscribe(handler: (event: CommittedActorEvent) => void): () => void;
 }
 

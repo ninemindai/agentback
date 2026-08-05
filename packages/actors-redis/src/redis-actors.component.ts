@@ -2,7 +2,11 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {ActorRegistry} from '@agentback/actors';
+import {
+  ACTOR_RUNTIME,
+  ActorRegistry,
+  type ActorRuntime,
+} from '@agentback/actors';
 import {
   Application,
   Binding,
@@ -27,6 +31,7 @@ import {
   RedisActorRuntime,
   type RedisActorRuntimeOptions,
 } from './redis-actor-runtime.js';
+import {SeatJournalConsumerHost} from './seat-journal-consumers.js';
 
 export const REDIS_ACTORS_OBSERVER_KEY = 'observers.RedisActors';
 
@@ -47,9 +52,15 @@ export class RedisActorsLifecycleObserver implements LifeCycleObserver {
     private readonly connections: RedisConnectionManager,
     @inject(REDIS_ACTOR_OWNS_CONNECTIONS)
     private readonly ownsConnections: boolean,
+    @inject(ACTOR_RUNTIME) private readonly runtime: ActorRuntime,
   ) {}
 
   async stop(): Promise<void> {
+    // Tail loops first, connections second: a loop whose socket is closed
+    // under it would spin on reconnect errors instead of exiting.
+    if (this.runtime instanceof RedisActorRuntime) {
+      await this.runtime.stopDelivery();
+    }
     if (this.ownsConnections) await this.connections.close();
   }
 }
@@ -61,6 +72,7 @@ export class RedisActorsComponent implements Component {
   readonly services = [
     RedisActorRuntime,
     ActorRegistry,
+    SeatJournalConsumerHost,
     RedisActorsLifecycleObserver,
   ];
 

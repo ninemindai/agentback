@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@agentback/actors": "workspace:~",
+    "@agentback/common": "workspace:~",
     "@agentback/core": "workspace:~",
     "@agentback/messaging-bullmq": "workspace:~",
     "tslib": "^2.8.1"

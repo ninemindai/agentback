@@ -48,7 +48,26 @@ A command turn's `events` are appended to a per-identity Redis Stream (`…:log`
 const log = await registry.events('cart', 'cart-42'); // CommittedActorEvent[]
 ```
 
-Reads are lease-free (`XRANGE` over the whole log). This adapter journals and reads back; it does not deliver events in process, so `registry.subscribe(...)` requires `EventSourcedActorsComponent` instead. Nothing trims the stream yet — retention is not implemented.
+Reads are lease-free (`XRANGE` over the whole log). Nothing trims the stream yet — retention is not implemented.
+
+## Delivery
+
+`registry.subscribe(handler)` works here too: the adapter tails the identity streams and hands each committed event to every subscriber, completing the `ActorEventStore` port.
+
+**The durable log is the source of truth; live delivery is best effort.** A subscription is one tail loop on its own connection, reading all known journals in a single multi-stream `XREAD`. It keeps the last `seq` it delivered per identity, and whenever it (re)connects it re-reads each log from the start and replays everything past that cursor before going live. A restarted process holds no cursor, so it replays from `seq` 0 — normal operation, not an error path. **Delivery is therefore at-least-once and consumers must be idempotent by `(actor, seq)`.** Order is guaranteed per identity, unspecified across identities. Nothing filters between the log and a handler: every consumer is offered every event.
+
+Finding the streams to tail needs to know which identities exist, so the runtime keeps one `…:identities` set, written *before* a turn commits (once per identity per process). It is deliberately outside the commit script: the script's keys all carry the `{type:id}` hash tag and one shared index key would make the commit cross-slot on Redis Cluster. Writing it first is what makes it safe — a committed event's identity is always indexed; an addressed-but-never-committed one may also be listed, which costs an empty stream in the `XREAD` and delivers nothing.
+
+DI-registered `seat.journal.consumer` extensions are hosted by `SeatJournalConsumerHost`, which takes **one** subscription and fans out to every provider — so a consumer costs a callback, not a connection. Providers are Zod-validated when discovered and one that throws degrades to skip + log, leaving its siblings running. `subscribe(fn)` remains the programmatic surface for non-extension callers.
+
+```ts
+const off = registry.subscribe(({actor, seq, event}) => {
+  if (alreadyHandled(actor, seq)) return; // consumers dedup, and own their cursor
+  project(event);
+});
+```
+
+Limits: the multi-stream `XREAD` spans identities, so delivery is single-node (the commit path is not) — on Redis Cluster the streams would hash to different slots. A reconnect re-reads each identity's whole log; there is no partial replay from a stream id yet.
 
 ## Options
 
@@ -60,6 +79,8 @@ new RedisActorsComponent({
   leaseRetryMs: 25,
   acquireTimeoutMs: 15_000,
   dedupTtlSeconds: 86_400,
+  blockMs: 1_000, // delivery: XREAD BLOCK window
+  discoveryIntervalMs: 1_000, // delivery: how often new identities are picked up
 });
 ```
 
@@ -75,6 +96,8 @@ State and results must be JSON-serializable. The dedup hash TTL is refreshed on 
 - Lease loss can let method bodies overlap briefly, but only the current holder can commit. Methods must follow the base package's side-effect discipline.
 - Commands are synchronous request/reply calls; pending commands are not durably queued. A future BullMQ mode needs a result channel beyond the current `JobQueue` port.
 - Actor keys use a Redis hash tag, keeping each turn's Lua keys in one Redis Cluster slot.
+- Delivery is best-effort and at-least-once; consumers must be idempotent by `(actor, seq)`. A handler that throws is logged and skipped — its event is not retried, because the log can be replayed by `seq`.
+- The identity index is written before the commit, never inside it: an event's identity is always discoverable, and the index may over-approximate.
 
 ## Testing
 

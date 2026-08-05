@@ -150,16 +150,25 @@ registry.subscribe(({actor, event}) => log(event.type));
 const events = await registry.events('cart', 'ada'); // CommittedActorEvent[]
 ```
 
-Two runtimes journal. `EventSourcedActorsComponent` is a superset of the
-in-memory adapter and does both halves — it stores the log and delivers each
-event to subscribers. `RedisActorsComponent`
+Two runtimes journal, and both do both halves. `EventSourcedActorsComponent` is
+a superset of the in-memory adapter: it stores the log and delivers each event
+to subscribers in process. `RedisActorsComponent`
 ([`@agentback/actors-redis`](../actors-redis)) journals **durably**, appending
 to a per-identity Redis Stream inside the same Lua script that writes state and
-the dedup record; it has no in-process delivery, so `registry.events(...)` works
-against it and `registry.subscribe(...)` does not. That split is the exported
+the dedup record, and delivers by tailing those streams. The exported split is
 `ActorEventReader` (read the log) versus `ActorEventStore` (read **and**
-subscribe); `runActorEventStoreConformance` from `@agentback/actors/testing` is
-the shared contract both runtimes pass.
+subscribe) — a runtime may implement only the reader, in which case
+`registry.events(...)` works against it and `registry.subscribe(...)` throws.
+`runActorEventStoreConformance` from `@agentback/actors/testing` is the shared
+contract both runtimes pass.
+
+**`subscribe` handlers must be idempotent by `(actor, seq)`, and late replay is
+normal.** The log is the source of truth and live delivery is best effort, so a
+handler is called *at least* once per event: the durable adapter replays by
+`seq` whenever it reconnects, and a restarted process — holding no cursor —
+replays an identity's log from the start. Order is per identity; a handler that
+throws is logged and skipped, never retried and never able to stall or fail the
+committing turn.
 
 State stays authoritative — this is "state + event log", not full event
 sourcing. Events are not appended on a rolled-back or replayed turn.
@@ -175,7 +184,7 @@ never binds a `SeatKeyStore` still journals, just keyless.
 | --------------------------------------------------------------------- | --------------------- | ------------------------------------------- |
 | `InMemoryActorsComponent`                                             | in-memory             | tests, dev, single-instance                 |
 | `EventSourcedActorsComponent`                                         | in-memory + event log | the above **plus** a per-identity event log, delivered to subscribers |
-| `RedisActorsComponent` ([`@agentback/actors-redis`](../actors-redis)) | Redis                 | cross-process serialization + durable state **and** a durable event log (no in-process delivery) |
+| `RedisActorsComponent` ([`@agentback/actors-redis`](../actors-redis)) | Redis                 | cross-process serialization + durable state **and** a durable event log, delivered by tailing it (at-least-once) |
 
 `ActorRuntime` is the package boundary. Every adapter must pass
 `runActorRuntimeConformance` from `@agentback/actors/testing` and provide: one

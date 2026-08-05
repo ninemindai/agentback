@@ -53,7 +53,7 @@ Each package also ships its own `README.md` under [`packages/`](../packages/).
 | `@agentback/messaging`             | Zod-typed JobQueue/EventBus/Scheduler ports with in-memory adapter                                                                                  |
 | `@agentback/messaging-bullmq`      | BullMQ + Redis Streams durable adapter for messaging ports                                                                                          |
 | `@agentback/actors`                | Zod-typed actor runtime port — `@actor`/`@actorCommand`, per-identity serialized turns, idempotent replay, in-memory adapter                        |
-| `@agentback/actors-redis`          | Redis-backed actor runtime adapter — per-identity leases + atomic state/dedup commit                                                                |
+| `@agentback/actors-redis`          | Redis-backed actor runtime adapter — per-identity leases, atomic state/dedup/journal commit, at-least-once journal delivery                         |
 | `@agentback/drizzle`               | Drizzle ORM binding and drizzle-zod recipe                                                                                                          |
 | `@agentback/files`                 | `FileStore` port for uploads/downloads + in-memory adapter (the disk `FsFileStore` is the Node-only `@agentback/files/fs` subpath)                  |
 | `@agentback/files-s3`              | S3 `FileStore` adapter (streaming via AWS SDK v3)                                                                                                   |

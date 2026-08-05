@@ -5,4 +5,6 @@
 export * from './keys.js';
 export * from './redis-actor-runtime.js';
 export * from './redis-actors.component.js';
+export * from './seat-journal-consumers.js';
 export * from './seat-key-store.js';
+export * from './stream-subscriber.js';

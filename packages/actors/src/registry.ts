@@ -221,7 +221,7 @@ export class ActorRegistry implements LifeCycleObserver {
     const runtime = this.runtime as Partial<ActorEventStore>;
     if (typeof runtime.subscribe !== 'function') {
       throw new Error(
-        'The bound ActorRuntime persists events but does not deliver them in process. Use EventSourcedActorsComponent, or read the log with events().',
+        'The bound ActorRuntime persists events but does not deliver them. Use EventSourcedActorsComponent (in-memory) or RedisActorsComponent (durable), or read the log with events().',
       );
     }
     return this.eventReader() as ActorEventStore;
