@@ -1,6 +1,6 @@
 {
   "name": "@agentback/actors-redis",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "Redis-backed ActorRuntime adapter with per-identity leases and atomic state/dedup commits",
   "type": "module",
   "main": "dist/index.js",
