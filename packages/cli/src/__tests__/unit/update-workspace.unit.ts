@@ -121,16 +121,36 @@ catalog:
 `;
 
 describe('readYamlPins', () => {
-  it('reads every @agentback/* pin regardless of its block', () => {
+  it('reads every @agentback/* pin, keyed by its block', () => {
     expect([...readYamlPins(YAML)].sort()).toEqual([
-      ['@agentback/core', '^0.7.1'],
-      ['@agentback/mcp', '0.7.1'],
-      ['@agentback/rest', '~0.7.1'],
+      ['catalog:@agentback/mcp', '0.7.1'],
+      ['overrides:@agentback/core', '^0.7.1'],
+      ['overrides:@agentback/rest', '~0.7.1'],
+    ]);
+  });
+
+  // Name-keyed, the second occurrence would overwrite the first — and if the
+  // survivor is the higher version, `from` resolves too high and every
+  // migration in the gap is silently skipped.
+  it('keeps both pins when one package appears in two blocks', () => {
+    const src =
+      "overrides:\n  '@agentback/core': ^0.7.0\n" +
+      "\ncatalog:\n  '@agentback/core': ^0.9.0\n";
+    expect(readYamlPins(src).sort()).toEqual([
+      ['catalog:@agentback/core', '^0.9.0'],
+      ['overrides:@agentback/core', '^0.7.0'],
+    ]);
+  });
+
+  it('qualifies a named catalogs: entry with its own name', () => {
+    const src = "catalogs:\n  web:\n    '@agentback/rest': ^0.7.1\n";
+    expect(readYamlPins(src)).toEqual([
+      ['catalogs.web:@agentback/rest', '^0.7.1'],
     ]);
   });
 
   it('ignores a packages: glob sequence', () => {
-    expect(readYamlPins("packages:\n  - 'packages/*'\n").size).toBe(0);
+    expect(readYamlPins("packages:\n  - 'packages/*'\n")).toEqual([]);
   });
 });
 
@@ -149,6 +169,25 @@ describe('rewriteYamlPins', () => {
       YAML.replace("'@agentback/core': ^0.7.1", "'@agentback/core': ^0.10.0")
         .replace('"@agentback/rest": "~0.7.1"', '"@agentback/rest": "^0.10.0"')
         .replace("'@agentback/mcp': 0.7.1", "'@agentback/mcp': ^0.10.0"),
+    );
+  });
+
+  it('rewrites a named catalogs: entry, nesting and all', () => {
+    const src =
+      'catalogs:\n  web:\n    "@agentback/rest": "^0.7.1"  # pinned\n' +
+      "  jobs:\n    '@agentback/messaging': 0.7.1\n";
+    const r = rewriteYamlPins(src, '0.10.0');
+    expect(r.changed.sort()).toEqual([
+      '@agentback/messaging',
+      '@agentback/rest',
+    ]);
+    expect(r.text).toBe(
+      src
+        .replace('"^0.7.1"', '"^0.10.0"')
+        .replace(
+          "'@agentback/messaging': 0.7.1",
+          "'@agentback/messaging': ^0.10.0",
+        ),
     );
   });
 

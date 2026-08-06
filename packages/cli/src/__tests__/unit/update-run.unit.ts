@@ -321,6 +321,45 @@ describe('runUpdate across a workspace', () => {
     expect(r.changed).toContain('pnpm-workspace.yaml:@agentback/core');
   });
 
+  // The same package pinned twice at different versions: the LOWEST has to win
+  // or the window narrows and the migrations in the gap never run.
+  it('resolves `from` from the lowest pin across two YAML blocks', async () => {
+    writeFileSync(
+      path.join(cwd, 'pnpm-workspace.yaml'),
+      "overrides:\n  '@agentback/core': ^0.7.0\n" +
+        "\ncatalog:\n  '@agentback/core': ^0.9.0\n",
+    );
+    const {exec} = stubExec();
+    const r = await runUpdate(
+      {dryRun: true, force: false, help: false, to: '0.10.0'},
+      {exec, cwd, selfVersion: '0.10.0'},
+    );
+    expect(r.from).toBe('0.7.0');
+    expect(r.disagreement).toContain(
+      'pnpm-workspace.yaml:catalog:@agentback/core',
+    );
+  });
+
+  it('refuses a directory with no root package.json', async () => {
+    const bare = mkdtempSync(path.join(tmpdir(), 'abc-bare-'));
+    mkdirSync(path.join(bare, 'packages', 'app'), {recursive: true});
+    writeFileSync(
+      path.join(bare, 'packages', 'app', 'package.json'),
+      JSON.stringify({dependencies: {'@agentback/core': '^0.9.0'}}),
+    );
+    const {exec} = stubExec();
+    try {
+      await expect(
+        runUpdate(
+          {dryRun: true, force: false, help: false, to: '0.10.0'},
+          {exec, cwd: bare, selfVersion: '0.10.0'},
+        ),
+      ).rejects.toThrow(/no package.json/);
+    } finally {
+      rmSync(bare, {recursive: true, force: true});
+    }
+  });
+
   it('writes no workspace file under --dry-run', async () => {
     const yaml = "overrides:\n  '@agentback/core': ^0.9.0\n";
     writeFileSync(path.join(cwd, 'pnpm-workspace.yaml'), yaml);
@@ -465,5 +504,60 @@ describe('printUpdateReport', () => {
       lines.push(s),
     );
     expect(lines.join('\n')).toContain('dependencies:@agentback/rest');
+  });
+
+  // A stale tree with no stale pins has nothing to "fix and re-run" — the same
+  // run would reproduce byte-for-byte forever. The two halves get separate
+  // instructions.
+  it('tells a stale tree to install, and never to edit pins', () => {
+    const lines: string[] = [];
+    const code = printUpdateReport(
+      {
+        ...base,
+        installHint: 'pnpm install',
+        stale: [
+          {
+            site: 'node_modules/@agentback/core/package.json',
+            name: '@agentback/core',
+            found: '0.7.1',
+          },
+        ],
+      },
+      s => lines.push(s),
+    );
+    const text = lines.join('\n');
+    expect(code).toBe(1);
+    expect(text).toContain('Installed below target');
+    expect(text).toContain('Run `pnpm install`');
+    expect(text).not.toContain('Pinned below target');
+    expect(text).not.toContain('carets cannot cross');
+  });
+
+  it('renders both halves, each with its own instruction', () => {
+    const lines: string[] = [];
+    printUpdateReport(
+      {
+        ...base,
+        installHint: 'yarn install',
+        stale: [
+          {
+            site: 'services/api/package.json',
+            name: '@agentback/rest',
+            found: '^0.7.1',
+          },
+          {
+            site: 'node_modules/@agentback/core/package.json',
+            name: '@agentback/core',
+            found: '0.7.1',
+          },
+        ],
+      },
+      s => lines.push(s),
+    );
+    const text = lines.join('\n');
+    expect(text).toContain('Pinned below target');
+    expect(text).toContain('services/api/package.json');
+    expect(text).toContain('Installed below target');
+    expect(text).toContain('Run `yarn install` after fixing the pins above.');
   });
 });

@@ -177,12 +177,41 @@ const YAML_PIN_RE =
 
 const YAML_NAME_RE = /@agentback\/[A-Za-z0-9._-]+/g;
 
-/** Every `@agentback/*` version pin declared in a `pnpm-workspace.yaml`. */
-export function readYamlPins(source: string): Map<string, string> {
-  const out = new Map<string, string>();
+/** A `key:` line opening a nested block — `overrides:`, `catalogs:`, `web:`. */
+const YAML_BLOCK_RE = /^([ \t]*)['"]?([A-Za-z0-9_.-]+)['"]?:[ \t]*(?:#.*)?$/;
+
+/**
+ * Every `@agentback/*` version pin in a `pnpm-workspace.yaml`, as
+ * `[<block path>:<name>, range]` pairs — **a list, not a name-keyed map**.
+ *
+ * The same package can be pinned in `overrides:` and again in `catalog:` (or in
+ * two named `catalogs:` entries) at different versions. Keying by name alone
+ * would let the last one seen silently overwrite the first, and if that one is
+ * the higher version, `from` resolves too high and every migration in the gap
+ * is skipped. This is the same rule `scanAgentbackRanges` follows for the
+ * dependency sections, for the same reason.
+ */
+export function readYamlPins(source: string): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
+  const stack: Array<{indent: number; name: string}> = [];
   for (const line of source.split('\n')) {
+    const block = YAML_BLOCK_RE.exec(line);
+    if (block) {
+      const indent = block[1].length;
+      while (stack.length && stack[stack.length - 1].indent >= indent) {
+        stack.pop();
+      }
+      stack.push({indent, name: block[2]});
+      continue;
+    }
     const m = YAML_PIN_RE.exec(line);
-    if (m) out.set(m[3], m[6]);
+    if (!m) continue;
+    const indent = m[1].length;
+    const path = stack
+      .filter(s => s.indent < indent)
+      .map(s => s.name)
+      .join('.');
+    out.push([path ? `${path}:${m[3]}` : m[3], m[6]]);
   }
   return out;
 }

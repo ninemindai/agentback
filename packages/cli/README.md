@@ -43,7 +43,9 @@ ranges → **migrate** (every entry in the half-open window `(from, to]`) →
 `packages:` globs and npm/yarn `workspaces`: sub-package pins get bumped, their
 `src/**` gets scanned by the advisories, and `pnpm-workspace.yaml` `overrides`
 (plus `catalog`, and package.json `overrides`/`resolutions`) get rewritten. An
-override left behind silently re-pins every range the bump just moved.
+override left behind silently re-pins every range the bump just moved. Detection
+globs `<pkg>/src/**` only, per package — code kept outside `src/` is not
+scanned.
 
 ```bash
 npx @agentback/cli@latest update --dry-run

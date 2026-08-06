@@ -51,6 +51,12 @@ export interface UpdateReport {
    * Non-empty ⇒ the update did NOT fully land ⇒ exit 1.
    */
   stale: StalePin[];
+  /**
+   * The app's install command, e.g. `pnpm install`. Carried on the report so
+   * the audit can tell a user with a stale `node_modules` what to actually run
+   * — "fix the pin sites" is unactionable when there are no stale pin sites.
+   */
+  installHint?: string;
   installed: boolean;
   dryRun: boolean;
 }
@@ -130,6 +136,17 @@ export async function runUpdate(
   // all of them. Resolving across the whole topology keeps "the lowest wins so
   // no migration is skipped" true of the app rather than of one file.
   const workspace = discoverWorkspace(cwd);
+  // The root manifest anchors everything downstream — it is `ctx.pkg` for every
+  // migration and the file `rel` paths are relative to. Without this guard a
+  // rootless directory would silently promote whichever sub-package sorted
+  // first into that role, and detection would reason about the wrong app.
+  if (!existsSync(workspace.manifests[0])) {
+    throw new AgentError(
+      `update: no package.json in ${cwd}. Run this from an AgentBack app ` +
+        'root (or, in a workspace, from the workspace root).',
+      {code: ErrorCodes.INVALID_INPUT},
+    );
+  }
   const manifests: Manifest[] = workspace.manifests
     .filter(p => existsSync(p))
     .map(p => {
@@ -154,8 +171,10 @@ export async function runUpdate(
     }
   }
   if (yamlSource) {
-    for (const [name, range] of readYamlPins(yamlSource)) {
-      ranges.set(`pnpm-workspace.yaml:${name}`, range);
+    // Block-qualified keys, so a package pinned in both `overrides:` and
+    // `catalog:` contributes BOTH versions to the min-over-everything.
+    for (const [key, range] of readYamlPins(yamlSource)) {
+      ranges.set(`pnpm-workspace.yaml:${key}`, range);
     }
   }
   const {version: from, disagreement, unparsed} = resolveFromVersion(ranges);
@@ -221,9 +240,9 @@ export async function runUpdate(
     }
   }
 
+  const {cmd, args: iargs} = installCommand(detectAppPackageManager(cwd));
   let installed = false;
   if (!args.dryRun && changed.length) {
-    const {cmd, args: iargs} = installCommand(detectAppPackageManager(cwd));
     const r = await exec(cmd, iargs);
     if (r.code !== 0)
       throw new AgentError(
@@ -253,6 +272,7 @@ export async function runUpdate(
     warnings,
     findings,
     stale,
+    installHint: `${cmd} ${iargs.join(' ')}`,
     installed,
     dryRun: args.dryRun,
   };
@@ -313,11 +333,32 @@ export function printUpdateReport(
     `\nUPDATE INCOMPLETE — ${r.stale.length} @agentback/* version(s) still ` +
       `below ${r.to}:`,
   );
-  for (const s of r.stale) out(`  ${s.site}  ${s.name} ${s.found}`);
-  out(
-    '\nFix each site above (or bump it by hand) and re-run. A stale pin or ' +
-      'override holds the old version silently — 0.x carets cannot cross a ' +
-      'minor.',
-  );
+
+  // The two halves need different instructions. A stale pin is something the
+  // user edits; a stale node_modules is something a package manager fixes — and
+  // when the pins are already at target nothing changed, so no install ran.
+  // Telling that user to "fix the sites above and re-run" reproduces the
+  // identical failure forever.
+  const installedSite = (s: StalePin) =>
+    s.site.split(/[\\/]/).includes('node_modules');
+  const pins = r.stale.filter(s => !installedSite(s));
+  const trees = r.stale.filter(installedSite);
+
+  if (pins.length) {
+    out('\n  Pinned below target — edit these, then re-run:');
+    for (const s of pins) out(`    ${s.site}  ${s.name} ${s.found}`);
+    out(
+      '\n  A stale pin or override holds the old version silently — 0.x ' +
+        'carets cannot cross a minor.',
+    );
+  }
+  if (trees.length) {
+    out('\n  Installed below target — the dependency tree is stale:');
+    for (const s of trees) out(`    ${s.site}  ${s.name} ${s.found}`);
+    out(
+      `\n  Run \`${r.installHint ?? 'npm install'}\`` +
+        (pins.length ? ' after fixing the pins above.' : '.'),
+    );
+  }
   return 1;
 }

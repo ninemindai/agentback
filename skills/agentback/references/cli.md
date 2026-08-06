@@ -103,8 +103,12 @@ shipped a source-mechanical breaking change.
   pnpm `packages:` globs and npm/yarn `workspaces` — so sub-package pins are
   bumped, their `src/**` is scanned by the advisories, and the report names the
   file each entry came from (`packages/app/package.json:@agentback/rest`). The
-  root manifest keeps its bare form. `workspace:` ranges are still skipped by
-  design.
+  root manifest keeps its bare form; a directory with no root `package.json` is
+  refused rather than silently promoting a sub-package. `workspace:` ranges are
+  still skipped by design.
+- **Detection globs `<pkg>/src/**` only**, per workspace package — the same
+  assumption the root fallback already makes. A package keeping its code outside
+  `src/` is not scanned.
 - **Overrides are rewritten too.** `pnpm-workspace.yaml` `overrides` (and
   `catalog`), plus package.json `overrides`/`resolutions`/`pnpm.overrides`. An
   override outranks every range in the file, so one left behind silently re-pins
