@@ -340,6 +340,28 @@ describe('runUpdate across a workspace', () => {
     );
   });
 
+  // Adversarial sibling of the above: a literal `'catalogs.web':` key and a real
+  // `catalogs:` → `web:` nesting must not produce the same range-map key.
+  it('keeps a dotted literal key distinct from a real nesting', async () => {
+    writeFileSync(
+      path.join(cwd, 'pnpm-workspace.yaml'),
+      "'catalogs.web':\n  '@agentback/core': ^0.7.0\n" +
+        "\ncatalogs:\n  web:\n    '@agentback/core': ^0.9.0\n",
+    );
+    const {exec} = stubExec();
+    const r = await runUpdate(
+      {dryRun: true, force: false, help: false, to: '0.10.0'},
+      {exec, cwd, selfVersion: '0.10.0'},
+    );
+    expect(r.from).toBe('0.7.0');
+    expect(r.disagreement).toEqual(
+      expect.arrayContaining([
+        'pnpm-workspace.yaml:catalogs.web:@agentback/core',
+        'pnpm-workspace.yaml:catalogs > web:@agentback/core',
+      ]),
+    );
+  });
+
   it('refuses a directory with no root package.json', async () => {
     const bare = mkdtempSync(path.join(tmpdir(), 'abc-bare-'));
     mkdirSync(path.join(bare, 'packages', 'app'), {recursive: true});

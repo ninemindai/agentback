@@ -181,6 +181,16 @@ const YAML_NAME_RE = /@agentback\/[A-Za-z0-9._-]+/g;
 const YAML_BLOCK_RE = /^([ \t]*)['"]?([A-Za-z0-9_.-]+)['"]?:[ \t]*(?:#.*)?$/;
 
 /**
+ * Joins block names into the path half of a pin's key. NOT `.`: a literal
+ * top-level key `'catalogs.web':` would then produce the same key as a real
+ * `catalogs:` → `web:` nesting, and the second would overwrite the first in the
+ * caller's range map — the same silent-drop this function exists to prevent.
+ * `YAML_BLOCK_RE` admits only `[A-Za-z0-9_.-]`, so neither the space nor the
+ * `>` can occur inside a name and the separator is unambiguous by construction.
+ */
+const BLOCK_SEP = ' > ';
+
+/**
  * Every `@agentback/*` version pin in a `pnpm-workspace.yaml`, as
  * `[<block path>:<name>, range]` pairs — **a list, not a name-keyed map**.
  *
@@ -210,7 +220,7 @@ export function readYamlPins(source: string): Array<[string, string]> {
     const path = stack
       .filter(s => s.indent < indent)
       .map(s => s.name)
-      .join('.');
+      .join(BLOCK_SEP);
     out.push([path ? `${path}:${m[3]}` : m[3], m[6]]);
   }
   return out;

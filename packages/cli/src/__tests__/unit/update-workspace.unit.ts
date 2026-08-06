@@ -145,7 +145,20 @@ describe('readYamlPins', () => {
   it('qualifies a named catalogs: entry with its own name', () => {
     const src = "catalogs:\n  web:\n    '@agentback/rest': ^0.7.1\n";
     expect(readYamlPins(src)).toEqual([
-      ['catalogs.web:@agentback/rest', '^0.7.1'],
+      ['catalogs > web:@agentback/rest', '^0.7.1'],
+    ]);
+  });
+
+  // A `.` join would key both of these `catalogs.web:@agentback/core`, and the
+  // second would overwrite the first in the caller's range map — the same
+  // silent drop, reached by a different route.
+  it('does not let a literal dotted key collide with a real nesting', () => {
+    const src =
+      "'catalogs.web':\n  '@agentback/core': ^0.7.0\n" +
+      "\ncatalogs:\n  web:\n    '@agentback/core': ^0.9.0\n";
+    expect(readYamlPins(src).sort()).toEqual([
+      ['catalogs > web:@agentback/core', '^0.9.0'],
+      ['catalogs.web:@agentback/core', '^0.7.0'],
     ]);
   });
 
