@@ -28,7 +28,7 @@ Usage:
 Run \`agentback <command> --help\` for command-specific options.
 
 Exit codes: 0 success, 1 failure. Migration notes are advisory and do NOT
-change the exit code.
+change the exit code; \`update\`'s post-install version audit does.
 `;
 
 export const UPDATE_USAGE = `agentback update — upgrade an app across an AgentBack release
@@ -44,6 +44,10 @@ Options:
 
 Because releases are lockstep, the migrations for a release ship with it — run
 \`npx @agentback/cli@latest update\` to migrate to the newest version.
+
+Run it from the workspace ROOT: every phase covers sub-package manifests, their
+sources, and pnpm-workspace.yaml overrides. After installing, it audits the tree
+and exits 1 if any @agentback/* still resolves below the target.
 `;
 
 export const NEW_USAGE = `agentback new — scaffold a new AgentBack app

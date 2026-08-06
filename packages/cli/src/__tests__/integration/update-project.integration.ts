@@ -65,6 +65,30 @@ describe('createLazyProject', () => {
     );
   });
 
+  it('adds the sources of every workspace package', () => {
+    // Workspace apps keep their code in sub-packages reached via tsconfig
+    // `references`, which ts-morph does not follow — so a root-only project
+    // makes every advisory pass by not looking.
+    writeFileSync(
+      path.join(root, 'package.json'),
+      JSON.stringify({name: 'root', workspaces: ['packages/*']}),
+    );
+    mkdirSync(path.join(root, 'packages', 'app', 'src'), {recursive: true});
+    writeFileSync(
+      path.join(root, 'packages', 'app', 'package.json'),
+      JSON.stringify({name: 'app'}),
+    );
+    writeFileSync(
+      path.join(root, 'packages', 'app', 'src', 'deep.ts'),
+      'export const deep = 1;\n',
+    );
+    const names = createLazyProject(root)()
+      .getSourceFiles()
+      .map(f => path.basename(f.getFilePath()));
+    expect(names).toContain('deep.ts');
+    expect(names).toContain('greet.ts');
+  });
+
   it('leaves untouched regions byte-identical after a transform', () => {
     const project = createLazyProject(root);
     const file = project().getSourceFileOrThrow('greet.ts');

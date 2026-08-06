@@ -35,9 +35,15 @@ signup, and works only when unauthenticated.
 
 ## `update`
 
-Three phases: **resolve** the app's current version from its `@agentback/*`
+Four phases: **resolve** the app's current version from its `@agentback/*`
 ranges → **migrate** (every entry in the half-open window `(from, to]`) →
-**bump + install**.
+**bump + install** → **audit**.
+
+**Workspaces are covered.** Every phase walks the whole topology — pnpm
+`packages:` globs and npm/yarn `workspaces`: sub-package pins get bumped, their
+`src/**` gets scanned by the advisories, and `pnpm-workspace.yaml` `overrides`
+(plus `catalog`, and package.json `overrides`/`resolutions`) get rewritten. An
+override left behind silently re-pins every range the bump just moved.
 
 ```bash
 npx @agentback/cli@latest update --dry-run
@@ -57,6 +63,13 @@ reports what changed and what to do, with `file:line` where it can. As of
 Migrations run **before** the bump, so a failed install cannot leave the app on
 a version whose migrations never ran. Git is the undo mechanism — `update`
 refuses a dirty tree unless `--force`.
+
+The **audit** runs after the install and is the one thing here that can change
+the exit code: it re-derives what is on disk (a filesystem walk for manifests, a
+deep scan for pins, and the installed `node_modules` versions) and **exits 1**
+listing every site where an `@agentback/*` still resolves below the target.
+Deliberately built from different parts than the bump — a net woven from the
+same enumeration cannot catch that enumeration's own blind spots.
 
 ## Binaries
 

@@ -5,6 +5,7 @@
 import {existsSync} from 'node:fs';
 import path from 'node:path';
 import {Project} from 'ts-morph';
+import {discoverWorkspace} from './workspace.js';
 
 /**
  * Build a ts-morph `Project` over the app's sources, lazily.
@@ -42,6 +43,18 @@ export function createLazyProject(
     // elsewhere). An empty project silently makes every advisory pass.
     if (project.getSourceFiles().length === 0) {
       project.addSourceFilesAtPaths(path.join(root, 'src/**/*.ts'));
+    }
+    // Workspace apps keep their code in sub-packages reached through tsconfig
+    // `references`, which ts-morph does not follow — so a root-only project
+    // reports "no advisories" on the grounds of never having looked. Adding the
+    // sources directly is the honest fix: a reference graph is a build-order
+    // declaration, and detection needs a file list. Discovery happens inside
+    // the lazy body, so an update with no source-reading migration still pays
+    // nothing.
+    for (const manifest of discoverWorkspace(root).manifests.slice(1)) {
+      project.addSourceFilesAtPaths(
+        path.join(path.dirname(manifest), 'src/**/*.ts'),
+      );
     }
     onBuild?.();
     return project;

@@ -2,11 +2,12 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {readFileSync, writeFileSync} from 'node:fs';
+import {existsSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {AgentError, ErrorCodes} from '@agentback/openapi';
 import type {UpdateArgs} from '../args.js';
 import type {Exec} from '../exec.js';
+import {auditVersions, type StalePin} from './audit.js';
 import type {Finding, Migration, MigrationContext} from './migration.js';
 import {selectMigrations} from './migration.js';
 import {MIGRATIONS} from './migrations/index.js';
@@ -20,6 +21,7 @@ import {
   scanAgentbackRanges,
   type PackageJson,
 } from './versions.js';
+import {discoverWorkspace, readYamlPins, rewriteYamlPins} from './workspace.js';
 
 export interface UpdateDeps {
   exec: Exec;
@@ -44,8 +46,31 @@ export interface UpdateReport {
   /** Non-fatal conditions the user must see (e.g. the git guard could not run). */
   warnings: string[];
   findings: Array<Finding & {migration: string}>;
+  /**
+   * Post-install audit: `@agentback/*` still resolving below the target.
+   * Non-empty ⇒ the update did NOT fully land ⇒ exit 1.
+   */
+  stale: StalePin[];
   installed: boolean;
   dryRun: boolean;
+}
+
+/** One `package.json` the update owns, with the bytes it was read from. */
+interface Manifest {
+  path: string;
+  /** Root-relative path, or `''` for the root manifest. */
+  rel: string;
+  source: string;
+  pkg: PackageJson;
+}
+
+/**
+ * Prefix a report entry with the file it came from. The root manifest keeps the
+ * bare form it has always had — a single-package app is the common case and its
+ * output should not grow a redundant `package.json:` on every line.
+ */
+function site(rel: string, entry: string): string {
+  return rel ? `${rel}:${entry}` : entry;
 }
 
 /**
@@ -99,14 +124,41 @@ export async function runUpdate(
   }
 
   // --- Phase 1: resolve -------------------------------------------------
-  const pkgPath = path.join(cwd, 'package.json');
-  const source = readFileSync(pkgPath, 'utf8');
-  const pkg = JSON.parse(source) as PackageJson;
-  const {
-    version: from,
-    disagreement,
-    unparsed,
-  } = resolveFromVersion(scanAgentbackRanges(pkg));
+  //
+  // Every manifest in the workspace, not just the root: real apps keep their
+  // `@agentback/*` pins in sub-packages, and a pnpm `overrides` block outranks
+  // all of them. Resolving across the whole topology keeps "the lowest wins so
+  // no migration is skipped" true of the app rather than of one file.
+  const workspace = discoverWorkspace(cwd);
+  const manifests: Manifest[] = workspace.manifests
+    .filter(p => existsSync(p))
+    .map(p => {
+      const source = readFileSync(p, 'utf8');
+      return {
+        path: p,
+        rel: p === workspace.manifests[0] ? '' : path.relative(cwd, p),
+        source,
+        pkg: JSON.parse(source) as PackageJson,
+      };
+    });
+  const pkg = manifests[0].pkg;
+
+  const yamlSource = workspace.pnpmWorkspace
+    ? readFileSync(workspace.pnpmWorkspace, 'utf8')
+    : undefined;
+
+  const ranges = new Map<string, string>();
+  for (const m of manifests) {
+    for (const [key, range] of scanAgentbackRanges(m.pkg)) {
+      ranges.set(site(m.rel, key), range);
+    }
+  }
+  if (yamlSource) {
+    for (const [name, range] of readYamlPins(yamlSource)) {
+      ranges.set(`pnpm-workspace.yaml:${name}`, range);
+    }
+  }
+  const {version: from, disagreement, unparsed} = resolveFromVersion(ranges);
 
   // A command named `update` must not quietly walk an app backwards. Migration
   // direction is undefined going down, and (from, to] selects nothing — so a
@@ -141,16 +193,36 @@ export async function runUpdate(
   }
 
   // --- Phase 3: bump + install ------------------------------------------
-  const {pkg: bumped, changed, skipped} = bumpRanges(pkg, to);
-  let installed = false;
-  if (!args.dryRun && changed.length) {
+  const changed: string[] = [];
+  const skipped: string[] = [];
+  for (const m of manifests) {
+    const r = bumpRanges(m.pkg, to);
+    skipped.push(...r.skipped.map(k => site(m.rel, k)));
+    if (!r.changed.length) continue;
+    changed.push(...r.changed.map(n => site(m.rel, n)));
     // Preserve the file's own indentation. The codemod path guards source
     // formatting because scaffolded apps ship no prettier; a manifest
     // rewritten from 4-space to 2-space is the same damage from the same cause.
-    writeFileSync(
-      pkgPath,
-      JSON.stringify(bumped, null, detectIndent(source)) + '\n',
-    );
+    if (!args.dryRun) {
+      writeFileSync(
+        m.path,
+        JSON.stringify(m.pkg, null, detectIndent(m.source)) + '\n',
+      );
+    }
+  }
+  if (yamlSource && workspace.pnpmWorkspace) {
+    // An override left at the old version re-pins every package the bump just
+    // moved — the failure that made a green field upgrade resolve 0.7.1.
+    const y = rewriteYamlPins(yamlSource, to);
+    changed.push(...y.changed.map(n => `pnpm-workspace.yaml:${n}`));
+    skipped.push(...y.skipped.map(n => `pnpm-workspace.yaml:${n}`));
+    if (!args.dryRun && y.changed.length) {
+      writeFileSync(workspace.pnpmWorkspace, y.text);
+    }
+  }
+
+  let installed = false;
+  if (!args.dryRun && changed.length) {
     const {cmd, args: iargs} = installCommand(detectAppPackageManager(cwd));
     const r = await exec(cmd, iargs);
     if (r.code !== 0)
@@ -163,6 +235,14 @@ export async function runUpdate(
     installed = true;
   }
 
+  // --- Phase 4: audit ---------------------------------------------------
+  //
+  // All three workspace gaps this command shipped with failed QUIET — each one
+  // looked like a successful update. The audit re-derives what is on disk from
+  // different parts than the bump used (see `auditVersions`), so it can catch
+  // the enumerator's own blind spots rather than agreeing with them.
+  const stale = args.dryRun ? [] : auditVersions(cwd, to);
+
   return {
     from,
     to,
@@ -172,6 +252,7 @@ export async function runUpdate(
     disagreement,
     warnings,
     findings,
+    stale,
     installed,
     dryRun: args.dryRun,
   };
@@ -212,17 +293,31 @@ export function printUpdateReport(
       : '\nNo dependency ranges needed changing.',
   );
 
-  if (!r.findings.length) {
-    out('\nNo migration notes for this range.');
-    return 0;
+  if (!r.findings.length) out('\nNo migration notes for this range.');
+  else {
+    out(`\n${r.findings.length} migration note(s):`);
+    for (const f of r.findings) {
+      const where = f.file ? `${f.file}${f.line ? `:${f.line}` : ''}` : '(app)';
+      out(`\n  [${f.migration}] ${where}`);
+      out(`    ${f.message}`);
+      out(`    → ${f.action}`);
+    }
   }
 
-  out(`\n${r.findings.length} migration note(s):`);
-  for (const f of r.findings) {
-    const where = f.file ? `${f.file}${f.line ? `:${f.line}` : ''}` : '(app)';
-    out(`\n  [${f.migration}] ${where}`);
-    out(`    ${f.message}`);
-    out(`    → ${f.action}`);
-  }
-  return 0;
+  // The one thing in this report that changes the exit code. Migration notes
+  // are advisory; a version still resolving below the target means the update
+  // did not land, and a lifecycle tool that returns 0 for that is the quiet
+  // failure this whole phase exists to end.
+  if (!r.stale.length) return 0;
+  out(
+    `\nUPDATE INCOMPLETE — ${r.stale.length} @agentback/* version(s) still ` +
+      `below ${r.to}:`,
+  );
+  for (const s of r.stale) out(`  ${s.site}  ${s.name} ${s.found}`);
+  out(
+    '\nFix each site above (or bump it by hand) and re-run. A stale pin or ' +
+      'override holds the old version silently — 0.x carets cannot cross a ' +
+      'minor.',
+  );
+  return 1;
 }

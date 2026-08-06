@@ -239,6 +239,182 @@ describe('runUpdate phase 2 (migrations)', () => {
   });
 });
 
+// Field report from two real upgrades: both apps kept their code and their
+// @agentback pins in workspace sub-packages, so a root-only update looked like
+// it worked and left the old version resolving.
+describe('runUpdate across a workspace', () => {
+  let cwd: string;
+  beforeEach(() => {
+    cwd = mkdtempSync(path.join(tmpdir(), 'abc-ws-upd-'));
+    seed(cwd);
+  });
+  afterEach(() => rmSync(cwd, {recursive: true, force: true}));
+
+  function sub(rel: string, pkg: unknown, src?: string): void {
+    mkdirSync(path.join(cwd, rel, 'src'), {recursive: true});
+    writeFileSync(
+      path.join(cwd, rel, 'package.json'),
+      JSON.stringify(pkg, null, 2) + '\n',
+    );
+    if (src) writeFileSync(path.join(cwd, rel, 'src', 'app.ts'), src);
+  }
+
+  const readPkg = (rel: string) =>
+    JSON.parse(readFileSync(path.join(cwd, rel, 'package.json'), 'utf8')) as {
+      dependencies: Record<string, string>;
+    };
+
+  it('bumps sub-package pins reached through a pnpm workspace', async () => {
+    writeFileSync(
+      path.join(cwd, 'pnpm-workspace.yaml'),
+      "packages:\n  - 'packages/*'\n",
+    );
+    sub('packages/app', {
+      name: 'app',
+      dependencies: {'@agentback/rest': '^0.9.0', zod: '^4.4.3'},
+    });
+    const {exec} = stubExec();
+    const r = await runUpdate(
+      {dryRun: false, force: false, help: false, to: '0.10.0'},
+      {exec, cwd, selfVersion: '0.10.0'},
+    );
+
+    expect(readPkg('packages/app').dependencies['@agentback/rest']).toBe(
+      '^0.10.0',
+    );
+    expect(readPkg('packages/app').dependencies.zod).toBe('^4.4.3');
+    expect(r.changed).toContain(
+      `packages/app/package.json:@agentback/rest`.replaceAll('/', path.sep),
+    );
+    expect(r.stale).toEqual([]);
+  });
+
+  it('bumps sub-package pins reached through npm `workspaces`', async () => {
+    seed(cwd, {...PKG, workspaces: ['packages/*']});
+    sub('packages/app', {
+      name: 'app',
+      dependencies: {'@agentback/rest': '^0.9.0'},
+    });
+    const {exec} = stubExec();
+    await runUpdate(
+      {dryRun: false, force: false, help: false, to: '0.10.0'},
+      {exec, cwd, selfVersion: '0.10.0'},
+    );
+    expect(readPkg('packages/app').dependencies['@agentback/rest']).toBe(
+      '^0.10.0',
+    );
+  });
+
+  it('rewrites pnpm-workspace.yaml overrides without reflowing the file', async () => {
+    const yaml =
+      "packages:\n  - 'packages/*'\n\noverrides:\n" +
+      "  '@agentback/core': ^0.9.0   # lockstep\n  lodash: ^4.17.21\n";
+    writeFileSync(path.join(cwd, 'pnpm-workspace.yaml'), yaml);
+    const {exec} = stubExec();
+    const r = await runUpdate(
+      {dryRun: false, force: false, help: false, to: '0.10.0'},
+      {exec, cwd, selfVersion: '0.10.0'},
+    );
+    expect(readFileSync(path.join(cwd, 'pnpm-workspace.yaml'), 'utf8')).toBe(
+      yaml.replace("': ^0.9.0", "': ^0.10.0"),
+    );
+    expect(r.changed).toContain('pnpm-workspace.yaml:@agentback/core');
+  });
+
+  it('writes no workspace file under --dry-run', async () => {
+    const yaml = "overrides:\n  '@agentback/core': ^0.9.0\n";
+    writeFileSync(path.join(cwd, 'pnpm-workspace.yaml'), yaml);
+    sub('packages/app', {
+      name: 'app',
+      dependencies: {'@agentback/rest': '^0.9.0'},
+    });
+    const {exec} = stubExec();
+    await runUpdate(
+      {dryRun: true, force: false, help: false, to: '0.10.0'},
+      {exec, cwd, selfVersion: '0.10.0'},
+    );
+    expect(readFileSync(path.join(cwd, 'pnpm-workspace.yaml'), 'utf8')).toBe(
+      yaml,
+    );
+    expect(readPkg('packages/app').dependencies['@agentback/rest']).toBe(
+      '^0.9.0',
+    );
+  });
+
+  // The kill-shot for gap 2: detection that reads only the root `src/**` sees a
+  // fraction of a workspace app and reports "no advisories" on the grounds of
+  // not having looked.
+  it('detects an advisory whose trigger lives only in a workspace package', async () => {
+    seed(cwd, {
+      ...PKG,
+      dependencies: {'@agentback/core': '^0.8.0'},
+      workspaces: ['packages/*'],
+    });
+    sub(
+      'packages/app',
+      {name: 'app', dependencies: {'@agentback/mcp-http': '^0.8.0'}},
+      'installMcpHttp(app, {eventStore: myStore});\n',
+    );
+    const {exec} = stubExec();
+    const r = await runUpdate(
+      {dryRun: true, force: false, help: false, to: '0.10.0'},
+      {exec, cwd, selfVersion: '0.10.0'},
+    );
+    expect(r.findings.map(f => f.migration)).toContain('mcp-stateless-default');
+  });
+
+  it('reports no findings when no workspace package carries the trigger', async () => {
+    seed(cwd, {
+      ...PKG,
+      dependencies: {'@agentback/core': '^0.8.0'},
+      workspaces: ['packages/*'],
+    });
+    sub(
+      'packages/app',
+      {name: 'app', dependencies: {'@agentback/rest': '^0.8.0'}},
+      'export class Nothing {}\n',
+    );
+    const {exec} = stubExec();
+    const r = await runUpdate(
+      {dryRun: true, force: false, help: false, to: '0.10.0'},
+      {exec, cwd, selfVersion: '0.10.0'},
+    );
+    expect(r.findings).toEqual([]);
+  });
+
+  // The net: a pin the bump enumerator never saw must still fail the run.
+  it('fails loudly when a stale pin survives the update', async () => {
+    sub('services/api', {
+      name: 'api',
+      dependencies: {'@agentback/rest': '^0.9.0'},
+    });
+    const {exec} = stubExec();
+    const r = await runUpdate(
+      {dryRun: false, force: false, help: false, to: '0.10.0'},
+      {exec, cwd, selfVersion: '0.10.0'},
+    );
+    expect(r.stale.map(s => s.name)).toEqual(['@agentback/rest']);
+
+    const lines: string[] = [];
+    expect(printUpdateReport(r, s => lines.push(s))).toBe(1);
+    expect(lines.join('\n')).toContain('services');
+    expect(lines.join('\n')).toContain('@agentback/rest');
+  });
+
+  it('runs no audit under --dry-run (nothing was written to check)', async () => {
+    sub('services/api', {
+      name: 'api',
+      dependencies: {'@agentback/rest': '^0.9.0'},
+    });
+    const {exec} = stubExec();
+    const r = await runUpdate(
+      {dryRun: true, force: false, help: false, to: '0.10.0'},
+      {exec, cwd, selfVersion: '0.10.0'},
+    );
+    expect(r.stale).toEqual([]);
+  });
+});
+
 describe('printUpdateReport', () => {
   const base: UpdateReport = {
     from: '0.9.0',
@@ -249,6 +425,7 @@ describe('printUpdateReport', () => {
     disagreement: [],
     warnings: [],
     findings: [],
+    stale: [],
     installed: true,
     dryRun: false,
   };

@@ -19,10 +19,54 @@ const SECTIONS = [
 ] as const;
 
 /** `^0.9.0` / `~0.9.0` / `0.9.0` → `0.9.0`. Anything else → no match. */
-const RANGE_RE = /^[\^~]?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
+export const RANGE_RE = /^[\^~]?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
 
 /**
- * Collect every `@agentback/*` range across all dependency sections.
+ * The override trees a package manager honours: npm/pnpm `overrides`, yarn
+ * `resolutions`, and pnpm's `pnpm.overrides`.
+ *
+ * An override outranks every range in the file, so leaving it behind re-pins
+ * the old version after a successful-looking bump — the exact shape of the
+ * field failure. npm nests them, so callers walk each tree recursively.
+ */
+function overrideTrees(
+  pkg: PackageJson,
+): Array<[string, Record<string, unknown>]> {
+  const out: Array<[string, Record<string, unknown>]> = [];
+  for (const key of ['overrides', 'resolutions'] as const) {
+    if (isRecord(pkg[key])) out.push([key, pkg[key]]);
+  }
+  const pnpm = pkg.pnpm;
+  if (isRecord(pnpm) && isRecord(pnpm.overrides)) {
+    out.push(['pnpm.overrides', pnpm.overrides]);
+  }
+  return out;
+}
+
+/** Visit every `<name>: <string>` leaf of an override tree, depth-first. */
+function walkOverrides(
+  tree: Record<string, unknown>,
+  section: string,
+  visit: (
+    holder: Record<string, unknown>,
+    name: string,
+    range: string,
+    section: string,
+  ) => void,
+): void {
+  for (const [name, value] of Object.entries(tree)) {
+    if (typeof value === 'string') visit(tree, name, value, section);
+    else if (isRecord(value)) walkOverrides(value, `${section}.${name}`, visit);
+  }
+}
+
+/**
+ * Collect every `@agentback/*` range across all dependency and override
+ * sections.
  *
  * Keyed `<section>:<name>`, NOT by name alone: the same package can appear in
  * both `dependencies` and `devDependencies` with different ranges, and a
@@ -38,6 +82,13 @@ export function scanAgentbackRanges(pkg: PackageJson): Map<string, string> {
       if (range.startsWith('workspace:')) continue;
       out.set(`${section}:${name}`, range);
     }
+  }
+  for (const [key, tree] of overrideTrees(pkg)) {
+    walkOverrides(tree, key, (_holder, name, range, section) => {
+      if (!name.startsWith('@agentback/')) return;
+      if (range.startsWith('workspace:')) return;
+      out.set(`${section}:${name}`, range);
+    });
   }
   return out;
 }
@@ -115,6 +166,19 @@ export function bumpRanges(
       deps[name] = next;
       changed.push(name);
     }
+  }
+  for (const [key, tree] of overrideTrees(pkg)) {
+    walkOverrides(tree, key, (holder, name, range, section) => {
+      if (!name.startsWith('@agentback/')) return;
+      if (range.startsWith('workspace:')) return;
+      if (!RANGE_RE.test(range)) {
+        skipped.push(`${section}:${name}`);
+        return;
+      }
+      if (range === next) return;
+      holder[name] = next;
+      changed.push(name);
+    });
   }
   return {pkg, changed, skipped};
 }
