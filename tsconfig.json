@@ -38,6 +38,7 @@
     {"path": "packages/common"},
     {"path": "packages/messaging"},
     {"path": "packages/actors"},
+    {"path": "packages/actors-do"},
     {"path": "packages/actors-redis"},
     {"path": "packages/files"},
     {"path": "packages/files-s3"},

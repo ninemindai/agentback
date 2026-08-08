@@ -285,7 +285,9 @@ the `requestId` still retryable.
 
 ## What's next
 
-A Cloudflare Durable Objects adapter — native per-key serialization and
-transactional storage — is the natural next adapter. Like every adapter it must
-pass `runActorRuntimeConformance`, adding crash/retry durability on top of the
-in-process contract.
+The Durable Objects adapter shipped as `@agentback/actors-do` — one object per
+identity on Cloudflare DO or self-hosted celld, passing the same
+`runActorRuntimeConformance` suite (journal read half included; `subscribe`
+delivery stays with the in-memory and Redis runtimes). What remains open is a
+portable push channel for `subscribe` on that adapter, and crash/retry
+conformance against a real workerd instance.

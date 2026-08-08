@@ -231,10 +231,19 @@ caller it is an ordinary thrown turn that rolls back. One incident, one marker.
 | `InMemoryActorsComponent`                          | in-memory             | tests, dev, single-instance                                                                                      |
 | `EventSourcedActorsComponent`                      | in-memory + event log | the above **plus** a per-identity event log, delivered to subscribers                                            |
 | `RedisActorsComponent` (`@agentback/actors-redis`) | Redis                 | cross-process serialization + durable state **and** a durable event log, delivered by tailing it (at-least-once) |
+| `installDurableObjectActors` (`@agentback/actors-do`) | Durable Objects    | one object per identity on Cloudflare DO / celld; durable state + journal **read half** (`events()` works, `subscribe()` does not) |
 
 `installRedisActors(app, {connection: {url: process.env.REDIS_URL}})` swaps in
 the Redis runtime; the actor and controller don't change. Every adapter passes
 the shared `runActorRuntimeConformance` suite.
+
+`@agentback/actors-do` runs turns **inside** a Durable Object (Cloudflare or
+self-hosted [celld](https://celld.dev)) — export
+`createActorDurableObject(loadDefinitions)` from the worker module, bind the
+namespace with `installDurableObjectActors(app, {namespace: env.ACTORS})`.
+Both sides construct definitions from the shared module graph (a DO may run
+in another isolate). `createInProcessDoActorRuntime()` is the in-process
+host for tests/dev. See `packages/actors-do/README.md`.
 
 ## Custodial seat keys (`seat.keyStore`)
 
