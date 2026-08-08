@@ -2,6 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import {loggers} from '@agentback/common';
 import {
   actorCommandFingerprint,
   assertJsonPortableEvents,
@@ -25,29 +26,78 @@ import type {ReadStateOutcome, TurnOutcome, TurnRequest} from './protocol.js';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyActorDefinition = ActorDefinition<any, any, any>;
 
+const log = loggers('agentback:actors:do');
+
 /**
- * The one stored record of an identity. State, the dedup map, and the journal
- * seq counter live together so the commit is a single atomic multi-key `put`
- * of this record plus the turn's `event:*` entries.
- *
- * `results` is an insertion-ordered pair list (not a Map — storage values are
- * plain JSON), bounded FIFO like the in-memory adapters' dedup map.
+ * The core stored record of an identity: authoritative state + the journal
+ * seq counter. Deliberately **small** — dedup results live in their own
+ * per-request keys, because Durable Object storage caps a single entry
+ * (128 KiB per value on KV-backed classes, 2 MB key+value on SQLite-backed
+ * ones). A record that also carried up to `dedupLimit` results would grow
+ * past those caps under real payloads and brick the identity: every later
+ * commit rewrites the same oversized value and fails. Splitting also makes
+ * the replay lookup one O(1) `get` instead of a scan, and stops every commit
+ * from rewriting the whole dedup history.
  */
 interface StoredRecord {
   actor: ActorId;
   state: unknown;
   seq: number;
-  results: Array<
-    [requestId: string, entry: {commandFingerprint: string; result: unknown}]
-  >;
+}
+
+/** One committed request result, stored under `dedup:<requestId>`. */
+interface DedupEntry {
+  commandFingerprint: string;
+  result: unknown;
 }
 
 const RECORD_KEY = 'record';
 const EVENT_KEY_PREFIX = 'event:';
+const DEDUP_KEY_PREFIX = 'dedup:';
+/**
+ * FIFO index of live dedup requestIds, its own small key. Order matters for
+ * eviction; the entries themselves are per-key so their payloads never share
+ * one capped storage value.
+ */
+const DEDUP_ORDER_KEY = 'dedup-order';
 
-/** Zero-padded so storage `list({prefix})` key order is seq order. */
+/**
+ * Committed events per turn, capped so the commit's atomic multi-key `put`
+ * (record + dedup entry + order index + one key per event) stays under the
+ * platform's per-call entry limit (128 key-value pairs on Cloudflare's KV
+ * put). Enforced on every host — the in-process runtime has no such limit,
+ * but an app first exercised in dev must fail loudly before it depends on a
+ * turn shape a production adapter cannot commit.
+ */
+const MAX_EVENTS_PER_TURN = 100;
+
+/**
+ * Zero-padded so storage `list({prefix})` key order is seq order. The width
+ * is frozen forever once a journal exists (mixed widths would break the
+ * ordering), so it is deliberately absurd: 16 digits outlives any identity.
+ */
 function eventKey(seq: number): string {
-  return `${EVENT_KEY_PREFIX}${String(seq).padStart(12, '0')}`;
+  return `${EVENT_KEY_PREFIX}${String(seq).padStart(16, '0')}`;
+}
+
+function dedupKey(requestId: string): string {
+  return `${DEDUP_KEY_PREFIX}${requestId}`;
+}
+
+/**
+ * One object hosts exactly one identity, but the object trusts the request to
+ * name it — so a mis-routed request (an internal caller addressing actor A's
+ * object with actor B's turn) would silently read and write the wrong seat.
+ * The stored record remembers the first identity; every later access must
+ * match it.
+ */
+function assertRecordIdentity(record: StoredRecord, actor: ActorId): void {
+  if (record.actor.type !== actor.type || record.actor.id !== actor.id) {
+    throw new Error(
+      `Actor object for '${record.actor.type}/${record.actor.id}' received a ` +
+        `request addressed to '${actor.type}/${actor.id}' — mis-routed namespace call.`,
+    );
+  }
 }
 
 type Phase1 =
@@ -63,6 +113,24 @@ type Phase1 =
 export interface CreateActorDurableObjectOptions {
   /** Max committed request results retained for idempotent replay. Default 1024. */
   dedupLimit?: number;
+  /**
+   * Base class the generated Durable Object class extends. On Cloudflare,
+   * RPC methods are exposed only from classes extending `DurableObject`
+   * (from `cloudflare:workers`) — a module that exists only inside workerd,
+   * which is why this package cannot import it and takes it as a parameter:
+   *
+   * ```ts
+   * import {DurableObject} from 'cloudflare:workers';
+   * export const ActorDO = createActorDurableObject(defs, {
+   *   baseClass: DurableObject,
+   * });
+   * ```
+   *
+   * The constructor forwards `(state, env)` to the base. Omit it in-process
+   * and on hosts that accept a plain class.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  baseClass?: new (...args: any[]) => object;
 }
 
 export interface ActorDurableObjectClass {
@@ -93,16 +161,16 @@ export interface ActorDurableObjectClass {
  */
 export function createActorDurableObject(
   loadDefinitions: () =>
-    | readonly AnyActorDefinition[]
-    | Promise<readonly AnyActorDefinition[]>,
+    readonly AnyActorDefinition[] | Promise<readonly AnyActorDefinition[]>,
   options: CreateActorDurableObjectOptions = {},
 ): ActorDurableObjectClass {
   const dedupLimit = options.dedupLimit ?? 1024;
   if (!Number.isInteger(dedupLimit) || dedupLimit < 1) {
     throw new Error('dedupLimit must be a positive integer.');
   }
+  const Base = options.baseClass ?? class {};
 
-  return class ActorDurableObject implements ActorDoStub {
+  return class ActorDurableObject extends Base implements ActorDoStub {
     readonly #storage: ActorDoState['storage'];
     #definitions?: Promise<Map<string, AnyActorDefinition>>;
     /** The seat: one identity per object, so one turn at a time per object. */
@@ -110,7 +178,8 @@ export function createActorDurableObject(
     /** Serializes every read-modify-write storage section (init/commit/marker). */
     #storageTail: Promise<void> = Promise.resolve();
 
-    constructor(state: ActorDoState, _env?: unknown) {
+    constructor(state: ActorDoState, env?: unknown) {
+      super(state, env);
       this.#storage = state.storage;
     }
 
@@ -126,7 +195,10 @@ export function createActorDurableObject(
       try {
         const definition = await this.#definition(actor.type);
         const record = await this.#storage.get<StoredRecord>(RECORD_KEY);
-        if (record) return {ok: true, state: record.state};
+        if (record) {
+          assertRecordIdentity(record, actor);
+          return {ok: true, state: record.state};
+        }
         // A read must not mutate: compute the initial state without storing.
         const state: unknown = definition.state.parse(
           await definition.initialState(actor.id),
@@ -191,7 +263,21 @@ export function createActorDurableObject(
         // incident order.
         if (isOwnTurnTimeout(err, actor, requestId)) {
           logTimedOutTurn(err);
-          await this.#appendTimeoutMarker(err);
+          // The marker is best-effort: a storage failure here must not
+          // replace the typed TurnTimeoutError the caller is owed — that
+          // would break the timeout contract exactly when storage is
+          // degraded.
+          try {
+            await this.#appendTimeoutMarker(err);
+          } catch (markerErr) {
+            log.warn(
+              'failed to journal timeout marker for %s/%s (request %s): %s',
+              actor.type,
+              actor.id,
+              requestId,
+              markerErr,
+            );
+          }
         }
         throw err;
       } finally {
@@ -207,7 +293,10 @@ export function createActorDurableObject(
       fingerprint: string,
     ): Promise<Phase1> {
       const record = await this.#ensureRecord(definition, actor);
-      const committed = record.results.find(([id]) => id === requestId)?.[1];
+      assertRecordIdentity(record, actor);
+      const committed = await this.#storage.get<DedupEntry>(
+        dedupKey(requestId),
+      );
       if (committed) {
         if (committed.commandFingerprint !== fingerprint) {
           throw new Error(
@@ -225,6 +314,13 @@ export function createActorDurableObject(
       const nextState: unknown = definition.state.parse(turn.state);
       const result: unknown = definition.result.parse(turn.result);
       assertJsonPortableEvents(turn.events);
+      if ((turn.events?.length ?? 0) > MAX_EVENTS_PER_TURN) {
+        throw new Error(
+          `Actor turn for '${actor.type}/${actor.id}' emitted ${turn.events!.length} events; ` +
+            `the Durable Objects adapter commits at most ${MAX_EVENTS_PER_TURN} per turn ` +
+            `(the commit is one atomic multi-key put, and the platform caps entries per call).`,
+        );
+      }
       return {
         kind: 'turn',
         nextState,
@@ -256,7 +352,7 @@ export function createActorDurableObject(
       return this.#storageSection(async () => {
         const raced = await this.#storage.get<StoredRecord>(RECORD_KEY);
         if (raced) return raced;
-        const record: StoredRecord = {actor, state, seq: 0, results: []};
+        const record: StoredRecord = {actor, state, seq: 0};
         await this.#storage.put({[RECORD_KEY]: record});
         return record;
       });
@@ -291,11 +387,11 @@ export function createActorDurableObject(
           );
         }
         record.state = phase.nextState;
-        record.results.push([
-          requestId,
-          {commandFingerprint: fingerprint, result: phase.result},
-        ]);
-        while (record.results.length > dedupLimit) record.results.shift();
+        const order =
+          (await this.#storage.get<string[]>(DEDUP_ORDER_KEY)) ?? [];
+        order.push(requestId);
+        const evicted: string[] = [];
+        while (order.length > dedupLimit) evicted.push(order.shift()!);
 
         const entries: Record<string, unknown> = {};
         for (const event of phase.events) {
@@ -309,7 +405,30 @@ export function createActorDurableObject(
           entries[eventKey(committedEvent.seq)] = committedEvent;
         }
         entries[RECORD_KEY] = record;
+        entries[DEDUP_ORDER_KEY] = order;
+        entries[dedupKey(requestId)] = {
+          commandFingerprint: fingerprint,
+          result: phase.result,
+        } satisfies DedupEntry;
         await this.#storage.put(entries);
+        // Eviction is deliberately lazy AND best-effort, after the atomic
+        // commit: the turn is already durable, so a delete failure must not
+        // report a committed turn as failed. An orphaned dedup entry only
+        // makes a replay of that evicted requestId *more* correct (it still
+        // returns the committed result instead of re-running).
+        if (evicted.length) {
+          try {
+            await this.#storage.delete(evicted.map(dedupKey));
+          } catch (err) {
+            log.warn(
+              'failed to evict %d dedup entries for %s/%s: %s',
+              evicted.length,
+              actor.type,
+              actor.id,
+              err,
+            );
+          }
+        }
         return phase.result;
       });
     }
@@ -340,8 +459,8 @@ export function createActorDurableObject(
     }
 
     #definition(type: string): Promise<AnyActorDefinition> {
-      this.#definitions ??= Promise.resolve(loadDefinitions()).then(
-        definitions => {
+      if (!this.#definitions) {
+        const memo = Promise.resolve(loadDefinitions()).then(definitions => {
           const byName = new Map<string, AnyActorDefinition>();
           for (const definition of definitions) {
             const existing = byName.get(definition.name);
@@ -353,8 +472,16 @@ export function createActorDurableObject(
             byName.set(definition.name, definition);
           }
           return byName;
-        },
-      );
+        });
+        // A transient loader failure must not poison the object until the
+        // platform happens to evict it: drop the memo so the next call
+        // retries. (The catch also keeps the rejection handled when the
+        // caller chain is abandoned.)
+        memo.catch(() => {
+          if (this.#definitions === memo) this.#definitions = undefined;
+        });
+        this.#definitions = memo;
+      }
       return this.#definitions.then(byName => {
         const definition = byName.get(type);
         if (!definition) {

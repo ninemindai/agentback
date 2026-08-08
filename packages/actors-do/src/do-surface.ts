@@ -20,6 +20,13 @@ import type {ReadStateOutcome, TurnOutcome, TurnRequest} from './protocol.js';
 export interface ActorDoStorage {
   get<T = unknown>(key: string): Promise<T | undefined>;
   put(entries: Record<string, unknown>): Promise<void>;
+  /**
+   * Remove keys. Used only for lazy dedup eviction after a commit — it never
+   * needs to be atomic with a `put` (an orphaned entry is benign; see the
+   * commit path). Cloudflare's `delete(keys)` returns a count; the return
+   * type is `unknown` so that signature satisfies this one structurally.
+   */
+  delete(keys: string[]): Promise<unknown>;
   /** Keys returned in ascending (UTF-8) key order, as DO storage lists. */
   list<T = unknown>(options: {prefix: string}): Promise<Map<string, T>>;
 }
@@ -36,10 +43,13 @@ export interface ActorDoState {
 
 /**
  * The RPC surface an actor Durable Object exposes and its stub proxies.
- * Methods return plain JSON envelopes rather than throwing, because RPC
- * serialization (structured clone across isolates) does not preserve error
- * subclasses — a thrown `TurnTimeoutError` would arrive as a bare `Error`.
- * See `protocol.ts` for the envelope shapes and revival.
+ * `turn` and `readState` return plain JSON envelopes rather than throwing,
+ * because RPC serialization (structured clone across isolates) does not
+ * preserve error subclasses — a thrown `TurnTimeoutError` would arrive as a
+ * bare `Error`. `readEvents` deliberately skips the envelope: no typed
+ * domain error ever crosses it, so a raw storage/RPC failure loses nothing
+ * by arriving as a bare rejection. See `protocol.ts` for the envelope
+ * shapes and revival.
  */
 export interface ActorDoStub {
   turn(request: TurnRequest): Promise<TurnOutcome>;

@@ -35,6 +35,14 @@ class InProcessDoStorage implements ActorDoStorage {
     }
   }
 
+  async delete(keys: string[]): Promise<number> {
+    let deleted = 0;
+    for (const key of keys) {
+      if (this.entries.delete(key)) deleted++;
+    }
+    return deleted;
+  }
+
   async list<T = unknown>(options: {prefix: string}): Promise<Map<string, T>> {
     const matched = [...this.entries.entries()]
       .filter(([key]) => key.startsWith(options.prefix))

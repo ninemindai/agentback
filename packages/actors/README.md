@@ -103,7 +103,7 @@ bypasses the runtime (no serialization, rollback, or persisted state).
 Every actor identity gets a platform-held secp256k1 keypair at its first
 **command turn** — **custodial keypair at birth, dormant**. Precisely: the row
 is created inside the compiled actor's `receive`, after the command passes
-schema validation and dedup but *before* the command method runs, so it is not
+schema validation and dedup but _before_ the command method runs, so it is not
 commit-gated — a first turn that throws or times out rolls its state back and
 still leaves a dormant key row behind. Accepted design, not an accident
 (`create()` is idempotent, so the retry reuses that row), but worth knowing.
@@ -175,7 +175,7 @@ contract both runtimes pass.
 
 **`subscribe` handlers must be idempotent by `(actor, seq)`, and late replay is
 normal.** The log is the source of truth and live delivery is best effort, so a
-handler is called *at least* once per event: the durable adapter replays by
+handler is called _at least_ once per event: the durable adapter replays by
 `seq` whenever it reconnects, and a restarted process — holding no cursor —
 replays an identity's log from the start. Order is per identity; a handler that
 throws is logged and skipped, never retried and never able to stall or fail the
@@ -197,10 +197,10 @@ turn. Timeout markers always carry `''` even when the seat does have a key row
 Every turn runs under a deadline, so a `receive` that never resolves can never
 wedge a seat. Two bands, chosen by `seatClass` on the definition:
 
-| `seatClass`              | Deadline | For                                                    |
-| ------------------------ | -------- | ------------------------------------------------------ |
+| `seatClass`              | Deadline | For                                                        |
+| ------------------------ | -------- | ---------------------------------------------------------- |
 | `'capability'` (default) | 30s      | a caller is waiting — a REST request, MCP tool, agent turn |
-| `'worker'`               | 10min    | back-office work nobody is blocked on                  |
+| `'worker'`               | 10min    | back-office work nobody is blocked on                      |
 
 ```ts
 @actor('import', {state: ImportState, seatClass: 'worker'})
@@ -220,7 +220,7 @@ a command), and every runtime logs it under `agentback:actors:deadline` — a
 `loggers` namespace, so the **console** line is only written when `DEBUG`
 matches it (`DEBUG=agentback:actors:deadline:*`); a registered `onLog` hook,
 however, fires for this record unconditionally, regardless of `DEBUG` — the
-journal marker is the record that survives any log configuration *and* no
+journal marker is the record that survives any log configuration _and_ no
 `onLog` hook at all. That append is its **own** write, touching
 neither state nor the dedup record, so:
 
@@ -243,7 +243,7 @@ renewing once the turn has run for its deadline, so the seat becomes claimable
 across processes even if the holder never comes back. (On Redis the deadline
 bounds the turn up to the commit boundary, not the commit: a commit that stalls
 after `receive` returned makes that one caller wait, but the renewal cap still
-bounds the *seat*.)
+bounds the _seat_.)
 
 The deadline covers the **state load** as well as `receive`, on every runtime —
 a cold identity whose `initialState` hangs is a recorded failed turn, not a
@@ -258,10 +258,10 @@ One incident, one marker.
 
 ## Runtimes (the `ActorRuntime` port)
 
-| Component                                                             | Adapter               | Use                                         |
-| --------------------------------------------------------------------- | --------------------- | ------------------------------------------- |
-| `InMemoryActorsComponent`                                             | in-memory             | tests, dev, single-instance                 |
-| `EventSourcedActorsComponent`                                         | in-memory + event log | the above **plus** a per-identity event log, delivered to subscribers |
+| Component                                                             | Adapter               | Use                                                                                                              |
+| --------------------------------------------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `InMemoryActorsComponent`                                             | in-memory             | tests, dev, single-instance                                                                                      |
+| `EventSourcedActorsComponent`                                         | in-memory + event log | the above **plus** a per-identity event log, delivered to subscribers                                            |
 | `RedisActorsComponent` ([`@agentback/actors-redis`](../actors-redis)) | Redis                 | cross-process serialization + durable state **and** a durable event log, delivered by tailing it (at-least-once) |
 
 `ActorRuntime` is the package boundary. Every adapter must pass

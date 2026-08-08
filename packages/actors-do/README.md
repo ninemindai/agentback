@@ -14,7 +14,7 @@ Cloudflare-only (Queues, KV, alarms) is required.
 ## What the platform gives, what the engine adds
 
 A Durable Object is a single instance per name, globally — that is the
-mutual-exclusion *placement* guarantee the Redis adapter builds with leases
+mutual-exclusion _placement_ guarantee the Redis adapter builds with leases
 and Lua scripts. It is **not** per-turn serialization: workerd interleaves
 in-flight requests at await points, so the object runs its own seat (a
 promise-chain mutex), and the rest of the actor contract — Zod validation,
@@ -69,11 +69,19 @@ export function actorDefinitions() {
 }
 
 // worker.ts — the module Cloudflare/celld loads
-import {createActorDurableObject, DurableObjectActorRuntime}
-  from '@agentback/actors-do';
+import {DurableObject} from 'cloudflare:workers';
+import {
+  createActorDurableObject,
+  DurableObjectActorRuntime,
+} from '@agentback/actors-do';
 import {actorDefinitions} from './actor-definitions.js';
 
-export const ActorDO = createActorDurableObject(actorDefinitions);
+// baseClass matters on Cloudflare: RPC methods are exposed only from
+// classes extending DurableObject, and that module exists only inside
+// workerd — which is why the factory takes it as a parameter.
+export const ActorDO = createActorDurableObject(actorDefinitions, {
+  baseClass: DurableObject,
+});
 
 export default {
   async fetch(request: Request, env: Env) {
@@ -92,16 +100,34 @@ export default {
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["js_rpc"],
   "durable_objects": {
-    "bindings": [{"name": "ACTORS", "class_name": "ActorDO"}]
+    "bindings": [{"name": "ACTORS", "class_name": "ActorDO"}],
   },
-  "migrations": [{"tag": "v1", "new_sqlite_classes": ["ActorDO"]}]
+  "migrations": [{"tag": "v1", "new_sqlite_classes": ["ActorDO"]}],
 }
 ```
+
+## Storage layout
+
+Per object (one identity): `record` holds `{actor, state, seq}` and stays
+deliberately small; each committed request result lives in its own
+`dedup:<requestId>` key (O(1) replay lookup), with a `dedup-order` index for
+FIFO eviction (`dedupLimit`, default 1024 — a replay of an evicted requestId
+re-runs); events append as `event:<seq>` keys. The commit is one atomic
+multi-key `put` of all of it; evicted dedup keys are deleted lazily after
+(an orphan only makes a replay more correct). Two platform constraints shape
+this: a single storage entry is capped (128 KiB on KV-backed classes, 2 MB
+key+value on SQLite-backed), which is why dedup results are never
+accumulated into one value, and one `put` carries a bounded number of
+entries, which is why a turn may emit at most **100 events** (enforced on
+every host, so dev fails the same way production would).
 
 ## Journal: read half only
 
 The adapter persists a turn's `events` atomically with its commit and appends
-the reserved `actor.turn.timeout` marker for a timed-out turn, so
+the reserved `actor.turn.timeout` marker for a timed-out turn whose identity
+record exists (a cold identity that times out mid-`initialState` gets the log
+line only, matching the in-process journaling runtime; the marker write is
+best-effort and never masks the caller's `TurnTimeoutError`), so
 `registry.events(type, id)` works exactly as on the journaling runtimes. It
 implements `ActorEventReader`, **not** `ActorEventStore`: a Durable Object
 has no portable push channel back to every caller, so

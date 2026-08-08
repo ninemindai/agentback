@@ -43,7 +43,9 @@ function objectName(actor: ActorId): string {
  * instead, or bind a runtime that delivers (`EventSourcedActorsComponent`,
  * `RedisActorsComponent`).
  */
-export class DurableObjectActorRuntime implements ActorRuntime, ActorEventReader {
+export class DurableObjectActorRuntime
+  implements ActorRuntime, ActorEventReader
+{
   private readonly registered = new Map<string, AnyActorDefinition>();
 
   constructor(private readonly namespace: ActorDoNamespace) {}
@@ -110,6 +112,15 @@ export class DurableObjectActorRuntime implements ActorRuntime, ActorEventReader
     const requestId = options.requestId ?? crypto.randomUUID();
     if (!requestId.trim())
       throw new Error('Actor requestId must not be empty.');
+    // requestId becomes a storage key (`dedup:<requestId>`) and a member of
+    // the FIFO order index inside the object, and Durable Object storage
+    // caps both key size and single-value size — an unbounded id could brick
+    // the identity's commits. 256 covers every real idempotency-key scheme.
+    if (requestId.length > 256) {
+      throw new Error(
+        `Actor requestId must be at most 256 characters (got ${requestId.length}).`,
+      );
+    }
 
     const outcome = await this.stub(actor).turn({
       actor,
