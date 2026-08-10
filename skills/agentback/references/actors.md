@@ -239,11 +239,16 @@ the shared `runActorRuntimeConformance` suite.
 
 `@agentback/actors-do` runs turns **inside** a Durable Object (Cloudflare or
 self-hosted [celld](https://celld.dev)) — export
-`createActorDurableObject(loadDefinitions)` from the worker module, bind the
-namespace with `installDurableObjectActors(app, {namespace: env.ACTORS})`.
-Both sides construct definitions from the shared module graph (a DO may run
-in another isolate). `createInProcessDoActorRuntime()` is the in-process
-host for tests/dev. See `packages/actors-do/README.md`.
+`createActorDurableObject(loadDefinitions, {baseClass: DurableObject})` from
+the worker module (**`baseClass` is required on Cloudflare**: RPC methods are
+exposed only from classes extending `DurableObject`, and `cloudflare:workers`
+exists only inside workerd, so the factory takes it as a parameter), then
+bind the namespace with `installDurableObjectActors(app, {namespace:
+env.ACTORS})`. Both sides construct definitions from the shared module graph
+(a DO may run in another isolate). Limits enforced on every host so dev
+fails like production: ≤100 events per turn, `requestId` ≤256 chars.
+`createInProcessDoActorRuntime()` is the in-process host for tests/dev. See
+`packages/actors-do/README.md`.
 
 ## Custodial seat keys (`seat.keyStore`)
 

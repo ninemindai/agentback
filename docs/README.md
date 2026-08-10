@@ -71,7 +71,7 @@ Read top-to-bottom the first time; jump around afterwards.
 | [Metering & payments](architecture/metering-and-payments.md) | Counting every REST/MCP call (`metering`) and gating or billing the paid ones — x402 / MPP / Stripe (`payments`). Diagrams.                     |
 | [Boundary coherence (design thesis)](agent-ergonomics.md)    | _Why_ the framework is shaped this way — the "one artifact, viewed differently" bet and what it buys AI-led teams.                              |
 | [Database story](db-story.md)                                | The framework's stance on persistence (Drizzle recipe), and why there's no built-in ORM.                                                        |
-| [Actor model](actor-model.md)                                | The actor model: `@actor` services, per-identity serialized turns, the `ActorRuntime` port, and the Redis adapter. See `examples/hello-actors`. |
+| [Actor model](actor-model.md)                                | The actor model: `@actor` services, per-identity serialized turns, the `ActorRuntime` port, and the Redis + Durable Objects adapters. See `examples/hello-actors`. |
 
 Every package under [`packages/`](../packages/) carries its own `README.md` with
 its exports, a usage snippet, and where it sits in the layering.
