@@ -223,21 +223,23 @@ export async function installInspectorApi(
     );
   }
   app.restController(McpInspectorController);
-  // NOTE: when `connect` is set, installMcpConnect's own footprint is NOT yet
-  // retracted here — mcp-connect migrates in a later wave
-  // (revertible-installs.md); this uninstall covers the inspector controller.
-  const uninstall = async () => {
+  const unbindController = async () => {
     const key = findControllerBindingKey(app, McpInspectorController);
     if (key) app.unbind(key);
   };
-  if (!options.connect) return {connect: null, uninstall};
+  if (!options.connect) return {connect: null, uninstall: unbindController};
   const copts: McpConnectOptions =
     options.connect === true ? {} : options.connect;
-  await installMcpConnect(app, copts);
+  const connectInstalled = await installMcpConnect(app, copts);
   const cpath = copts.path ?? DEFAULT_CONNECT_PATH;
   return {
     connect: {base: cpath + '/api', callbackPath: cpath + '/oauth/callback'},
-    uninstall,
+    uninstall: async () => {
+      // Reverse of install order: retract the nested mcp-connect mount first,
+      // then the controller.
+      await connectInstalled.uninstall();
+      await unbindController();
+    },
   };
 }
 

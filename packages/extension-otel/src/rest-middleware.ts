@@ -2,6 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import type {Installed} from '@agentback/core';
 import {
   context as otelContext,
   propagation,
@@ -81,6 +82,20 @@ export function createOtelMiddleware(
  * Mount the per-request tracing middleware on a REST server's Express app.
  * Call BEFORE `app.start()` so it runs ahead of route handlers.
  */
-export function mountOtel(server: RestServer, options: OtelOptions = {}): void {
-  server.expressApp.use(createOtelMiddleware(options));
+export function mountOtel(
+  server: RestServer,
+  options: OtelOptions = {},
+): Installed {
+  // Express cannot unmount a layer; the middleware is gated so uninstall
+  // turns it into a pass-through (revertible-installs.md, option 1).
+  let live = true;
+  const mw = createOtelMiddleware(options);
+  server.expressApp.use((req, res, next) =>
+    live ? mw(req, res, next) : next(),
+  );
+  return {
+    uninstall: async () => {
+      live = false;
+    },
+  };
 }

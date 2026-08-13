@@ -32,7 +32,8 @@ const app = new RestApplication({});
 app.restController(MyController);
 
 // 100 requests / 60s per client IP (in-memory).
-await installRateLimit(app, {points: 100, durationSecs: 60});
+const installed = await installRateLimit(app, {points: 100, durationSecs: 60});
+// installed.uninstall() turns the limiter into a pass-through
 
 // Redis-backed + a custom key, scoped to /api:
 await installRateLimit(app, {

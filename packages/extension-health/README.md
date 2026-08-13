@@ -47,7 +47,8 @@ class CacheCheck implements HealthCheck {
 }
 app.bind('health.checks.cache').toClass(CacheCheck).tag('healthCheck');
 
-await installHealth(app, {
+const installed = await installHealth(app, {
+  // installed.uninstall() retracts /health + /ready
   healthPath: '/health',
   readyPath: '/ready',
   defaultTimeoutMs: 3000,

@@ -16,6 +16,8 @@ import {installMcpConnect} from '@agentback/mcp-connect';
 
 const app = new RestApplication();
 const registry = await installMcpConnect(app); // mounts /mcp-connect/api + OAuth callback
+// the returned registry is also an Installed: registry.uninstall() retracts
+// the routes and closes upstream connections (when this install created it)
 await app.start();
 ```
 

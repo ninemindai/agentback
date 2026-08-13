@@ -2,7 +2,8 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import type {Application} from '@agentback/core';
+import type {Application, Installed} from '@agentback/core';
+import {composeTeardown} from '@agentback/common';
 import {MCP_DISPATCH_HOOK_TAG} from '@agentback/mcp';
 import {MeteringBindings} from '@agentback/metering';
 import {
@@ -39,7 +40,7 @@ import {mountOtel, type OtelOptions} from './rest-middleware.js';
 export async function installOtel(
   app: Application,
   options: OtelOptions = {},
-): Promise<void> {
+): Promise<Installed> {
   app
     .bind(OTEL_REST_DISPATCH_HOOK_KEY)
     .to(createOtelRestDispatchHook())
@@ -55,8 +56,16 @@ export async function installOtel(
 
   // REST SERVER-span middleware — only when the app exposes a REST server.
   const maybeRest = app as Partial<Pick<RestApplication, 'restServer'>>;
+  let mounted: Installed | undefined;
   if (maybeRest.restServer) {
     const server: RestServer = await maybeRest.restServer;
-    mountOtel(server, options);
+    mounted = mountOtel(server, options);
   }
+
+  const td = composeTeardown();
+  td.push(() => void app.unbind(OTEL_REST_DISPATCH_HOOK_KEY));
+  td.push(() => void app.unbind(OTEL_MCP_DISPATCH_HOOK_KEY));
+  td.push(() => void app.unbind(MeteringBindings.TRACE_ID_PROVIDER.key));
+  if (mounted) td.push(() => mounted.uninstall());
+  return {uninstall: () => td.run()};
 }

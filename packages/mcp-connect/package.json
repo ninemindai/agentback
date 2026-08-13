@@ -19,6 +19,8 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@agentback/common": "workspace:~",
+    "@agentback/core": "workspace:~",
     "@agentback/mcp-client": "workspace:~",
     "@agentback/rest": "workspace:~",
     "@types/express": "^5.0.6",
@@ -29,9 +31,9 @@
     "node": ">=22.13"
   },
   "devDependencies": {
-    "@agentback/core": "workspace:~",
     "@agentback/mcp": "workspace:~",
     "@agentback/mcp-http": "workspace:~",
+    "@agentback/testing": "workspace:~",
     "@agentback/testlab": "workspace:~",
     "@modelcontextprotocol/server": "^2.0.0",
     "vitest": "~4.1.10",

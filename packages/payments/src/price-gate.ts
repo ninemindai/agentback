@@ -3,6 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 import type {Context} from '@agentback/context';
+import type {Installed} from '@agentback/core';
 import {getPrice, type PriceSpec} from '@agentback/metering';
 import {MCP_DISPATCH_HOOK_TAG, type McpDispatchHook} from '@agentback/mcp';
 import {REST_DISPATCH_HOOK_TAG, type RestDispatchHook} from '@agentback/rest';
@@ -125,7 +126,7 @@ export const PRICE_GATE_MCP_HOOK_KEY = 'payments.hooks.mcp.priceGate';
 export function installPriceGate(
   app: Context,
   options: PriceGateOptions,
-): void {
+): Installed {
   app
     .bind(PRICE_GATE_REST_HOOK_KEY)
     .to(createPriceGateRestHook(options.rail))
@@ -134,4 +135,14 @@ export function installPriceGate(
     .bind(PRICE_GATE_MCP_HOOK_KEY)
     .to(createPriceGateMcpHook(options.rail))
     .tag(MCP_DISPATCH_HOOK_TAG);
+  return {
+    uninstall: async () => {
+      if (app.contains(PRICE_GATE_REST_HOOK_KEY)) {
+        app.unbind(PRICE_GATE_REST_HOOK_KEY);
+      }
+      if (app.contains(PRICE_GATE_MCP_HOOK_KEY)) {
+        app.unbind(PRICE_GATE_MCP_HOOK_KEY);
+      }
+    },
+  };
 }

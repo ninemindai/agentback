@@ -20,6 +20,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@agentback/common": "workspace:~",
     "@agentback/context": "workspace:~",
     "@agentback/core": "workspace:~",
     "@agentback/rest": "workspace:~",
@@ -30,6 +31,7 @@
   },
   "devDependencies": {
     "@agentback/openapi": "workspace:~",
+    "@agentback/testing": "workspace:~",
     "@agentback/testlab": "workspace:~",
     "@types/supertest": "^7.2.0",
     "supertest": "^7.2.2",

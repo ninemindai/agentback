@@ -46,7 +46,8 @@ import {RestApplication} from '@agentback/rest';
 import {installOtel, OtelJobQueue} from '@agentback/extension-otel';
 
 const app = new RestApplication({});
-await installOtel(app, {serverName: 'api'}); // middleware + dispatch hooks, before app.start()
+const installed = await installOtel(app, {serverName: 'api'}); // middleware + dispatch hooks, before app.start()
+// installed.uninstall() unbinds the hooks and gates the middleware
 await app.start();
 
 // Jobs: wrap any JobQueue adapter at the port.

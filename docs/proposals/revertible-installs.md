@@ -33,8 +33,19 @@ sessions, unbinds the three agent bindings, deregisters its stop hook);
 `installChat`'s `ChatHttpHandle` gained `uninstall()` (webhook routes
 gated, chat shut down once, stop hook deregistered). One carve-out:
 `ChatServer.register` has no inverse — the registered runtime stays on the
-server after uninstall, inert (routes retracted, chat shut down). Wave 5
-(the mechanical tail + the konsistent rule) remains proposed.
+server after uninstall, inert (routes retracted, chat shut down). **Wave 5
+implemented**: `installHealth`, `installMetrics`, `installRateLimit`,
+`installOtel`, `installMcpConnect` (returns `RemoteRegistry & Installed`;
+closes upstream connections only when the install created the registry), and
+`installPriceGate` all return `Installed` — and `installInspectorApi` now
+retracts its nested mcp-connect mount, closing the wave-2/4 carve-out.
+Remaining documented carve-outs: prom-client's `collectDefaultMetrics`
+registers process-global collectors with no removal handle, and
+`ChatServer.register` has no inverse. The **konsistent rule was evaluated
+and deferred**: `exportFunctions.returnValueOfType` exists but requires
+exact literal names (no `install*` pattern), so one generic rule is not
+expressible and per-helper enumeration would be brittle noise — revisit if
+konsistent grows name patterns. The conformance suite remains the net.
 Surfaced by the Cordis study
 ([cordis-spatiotemporal-composability.md](cordis-spatiotemporal-composability.md)):
 of everything Cordis does, the one discipline that transfers to AgentBack at
