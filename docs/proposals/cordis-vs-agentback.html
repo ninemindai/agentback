@@ -1,0 +1,746 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cordis × AgentBack — a mechanism-level comparison</title>
+<style>
+  :root {
+    --bg: #faf9f7;
+    --surface: #ffffff;
+    --ink: #1d1f23;
+    --muted: #5d6167;
+    --line: #e4e1da;
+    --line-soft: #eeece6;
+    --ab: #0e7490;
+    --ab-soft: rgba(14, 116, 144, 0.09);
+    --co: #7135d6;
+    --co-soft: rgba(113, 53, 214, 0.08);
+    --good: #1a7f42;
+    --good-soft: rgba(26, 127, 66, 0.10);
+    --code-bg: #f3f1ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16181c;
+      --surface: #1d2025;
+      --ink: #e9e7e1;
+      --muted: #9aa0a8;
+      --line: #2d3138;
+      --line-soft: #24272d;
+      --ab: #38c2da;
+      --ab-soft: rgba(56, 194, 218, 0.12);
+      --co: #ab8cf5;
+      --co-soft: rgba(171, 140, 245, 0.12);
+      --good: #52c880;
+      --good-soft: rgba(82, 200, 128, 0.14);
+      --code-bg: #22252b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #16181c;
+    --surface: #1d2025;
+    --ink: #e9e7e1;
+    --muted: #9aa0a8;
+    --line: #2d3138;
+    --line-soft: #24272d;
+    --ab: #38c2da;
+    --ab-soft: rgba(56, 194, 218, 0.12);
+    --co: #ab8cf5;
+    --co-soft: rgba(171, 140, 245, 0.12);
+    --good: #52c880;
+    --good-soft: rgba(82, 200, 128, 0.14);
+    --code-bg: #22252b;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: Charter, "Bitstream Charter", Cambria, Georgia, serif;
+    font-size: 16.5px;
+    line-height: 1.65;
+    margin: 0;
+  }
+  .wrap {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 24px 96px;
+  }
+  .prose { max-width: 72ch; }
+
+  h1, h2, h3, .eyebrow, .chip, .lane-label, th, figcaption, .card h4 {
+    font-family: "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif;
+  }
+  code, pre, .mono {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  header.masthead {
+    padding: 64px 0 28px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 40px;
+  }
+  .eyebrow {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 14px;
+  }
+  h1 {
+    font-size: clamp(30px, 5vw, 44px);
+    font-weight: 700;
+    line-height: 1.12;
+    letter-spacing: -0.015em;
+    margin: 0 0 14px;
+    text-wrap: balance;
+  }
+  .standfirst {
+    font-size: 19px;
+    line-height: 1.55;
+    color: var(--muted);
+    max-width: 64ch;
+    margin: 0 0 26px;
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 5px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+  }
+  .chip .dot { width: 9px; height: 9px; border-radius: 50%; }
+  .chip.ab { background: var(--ab-soft); color: var(--ab); border-color: transparent; }
+  .chip.ab .dot { background: var(--ab); }
+  .chip.co { background: var(--co-soft); color: var(--co); border-color: transparent; }
+  .chip.co .dot { background: var(--co); }
+
+  h2 {
+    font-size: 23px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 56px 0 4px;
+    text-wrap: balance;
+  }
+  h2 .no {
+    color: var(--muted);
+    font-weight: 500;
+    margin-right: 10px;
+  }
+  h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 30px 0 8px;
+  }
+  p { margin: 12px 0; }
+  a { color: var(--ab); }
+  strong { font-weight: 700; }
+  .sub {
+    color: var(--muted);
+    font-size: 14.5px;
+    margin: 0 0 18px;
+  }
+
+  figure {
+    margin: 28px 0;
+    padding: 22px 20px 16px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow-x: auto;
+  }
+  figure svg { display: block; max-width: 100%; height: auto; min-width: 620px; }
+  figcaption {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.55;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line-soft);
+    max-width: 78ch;
+  }
+  figcaption b { color: var(--ink); font-weight: 600; }
+
+  .diagram text {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+    fill: currentColor;
+  }
+  .diagram .lbl { font-size: 10.5px; fill: var(--muted); }
+  .diagram .panel-title {
+    font-family: "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+  }
+  .diagram .box { fill: var(--surface); stroke: currentColor; stroke-width: 1.2; }
+  .diagram .box-ab { fill: var(--ab-soft); stroke: var(--ab); stroke-width: 1.4; }
+  .diagram .box-co { fill: var(--co-soft); stroke: var(--co); stroke-width: 1.4; }
+  .diagram .edge { stroke: currentColor; stroke-width: 1.2; fill: none; }
+  .diagram .edge-ab { stroke: var(--ab); stroke-width: 1.5; fill: none; }
+  .diagram .edge-co { stroke: var(--co); stroke-width: 1.5; fill: none; }
+  .diagram .ghost { stroke-dasharray: 4 4; opacity: 0.55; }
+  .diagram .t-ab { fill: var(--ab); }
+  .diagram .t-co { fill: var(--co); }
+
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--line-soft);
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    overflow-x: auto;
+    margin: 0;
+  }
+  code {
+    background: var(--code-bg);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 0.86em;
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  .code-compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin: 20px 0;
+  }
+  .code-compare .pane { min-width: 0; }
+  .pane-title {
+    font-family: "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin: 0 0 8px;
+  }
+  .pane-title.ab { color: var(--ab); }
+  .pane-title.co { color: var(--co); }
+  @media (max-width: 720px) {
+    .code-compare { grid-template-columns: 1fr; }
+  }
+
+  .table-scroll { overflow-x: auto; margin: 24px 0; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 640px;
+    font-size: 14.5px;
+    line-height: 1.5;
+  }
+  th {
+    text-align: left;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 10px 14px;
+    border-bottom: 2px solid var(--line);
+  }
+  td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line-soft);
+    vertical-align: top;
+  }
+  td.concern { font-weight: 700; font-family: "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif; font-size: 13.5px; width: 24%; }
+  .verdict {
+    display: inline-block;
+    font-family: "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border-radius: 4px;
+    padding: 2px 7px;
+    margin-bottom: 4px;
+  }
+  .verdict.win { background: var(--good-soft); color: var(--good); }
+  .verdict.gap { background: var(--line-soft); color: var(--muted); }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 14px;
+    margin: 22px 0;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--good);
+    border-radius: 8px;
+    padding: 16px 18px;
+  }
+  .card h4 {
+    font-size: 14.5px;
+    font-weight: 700;
+    margin: 0 0 8px;
+  }
+  .card p { font-size: 13.5px; color: var(--muted); margin: 0; line-height: 1.55; }
+  .card p b { color: var(--ink); }
+
+  .thm {
+    margin: 18px 0;
+    padding-left: 0;
+    list-style: none;
+  }
+  .thm li {
+    padding: 10px 0 10px 16px;
+    border-left: 2px solid var(--co);
+    margin: 10px 0;
+    font-size: 15px;
+  }
+  .thm b { font-family: "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif; font-size: 13.5px; }
+  .thm .ref { color: var(--muted); font-size: 12.5px; }
+
+  footer {
+    margin-top: 64px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  :focus-visible { outline: 2px solid var(--ab); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="masthead">
+    <p class="eyebrow">Research report · August 2026 · NineMind internal</p>
+    <h1>Two coherences: Cordis and AgentBack, mechanism by mechanism</h1>
+    <p class="standfirst">
+      Both frameworks bet on AI-led development, from opposite ends.
+      AgentBack makes every <em>boundary</em> derive from one artifact;
+      Cordis makes every <em>mount</em> revertible and every dependency reactive.
+      This report draws the machinery so the difference is pointable-at.
+    </p>
+    <div class="legend">
+      <span class="chip ab"><span class="dot"></span>AgentBack — boundary coherence (space)</span>
+      <span class="chip co"><span class="dot"></span>Cordis — lifecycle coherence (time)</span>
+    </div>
+  </header>
+
+  <section>
+    <h2><span class="no">1</span>The two theses are orthogonal axes</h2>
+    <div class="prose">
+      <p>
+        AgentBack's claim: a single Zod schema, declared once on a decorator, <em>is</em> the
+        validator, the TS type, the OpenAPI document, the MCP tool contract, and the rendered
+        docs — so the boundaries cannot disagree with each other.
+        Cordis's claim, formalized in the 2026 DeepSeek-AI/PKU preprint
+        <a href="https://github.com/cordiverse/paper"><em>A Programming Paradigm for Spatiotemporal Composability</em></a>:
+        every context transformation carries an inverse the runtime tracks, so a component
+        can be removed and the system provably returns to the state it would have had
+        without it. One is a claim about <strong>artifacts in space</strong>; the other about
+        <strong>effects in time</strong>. Neither framework has an answer on the other's axis.
+      </p>
+    </div>
+
+    <figure>
+      <svg class="diagram" role="img" viewBox="0 0 960 330"
+           aria-label="Left: AgentBack projects one Zod schema to five boundaries. Right: Cordis pairs every effect with an inverse pushed onto an accumulator that dispose replays in reverse.">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"></path>
+          </marker>
+          <marker id="arr-ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--ab)"></path>
+          </marker>
+          <marker id="arr-co" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--co)"></path>
+          </marker>
+        </defs>
+
+        <line x1="480" y1="16" x2="480" y2="314" class="edge ghost"></line>
+
+        <!-- Left: AgentBack projection fan -->
+        <text x="24" y="30" class="panel-title t-ab">AGENTBACK · ONE ARTIFACT, EVERY BOUNDARY</text>
+        <rect x="40" y="140" width="150" height="46" rx="6" class="box-ab"></rect>
+        <text x="115" y="159" text-anchor="middle">Zod schema</text>
+        <text x="115" y="175" text-anchor="middle" class="lbl">on the decorator</text>
+
+        <g>
+          <rect x="300" y="52" width="150" height="34" rx="5" class="box"></rect>
+          <text x="375" y="73" text-anchor="middle">runtime validator</text>
+          <rect x="300" y="106" width="150" height="34" rx="5" class="box"></rect>
+          <text x="375" y="127" text-anchor="middle">TS type (z.infer)</text>
+          <rect x="300" y="160" width="150" height="34" rx="5" class="box"></rect>
+          <text x="375" y="181" text-anchor="middle">OpenAPI 3.1</text>
+          <rect x="300" y="214" width="150" height="34" rx="5" class="box"></rect>
+          <text x="375" y="235" text-anchor="middle">MCP inputSchema</text>
+          <rect x="300" y="268" width="150" height="34" rx="5" class="box"></rect>
+          <text x="375" y="289" text-anchor="middle">docs UI</text>
+        </g>
+        <line x1="190" y1="152" x2="298" y2="70"  class="edge-ab" marker-end="url(#arr-ab)"></line>
+        <line x1="190" y1="158" x2="298" y2="124" class="edge-ab" marker-end="url(#arr-ab)"></line>
+        <line x1="190" y1="164" x2="298" y2="177" class="edge-ab" marker-end="url(#arr-ab)"></line>
+        <line x1="190" y1="170" x2="298" y2="230" class="edge-ab" marker-end="url(#arr-ab)"></line>
+        <line x1="190" y1="176" x2="298" y2="284" class="edge-ab" marker-end="url(#arr-ab)"></line>
+        <text x="243" y="140" text-anchor="middle" class="lbl">derives, never copies</text>
+
+        <!-- Right: Cordis effect/inverse loop -->
+        <text x="512" y="30" class="panel-title t-co">CORDIS · EVERY EFFECT CARRIES ITS INVERSE</text>
+        <rect x="528" y="70" width="130" height="42" rx="6" class="box-co"></rect>
+        <text x="593" y="95" text-anchor="middle">effect()</text>
+        <rect x="790" y="70" width="130" height="42" rx="6" class="box"></rect>
+        <text x="855" y="89" text-anchor="middle">context Γ′</text>
+        <text x="855" y="103" text-anchor="middle" class="lbl">listener, service, route…</text>
+        <line x1="658" y1="91" x2="788" y2="91" class="edge-co" marker-end="url(#arr-co)"></line>
+        <text x="723" y="82" text-anchor="middle" class="lbl">mounts</text>
+
+        <rect x="528" y="196" width="210" height="46" rx="6" class="box-co"></rect>
+        <text x="633" y="215" text-anchor="middle">accumulator [g₃ · g₂ · g₁]</text>
+        <text x="633" y="231" text-anchor="middle" class="lbl">composed inverses, per fiber</text>
+        <line x1="593" y1="112" x2="593" y2="194" class="edge-co" marker-end="url(#arr-co)"></line>
+        <text x="600" y="158" class="lbl">returns disposer g</text>
+
+        <rect x="790" y="196" width="130" height="46" rx="6" class="box"></rect>
+        <text x="855" y="215" text-anchor="middle">Γ restored</text>
+        <text x="855" y="231" text-anchor="middle" class="lbl">as if never mounted</text>
+        <line x1="738" y1="219" x2="788" y2="219" class="edge-co" marker-end="url(#arr-co)"></line>
+        <text x="700" y="264" class="lbl">dispose(): replay in reverse (LIFO)</text>
+      </svg>
+      <figcaption>
+        <b>The two theses as mechanisms.</b> Left: AgentBack's decorator schema fans out to five
+        boundaries by derivation — there is no second artifact to drift. Right: Cordis's
+        <code>effect()</code> requires every mount to return its own disposer; the runtime composes
+        them into a per-fiber accumulator, so removal is a structural replay, not developer discipline.
+      </figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2><span class="no">2</span>Dependency machinery: typed keys vs an ambient Proxy</h2>
+    <div class="prose">
+      <p>
+        AgentBack keeps LoopBack's container: values bound under typed keys, injected into
+        constructor slots, resolved when the app starts. Cordis has no binding keys at all —
+        the context <em>is</em> the container, services are properties on it, and a Proxy
+        <code>get</code> handler polices access: read a service you never declared in
+        <code>inject</code> and it throws. That is a coeffect check enforced at property access.
+      </p>
+    </div>
+
+    <div class="code-compare">
+      <div class="pane">
+        <p class="pane-title ab">AgentBack</p>
+        <pre><code>// typed key, checked injection, resolved at start()
+const DB = BindingKey.create&lt;Db&gt;('db');
+app.bind(DB).toClass(DrizzleClient);
+
+class Reports {
+  constructor(@inject(DB) private db: Db) {}
+}</code></pre>
+      </div>
+      <div class="pane">
+        <p class="pane-title co">Cordis</p>
+        <pre><code>// service = property on ctx, declared coeffect
+ctx.provide('db', new DrizzleClient(ctx));
+
+ctx.inject(['db'], (ctx) =&gt; {
+  ctx.db.query(...)   // ok: declared
+  ctx.timer            // throws: not injected
+});</code></pre>
+      </div>
+    </div>
+
+    <figure>
+      <svg class="diagram" role="img" viewBox="0 0 960 320"
+           aria-label="Left: AgentBack resolves a typed binding key through the container once at start. Right: Cordis resolves ctx.database per access through a Proxy that checks the inject declaration and walks the fiber chain.">
+        <line x1="480" y1="16" x2="480" y2="304" class="edge ghost"></line>
+
+        <!-- Left: container resolution -->
+        <text x="24" y="30" class="panel-title t-ab">AGENTBACK · RESOLVE ONCE, AT BOOT</text>
+        <rect x="30" y="66" width="180" height="40" rx="5" class="box-ab"></rect>
+        <text x="120" y="90" text-anchor="middle">@inject(DB.KEY)</text>
+        <rect x="280" y="52" width="170" height="118" rx="6" class="box"></rect>
+        <text x="365" y="74" text-anchor="middle">Container</text>
+        <line x1="292" y1="84" x2="438" y2="84" class="edge ghost"></line>
+        <text x="298" y="104" class="lbl">db → DrizzleClient</text>
+        <text x="298" y="122" class="lbl">fetch → Fetch</text>
+        <text x="298" y="140" class="lbl">servers.Rest → …</text>
+        <text x="298" y="158" class="lbl">(typed keys)</text>
+        <line x1="210" y1="86" x2="278" y2="86" class="edge-ab" marker-end="url(#arr-ab)"></line>
+        <rect x="280" y="216" width="170" height="40" rx="5" class="box"></rect>
+        <text x="365" y="240" text-anchor="middle">constructor param</text>
+        <line x1="365" y1="170" x2="365" y2="214" class="edge-ab" marker-end="url(#arr-ab)"></line>
+        <text x="374" y="196" class="lbl">at app.start()</text>
+        <text x="30" y="292" class="lbl">TS-checked keys · wiring fixed for process lifetime · change = restart</text>
+
+        <!-- Right: proxy walk -->
+        <text x="512" y="30" class="panel-title t-co">CORDIS · RESOLVE PER ACCESS</text>
+        <rect x="512" y="66" width="160" height="40" rx="5" class="box-co"></rect>
+        <text x="592" y="90" text-anchor="middle">ctx.database</text>
+        <rect x="740" y="66" width="190" height="40" rx="5" class="box"></rect>
+        <text x="835" y="85" text-anchor="middle">declared in inject[]?</text>
+        <text x="835" y="99" text-anchor="middle" class="lbl">no → throw</text>
+        <line x1="672" y1="86" x2="738" y2="86" class="edge-co" marker-end="url(#arr-co)"></line>
+        <text x="705" y="77" text-anchor="middle" class="lbl">Proxy get</text>
+        <rect x="740" y="144" width="190" height="40" rx="5" class="box"></rect>
+        <text x="835" y="168" text-anchor="middle">walk fiber chain</text>
+        <line x1="835" y1="106" x2="835" y2="142" class="edge-co" marker-end="url(#arr-co)"></line>
+        <text x="844" y="128" class="lbl">yes</text>
+        <rect x="740" y="222" width="190" height="46" rx="5" class="box-co"></rect>
+        <text x="835" y="241" text-anchor="middle">provider fiber.store</text>
+        <text x="835" y="257" text-anchor="middle" class="lbl">rebound to caller's ctx</text>
+        <line x1="835" y1="184" x2="835" y2="220" class="edge-co" marker-end="url(#arr-co)"></line>
+        <text x="512" y="292" class="lbl">stringly keys, merged types · re-resolves as providers come and go</text>
+      </svg>
+      <figcaption>
+        <b>Same need, inverse answers.</b> AgentBack pays a boot-time resolution for static
+        guarantees: keys are typed, wiring is compile-checked, and a request never observes a
+        half-wired container. Cordis pays a per-access Proxy for reactivity: the returned service
+        is re-wrapped so its <code>this.ctx</code> becomes the <em>caller's</em> context — which is how
+        side effects created inside a service call land in the caller's fiber for later disposal.
+      </figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2><span class="no">3</span>The load-bearing difference: what happens on change</h2>
+    <div class="prose">
+      <p>
+        Swap a database adapter in a running system. AgentBack is not blind to runtime change —
+        <code>ContextView</code>/<code>ContextObserver</code> track bind/unbind live, which is how the
+        middleware chain and extension points pick up late registrations without a restart. But that
+        reactivity is <em>discovery-level</em>: it re-enumerates collections. A constructor-injected
+        provider like the database client resolved once at instantiation, and nothing unwinds what a
+        removed binding already did — so for a provider swap the honest answer is restart. Cordis's
+        answer is the entire framework: the provider's disposal flips the <em>epoch</em> of every dependent
+        (a string concatenating its providers' fiber UIDs), and each dependent unloads —
+        replaying its accumulated inverses in reverse — then reloads against the new provider.
+        Fibers not depending on the database never notice.
+      </p>
+    </div>
+
+    <figure>
+      <svg class="diagram" role="img" viewBox="0 0 960 400"
+           aria-label="Two timelines. AgentBack: swap binding, stop, process restart, clean boot, with in-flight work dropped. Cordis: provider disposed, dependents' epochs flip, disposers replay in reverse, dependents reload against the new provider while unrelated fibers keep running.">
+        <!-- AgentBack lane -->
+        <text x="24" y="30" class="panel-title t-ab">AGENTBACK · CHANGE = RESTART</text>
+        <line x1="40" y1="110" x2="930" y2="110" class="edge ghost"></line>
+        <rect x="60" y="88" width="170" height="44" rx="5" class="box-ab"></rect>
+        <text x="145" y="107" text-anchor="middle">rebind DB adapter</text>
+        <text x="145" y="123" text-anchor="middle" class="lbl">source / config edit</text>
+        <line x1="230" y1="110" x2="288" y2="110" class="edge-ab" marker-end="url(#arr-ab)"></line>
+        <rect x="290" y="88" width="130" height="44" rx="5" class="box"></rect>
+        <text x="355" y="107" text-anchor="middle">app.stop()</text>
+        <text x="355" y="123" text-anchor="middle" class="lbl">graceful drain</text>
+        <line x1="420" y1="110" x2="478" y2="110" class="edge-ab" marker-end="url(#arr-ab)"></line>
+        <rect x="480" y="88" width="160" height="44" rx="5" class="box"></rect>
+        <text x="560" y="107" text-anchor="middle">process restart</text>
+        <text x="560" y="123" text-anchor="middle" class="lbl">memory state discarded</text>
+        <line x1="640" y1="110" x2="698" y2="110" class="edge-ab" marker-end="url(#arr-ab)"></line>
+        <rect x="700" y="88" width="210" height="44" rx="5" class="box-ab"></rect>
+        <text x="805" y="107" text-anchor="middle">start(): resolve all</text>
+        <text x="805" y="123" text-anchor="middle" class="lbl">clean boot ⇒ trivially confluent</text>
+        <text x="60" y="168" class="lbl">every component pays · in-flight turns dropped (actors replay by requestId) · seconds of unavailability</text>
+
+        <!-- Cordis lane -->
+        <text x="24" y="216" class="panel-title t-co">CORDIS · CHANGE = EPOCH CASCADE</text>
+        <line x1="40" y1="296" x2="930" y2="296" class="edge ghost"></line>
+        <rect x="60" y="274" width="170" height="44" rx="5" class="box-co"></rect>
+        <text x="145" y="293" text-anchor="middle">provide('db') disposed</text>
+        <text x="145" y="309" text-anchor="middle" class="lbl">its own inverses replay</text>
+        <line x1="230" y1="296" x2="288" y2="296" class="edge-co" marker-end="url(#arr-co)"></line>
+        <rect x="290" y="274" width="160" height="44" rx="5" class="box"></rect>
+        <text x="370" y="293" text-anchor="middle">dependents' epoch flips</text>
+        <text x="370" y="309" text-anchor="middle" class="lbl">":41" ≠ ":57"</text>
+        <line x1="450" y1="296" x2="508" y2="296" class="edge-co" marker-end="url(#arr-co)"></line>
+        <rect x="510" y="274" width="180" height="44" rx="5" class="box"></rect>
+        <text x="600" y="293" text-anchor="middle">unload: replay inverses</text>
+        <text x="600" y="309" text-anchor="middle" class="lbl">reverse order, per fiber</text>
+        <line x1="690" y1="296" x2="748" y2="296" class="edge-co" marker-end="url(#arr-co)"></line>
+        <rect x="750" y="274" width="180" height="44" rx="5" class="box-co"></rect>
+        <text x="840" y="293" text-anchor="middle">reload vs new provider</text>
+        <text x="840" y="309" text-anchor="middle" class="lbl">one resolution (Thm 64)</text>
+        <line x1="370" y1="274" x2="370" y2="248" class="edge ghost"></line>
+        <text x="370" y="240" text-anchor="middle" class="lbl">fibers not injecting 'db': untouched, keep serving</text>
+        <text x="60" y="354" class="lbl">process keeps running · quiesces at the state a clean boot would produce (confluence, §4.4.5) — proved, not assumed</text>
+      </svg>
+      <figcaption>
+        <b>The same operation, two costs.</b> Both ends are "confluent" — the system ends where a
+        from-scratch assembly would — but AgentBack buys it by <em>performing</em> the from-scratch
+        assembly, while Cordis proves the running system converges there without stopping. The
+        paper concedes restart is the workaround everyone uses (§1.2.3); its argument is about
+        what restart costs at agent edit-frequency.
+      </figcaption>
+    </figure>
+
+    <h3>The machinery that makes the cascade safe: the fiber state machine</h3>
+
+    <figure>
+      <svg class="diagram" role="img" viewBox="0 0 960 190"
+           aria-label="Fiber lifecycle: pending to loading when dependencies are satisfied, loading to active when the effect completes, active to unloading when the epoch flips, unloading back to loading if dependencies return, or to disposed. Loading can fail to the failed state.">
+        <rect x="30" y="60" width="130" height="44" rx="22" class="box"></rect>
+        <text x="95" y="86" text-anchor="middle">PENDING</text>
+        <rect x="240" y="60" width="130" height="44" rx="22" class="box"></rect>
+        <text x="305" y="86" text-anchor="middle">LOADING</text>
+        <rect x="450" y="60" width="130" height="44" rx="22" class="box-co"></rect>
+        <text x="515" y="86" text-anchor="middle">ACTIVE</text>
+        <rect x="660" y="60" width="140" height="44" rx="22" class="box"></rect>
+        <text x="730" y="86" text-anchor="middle">UNLOADING</text>
+        <rect x="860" y="60" width="90" height="44" rx="22" class="box"></rect>
+        <text x="905" y="86" text-anchor="middle" class="lbl">DISPOSED</text>
+
+        <line x1="160" y1="82" x2="238" y2="82" class="edge-co" marker-end="url(#arr-co)"></line>
+        <text x="199" y="72" text-anchor="middle" class="lbl">deps satisfied</text>
+        <line x1="370" y1="82" x2="448" y2="82" class="edge-co" marker-end="url(#arr-co)"></line>
+        <text x="409" y="72" text-anchor="middle" class="lbl">effect ran</text>
+        <line x1="580" y1="82" x2="658" y2="82" class="edge-co" marker-end="url(#arr-co)"></line>
+        <text x="619" y="72" text-anchor="middle" class="lbl">epoch flips</text>
+        <line x1="800" y1="82" x2="858" y2="82" class="edge" marker-end="url(#arr)"></line>
+
+        <path d="M 700 104 C 640 158, 400 158, 320 106" class="edge-co ghost" marker-end="url(#arr-co)" fill="none"></path>
+        <text x="510" y="158" text-anchor="middle" class="lbl">deps satisfied again → reload (inertia chains the transitions)</text>
+
+        <rect x="240" y="10" width="130" height="30" rx="15" class="box ghost"></rect>
+        <text x="305" y="29" text-anchor="middle" class="lbl">FAILED</text>
+        <line x1="305" y1="60" x2="305" y2="42" class="edge ghost" marker-end="url(#arr)"></line>
+      </svg>
+      <figcaption>
+        <b>A dependency change is a state transition, not an event handler.</b> The epoch string is
+        the transition trigger: it concatenates the providers' fiber UIDs, so replacing a provider
+        (not merely re-binding the same one) is what forces the unload/reload cycle. A failure
+        routes through UNLOADING like every other deactivation — the accumulator still replays, so a
+        failed load leaves nothing behind.
+      </figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2><span class="no">4</span>Scorecard</h2>
+    <p class="sub">Each row names who owns the concern; "no concept" means the framework is silent by design, not deficient by accident.</p>
+    <div class="table-scroll">
+      <table>
+        <tr>
+          <th>Concern</th>
+          <th>AgentBack</th>
+          <th>Cordis</th>
+        </tr>
+        <tr>
+          <td class="concern">Boundary coherence</td>
+          <td><span class="verdict win">The thesis</span><br>One Zod artifact → REST, OpenAPI 3.1, MCP, CLI, typed client, docs.</td>
+          <td><span class="verdict gap">Absent</span><br>Standard Schema validates <em>plugin config</em> only; no API boundary story.</td>
+        </tr>
+        <tr>
+          <td class="concern">Request lifecycle</td>
+          <td><span class="verdict win">First-class</span><br>Middleware chain, auth voters, per-request bindings, metering, rate limits.</td>
+          <td><span class="verdict gap">No concept</span><br>No request scope; everything is component-lifetime.</td>
+        </tr>
+        <tr>
+          <td class="concern">Revert a mounted capability</td>
+          <td><span class="verdict gap">Not guaranteed</span><br><code>install*</code> helpers mount irreversibly; unmount story is restart.</td>
+          <td><span class="verdict win">The thesis</span><br>Every effect returns its inverse; recovery exactness is proved (Thm 61).</td>
+        </tr>
+        <tr>
+          <td class="concern">Dependency change at runtime</td>
+          <td><span class="verdict gap">Partial</span><br>Tag-scoped <code>ContextView</code>/<code>ContextObserver</code> re-resolve on bind/unbind (middleware chain, extension points, actors' degradable extensions); constructor injection stays fixed, so swapping a bound provider still means restart.</td>
+          <td><span class="verdict win">Reactive</span><br>Epoch cascade unloads/reloads exactly the dependents, reverting their effects; HMR rides on it.</td>
+        </tr>
+        <tr>
+          <td class="concern">Typed dependency links</td>
+          <td><span class="verdict win">Typed keys</span><br><code>BindingKey.create&lt;T&gt;</code>, compile-checked injection.</td>
+          <td><span class="verdict gap">Nominal strings</span><br>Declaration merging for types; §6.6 admits versioning/collision is open.</td>
+        </tr>
+        <tr>
+          <td class="concern">Stateful entities &amp; durability</td>
+          <td><span class="verdict win">Actors</span><br>Serialized turns, idempotent replay, Redis/Durable Objects adapters.</td>
+          <td><span class="verdict gap">No concept</span><br>Single-process; the paper's "system boundary" (§6.1) marks the edge.</td>
+        </tr>
+        <tr>
+          <td class="concern">Formal grounding</td>
+          <td><span class="verdict gap">Informal</span><br>Design theses in prose (<code>agent-ergonomics.md</code>).</td>
+          <td><span class="verdict win">81-page calculus</span><br>Preservation, recovery, progress, confluence — with proofs.</td>
+        </tr>
+        <tr>
+          <td class="concern">Production validation</td>
+          <td><span class="verdict gap">Alpha</span><br>v0.10, API settling.</td>
+          <td><span class="verdict win">Koishi</span><br>4,000+ community plugins over four years (on Cordis v3; paper formalizes v4).</td>
+        </tr>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="no">5</span>What the paper actually proves</h2>
+    <div class="prose">
+      <p class="sub">The metatheory (§4.4) is the part that elevates this above "plugin framework with good cleanup." In plain terms:</p>
+      <ul class="thm">
+        <li><b>Recovery exactness</b> <span class="ref">· Thm 61</span> — running a fiber's accumulated inverse yields the state as if it had never begun, even with arbitrary interleaving from other fibers.</li>
+        <li><b>Ordering</b> <span class="ref">· Thm 63</span> — a fiber activates only when its dependencies are provided, and a provider outlives its consumers.</li>
+        <li><b>Resolution coherence</b> <span class="ref">· Thm 64</span> — a load runs against exactly one dependency resolution; if the world shifts mid-load, the transition diverts and unloads rather than half-applying.</li>
+        <li><b>Progress</b> <span class="ref">· Thm 66</span> — no deadlock, and a termination bound: reconfiguration storms settle.</li>
+        <li><b>Confluence</b> <span class="ref">· §4.4.5</span> — the dynamic history leaves no trace: any load/unload/reload sequence quiesces at the state a from-scratch boot would produce. This is the property a long-running, agent-edited process needs to avoid drift.</li>
+      </ul>
+      <p>
+        The honest caveats, which the paper owns: effects that <em>emit</em> past the process
+        boundary (a network send, a paid API call) can only be withheld or compensated, never
+        reverted (§6.1); dependency cycles leave both components permanently inactive (§6.5);
+        and the validation is existence-and-adoption, not a controlled comparison (§5.3).
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="no">6</span>Takeaways for AgentBack</h2>
+    <div class="cards">
+      <div class="card">
+        <h4>Steal the disposer discipline</h4>
+        <p>Every <code>install*</code> helper could return (and internally compose) an
+        <b>uninstall</b>. No fibers, no proxies — just the invariant that mount functions
+        return their inverse. The cheapest 20% of Cordis; buys the hot-swap option later.
+        Most relevant to <code>@agentback/plugin</code>.</p>
+      </div>
+      <div class="card">
+        <h4>Name the restart trade</h4>
+        <p>See-and-evolve currently means <b>source edit + process restart</b>. Defensible —
+        but the paper is the sharpest account of what restart costs at agent edit-frequency.
+        Now recorded as a known limit in <code>agent-ergonomics.md</code>, with the study at
+        <code>docs/proposals/cordis-spatiotemporal-composability.md</code>.</p>
+      </div>
+      <div class="card">
+        <h4>Ports already are brokers</h4>
+        <p>The paper's service-broker pattern (§6.2) — a stable interface absorbing provider
+        swaps — is functionally what <b>FileStore / JobQueue / ActorRuntime</b> already are.
+        The ports are the right stable seam if live adapter swapping ever becomes a requirement.</p>
+      </div>
+    </div>
+    <div class="prose">
+      <p>
+        <strong>Non-takeaways, for the record:</strong> the ambient Proxy context trades away
+        exactly what AgentBack is built on — typed keys, request scope, per-resolution isolation —
+        and adopting the fiber machinery wholesale would be a second framework inside the
+        framework. The value is the discipline (effects return their inverses) and the formal
+        vocabulary, not the runtime.
+      </p>
+    </div>
+  </section>
+
+  <footer>
+    <p>
+      Sources: <a href="https://github.com/cordiverse/cordis">cordiverse/cordis</a> v4.0.0-rc
+      (core read in full, ~1,850 lines: <code>context.ts</code>, <code>fiber.ts</code>,
+      <code>reflect.ts</code>, <code>registry.ts</code>, <code>events.ts</code>, <code>service.ts</code>,
+      <code>utils.ts</code>, plus the <code>loader</code> and <code>hmr</code> packages) ·
+      Shi, Zhang &amp; Cui, <a href="https://github.com/cordiverse/paper"><em>A Programming Paradigm for
+      Spatiotemporal Composability</em></a>, PKU + DeepSeek-AI, draft of 2026-08-13 ·
+      AgentBack facts from the NineMind repo at <code>main</code> (v0.10.1).
+      Full written study: <code>docs/proposals/cordis-spatiotemporal-composability.md</code>.
+    </p>
+  </footer>
+</div>
+</body>
+</html>

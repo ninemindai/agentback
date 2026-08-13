@@ -1,0 +1,193 @@
+# Proposal: revertible installs — every `install*` returns its inverse
+
+**Status:** Draft (2026-08-13); **wave 1 implemented** the same day —
+`composeTeardown` (`@agentback/common`), `Installed` (`@agentback/core`),
+`addFetchHandler`/`addFetchPrefix` removers (`@agentback/rest`), and
+`installExplorer` returning `Installed` with the gate-flag Express pattern
+(`@agentback/rest-explorer`, conformance test in
+`uninstall.integration.ts`). Waves 2–5 remain proposed.
+Surfaced by the Cordis study
+([cordis-spatiotemporal-composability.md](cordis-spatiotemporal-composability.md)):
+of everything Cordis does, the one discipline that transfers to AgentBack at
+~5% of the machinery is _mount functions return their inverse_. This proposal
+pins down the contract, the composition rule, the Express-unmount question,
+and the migration order. It deliberately does **not** import fibers, epochs,
+reactive reload, or effect reversal of arbitrary side effects.
+
+## Motivation
+
+The workspace has ~18 `install*` helpers (`installMcpHttp`, `installConsole`,
+`installExplorer`, `installAgent`, `installChat`, `installHealth`,
+`installMetrics`, `installRateLimit`, the explorer trio, …). Each one performs
+a footprint of registrations — Express layers, fetch handlers, DI bindings,
+lifecycle hooks, background resources — that exists today only as the sequence
+of side effects in its body. Three costs follow:
+
+1. **The footprint is unauditable.** Nothing states what `installConsole`
+   touched; answering "what did this helper do to my app?" means reading its
+   body and every feature it composed. A returned inverse makes the footprint
+   a value.
+2. **Tests can't retract a capability.** `createTestApp` boots one fixed app
+   shape per test; exercising "app with X" vs "app without X" means two apps.
+   Install/uninstall mid-test is cheaper and closer to how operators think.
+3. **`@agentback/plugin` has no unmount story.** A plugin system that can gate
+   and mount but never dismount is half a lifecycle. If the helpers a plugin
+   composes already return inverses, plugin unmount becomes composition; if
+   they don't, it becomes archaeology per helper, forever.
+
+The Cordis paper proves what the disciplined version of this buys (recovery
+exactness, confluence). We are not claiming those theorems — we are adopting
+the invariant that makes them thinkable: **no mount without its inverse.**
+
+## The contract
+
+```ts
+// @agentback/core (new)
+export interface Installed {
+  /**
+   * Revert every registration this install performed, in reverse order.
+   * Idempotent: the second call is a no-op. Never throws for "already
+   * uninstalled"; aggregates real disposer failures into one error.
+   */
+  uninstall(): Promise<void>;
+}
+```
+
+Every `install*` helper's return type changes from `Promise<void>` to
+`Promise<Installed>` (helpers that already return a handle, like
+`mountMcpHttp`'s `McpHttpHandle`, extend it with `uninstall`). Callers who
+ignore the return value are unaffected — this is **non-breaking for every
+existing call site**.
+
+Rules of the contract:
+
+- **Complete:** `uninstall` reverts everything the install registered —
+  Express layers, fetch handlers/prefixes, bindings, lifecycle hooks, timers,
+  session stores. "Mostly unmounted" is not a state.
+- **Reverse order:** disposers run LIFO, matching Cordis and matching how
+  dependencies stack (what was mounted on top comes off first).
+- **Failure-tolerant:** one failing disposer must not strand the rest. Run
+  all, aggregate failures (`AggregateError`), report once.
+- **Idempotent:** double-uninstall is a no-op; uninstall after `app.stop()`
+  is a no-op for anything stop already tore down.
+- **Scope-fenced:** the inverse reverts the install's _registrations_, not
+  the world. Requests already served, events already emitted, rows already
+  written stay — this is the paper's system-boundary line (§6.1), drawn
+  deliberately at the same place.
+
+## The composition rule: `composeTeardown`
+
+One small utility in `@agentback/common` is the implementation vehicle —
+roughly Cordis's `effect()` stripped of fibers:
+
+```ts
+export interface Teardown {
+  /** Register one disposer; returns it for chaining. */
+  push(dispose: () => void | Promise<void>): void;
+  /** Run all registered disposers in reverse; idempotent; aggregates errors. */
+  run(): Promise<void>;
+}
+export function composeTeardown(): Teardown;
+```
+
+Helper bodies then read as mount-and-record:
+
+```ts
+export async function installExplorer(app, options): Promise<Installed> {
+  const td = composeTeardown();
+  td.push(mountIndexRoute(server, opts)); // each mount returns its inverse
+  td.push(mountStaticAssets(server, opts));
+  td.push(server.addFetchPrefix(opts.path, serve)); // now returns a disposer
+  return {uninstall: () => td.run()};
+}
+```
+
+A failure mid-install calls `td.run()` before rethrowing, so a half-installed
+helper cleans up after itself — the same guarantee Cordis's `effect` gives and
+today's helpers lack.
+
+## The two hard mechanics
+
+### Express can't unmount
+
+Express (v5 included) has no public API to remove a mounted layer. Three
+options, in ascending invasiveness:
+
+1. **Gate flag** — each handler the helper registers closes over a `live`
+   boolean; uninstall flips it and the handler calls `next()` (falls through
+   to 404/other routes). Zero framework changes, works today, leaves dead
+   layers in the stack (negligible: a boolean check per request).
+2. **Per-install router** — mount all of a helper's routes on one
+   `express.Router()` added via `app.use(router)`; uninstall empties
+   `router.stack`. Cleaner grouping, still leaves the (now empty) `use` layer.
+3. **Stack surgery** — splice `expressApp._router.stack`. Rejected: private
+   API, order-fragile, exactly the kind of cleverness that breaks on an
+   Express patch release.
+
+**Recommendation: (1) now, (2) where a helper mounts ≥3 layers.** The gate is
+honest about Express's limits and trivially correct.
+
+### The fetch host needs disposers at the seam
+
+`RestServer.addFetchHandler` / `addFetchPrefix` currently return `void`. They
+should return `() => void` (remove the handler) — a small additive change in
+`@agentback/rest`, and the natural shape for the neutral host anyway (it's a
+plain handler list, removal is a splice). Same for anything the helpers
+register through `app.onStop(...)`: the lifecycle registration should hand
+back its removal, so uninstall can deregister the hook it added
+(`installMcpHttp`'s `onStop(() => handle.closeAll())` must not fire for a
+handle that uninstall already closed).
+
+DI bindings are already fine: `app.bind(key)` has `app.unbind(key)` as its
+exact inverse, and `Binding` instances carry their key.
+
+## Migration order
+
+Smallest footprint first, richest last, so the contract hardens on easy cases
+before it meets sessions:
+
+| Wave | Helpers                                                                                                       | Why this wave                                                                                                                                                                                                                                                       |
+| ---- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | `installExplorer`                                                                                             | Pure mounting: 3 Express layers + 3 fetch handlers, zero bindings. Proves the contract + `composeTeardown` + both host paths.                                                                                                                                       |
+| 2    | `installInspector`, `installContextExplorer`, `installSchemaExplorer`                                         | Same shape as wave 1 plus an `@api` controller binding each (`unbind` suffices).                                                                                                                                                                                    |
+| 3    | `installMcpHttp`                                                                                              | The rich case: routes on both hosts, the `ax.sections.mcp` binding, an `onStop` hook, **live session transports** (`handle.closeAll()` becomes part of `uninstall`). Sets the precedent for stateful teardown.                                                      |
+| 4    | `installConsole` + `ConsoleFeature.install`                                                                   | Composition test: a console feature's `install` returns `Installed`, and the console's own uninstall is the composition of its features'. `installAgent`, `installChat` ride the same wave (session destruction already exists on stop; move it behind the handle). |
+| 5    | `installHealth`, `installMetrics`, `installRateLimit`, `installOtel`, `installMcpConnect`, `installPriceGate` | Mechanical once the pattern is proven.                                                                                                                                                                                                                              |
+
+Out of scope: `installRedisActors` / `installDurableObjectActors` (component
+registration with external state — their teardown is `app.stop()`'s job and
+already handled by lifecycle), `installFastifyHost` (host selection, not a
+capability mount), CLI-internal `install*` functions (unrelated namesakes).
+
+## Verification
+
+- **Conformance test per helper**, same spirit as `@agentback/files/testing`:
+  boot `createTestApp`, install, assert the surface exists (route answers,
+  binding resolves), uninstall, assert the footprint is gone (route 404s on
+  both hosts, `app.isBound(...)` false, no `onStop` hook fires for it, double
+  `uninstall()` resolves). One shared suite parameterized by helper keeps the
+  contract from decaying helper-by-helper.
+- **konsistent rule** (optional, later): `install*` exports in `packages/*/src`
+  must declare `Promise<Installed>` — turning the convention into a check.
+
+## What this is not
+
+- **Not hot swap.** Nothing here reloads dependents when a capability leaves;
+  `ContextView`s keep providing discovery-level reactivity, unchanged.
+- **Not effect reversal.** External side effects are out of scope by the same
+  system-boundary argument the Cordis paper makes for itself.
+- **Not a plugin system redesign.** It is the substrate `@agentback/plugin`
+  unmount would compose; that feature remains its own proposal.
+
+## Open questions
+
+1. Should `Installed` also expose the footprint for inspection
+   (`{routes: string[], bindings: string[]}`) — useful for context-explorer —
+   or is that scope creep on v1? (Lean: v1 is `uninstall` only.)
+2. Does `app.stop()` implicitly uninstall everything installed, or are the
+   two lifecycles independent? (Lean: independent — stop tears down servers;
+   uninstall retracts capability registrations; disposers must be idempotent
+   so either order is safe.)
+3. Wave 4's `ConsoleFeature` is a public-ish interface; changing `install`'s
+   return type is additive (`void → Installed`) but third-party features
+   returning `void` should keep working — accept `void | Installed` there?
