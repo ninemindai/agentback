@@ -1322,7 +1322,12 @@ export class RestServer implements Server {
     // start() already asserts this in the native branch (incl. listen:false);
     // re-assert here so the guard holds if a subclass calls this directly.
     this.assertNoExpressCoupledRoute();
-    const listener = createNodeListener(this.fetchHandler());
+    // Re-read fetchHandler() per request (it memoizes internally): a captured
+    // snapshot would outlive addFetchHandler/addFetchPrefix removals and keep
+    // serving retracted routes — the memo is invalidated on every add/remove.
+    const listener = createNodeListener({
+      fetch: req => this.fetchHandler().fetch(req),
+    });
     const {createServer: createHttpServer} = (
       process as typeof process & {
         getBuiltinModule(id: string): unknown;

@@ -13,7 +13,17 @@ hosts instead of a resolver 500 — `findControllerBindingKey`, exported from
 `installInspector` (+`installInspectorApi`, whose return widened to
 `InstalledInspectorApi = Installed & {connect}`) all return `Installed`.
 When `connect` is set, `installMcpConnect`'s nested footprint is not yet
-retracted — that rides the mcp-connect wave. Waves 3–5 remain proposed.
+retracted — that rides the mcp-connect wave. **Wave 3 implemented**:
+`installMcpHttp` returns `Installed` — `McpHttpHandle` gained `uninstall()`
+on all three mounts (gate flag on the six Express registrations; fetch-host
+removers), and the install composes handle teardown + the `onStop` binding
+unbind (`onStop` already returns its `Binding`, so no new lifecycle API was
+needed) + the `ax.sections.mcp` unbind. The conformance suite gained
+`{path, init}` probes and a `hosts` option (installMcpHttp mounts one host
+per app, so it runs once per host). Fixing this wave also surfaced a real
+seam bug: the native listener captured `fetchHandler()` once at start, so
+handler removals never reached it — it now re-reads the memoized host per
+request. Waves 4–5 remain proposed.
 Surfaced by the Cordis study
 ([cordis-spatiotemporal-composability.md](cordis-spatiotemporal-composability.md)):
 of everything Cordis does, the one discipline that transfers to AgentBack at

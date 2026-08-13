@@ -19,7 +19,9 @@ import {installMcpHttp} from '@agentback/mcp-http';
 const app = new RestApplication();
 app.component(MCPComponent);
 app.service(MyTools); // @mcpServer() class with @tool/@resource/@prompt
-await installMcpHttp(app); // before app.start()
+const installed = await installMcpHttp(app); // before app.start()
+// installed.uninstall() closes transports, retracts /mcp + discovery routes,
+// and unbinds the ax advertisement (revertible installs)
 await app.start();
 // POST   /mcp   — client → server JSON-RPC (initialize, tools/list, tools/call, …)
 // GET    /mcp   — SSE stream for server → client messages on a session

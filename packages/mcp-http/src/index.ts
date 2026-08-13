@@ -27,7 +27,8 @@ import express, {
   type Response,
 } from 'express';
 import {MCPBindings, MCPServer} from '@agentback/mcp';
-import {Context} from '@agentback/core';
+import {Context, type Installed} from '@agentback/core';
+import {composeTeardown} from '@agentback/common';
 import {loggers} from '@agentback/common';
 import {
   AX_SECTION_TAG,
@@ -266,6 +267,12 @@ export interface McpHttpHandle {
    * direct {@link mountMcpHttp} callers should call it on their own shutdown.
    */
   closeAll(): Promise<void>;
+  /**
+   * Revertible-install inverse (docs/proposals/revertible-installs.md):
+   * close every transport AND retract the mount's routes on its host, so the
+   * endpoint answers 404 afterwards. Idempotent.
+   */
+  uninstall(): Promise<void>;
 }
 
 /**
@@ -287,7 +294,7 @@ export interface McpHttpHandle {
 export async function installMcpHttp(
   app: RestApplication,
   options: McpHttpOptions = {},
-): Promise<void> {
+): Promise<Installed> {
   if (!app.isBound(MCPBindings.SERVER)) {
     throw new Error(
       '@agentback/mcp-http: no MCP server bound at ' +
@@ -337,7 +344,7 @@ export async function installMcpHttp(
       : mountMcpHttp(mcp, server.expressApp, opts);
   // Close every outstanding session context + transport on shutdown, so a
   // long-running app doesn't leak per-session DI contexts.
-  app.onStop(() => handle.closeAll());
+  const stopBinding = app.onStop(() => handle.closeAll());
 
   // Contribute an AX section so the REST server's /llms.txt advertises the
   // MCP surface. Dynamic value: the tool list is computed per request, so
@@ -363,6 +370,12 @@ export async function installMcpHttp(
       };
     })
     .tag(AX_SECTION_TAG);
+
+  const td = composeTeardown();
+  td.push(() => handle.uninstall());
+  td.push(() => void app.unbind(stopBinding.key));
+  td.push(() => void app.unbind('ax.sections.mcp'));
+  return {uninstall: () => td.run()};
 }
 
 /**
@@ -381,6 +394,13 @@ export function mountMcpHttp(
     options.enableDnsRebindingProtection ??
     (options.allowedHosts != null || options.allowedOrigins != null);
   const transports: Record<string, NodeStreamableHTTPServerTransport> = {};
+  // Express cannot unmount a layer; every registration below shares one gate,
+  // so uninstall() flips it and requests fall through to the app's 404
+  // (revertible-installs.md, option 1). next('route') skips this route's
+  // remaining handlers, guards included.
+  let live = true;
+  const gate: RequestHandler = (_req, _res, next) =>
+    live ? next() : next('route');
   // For per-session servers: the principal that owns each session, so a later
   // request on the same session id can't be served to a different principal.
   const sessionOwners: Record<string, string | undefined> = {};
@@ -450,15 +470,20 @@ export function mountMcpHttp(
     };
     expressApp.options(
       PROTECTED_RESOURCE_PATH,
+      gate,
       (_req: Request, res: Response) => {
         sendDiscoveryCors(res);
         res.status(204).end();
       },
     );
-    expressApp.get(PROTECTED_RESOURCE_PATH, (_req: Request, res: Response) => {
-      sendDiscoveryCors(res);
-      res.status(200).json(metadata);
-    });
+    expressApp.get(
+      PROTECTED_RESOURCE_PATH,
+      gate,
+      (_req: Request, res: Response) => {
+        sendDiscoveryCors(res);
+        res.status(200).json(metadata);
+      },
+    );
     guards.push(
       requireBearerAuth({
         verifier: auth.verifier,
@@ -543,6 +568,7 @@ export function mountMcpHttp(
     const node = toNodeHandler(statelessHandler);
     expressApp.all(
       path,
+      gate,
       ...rebindingGuards,
       ...guards,
       express.json(),
@@ -554,9 +580,15 @@ export function mountMcpHttp(
         // than let the adapter re-read a spent stream.
         node(req, res, req.body),
     );
+    const closeStateless = async () => {
+      await statelessHandler.close();
+    };
     return {
-      async closeAll() {
-        await statelessHandler.close();
+      closeAll: closeStateless,
+      uninstall: async () => {
+        if (!live) return;
+        live = false;
+        await closeStateless();
       },
     };
   }
@@ -579,6 +611,7 @@ export function mountMcpHttp(
   // `initialize`, which spins up a fresh per-session SDK server + transport.
   expressApp.post(
     path,
+    gate,
     exposeSessionId,
     ...guards,
     express.json(),
@@ -683,18 +716,24 @@ export function mountMcpHttp(
     }
     await transport.handleRequest(req, res);
   };
-  expressApp.get(path, exposeSessionId, ...guards, onSessionRequest);
-  expressApp.delete(path, exposeSessionId, ...guards, onSessionRequest);
+  expressApp.get(path, gate, exposeSessionId, ...guards, onSessionRequest);
+  expressApp.delete(path, gate, exposeSessionId, ...guards, onSessionRequest);
 
+  const closeSessions = async () => {
+    await Promise.all(
+      Object.values(transports).map(t =>
+        t.close().catch(() => {
+          /* best-effort on shutdown */
+        }),
+      ),
+    );
+  };
   return {
-    async closeAll() {
-      await Promise.all(
-        Object.values(transports).map(t =>
-          t.close().catch(() => {
-            /* best-effort on shutdown */
-          }),
-        ),
-      );
+    closeAll: closeSessions,
+    uninstall: async () => {
+      if (!live) return;
+      live = false;
+      await closeSessions();
     },
   };
 }

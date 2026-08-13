@@ -460,9 +460,10 @@ export function mountMcpHttpFetch(
   // Register one handler per verb on the same path. addFetchHandler matches
   // (method, exact-path); the SDK transport routes GET (SSE) / POST (RPC) /
   // DELETE (terminate) internally.
-  server.addFetchHandler('POST', path, handle);
-  server.addFetchHandler('GET', path, handle);
-  server.addFetchHandler('DELETE', path, handle);
+  const removers: Array<() => void> = [];
+  removers.push(server.addFetchHandler('POST', path, handle));
+  removers.push(server.addFetchHandler('GET', path, handle));
+  removers.push(server.addFetchHandler('DELETE', path, handle));
 
   // OAuth resource-server metadata (RFC 9728): advertise the authorization
   // servers + scopes so clients can discover where to obtain a token.
@@ -478,23 +479,32 @@ export function mountMcpHttpFetch(
     // The discovery document is public by spec and browser-hosted MCP clients
     // fetch it cross-origin with a custom `MCP-Protocol-Version` header, which
     // forces a preflight — so OPTIONS must answer with the CORS headers too.
-    server.addFetchHandler('GET', PROTECTED_RESOURCE_PATH, async () =>
-      Response.json(metadata, {headers: PUBLIC_DISCOVERY_CORS}),
+    removers.push(
+      server.addFetchHandler('GET', PROTECTED_RESOURCE_PATH, async () =>
+        Response.json(metadata, {headers: PUBLIC_DISCOVERY_CORS}),
+      ),
     );
-    server.addFetchHandler(
-      'OPTIONS',
-      PROTECTED_RESOURCE_PATH,
-      async () =>
-        new Response(null, {status: 204, headers: PUBLIC_DISCOVERY_CORS}),
+    removers.push(
+      server.addFetchHandler(
+        'OPTIONS',
+        PROTECTED_RESOURCE_PATH,
+        async () =>
+          new Response(null, {status: 204, headers: PUBLIC_DISCOVERY_CORS}),
+      ),
     );
   }
 
+  const closeAll = async () => {
+    await statelessHandler?.close();
+    await Promise.all(
+      Object.values(transports).map(t => t.close().catch(() => {})),
+    );
+  };
   return {
-    async closeAll() {
-      await statelessHandler?.close();
-      await Promise.all(
-        Object.values(transports).map(t => t.close().catch(() => {})),
-      );
+    closeAll,
+    uninstall: async () => {
+      for (const remove of removers.splice(0).reverse()) remove();
+      await closeAll();
     },
   };
 }
