@@ -45,4 +45,23 @@ describe('installAgent uninstall', () => {
     await expect(installed.uninstall()).resolves.toBeUndefined();
     await expect(app.stop()).resolves.toBeUndefined();
   });
+
+  it('uninstall leaves a binding the user has since shadowed over ours', async () => {
+    // bind() REPLACES at the same key: after install, the user rebinds
+    // AGENT to their own value. Uninstall must NOT remove the user's
+    // binding — an inverse only retracts what it owns (identity-guarded
+    // unbind, outside-voice finding C4 on PR #51).
+    const app = new Application();
+    const installed = installAgent(app, {agent: fakeAgent});
+
+    const mine = {generate: async () => ({text: 'user-owned'})};
+    app.bind(AgentBindings.AGENT.key).to(mine);
+
+    await installed.uninstall();
+
+    // Our other bindings are gone, but the user's shadow survives.
+    expect(app.isBound(AgentBindings.SESSIONS.key)).toBe(false);
+    expect(app.isBound(AgentBindings.AGENT.key)).toBe(true);
+    expect(await app.get(AgentBindings.AGENT.key)).toBe(mine);
+  });
 });

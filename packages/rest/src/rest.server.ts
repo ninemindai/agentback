@@ -50,7 +50,13 @@ import {
   type IdempotencyStore,
 } from '@agentback/common';
 // TYPE-ONLY — erased at compile time; no runtime 'express' or 'http' import.
-import type {Express, NextFunction, Request, Response} from 'express';
+import type {
+  Express,
+  NextFunction,
+  Request,
+  RequestHandler,
+  Response,
+} from 'express';
 import type {Server as HttpServer} from 'http';
 import {Readable} from 'node:stream';
 import {
@@ -451,17 +457,42 @@ export class RestServer implements Server {
           this.dispatchMode === 'web' &&
           !injectsRawExpressObjects(ctor, methodName) &&
           !this.overridesExpressDispatchSeam();
+        // The controller-liveness gate is the FIRST route handler — ahead of
+        // the multipart parser, so a retracted (unbound) controller's upload
+        // route can no longer stream files into the FileStore before 404ing.
+        const gate = this.makeControllerGate(ctor);
         if (fileFields.length && !handlerIsWeb) {
           this.ensureExpressApp()[expressVerb](
             route,
+            gate,
             makeMultipartMiddleware(fileFields, this.context),
             handler,
           );
         } else {
-          this.ensureExpressApp()[expressVerb](route, handler);
+          this.ensureExpressApp()[expressVerb](route, gate, handler);
         }
       }
     }
+  }
+
+  /**
+   * Per-route controller-liveness gate, mounted as the FIRST handler of every
+   * controller route (ahead of the multipart parser). Express baked the route
+   * in at start(); the binding is the live source of truth, so unbind()
+   * honestly retracts a controller (revertible installs) — next('route')
+   * falls through to the app's 404. Memoized: contains(key) is O(1) per
+   * request; the tag scan reruns only on first sight or after an unbind
+   * (a rebind under a new key fails the contains check and rescans).
+   */
+  protected makeControllerGate(ctor: Function): RequestHandler {
+    let key: string | undefined;
+    return (_req, _res, next) => {
+      if (key === undefined || !this.context.contains(key)) {
+        key = findControllerBindingKey(this.context, ctor);
+        if (key === undefined) return next('route');
+      }
+      next();
+    };
   }
 
   /**
@@ -493,18 +524,7 @@ export class RestServer implements Server {
     ) {
       return this.makeWebHandler(ctor, methodName, schemas, successStatus);
     }
-    // Memoized across requests: contains(key) is O(1); the tag scan runs
-    // only on the first request and after an unbind (rebinding under a new
-    // key is still detected because the old key fails the contains check).
-    let ctrlKey: string | undefined;
     return async (req: Request, res: Response, next: NextFunction) => {
-      // Express baked this route in at start(); the binding is the live
-      // source of truth. Unbound controller → fall through to the 404 chain,
-      // so unbind() honestly retracts a controller (revertible installs).
-      if (ctrlKey === undefined || !this.context.contains(ctrlKey)) {
-        ctrlKey = findControllerBindingKey(this.context, ctor);
-        if (ctrlKey === undefined) return next();
-      }
       try {
         const result = await this.dispatch(req, res, ctor, methodName, schemas);
         if (schemas.streamOf) {

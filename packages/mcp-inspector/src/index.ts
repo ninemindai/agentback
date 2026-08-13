@@ -12,6 +12,7 @@ import {
   inject,
   injectable,
   type Installed,
+  unbindOwned,
 } from '@agentback/core';
 import {MCPBindings, type MCPServer} from '@agentback/mcp';
 import {
@@ -20,7 +21,7 @@ import {
 } from '@agentback/mcp-connect';
 import {THEME_CSS, THEME_FONTS_HREF} from '@agentback/console-theme';
 import type {RestApplication, RestServer} from '@agentback/rest';
-import {AssetSource, findControllerBindingKey, fromDisk} from '@agentback/rest';
+import {AssetSource, fromDisk} from '@agentback/rest';
 import {composeTeardown} from '@agentback/common';
 
 const API_BASE = '/mcp-inspector/api';
@@ -230,11 +231,8 @@ export async function installInspectorApi(
         'MCP server before installing the inspector.',
     );
   }
-  app.restController(McpInspectorController);
-  const unbindController = async () => {
-    const key = findControllerBindingKey(app, McpInspectorController);
-    if (key) app.unbind(key);
-  };
+  const controllerBinding = app.restController(McpInspectorController);
+  const unbindController = async () => unbindOwned(app, controllerBinding);
   if (!options.connect) return {connect: null, uninstall: unbindController};
   const copts: McpConnectOptions =
     options.connect === true ? {} : options.connect;

@@ -15,10 +15,11 @@ import {
   injectable,
   type Context,
   type Installed,
+  unbindOwned,
 } from '@agentback/core';
 import {THEME_CSS, THEME_FONTS_HREF} from '@agentback/console-theme';
 import type {RestApplication, RestServer} from '@agentback/rest';
-import {findControllerBindingKey} from '@agentback/rest';
+
 import {composeTeardown} from '@agentback/common';
 import {serveStaticDir} from '@agentback/rest';
 import {ContextModel, buildModel} from './model.js';
@@ -124,12 +125,9 @@ export async function installContextExplorer(
   options: ContextExplorerOptions = {},
 ): Promise<Installed> {
   const opts = {...DEFAULTS, ...options};
-  app.restController(ContextExplorerController);
+  const controllerBinding = app.restController(ContextExplorerController);
   const td = composeTeardown();
-  td.push(() => {
-    const key = findControllerBindingKey(app, ContextExplorerController);
-    if (key) app.unbind(key);
-  });
+  td.push(() => unbindOwned(app, controllerBinding));
   const server: RestServer = await app.restServer;
   try {
     const mounted = mountContextExplorer(server, opts);
@@ -156,12 +154,9 @@ export function contextConsoleFeature() {
     apiBase: API_BASE,
     css: EXPLORER_CSS,
     install(app: RestApplication): Installed {
-      app.restController(ContextExplorerController);
+      const binding = app.restController(ContextExplorerController);
       return {
-        uninstall: async () => {
-          const key = findControllerBindingKey(app, ContextExplorerController);
-          if (key) app.unbind(key);
-        },
+        uninstall: async () => unbindOwned(app, binding),
       };
     },
   };

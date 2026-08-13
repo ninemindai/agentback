@@ -50,11 +50,17 @@ export async function installMcpConnect(
   const server = await app.restServer;
   const mounted = mountMcpConnect(server.expressApp, registry, options);
   let uninstalled = false;
+  // If the SAME registry object was already returned by a previous install,
+  // chain its uninstall so the earlier mount can never become unretractable
+  // (Object.assign would otherwise overwrite the only handle to it). The
+  // granular per-mount handle is deliberately deferred to the plugin wave.
+  const prior = (registry as Partial<Installed>).uninstall;
   return Object.assign(registry, {
     uninstall: async () => {
       if (uninstalled) return;
       uninstalled = true;
       await mounted.uninstall();
+      if (prior) await prior();
       // Close live upstream connections only when this install owns the
       // registry; a caller-provided registry keeps its own lifecycle.
       if (createdHere) await registry.closeAll();

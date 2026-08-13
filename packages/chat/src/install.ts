@@ -8,6 +8,7 @@ import type {
   Response as ExResponse,
 } from 'express';
 import {composeTeardown, loggers} from '@agentback/common';
+import {unbindOwned} from '@agentback/core';
 import type {RestApplication} from '@agentback/rest';
 import {
   ChatBindings,
@@ -128,12 +129,20 @@ export async function installChat(
   // NOTE: ChatServer.register has no inverse today — the registered runtime
   // stays on the server after uninstall (routes are retracted and the chat is
   // shut down, so it is inert). Documented in revertible-installs.md.
-  const stopBinding = app.onStop(() => options.chat.shutdown());
+  // shutdown() fires exactly once whichever comes first — app.stop() (via the
+  // onStop hook) or uninstall() — so stop-then-uninstall never double-stops.
+  let shutdownDone = false;
+  const shutdownOnce = async () => {
+    if (shutdownDone) return;
+    shutdownDone = true;
+    await options.chat.shutdown();
+  };
+  const stopBinding = app.onStop(shutdownOnce);
 
   const td = composeTeardown();
   td.push(() => handle.uninstall());
-  td.push(() => void app.unbind(stopBinding.key));
-  td.push(() => options.chat.shutdown());
+  td.push(() => unbindOwned(app, stopBinding));
+  td.push(shutdownOnce);
   return {paths: handle.paths, uninstall: () => td.run()};
 }
 

@@ -166,5 +166,13 @@ export function runInstallConformance(
         await app.stop();
       }
     });
+
+    it('uninstall() after app.stop() resolves cleanly', async () => {
+      // The contract: uninstall after stop is a no-op for anything stop
+      // already tore down — never a throw, never a double-teardown crash.
+      const {app, installed} = await boot();
+      await app.stop();
+      await expect(installed.uninstall()).resolves.toBeUndefined();
+    });
   });
 }

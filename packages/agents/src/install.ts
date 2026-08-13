@@ -3,7 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 import {BindingScope} from '@agentback/context';
-import type {Application, Installed} from '@agentback/core';
+import {unbindOwned, type Application, type Installed} from '@agentback/core';
 import {composeTeardown} from '@agentback/common';
 import {AgentBindings} from './keys.js';
 import {AgentSessionRegistry} from './session-registry.js';
@@ -41,9 +41,9 @@ export function installAgent(
   options: InstallAgentOptions,
 ): Installed {
   const registry = new AgentSessionRegistry();
-  app.bind(AgentBindings.SESSIONS.key).to(registry);
-  app.bind(AgentBindings.RAW_AGENT.key).to(options.agent);
-  app
+  const sessionsBinding = app.bind(AgentBindings.SESSIONS.key).to(registry);
+  const rawBinding = app.bind(AgentBindings.RAW_AGENT.key).to(options.agent);
+  const agentBinding = app
     .bind(AgentBindings.AGENT.key)
     .toDynamicValue(({context}) =>
       wrapAgent(options.agent, context, registry, {
@@ -53,11 +53,14 @@ export function installAgent(
     .inScope(BindingScope.TRANSIENT);
   const stopBinding = app.onStop(() => registry.destroyAll());
 
+  // Identity-guarded unbinds: bind() REPLACES at the same key, so if the
+  // user (or a reinstall) has since bound over ours, uninstall must leave
+  // the newer binding in place — an inverse only retracts what it owns.
   const td = composeTeardown();
-  td.push(() => void app.unbind(AgentBindings.SESSIONS.key));
-  td.push(() => void app.unbind(AgentBindings.RAW_AGENT.key));
-  td.push(() => void app.unbind(AgentBindings.AGENT.key));
-  td.push(() => void app.unbind(stopBinding.key));
+  td.push(() => unbindOwned(app, sessionsBinding));
+  td.push(() => unbindOwned(app, rawBinding));
+  td.push(() => unbindOwned(app, agentBinding));
+  td.push(() => unbindOwned(app, stopBinding));
   td.push(() => registry.destroyAll());
   return {uninstall: () => td.run()};
 }
