@@ -3,7 +3,8 @@
 // License text available at https://opensource.org/license/mit/
 
 import {BindingScope} from '@agentback/context';
-import type {Application} from '@agentback/core';
+import type {Application, Installed} from '@agentback/core';
+import {composeTeardown} from '@agentback/common';
 import {AgentBindings} from './keys.js';
 import {AgentSessionRegistry} from './session-registry.js';
 import {wrapAgent} from './turn.js';
@@ -38,7 +39,7 @@ export interface InstallAgentOptions {
 export function installAgent(
   app: Application,
   options: InstallAgentOptions,
-): void {
+): Installed {
   const registry = new AgentSessionRegistry();
   app.bind(AgentBindings.SESSIONS.key).to(registry);
   app.bind(AgentBindings.RAW_AGENT.key).to(options.agent);
@@ -50,5 +51,13 @@ export function installAgent(
       }),
     )
     .inScope(BindingScope.TRANSIENT);
-  app.onStop(() => registry.destroyAll());
+  const stopBinding = app.onStop(() => registry.destroyAll());
+
+  const td = composeTeardown();
+  td.push(() => void app.unbind(AgentBindings.SESSIONS.key));
+  td.push(() => void app.unbind(AgentBindings.RAW_AGENT.key));
+  td.push(() => void app.unbind(AgentBindings.AGENT.key));
+  td.push(() => void app.unbind(stopBinding.key));
+  td.push(() => registry.destroyAll());
+  return {uninstall: () => td.run()};
 }

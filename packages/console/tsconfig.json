@@ -17,7 +17,11 @@
     "src/client/css.d.ts"
   ],
   "references": [
+    {"path": "../common"},
     {"path": "../console-theme"},
+    {"path": "../core"},
+    {"path": "../mcp"},
+    {"path": "../testing"},
     {"path": "../rest"},
     {"path": "../context-explorer"},
     {"path": "../rest-explorer"},

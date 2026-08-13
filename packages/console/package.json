@@ -25,7 +25,9 @@
     "typecheck:client": "tsc -p tsconfig.client.json --noEmit"
   },
   "dependencies": {
+    "@agentback/common": "workspace:~",
     "@agentback/console-agents": "workspace:~",
+    "@agentback/core": "workspace:~",
     "@agentback/console-theme": "workspace:~",
     "@agentback/context-explorer": "workspace:~",
     "@agentback/mcp-inspector": "workspace:~",
@@ -41,7 +43,7 @@
   },
   "devDependencies": {
     "@agentback/console-chat": "workspace:~",
-    "@agentback/core": "workspace:~",
+    "@agentback/testing": "workspace:~",
     "@agentback/mcp": "workspace:~",
     "@agentback/testlab": "workspace:~",
     "@types/react": "~19.2.17",

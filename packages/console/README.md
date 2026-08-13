@@ -13,10 +13,11 @@ import {installConsole} from '@agentback/console';
 const app = new RestApplication();
 app.component(MCPComponent);
 // …register controllers / MCP tools…
-await installConsole(app, {
+const installed = await installConsole(app, {
   title: 'my console',
   auth: myAuthMiddleware,
-}); // -> /console
+}); // -> /console; installed.uninstall() retracts the shell, every
+// feature's footprint, and the auth gates (revertible installs)
 await app.start();
 ```
 

@@ -124,8 +124,8 @@ export function apiConsoleFeature(options: ExplorerOptions = {}) {
     id: 'api',
     apiBase: opts.path,
     extra: {url: opts.path + '/'},
-    async install(app: RestApplication): Promise<void> {
-      await installExplorer(app, options);
+    install(app: RestApplication): Promise<Installed> {
+      return installExplorer(app, options);
     },
   };
 }

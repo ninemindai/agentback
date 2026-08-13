@@ -23,7 +23,18 @@ needed) + the `ax.sections.mcp` unbind. The conformance suite gained
 per app, so it runs once per host). Fixing this wave also surfaced a real
 seam bug: the native listener captured `fetchHandler()` once at start, so
 handler removals never reached it — it now re-reads the memoized host per
-request. Waves 4–5 remain proposed.
+request. **Wave 4 implemented**: `ConsoleFeature.install` widened to
+`void | Installed` (duck-typed — third-party features returning `void` keep
+working) and the four built-in feature factories return their `Installed`;
+`installConsole` composes gated auth layers + feature teardowns + shell
+teardown and its return now carries `uninstall` alongside
+`{basePath, features}`; `installAgent` returns `Installed` (destroys live
+sessions, unbinds the three agent bindings, deregisters its stop hook);
+`installChat`'s `ChatHttpHandle` gained `uninstall()` (webhook routes
+gated, chat shut down once, stop hook deregistered). One carve-out:
+`ChatServer.register` has no inverse — the registered runtime stays on the
+server after uninstall, inert (routes retracted, chat shut down). Wave 5
+(the mechanical tail + the konsistent rule) remains proposed.
 Surfaced by the Cordis study
 ([cordis-spatiotemporal-composability.md](cordis-spatiotemporal-composability.md)):
 of everything Cordis does, the one discipline that transfers to AgentBack at

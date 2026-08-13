@@ -147,8 +147,14 @@ export function contextConsoleFeature() {
     id: 'context',
     apiBase: API_BASE,
     css: EXPLORER_CSS,
-    install(app: RestApplication): void {
+    install(app: RestApplication): Installed {
       app.restController(ContextExplorerController);
+      return {
+        uninstall: async () => {
+          const key = findControllerBindingKey(app, ContextExplorerController);
+          if (key) app.unbind(key);
+        },
+      };
     },
   };
 }
