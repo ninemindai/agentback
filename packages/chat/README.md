@@ -80,7 +80,9 @@ const chat = new Chat({
   },
 });
 
-await installChat(app, {chat}); // mounts POST /api/chat/{slack,telegram,discord}
+const handle = await installChat(app, {chat}); // mounts POST /api/chat/{slack,telegram,discord}
+// handle.uninstall() retracts the webhooks, shuts the chat down, and
+// deregisters the stop hook (revertible installs)
 await app.start();
 ```
 

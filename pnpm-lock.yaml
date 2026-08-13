@@ -1039,6 +1039,9 @@ importers:
 
   packages/console:
     dependencies:
+      '@agentback/common':
+        specifier: workspace:~
+        version: link:../common
       '@agentback/console-agents':
         specifier: workspace:~
         version: link:../console-agents
@@ -1048,6 +1051,9 @@ importers:
       '@agentback/context-explorer':
         specifier: workspace:~
         version: link:../context-explorer
+      '@agentback/core':
+        specifier: workspace:~
+        version: link:../core
       '@agentback/mcp-inspector':
         specifier: workspace:~
         version: link:../mcp-inspector
@@ -1073,12 +1079,12 @@ importers:
       '@agentback/console-chat':
         specifier: workspace:~
         version: link:../console-chat
-      '@agentback/core':
-        specifier: workspace:~
-        version: link:../core
       '@agentback/mcp':
         specifier: workspace:~
         version: link:../mcp
+      '@agentback/testing':
+        specifier: workspace:~
+        version: link:../testing
       '@agentback/testlab':
         specifier: workspace:~
         version: link:../testlab

@@ -261,8 +261,8 @@ export function mcpConsoleFeature(
     apiBase: API_BASE,
     css: INSPECTOR_CSS,
     ...(connect ? {extra: {connect}} : {}),
-    async install(app: RestApplication): Promise<void> {
-      await installInspectorApi(app, {connect: connectOpt});
+    install(app: RestApplication): Promise<InstalledInspectorApi> {
+      return installInspectorApi(app, {connect: connectOpt});
     },
   };
 }

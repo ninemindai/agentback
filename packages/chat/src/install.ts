@@ -7,7 +7,7 @@ import type {
   Request as ExRequest,
   Response as ExResponse,
 } from 'express';
-import {loggers} from '@agentback/common';
+import {composeTeardown, loggers} from '@agentback/common';
 import type {RestApplication} from '@agentback/rest';
 import {
   ChatBindings,
@@ -40,6 +40,12 @@ export function chatJsonVerify(
 export interface ChatHttpHandle {
   /** Adapter name → mounted webhook path. */
   readonly paths: Record<string, string>;
+  /**
+   * Revertible-install inverse (docs/proposals/revertible-installs.md):
+   * retract the webhook routes, shut the chat runtime down, and deregister
+   * the onStop hook. Idempotent.
+   */
+  uninstall(): Promise<void>;
 }
 
 export interface InstallChatOptions {
@@ -119,8 +125,16 @@ export async function installChat(
   const rest = await app.restServer;
   const handle = mountChatWebhooks(options.chat, rest.expressApp, merged);
 
-  app.onStop(() => options.chat.shutdown());
-  return handle;
+  // NOTE: ChatServer.register has no inverse today — the registered runtime
+  // stays on the server after uninstall (routes are retracted and the chat is
+  // shut down, so it is inert). Documented in revertible-installs.md.
+  const stopBinding = app.onStop(() => options.chat.shutdown());
+
+  const td = composeTeardown();
+  td.push(() => handle.uninstall());
+  td.push(() => void app.unbind(stopBinding.key));
+  td.push(() => options.chat.shutdown());
+  return {paths: handle.paths, uninstall: () => td.run()};
 }
 
 /**
@@ -140,6 +154,9 @@ export function mountChatWebhooks(
     ((p: Promise<unknown>) =>
       void p.catch(err => log.error('chat background task failed: %s', err)));
   const paths: Record<string, string> = {};
+  // Express cannot unmount a layer; the webhook routes share one gate
+  // (revertible-installs.md, option 1).
+  let live = true;
   let warnedRawBody = false;
 
   for (const adapter of Object.keys(chat.webhooks)) {
@@ -147,7 +164,9 @@ export function mountChatWebhooks(
     paths[adapter] = path;
     const handler = chat.webhooks[adapter];
 
-    expressApp.post(path, async (req: ExRequest, res: ExResponse) => {
+    const gate = (_req: ExRequest, _res: ExResponse, next: () => void) =>
+      live ? next() : (next as (err?: unknown) => void)('route');
+    expressApp.post(path, gate, async (req: ExRequest, res: ExResponse) => {
       const rawBody = (req as ExRequest & {rawBody?: Buffer}).rawBody;
       if (!rawBody && !warnedRawBody) {
         warnedRawBody = true;
@@ -186,5 +205,10 @@ export function mountChatWebhooks(
     });
     log.info('mounted chat webhook: POST %s', path);
   }
-  return {paths};
+  return {
+    paths,
+    uninstall: async () => {
+      live = false;
+    },
+  };
 }

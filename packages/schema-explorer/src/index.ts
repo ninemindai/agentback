@@ -186,8 +186,14 @@ export function schemaConsoleFeature() {
     id: 'schema',
     apiBase: API_BASE,
     css: EXPLORER_CSS,
-    install(app: RestApplication): void {
+    install(app: RestApplication): Installed {
       app.restController(SchemaExplorerController);
+      return {
+        uninstall: async () => {
+          const key = findControllerBindingKey(app, SchemaExplorerController);
+          if (key) app.unbind(key);
+        },
+      };
     },
   };
 }

@@ -10,6 +10,8 @@ import {contextConsoleFeature} from '@agentback/context-explorer';
 import {apiConsoleFeature} from '@agentback/rest-explorer';
 import {mcpConsoleFeature} from '@agentback/mcp-inspector';
 import {schemaConsoleFeature} from '@agentback/schema-explorer';
+import type {Installed} from '@agentback/core';
+import {composeTeardown} from '@agentback/common';
 import type {RestApplication, RestServer} from '@agentback/rest';
 import {AssetSource, fromDisk} from '@agentback/rest';
 import {liveHandler} from './live.js';
@@ -29,7 +31,12 @@ export interface ConsoleFeature {
   extra?: Record<string, unknown>;
   /** Panel-specific CSS, injected once into the shell after the shared theme. */
   css?: string;
-  install(app: RestApplication): Promise<void> | void;
+  /**
+   * Register the feature's server half. Returning an {@link Installed}
+   * (duck-typed: any object with `uninstall()`) lets `installConsole`
+   * compose the feature's teardown into its own; `void` still works.
+   */
+  install(app: RestApplication): Promise<void | Installed> | void | Installed;
 }
 
 /**
@@ -89,7 +96,7 @@ export function defaultFeatures(): ConsoleFeature[] {
 export async function installConsole(
   app: RestApplication,
   options: ConsoleOptions = {},
-): Promise<{basePath: string; features: ConsoleFeature[]}> {
+): Promise<{basePath: string; features: ConsoleFeature[]} & Installed> {
   const basePath = options.basePath ?? DEFAULT_BASE;
   const title = options.title ?? 'AgentBack console';
   const features = options.features ?? defaultFeatures();
@@ -104,6 +111,7 @@ export async function installConsole(
   // Gate BEFORE features register their routes, so the auth middleware sits
   // ahead of them in the Express stack. Covers the UI, each panel API, and any
   // remote-connect base advertised via a feature's `extra.connect`.
+  const td = composeTeardown();
   if (options.auth) {
     const handlers = Array.isArray(options.auth)
       ? options.auth
@@ -115,10 +123,25 @@ export async function installConsole(
         ?.connect;
       if (connect?.base) prefixes.add(connect.base);
     }
-    for (const prefix of prefixes) server.expressApp.use(prefix, ...handlers);
+    // Express cannot unmount; each auth layer is individually gated so
+    // uninstall turns it into a pass-through (revertible-installs.md).
+    let authLive = true;
+    td.push(() => void (authLive = false));
+    for (const prefix of prefixes) {
+      for (const h of handlers) {
+        server.expressApp.use(prefix, (req, res, next) =>
+          authLive ? h(req, res, next) : next(),
+        );
+      }
+    }
   }
 
-  for (const feature of features) await feature.install(app);
+  for (const feature of features) {
+    const r = await feature.install(app);
+    if (r && typeof (r as Installed).uninstall === 'function') {
+      td.push(() => (r as Installed).uninstall());
+    }
+  }
 
   // Extract chat config from the chat feature, if present. We use duck-typing
   // to avoid a static import of @agentback/console-chat (which depends on
@@ -129,14 +152,15 @@ export async function installConsole(
   );
   const chat = chatFeature?.chatConfig;
 
-  mountConsole(server, {
+  const mounted = mountConsole(server, {
     basePath,
     title,
     features,
     assets: options.assets,
     chat,
   });
-  return {basePath, features};
+  td.push(() => mounted.uninstall());
+  return {basePath, features, uninstall: () => td.run()};
 }
 
 /**
@@ -153,7 +177,7 @@ export function mountConsole(
     /** When the chat dock is enabled, inject its config into window.__CONSOLE__. */
     chat?: ConsoleChatConfig;
   },
-): void {
+): Installed {
   const {basePath, title, features} = options;
   const app = server.expressApp;
   // Live-reflection channel: a per-process boot id over SSE. The client's
@@ -161,7 +185,14 @@ export function mountConsole(
   // id (i.e. the app restarted). Mounted on expressApp like the chat stream so
   // RestServer.sendResult never ends it. Under basePath → covered by the auth
   // gate installed in installConsole.
-  app.get(basePath + '/live', liveHandler);
+  // Express cannot unmount; the shell's layers share one gate
+  // (revertible-installs.md, option 1).
+  const td = composeTeardown();
+  let live = true;
+  td.push(() => void (live = false));
+  app.get(basePath + '/live', (req, res, next) =>
+    live ? liveHandler(req, res) : next(),
+  );
   const clientDir = fileURLToPath(new URL('./client/', import.meta.url));
 
   if (!existsSync(clientDir + 'main.js')) {
@@ -172,10 +203,14 @@ export function mountConsole(
     );
   }
 
-  app.use(basePath + '/assets', express.static(clientDir, {index: false}));
+  const statics = express.static(clientDir, {index: false});
+  app.use(basePath + '/assets', (req, res, next) =>
+    live ? statics(req, res, next) : next(),
+  );
   const hasCss = existsSync(clientDir + 'main.css');
   const html = indexHtml(basePath, title, features, hasCss, options.chat);
-  app.get([basePath, basePath + '/'], (_req, res) => {
+  app.get([basePath, basePath + '/'], (_req, res, next) => {
+    if (!live) return next();
     res.type('html').send(html);
   });
 
@@ -183,9 +218,12 @@ export function mountConsole(
   const serveAsset = options.assets ?? fromDisk(clientDir);
   const htmlResponse = async () =>
     new Response(html, {headers: {'content-type': 'text/html; charset=utf-8'}});
-  server.addFetchHandler('GET', basePath, htmlResponse);
-  server.addFetchHandler('GET', basePath + '/', htmlResponse);
-  server.addFetchPrefix(basePath + '/assets', suffix => serveAsset(suffix));
+  td.push(server.addFetchHandler('GET', basePath, htmlResponse));
+  td.push(server.addFetchHandler('GET', basePath + '/', htmlResponse));
+  td.push(
+    server.addFetchPrefix(basePath + '/assets', suffix => serveAsset(suffix)),
+  );
+  return {uninstall: () => td.run()};
 }
 
 // ---- Static shell -----------------------------------------------------------
