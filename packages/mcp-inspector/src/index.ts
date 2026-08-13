@@ -21,7 +21,7 @@ import {
 } from '@agentback/mcp-connect';
 import {THEME_CSS, THEME_FONTS_HREF} from '@agentback/console-theme';
 import type {RestApplication, RestServer} from '@agentback/rest';
-import {AssetSource, fromDisk} from '@agentback/rest';
+import {AssetSource, fromDisk, installGate} from '@agentback/rest';
 import {composeTeardown} from '@agentback/common';
 
 const API_BASE = '/mcp-inspector/api';
@@ -306,19 +306,18 @@ export function mountInspector(
   // Express cannot unmount a layer; the three layers share one gate (see
   // revertible-installs.md, option 1).
   const td = composeTeardown();
-  let live = true;
-  td.push(() => void (live = false));
-  const statics = express.static(clientDir, {index: false});
-  app.use(opts.path + '/assets', (req, res, next) =>
-    live ? statics(req, res, next) : next(),
+  const g = installGate();
+  td.push(() => g.off());
+  app.use(
+    opts.path + '/assets',
+    g.wrap(express.static(clientDir, {index: false})),
   );
 
   const html = indexHtml(opts, connect);
 
   // Server-rendered shell at both <path> and <path>/. No user data is
   // interpolated except the (escaped) title; the React tree renders client-side.
-  app.get([opts.path, opts.path + '/'], (_req, res, next) => {
-    if (!live) return next();
+  app.get([opts.path, opts.path + '/'], g.gate, (_req, res) => {
     res.type('html').send(html);
   });
 

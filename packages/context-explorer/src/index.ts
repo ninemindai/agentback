@@ -19,6 +19,7 @@ import {
 } from '@agentback/core';
 import {THEME_CSS, THEME_FONTS_HREF} from '@agentback/console-theme';
 import type {RestApplication, RestServer} from '@agentback/rest';
+import {installGate} from '@agentback/rest';
 
 import {composeTeardown} from '@agentback/common';
 import {serveStaticDir} from '@agentback/rest';
@@ -189,11 +190,11 @@ export function mountContextExplorer(
   // after uninstall they call next() and the request falls through to 404
   // (revertible-installs.md, option 1).
   const td = composeTeardown();
-  let live = true;
-  td.push(() => void (live = false));
-  const statics = express.static(clientDir, {index: false});
-  app.use(opts.path + '/assets', (req, res, next) =>
-    live ? statics(req, res, next) : next(),
+  const g = installGate();
+  td.push(() => g.off());
+  app.use(
+    opts.path + '/assets',
+    g.wrap(express.static(clientDir, {index: false})),
   );
 
   // esbuild emits main.css alongside main.js when the client imports CSS
@@ -204,8 +205,7 @@ export function mountContextExplorer(
   // Server-rendered shell at both <path> and <path>/ — no user data is
   // interpolated except the (escaped) title, so it is XSS-safe; the React tree
   // renders client-side from the API.
-  app.get([opts.path, opts.path + '/'], (_req, res, next) => {
-    if (!live) return next();
+  app.get([opts.path, opts.path + '/'], g.gate, (_req, res) => {
     res.type('html').send(html);
   });
 

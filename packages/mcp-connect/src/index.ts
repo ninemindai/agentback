@@ -5,6 +5,7 @@
 import express, {type Express, type Request, type Response} from 'express';
 import type {RestApplication} from '@agentback/rest';
 import type {Installed} from '@agentback/core';
+import {installGate} from '@agentback/rest';
 import {RemoteRegistry, type AuthConfig} from './registry.js';
 
 export * from './registry.js';
@@ -78,9 +79,8 @@ export function mountMcpConnect(
   const json = express.json();
   // Express cannot unmount a layer; every registration below shares one gate
   // (revertible-installs.md, option 1).
-  let live = true;
-  const gate = (_req: Request, _res: Response, next: (e?: unknown) => void) =>
-    live ? next() : next('route');
+  const g = installGate();
+  const gate = g.gate;
 
   const fail = (res: Response, status: number, message: string) =>
     res.status(status).json({error: {message}});
@@ -201,9 +201,7 @@ export function mountMcpConnect(
     res.type('html').send(callbackHtml(ok, message));
   });
   return {
-    uninstall: async () => {
-      live = false;
-    },
+    uninstall: async () => g.off(),
   };
 }
 

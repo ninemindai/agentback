@@ -4,6 +4,7 @@
 
 import type {NextFunction, Request, RequestHandler, Response} from 'express';
 import type {Installed} from '@agentback/core';
+import {installGate} from '@agentback/rest';
 import type {RestApplication, RestServer} from '@agentback/rest';
 import {
   RateLimiterMemory,
@@ -132,15 +133,11 @@ export function mountRateLimit(
   const mw = createRateLimitMiddleware(rateOptions);
   // Express cannot unmount a layer; the limiter is gated so uninstall turns
   // it into a pass-through (revertible-installs.md, option 1).
-  let live = true;
-  const gated: typeof mw = (req, res, next) =>
-    live ? mw(req, res, next) : next();
-  if (path) server.expressApp.use(path, gated);
-  else server.expressApp.use(gated);
+  const g = installGate();
+  if (path) server.expressApp.use(path, g.wrap(mw));
+  else server.expressApp.use(g.wrap(mw));
   return {
-    uninstall: async () => {
-      live = false;
-    },
+    uninstall: async () => g.off(),
   };
 }
 

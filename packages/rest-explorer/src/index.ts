@@ -9,6 +9,7 @@ import type {Installed} from '@agentback/core';
 import {
   AssetSource,
   fromDisk,
+  installGate,
   RestApplication,
   RestServer,
 } from '@agentback/rest';
@@ -75,20 +76,15 @@ export function mountExplorer(
   // Order matters: register the index override BEFORE express.static, and
   // disable static's default index so it doesn't serve swagger-ui-dist's
   // bundled index.html (which points at the Petstore demo).
-  let live = true;
-  td.push(() => void (live = false));
-  app.get(opts.path + '/', (_req, res, next) => {
-    if (!live) return next();
+  const g = installGate();
+  td.push(() => g.off());
+  app.get(opts.path + '/', g.gate, (_req, res) => {
     res.type('html').send(html);
   });
-  app.get(opts.path, (_req, res, next) => {
-    if (!live) return next();
+  app.get(opts.path, g.gate, (_req, res) => {
     res.redirect(301, opts.path + '/');
   });
-  const statics = express.static(fsPath, {index: false});
-  app.use(opts.path, (req, res, next) =>
-    live ? statics(req, res, next) : next(),
-  );
+  app.use(opts.path, g.wrap(express.static(fsPath, {index: false})));
 
   // Neutral fetch path (Bun/Deno/Fastify hosts via fetchHandler()).
   // The HTML shell and redirect are exact handlers (highest priority), then the
