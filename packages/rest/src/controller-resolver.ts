@@ -15,15 +15,32 @@ export async function resolveControllerInstance<T>(
   context: Context,
   ctor: Function,
 ): Promise<T> {
-  for (const binding of context.findByTag(CoreTags.CONTROLLER)) {
-    if ((binding.valueConstructor as unknown) === ctor) {
-      return context.get<T>(binding.key);
-    }
-  }
-  if (context.contains(`controllers.${ctor.name}`)) {
-    return context.get<T>(`controllers.${ctor.name}`);
-  }
+  const key = findControllerBindingKey(context, ctor);
+  if (key !== undefined) return context.get<T>(key);
   throw new Error(
     `Controller ${ctor.name} is not bound. Use app.controller(${ctor.name}).`,
   );
+}
+
+/**
+ * The binding key {@link resolveControllerInstance} would resolve `ctor`
+ * through, or `undefined` when the controller is not (or no longer) bound.
+ * The dispatch paths use this as a per-request liveness gate: routes are
+ * baked into the hosts at start(), so an unbound controller's routes answer
+ * 404 instead of a resolver 500 — which is what lets an install helper
+ * retract a controller with `unbind()` (revertible-installs.md).
+ */
+export function findControllerBindingKey(
+  context: Context,
+  ctor: Function,
+): string | undefined {
+  for (const binding of context.findByTag(CoreTags.CONTROLLER)) {
+    if ((binding.valueConstructor as unknown) === ctor) {
+      return binding.key;
+    }
+  }
+  if (context.contains(`controllers.${ctor.name}`)) {
+    return `controllers.${ctor.name}`;
+  }
+  return undefined;
 }

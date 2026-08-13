@@ -3,7 +3,10 @@
 // License text available at https://opensource.org/license/mit/
 
 import {Context, resolveInjectedArguments} from '@agentback/context';
-import {resolveControllerInstance} from '../controller-resolver.js';
+import {
+  findControllerBindingKey,
+  resolveControllerInstance,
+} from '../controller-resolver.js';
 import {
   buildErrorEnvelope,
   ErrorCodes,
@@ -123,6 +126,16 @@ export class RestHandler {
     req: Request,
   ): Promise<Response> {
     const {ctor, methodName, schemas, successStatus} = match.value;
+
+    // Routes are baked into the (memoized) router at build time; the binding
+    // is the live source of truth. An unbound controller's routes answer the
+    // canonical 404 envelope, so unbind() honestly retracts a controller.
+    if (findControllerBindingKey(this.context, ctor) === undefined) {
+      return Response.json(
+        {error: {code: 'not_found', message: 'Not Found'}},
+        {status: 404},
+      );
+    }
     const reqCtx = new Context(this.context, 'web-request');
     // Bind the Web Request under WEB_REQUEST (not HTTP_REQUEST, which is the
     // Express surface); inject with {optional: true} — absent on the Express path.

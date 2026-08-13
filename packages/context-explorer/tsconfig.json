@@ -9,6 +9,9 @@
   "exclude": ["dist", "node_modules", "src/client"],
   "references": [
     {
+      "path": "../common"
+    },
+    {
       "path": "../console-theme"
     },
     {
@@ -28,6 +31,9 @@
     },
     {
       "path": "../rest"
+    },
+    {
+      "path": "../testing"
     },
     {
       "path": "../testlab"

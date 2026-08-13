@@ -2,4 +2,5 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+export * from './install-conformance.js';
 export * from './test-app.js';

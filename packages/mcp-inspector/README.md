@@ -18,7 +18,8 @@ app.component(MCPComponent);
 app.configure('servers.MCPServer').to({name: 'my-mcp', version: '1.0.0'});
 app.service(MyTools); // @mcpServer() class with @tool/@resource/@prompt
 
-await installInspector(app); // before app.start(); resolves the MCP server from DI
+const installed = await installInspector(app); // before app.start(); resolves the MCP server from DI
+// installed.uninstall() retracts UI + API on both hosts (revertible installs)
 await app.start();
 // -> MCP Inspector UI at http://host:port/mcp-inspector/
 ```

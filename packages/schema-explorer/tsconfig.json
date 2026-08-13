@@ -8,12 +8,14 @@
   "include": ["src/**/*"],
   "exclude": ["dist", "node_modules", "src/client"],
   "references": [
+    {"path": "../common"},
     {"path": "../console-theme"},
     {"path": "../core"},
     {"path": "../mcp"},
     {"path": "../metadata"},
     {"path": "../openapi"},
     {"path": "../rest"},
+    {"path": "../testing"},
     {"path": "../testlab"}
   ]
 }

@@ -5,7 +5,15 @@
 `addFetchHandler`/`addFetchPrefix` removers (`@agentback/rest`), and
 `installExplorer` returning `Installed` with the gate-flag Express pattern
 (`@agentback/rest-explorer`, conformance test in
-`uninstall.integration.ts`). Waves 2–5 remain proposed.
+`uninstall.integration.ts`). **Wave 2 implemented** as well: the shared
+conformance suite (`runInstallConformance` in `@agentback/testing`), the
+unbound-controller gate (an unbound controller's routes answer 404 on both
+hosts instead of a resolver 500 — `findControllerBindingKey`, exported from
+`@agentback/rest`), and `installContextExplorer` / `installSchemaExplorer` /
+`installInspector` (+`installInspectorApi`, whose return widened to
+`InstalledInspectorApi = Installed & {connect}`) all return `Installed`.
+When `connect` is set, `installMcpConnect`'s nested footprint is not yet
+retracted — that rides the mcp-connect wave. Waves 3–5 remain proposed.
 Surfaced by the Cordis study
 ([cordis-spatiotemporal-composability.md](cordis-spatiotemporal-composability.md)):
 of everything Cordis does, the one discipline that transfers to AgentBack at
