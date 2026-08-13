@@ -249,6 +249,16 @@ All three operational extensions share the same two-call pattern:
   Call **before** `app.start()`.
 - `mount*(server, options?)` — synchronous; takes a `RestServer` directly.
 
+**Every `install*` helper in the workspace returns an `Installed`** —
+`{uninstall(): Promise<void>}` (from `@agentback/core`) — whose `uninstall()`
+retracts the helper's full footprint: routes answer 404 again on both hosts,
+bindings are unbound, lifecycle hooks deregister, live transports/sessions
+close. Idempotent; LIFO via `composeTeardown()` (`@agentback/common`).
+Callers that ignore the return value are unaffected. When writing a NEW
+`install*` helper, follow the contract and add a
+`runInstallConformance(...)` test (`@agentback/testing`) — see
+`docs/proposals/revertible-installs.md`.
+
 Both ultimately call `server.expressApp.use(...)` — the paths (`/health`,
 `/ready`, `/metrics`) mount on the same Express app but are **not** registered
 in the OpenAPI spec.
