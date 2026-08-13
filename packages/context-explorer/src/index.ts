@@ -125,14 +125,22 @@ export async function installContextExplorer(
 ): Promise<Installed> {
   const opts = {...DEFAULTS, ...options};
   app.restController(ContextExplorerController);
-  const server: RestServer = await app.restServer;
-  const mounted = mountContextExplorer(server, opts);
   const td = composeTeardown();
   td.push(() => {
     const key = findControllerBindingKey(app, ContextExplorerController);
     if (key) app.unbind(key);
   });
-  td.push(() => mounted.uninstall());
+  const server: RestServer = await app.restServer;
+  try {
+    const mounted = mountContextExplorer(server, opts);
+    td.push(() => mounted.uninstall());
+  } catch (err) {
+    // A failed install cleans up its partial footprint before rethrowing
+    // (revertible-installs.md, composition rule) — e.g. a missing client
+    // bundle must not leave the API controller bound.
+    await td.run().catch(() => {});
+    throw err;
+  }
   return {uninstall: () => td.run()};
 }
 

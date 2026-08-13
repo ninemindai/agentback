@@ -143,8 +143,24 @@ export async function installExplorer(app, options): Promise<Installed> {
 ```
 
 A failure mid-install calls `td.run()` before rethrowing, so a half-installed
-helper cleans up after itself — the same guarantee Cordis's `effect` gives and
-today's helpers lack.
+helper cleans up after itself — the same guarantee Cordis's `effect` gives.
+The one order-sensitive thing in the whole design, drawn once:
+
+```
+install order  ─────────────────────────────►   (each step pushes its inverse)
+
+  bind controller      mount UI shell      register fetch handlers      bind ax / onStop
+        │                    │                       │                        │
+        ▼                    ▼                       ▼                        ▼
+  td: [unbind]  →  [unbind, gate-off]  →  [unbind, gate-off, removers]  →  [... , unbinds]
+
+uninstall = td.run()  ◄─────────────────────────  LIFO: last mounted, first retracted
+
+  unbind ax/onStop  →  remove fetch handlers  →  gate off UI  →  unbind controller
+
+mid-install failure at step N:  td.run() replays inverses 1..N-1, then rethrows
+                                (nothing half-installed survives)
+```
 
 ## The two hard mechanics
 

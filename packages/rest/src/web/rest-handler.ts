@@ -99,6 +99,10 @@ function queryObject(url: URL): Record<string, unknown> {
 export class RestHandler {
   constructor(private readonly context: Context) {}
 
+  // Controller binding keys, memoized per constructor: contains(key) is O(1)
+  // per request; the tag scan reruns only on first sight or after an unbind.
+  private readonly ctrlKeys = new WeakMap<Function, string>();
+
   /**
    * Resolve and cache the dispatch hooks bound under `REST_DISPATCH_HOOK_TAG`,
    * matching {@link RestServer.resolveDispatchHooks}'s documented caching: the
@@ -130,11 +134,16 @@ export class RestHandler {
     // Routes are baked into the (memoized) router at build time; the binding
     // is the live source of truth. An unbound controller's routes answer the
     // canonical 404 envelope, so unbind() honestly retracts a controller.
-    if (findControllerBindingKey(this.context, ctor) === undefined) {
-      return Response.json(
-        {error: {code: 'not_found', message: 'Not Found'}},
-        {status: 404},
-      );
+    const cachedKey = this.ctrlKeys.get(ctor);
+    if (cachedKey === undefined || !this.context.contains(cachedKey)) {
+      const key = findControllerBindingKey(this.context, ctor);
+      if (key === undefined) {
+        return Response.json(
+          {error: {code: 'not_found', message: 'Not Found'}},
+          {status: 404},
+        );
+      }
+      this.ctrlKeys.set(ctor, key);
     }
     const reqCtx = new Context(this.context, 'web-request');
     // Bind the Web Request under WEB_REQUEST (not HTTP_REQUEST, which is the

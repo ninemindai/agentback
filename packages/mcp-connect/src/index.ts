@@ -33,7 +33,11 @@ const DEFAULT_PATH = '/mcp-connect';
  * UIs (e.g. `@agentback/mcp-inspector`) consume these endpoints; this
  * package owns the connection + OAuth machinery so the UI stays thin.
  *
- * @returns the {@link RemoteRegistry} backing the mount.
+ * @returns the {@link RemoteRegistry} backing the mount, extended with the
+ * revertible-install `uninstall()`. Caveat: the method is attached to the
+ * registry object itself, so passing the SAME caller-provided registry to two
+ * installs leaves only the second mount's uninstall — give each mount its own
+ * registry (or omit `options.registry`) if you need per-mount retraction.
  */
 export async function installMcpConnect(
   app: RestApplication,

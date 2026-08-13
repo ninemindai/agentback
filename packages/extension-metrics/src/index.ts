@@ -101,8 +101,8 @@ export function mountMetrics(
 
   expressApp.get(
     opts.path,
-    (_req, _res, next) =>
-      live ? next() : (next as (e?: unknown) => void)('route'),
+    (_req: Request, _res: Response, next: NextFunction) =>
+      live ? next() : next('route'),
     async (_req, res) => {
       res.set('Content-Type', registry.contentType);
       res.send(await registry.metrics());

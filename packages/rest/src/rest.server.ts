@@ -493,12 +493,17 @@ export class RestServer implements Server {
     ) {
       return this.makeWebHandler(ctor, methodName, schemas, successStatus);
     }
+    // Memoized across requests: contains(key) is O(1); the tag scan runs
+    // only on the first request and after an unbind (rebinding under a new
+    // key is still detected because the old key fails the contains check).
+    let ctrlKey: string | undefined;
     return async (req: Request, res: Response, next: NextFunction) => {
       // Express baked this route in at start(); the binding is the live
       // source of truth. Unbound controller → fall through to the 404 chain,
       // so unbind() honestly retracts a controller (revertible installs).
-      if (findControllerBindingKey(this.context, ctor) === undefined) {
-        return next();
+      if (ctrlKey === undefined || !this.context.contains(ctrlKey)) {
+        ctrlKey = findControllerBindingKey(this.context, ctor);
+        if (ctrlKey === undefined) return next();
       }
       try {
         const result = await this.dispatch(req, res, ctor, methodName, schemas);

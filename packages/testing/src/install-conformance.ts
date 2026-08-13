@@ -42,6 +42,12 @@ export interface InstallConformanceOptions {
    * `rest.listener`) runs the suite once per host with a matching makeApp.
    */
   hosts?: Array<'express' | 'fetch'>;
+  /**
+   * Also prove install → uninstall → install serves again (the contract's
+   * hot-swap promise). Defaults to true; a helper that genuinely cannot
+   * reinstall opts out with `reinstall: false` and a comment saying why.
+   */
+  reinstall?: boolean;
 }
 
 export function runInstallConformance(
@@ -53,6 +59,7 @@ export function runInstallConformance(
   const served = options.served.map(norm);
   const untouched = (options.untouched ?? []).map(norm);
   const hosts = options.hosts ?? ['express', 'fetch'];
+  const reinstall = options.reinstall ?? true;
 
   async function boot(): Promise<{
     app: RestApplication;
@@ -128,6 +135,27 @@ export function runInstallConformance(
         }
       },
     );
+
+    it.runIf(reinstall)('reinstall after uninstall serves again', async () => {
+      const {app, installed, server} = await boot();
+      const probe = served[0]!;
+      const hit = async () => {
+        const res = await fetch(server.url + probe.path, probe.init);
+        await res.body?.cancel().catch(() => {});
+        return res.status;
+      };
+      try {
+        await installed.uninstall();
+        expect(await hit(), `${probe.path} after uninstall`).toBe(404);
+
+        const again = await install(app);
+        expect(await hit(), `${probe.path} after reinstall`).toBeLessThan(400);
+        await again.uninstall();
+        expect(await hit(), `${probe.path} after second uninstall`).toBe(404);
+      } finally {
+        await app.stop();
+      }
+    });
 
     it('uninstall() is idempotent', async () => {
       const {app, installed} = await boot();
