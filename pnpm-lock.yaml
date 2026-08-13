@@ -1262,6 +1262,9 @@ importers:
 
   packages/context-explorer:
     dependencies:
+      '@agentback/common':
+        specifier: workspace:~
+        version: link:../common
       '@agentback/console-theme':
         specifier: workspace:~
         version: link:../console-theme
@@ -1296,6 +1299,9 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      '@agentback/testing':
+        specifier: workspace:~
+        version: link:../testing
       '@agentback/testlab':
         specifier: workspace:~
         version: link:../testlab
@@ -1958,6 +1964,9 @@ importers:
 
   packages/mcp-inspector:
     dependencies:
+      '@agentback/common':
+        specifier: workspace:~
+        version: link:../common
       '@agentback/console-theme':
         specifier: workspace:~
         version: link:../console-theme
@@ -1989,6 +1998,9 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      '@agentback/testing':
+        specifier: workspace:~
+        version: link:../testing
       '@agentback/testlab':
         specifier: workspace:~
         version: link:../testlab
@@ -2428,6 +2440,9 @@ importers:
 
   packages/schema-explorer:
     dependencies:
+      '@agentback/common':
+        specifier: workspace:~
+        version: link:../common
       '@agentback/console-theme':
         specifier: workspace:~
         version: link:../console-theme
@@ -2459,6 +2474,9 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      '@agentback/testing':
+        specifier: workspace:~
+        version: link:../testing
       '@agentback/testlab':
         specifier: workspace:~
         version: link:../testlab

@@ -30,6 +30,14 @@ const tools = await t.mcp.listTools();
 await t.stop(); // or rely on `await using`
 ```
 
+Also exports `runInstallConformance(label, {makeApp, install, served, untouched})` —
+the shared conformance suite for the
+[revertible-install contract](../../docs/proposals/revertible-installs.md):
+every migrated `install*` helper runs the same install → serve → uninstall →
+404 cycle on both hosts (Express and the neutral fetch host), plus an
+idempotent-uninstall check, so the contract cannot decay helper-by-helper.
+Mirror of `@agentback/files/testing`'s `runFileStoreConformance`.
+
 Notes:
 
 - Overrides are applied **after** the app constructor — rebinding by key wins.

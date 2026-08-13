@@ -7,7 +7,12 @@ import {fileURLToPath} from 'node:url';
 import express from 'express';
 import {z} from 'zod';
 import {api, get, post, schemaToOpenApiSchema} from '@agentback/openapi';
-import {BindingScope, inject, injectable} from '@agentback/core';
+import {
+  BindingScope,
+  inject,
+  injectable,
+  type Installed,
+} from '@agentback/core';
 import {MCPBindings, type MCPServer} from '@agentback/mcp';
 import {
   installMcpConnect,
@@ -15,7 +20,8 @@ import {
 } from '@agentback/mcp-connect';
 import {THEME_CSS, THEME_FONTS_HREF} from '@agentback/console-theme';
 import type {RestApplication, RestServer} from '@agentback/rest';
-import {AssetSource, fromDisk} from '@agentback/rest';
+import {AssetSource, findControllerBindingKey, fromDisk} from '@agentback/rest';
+import {composeTeardown} from '@agentback/common';
 
 const API_BASE = '/mcp-inspector/api';
 const DEFAULT_CONNECT_PATH = '/mcp-connect';
@@ -184,11 +190,15 @@ export class McpInspectorController {
 export async function installInspector(
   app: RestApplication,
   options: InspectorOptions = {},
-): Promise<void> {
+): Promise<Installed> {
   const opts = {...DEFAULTS, ...options};
-  const connect = await installInspectorApi(app, {connect: options.connect});
+  const api = await installInspectorApi(app, {connect: options.connect});
   const server: RestServer = await app.restServer;
-  mountInspector(server, opts, connect);
+  const mounted = mountInspector(server, opts, api.connect);
+  const td = composeTeardown();
+  td.push(() => api.uninstall());
+  td.push(() => mounted.uninstall());
+  return {uninstall: () => td.run()};
 }
 
 /**
@@ -197,10 +207,14 @@ export async function installInspector(
  * mounts **no** UI shell. Used by the unified console's MCP feature (which
  * supplies its own shell). Returns the remote-connect shell config (or null).
  */
+export interface InstalledInspectorApi extends Installed {
+  connect: ConnectShellConfig | null;
+}
+
 export async function installInspectorApi(
   app: RestApplication,
   options: {connect?: boolean | McpConnectOptions} = {},
-): Promise<ConnectShellConfig | null> {
+): Promise<InstalledInspectorApi> {
   if (!app.isBound(MCPBindings.SERVER)) {
     throw new Error(
       '@agentback/mcp-inspector: no MCP server bound at ' +
@@ -209,12 +223,22 @@ export async function installInspectorApi(
     );
   }
   app.restController(McpInspectorController);
-  if (!options.connect) return null;
+  // NOTE: when `connect` is set, installMcpConnect's own footprint is NOT yet
+  // retracted here — mcp-connect migrates in a later wave
+  // (revertible-installs.md); this uninstall covers the inspector controller.
+  const uninstall = async () => {
+    const key = findControllerBindingKey(app, McpInspectorController);
+    if (key) app.unbind(key);
+  };
+  if (!options.connect) return {connect: null, uninstall};
   const copts: McpConnectOptions =
     options.connect === true ? {} : options.connect;
   await installMcpConnect(app, copts);
   const cpath = copts.path ?? DEFAULT_CONNECT_PATH;
-  return {base: cpath + '/api', callbackPath: cpath + '/oauth/callback'};
+  return {
+    connect: {base: cpath + '/api', callbackPath: cpath + '/oauth/callback'},
+    uninstall,
+  };
 }
 
 /**
@@ -252,7 +276,7 @@ export function mountInspector(
   server: RestServer,
   options: InspectorOptions = {},
   connect: ConnectShellConfig | null = null,
-): void {
+): Installed {
   const opts = {...DEFAULTS, ...options};
   const app = server.expressApp;
   const clientDir = fileURLToPath(new URL('./client/', import.meta.url));
@@ -265,13 +289,22 @@ export function mountInspector(
     );
   }
 
-  app.use(opts.path + '/assets', express.static(clientDir, {index: false}));
+  // Express cannot unmount a layer; the three layers share one gate (see
+  // revertible-installs.md, option 1).
+  const td = composeTeardown();
+  let live = true;
+  td.push(() => void (live = false));
+  const statics = express.static(clientDir, {index: false});
+  app.use(opts.path + '/assets', (req, res, next) =>
+    live ? statics(req, res, next) : next(),
+  );
 
   const html = indexHtml(opts, connect);
 
   // Server-rendered shell at both <path> and <path>/. No user data is
   // interpolated except the (escaped) title; the React tree renders client-side.
-  app.get([opts.path, opts.path + '/'], (_req, res) => {
+  app.get([opts.path, opts.path + '/'], (_req, res, next) => {
+    if (!live) return next();
     res.type('html').send(html);
   });
 
@@ -279,9 +312,12 @@ export function mountInspector(
   const serveAsset = options.assets ?? fromDisk(clientDir);
   const htmlResponse = async () =>
     new Response(html, {headers: {'content-type': 'text/html; charset=utf-8'}});
-  server.addFetchHandler('GET', opts.path, htmlResponse);
-  server.addFetchHandler('GET', opts.path + '/', htmlResponse);
-  server.addFetchPrefix(opts.path + '/assets', suffix => serveAsset(suffix));
+  td.push(server.addFetchHandler('GET', opts.path, htmlResponse));
+  td.push(server.addFetchHandler('GET', opts.path + '/', htmlResponse));
+  td.push(
+    server.addFetchPrefix(opts.path + '/assets', suffix => serveAsset(suffix)),
+  );
+  return {uninstall: () => td.run()};
 }
 
 // ---- Static shell -----------------------------------------------------------

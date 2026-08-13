@@ -109,7 +109,10 @@ import {
 } from './web/middleware.js';
 import {createCorsWebMiddleware} from './web/cors-middleware.js';
 import type {RouteValue} from './web/route-value.js';
-import {resolveControllerInstance} from './controller-resolver.js';
+import {
+  findControllerBindingKey,
+  resolveControllerInstance,
+} from './controller-resolver.js';
 
 const log = loggers('agentback:rest:server');
 
@@ -491,6 +494,12 @@ export class RestServer implements Server {
       return this.makeWebHandler(ctor, methodName, schemas, successStatus);
     }
     return async (req: Request, res: Response, next: NextFunction) => {
+      // Express baked this route in at start(); the binding is the live
+      // source of truth. Unbound controller → fall through to the 404 chain,
+      // so unbind() honestly retracts a controller (revertible installs).
+      if (findControllerBindingKey(this.context, ctor) === undefined) {
+        return next();
+      }
       try {
         const result = await this.dispatch(req, res, ctor, methodName, schemas);
         if (schemas.streamOf) {

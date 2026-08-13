@@ -3,6 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 export * from './keys.js';
+export * from './controller-resolver.js';
 export * from './types.js';
 export * from './errors.js';
 export * from './ax.js';

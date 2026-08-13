@@ -9,6 +9,9 @@
   "exclude": ["dist", "node_modules", "src/client"],
   "references": [
     {
+      "path": "../common"
+    },
+    {
       "path": "../console-theme"
     },
     {
@@ -25,6 +28,9 @@
     },
     {
       "path": "../mcp-connect"
+    },
+    {
+      "path": "../testing"
     },
     {
       "path": "../testlab"

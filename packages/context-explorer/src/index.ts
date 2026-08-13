@@ -14,9 +14,12 @@ import {
   inject,
   injectable,
   type Context,
+  type Installed,
 } from '@agentback/core';
 import {THEME_CSS, THEME_FONTS_HREF} from '@agentback/console-theme';
 import type {RestApplication, RestServer} from '@agentback/rest';
+import {findControllerBindingKey} from '@agentback/rest';
+import {composeTeardown} from '@agentback/common';
 import {serveStaticDir} from '@agentback/rest';
 import {ContextModel, buildModel} from './model.js';
 
@@ -119,11 +122,18 @@ export class ContextExplorerController {
 export async function installContextExplorer(
   app: RestApplication,
   options: ContextExplorerOptions = {},
-): Promise<void> {
+): Promise<Installed> {
   const opts = {...DEFAULTS, ...options};
   app.restController(ContextExplorerController);
   const server: RestServer = await app.restServer;
-  mountContextExplorer(server, opts);
+  const mounted = mountContextExplorer(server, opts);
+  const td = composeTeardown();
+  td.push(() => {
+    const key = findControllerBindingKey(app, ContextExplorerController);
+    if (key) app.unbind(key);
+  });
+  td.push(() => mounted.uninstall());
+  return {uninstall: () => td.run()};
 }
 
 /**
@@ -151,7 +161,7 @@ export function contextConsoleFeature() {
 export function mountContextExplorer(
   server: RestServer,
   options: ContextExplorerOptions = {},
-): void {
+): Installed {
   const opts = {...DEFAULTS, ...options};
   const app = server.expressApp;
   const clientDir = fileURLToPath(new URL('./client/', import.meta.url));
@@ -166,7 +176,16 @@ export function mountContextExplorer(
   }
 
   // Static bundle (and its sourcemap) under <path>/assets.
-  app.use(opts.path + '/assets', express.static(clientDir, {index: false}));
+  // Express cannot unmount a layer, so the three layers share one gate:
+  // after uninstall they call next() and the request falls through to 404
+  // (revertible-installs.md, option 1).
+  const td = composeTeardown();
+  let live = true;
+  td.push(() => void (live = false));
+  const statics = express.static(clientDir, {index: false});
+  app.use(opts.path + '/assets', (req, res, next) =>
+    live ? statics(req, res, next) : next(),
+  );
 
   // esbuild emits main.css alongside main.js when the client imports CSS
   // (React Flow's stylesheet). Link it only if present.
@@ -176,7 +195,8 @@ export function mountContextExplorer(
   // Server-rendered shell at both <path> and <path>/ — no user data is
   // interpolated except the (escaped) title, so it is XSS-safe; the React tree
   // renders client-side from the API.
-  app.get([opts.path, opts.path + '/'], (_req, res) => {
+  app.get([opts.path, opts.path + '/'], (_req, res, next) => {
+    if (!live) return next();
     res.type('html').send(html);
   });
 
@@ -184,9 +204,12 @@ export function mountContextExplorer(
   const serveAsset = serveStaticDir(clientDir);
   const htmlResponse = async () =>
     new Response(html, {headers: {'content-type': 'text/html; charset=utf-8'}});
-  server.addFetchHandler('GET', opts.path, htmlResponse);
-  server.addFetchHandler('GET', opts.path + '/', htmlResponse);
-  server.addFetchPrefix(opts.path + '/assets', suffix => serveAsset(suffix));
+  td.push(server.addFetchHandler('GET', opts.path, htmlResponse));
+  td.push(server.addFetchHandler('GET', opts.path + '/', htmlResponse));
+  td.push(
+    server.addFetchPrefix(opts.path + '/assets', suffix => serveAsset(suffix)),
+  );
+  return {uninstall: () => td.run()};
 }
 
 // ---- Static shell -----------------------------------------------------------

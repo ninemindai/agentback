@@ -23,6 +23,7 @@
     "typecheck:client": "tsc -p tsconfig.client.json --noEmit"
   },
   "dependencies": {
+    "@agentback/common": "workspace:~",
     "@agentback/console-theme": "workspace:~",
     "@agentback/context": "workspace:~",
     "@agentback/core": "workspace:~",
@@ -39,6 +40,7 @@
     "node": ">=22.13"
   },
   "devDependencies": {
+    "@agentback/testing": "workspace:~",
     "@agentback/testlab": "workspace:~",
     "@dagrejs/dagre": "^3.0.0",
     "@types/react": "~19.2.17",

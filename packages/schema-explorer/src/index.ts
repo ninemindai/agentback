@@ -13,9 +13,12 @@ import {
   inject,
   injectable,
   type Context,
+  type Installed,
 } from '@agentback/core';
 import {THEME_CSS, THEME_FONTS_HREF} from '@agentback/console-theme';
 import type {RestApplication, RestServer} from '@agentback/rest';
+import {findControllerBindingKey} from '@agentback/rest';
+import {composeTeardown} from '@agentback/common';
 import {serveStaticDir} from '@agentback/rest';
 import {buildSchemaInventory} from './inventory.js';
 import {buildOkfBundle} from './okf.js';
@@ -159,11 +162,18 @@ export class SchemaExplorerController {
 export async function installSchemaExplorer(
   app: RestApplication,
   options: SchemaExplorerOptions = {},
-): Promise<void> {
+): Promise<Installed> {
   const opts = {...DEFAULTS, ...options};
   app.restController(SchemaExplorerController);
   const server: RestServer = await app.restServer;
-  mountSchemaExplorer(server, opts);
+  const mounted = mountSchemaExplorer(server, opts);
+  const td = composeTeardown();
+  td.push(() => {
+    const key = findControllerBindingKey(app, SchemaExplorerController);
+    if (key) app.unbind(key);
+  });
+  td.push(() => mounted.uninstall());
+  return {uninstall: () => td.run()};
 }
 
 /**
@@ -189,7 +199,7 @@ export function schemaConsoleFeature() {
 export function mountSchemaExplorer(
   server: RestServer,
   options: SchemaExplorerOptions = {},
-): void {
+): Installed {
   const opts = {...DEFAULTS, ...options};
   const app = server.expressApp;
   const clientDir = fileURLToPath(new URL('./client/', import.meta.url));
@@ -203,11 +213,21 @@ export function mountSchemaExplorer(
     );
   }
 
-  app.use(opts.path + '/assets', express.static(clientDir, {index: false}));
+  // Express cannot unmount a layer, so the three layers share one gate:
+  // after uninstall they call next() and the request falls through to 404
+  // (revertible-installs.md, option 1).
+  const td = composeTeardown();
+  let live = true;
+  td.push(() => void (live = false));
+  const statics = express.static(clientDir, {index: false});
+  app.use(opts.path + '/assets', (req, res, next) =>
+    live ? statics(req, res, next) : next(),
+  );
   const hasCss = existsSync(clientDir + 'main.css');
   const html = indexHtml(opts, hasCss);
 
-  app.get([opts.path, opts.path + '/'], (_req, res) => {
+  app.get([opts.path, opts.path + '/'], (_req, res, next) => {
+    if (!live) return next();
     res.type('html').send(html);
   });
 
@@ -215,9 +235,12 @@ export function mountSchemaExplorer(
   const serveAsset = serveStaticDir(clientDir);
   const htmlResponse = async () =>
     new Response(html, {headers: {'content-type': 'text/html; charset=utf-8'}});
-  server.addFetchHandler('GET', opts.path, htmlResponse);
-  server.addFetchHandler('GET', opts.path + '/', htmlResponse);
-  server.addFetchPrefix(opts.path + '/assets', suffix => serveAsset(suffix));
+  td.push(server.addFetchHandler('GET', opts.path, htmlResponse));
+  td.push(server.addFetchHandler('GET', opts.path + '/', htmlResponse));
+  td.push(
+    server.addFetchPrefix(opts.path + '/assets', suffix => serveAsset(suffix)),
+  );
+  return {uninstall: () => td.run()};
 }
 
 // ---- Static shell -----------------------------------------------------------

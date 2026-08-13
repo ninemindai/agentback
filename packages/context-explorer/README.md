@@ -32,7 +32,8 @@ import {installContextExplorer} from '@agentback/context-explorer';
 
 const app = new RestApplication();
 // ... register controllers / services / bindings ...
-await installContextExplorer(app); // before app.start()
+const installed = await installContextExplorer(app); // before app.start()
+// installed.uninstall() retracts UI + API on both hosts (revertible installs)
 await app.start();
 // -> Context Explorer UI at http://host:port/context-explorer/
 ```

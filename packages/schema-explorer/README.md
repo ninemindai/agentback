@@ -40,7 +40,8 @@ import {installSchemaExplorer} from '@agentback/schema-explorer';
 
 const app = new RestApplication({rest: {port: 3000}});
 // … register controllers / tool classes …
-await installSchemaExplorer(app); // UI at /schema-explorer, API at /schema-explorer/api
+const installed = await installSchemaExplorer(app); // UI at /schema-explorer, API at /schema-explorer/api
+// installed.uninstall() retracts UI + API on both hosts (revertible installs)
 await app.start();
 ```
 
