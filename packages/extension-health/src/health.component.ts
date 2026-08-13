@@ -2,6 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import type {Installed} from '@agentback/core';
 import type {RestApplication, RestServer} from '@agentback/rest';
 import {runChecks} from './health.runner.js';
 import {
@@ -31,21 +32,26 @@ import {
 export async function installHealth(
   app: RestApplication,
   options: HealthOptions = {},
-): Promise<void> {
+): Promise<Installed> {
   const opts = {...DEFAULT_HEALTH_OPTIONS, ...options};
   const server: RestServer = await app.restServer;
-  mountHealth(server, opts);
+  return mountHealth(server, opts);
 }
 
 export function mountHealth(
   server: RestServer,
   options: HealthOptions = {},
-): void {
+): Installed {
   const opts = {...DEFAULT_HEALTH_OPTIONS, ...options};
   const expressApp = server.expressApp;
   const ctx = server.appContext;
 
-  expressApp.get(opts.healthPath, async (_req, res) => {
+  // Express cannot unmount a layer; both probes share one gate
+  // (revertible-installs.md, option 1).
+  let live = true;
+  const gate = (_req: unknown, _res: unknown, next: (e?: unknown) => void) =>
+    live ? next() : next('route');
+  expressApp.get(opts.healthPath, gate, async (_req, res) => {
     const results = await runChecks(ctx, 'liveness', opts.defaultTimeoutMs);
     const ok = results.every(r => r.ok);
     res
@@ -53,7 +59,7 @@ export function mountHealth(
       .json({status: ok ? 'UP' : 'DOWN', checks: results});
   });
 
-  expressApp.get(opts.readyPath, async (_req, res) => {
+  expressApp.get(opts.readyPath, gate, async (_req, res) => {
     const results = await runChecks(ctx, 'readiness', opts.defaultTimeoutMs);
     const ok = results.every(r => r.ok);
     res.status(ok ? 200 : 503).json({
@@ -61,6 +67,11 @@ export function mountHealth(
       checks: results,
     });
   });
+  return {
+    uninstall: async () => {
+      live = false;
+    },
+  };
 }
 
 /**

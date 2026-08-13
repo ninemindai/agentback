@@ -3,6 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 import type {Request, Response, NextFunction} from 'express';
+import type {Installed} from '@agentback/core';
 import type {RestApplication, RestServer} from '@agentback/rest';
 import client from 'prom-client';
 
@@ -36,15 +37,15 @@ const DEFAULTS: Required<Omit<MetricsOptions, 'registry'>> = {
 export async function installMetrics(
   app: RestApplication,
   options: MetricsOptions = {},
-): Promise<void> {
+): Promise<Installed> {
   const server: RestServer = await app.restServer;
-  mountMetrics(server, options);
+  return mountMetrics(server, options);
 }
 
 export function mountMetrics(
   server: RestServer,
   options: MetricsOptions = {},
-): void {
+): Installed {
   const opts = {...DEFAULTS, ...options};
   const registry = options.registry ?? client.register;
 
@@ -55,10 +56,19 @@ export function mountMetrics(
     });
   }
 
+  // Express cannot unmount a layer; the middleware and route share one gate
+  // (revertible-installs.md, option 1). Registry side effects: the duration
+  // histogram is removed on uninstall only when this mount created it;
+  // collectDefaultMetrics registers process-global collectors with no
+  // removal handle — a documented carve-out.
+  let live = true;
+
   let durationHistogram: client.Histogram<string> | undefined;
+  let createdHistogram = false;
   if (opts.httpDurationHistogram) {
     // Allow re-registration in dev/HMR by re-using the existing metric if any.
     const existing = registry.getSingleMetric('http_request_duration_seconds');
+    createdHistogram = !existing;
     durationHistogram =
       (existing as client.Histogram<string>) ??
       new client.Histogram({
@@ -74,6 +84,7 @@ export function mountMetrics(
 
   if (durationHistogram) {
     expressApp.use((req: Request, res: Response, next: NextFunction) => {
+      if (!live) return next();
       const start = process.hrtime.bigint();
       res.on('finish', () => {
         const end = process.hrtime.bigint();
@@ -88,10 +99,24 @@ export function mountMetrics(
     });
   }
 
-  expressApp.get(opts.path, async (_req, res) => {
-    res.set('Content-Type', registry.contentType);
-    res.send(await registry.metrics());
-  });
+  expressApp.get(
+    opts.path,
+    (_req, _res, next) =>
+      live ? next() : (next as (e?: unknown) => void)('route'),
+    async (_req, res) => {
+      res.set('Content-Type', registry.contentType);
+      res.send(await registry.metrics());
+    },
+  );
+  return {
+    uninstall: async () => {
+      if (!live) return;
+      live = false;
+      if (createdHistogram) {
+        registry.removeSingleMetric('http_request_duration_seconds');
+      }
+    },
+  };
 }
 
 export {client as promClient};

@@ -1483,6 +1483,9 @@ importers:
 
   packages/extension-health:
     dependencies:
+      '@agentback/common':
+        specifier: workspace:~
+        version: link:../common
       '@agentback/context':
         specifier: workspace:~
         version: link:../context
@@ -1499,6 +1502,9 @@ importers:
       '@agentback/openapi':
         specifier: workspace:~
         version: link:../openapi
+      '@agentback/testing':
+        specifier: workspace:~
+        version: link:../testing
       '@agentback/testlab':
         specifier: workspace:~
         version: link:../testlab
@@ -1514,6 +1520,12 @@ importers:
 
   packages/extension-metrics:
     dependencies:
+      '@agentback/common':
+        specifier: workspace:~
+        version: link:../common
+      '@agentback/core':
+        specifier: workspace:~
+        version: link:../core
       '@agentback/rest':
         specifier: workspace:~
         version: link:../rest
@@ -1530,6 +1542,9 @@ importers:
       '@agentback/openapi':
         specifier: workspace:~
         version: link:../openapi
+      '@agentback/testing':
+        specifier: workspace:~
+        version: link:../testing
       '@agentback/testlab':
         specifier: workspace:~
         version: link:../testlab
@@ -1609,6 +1624,12 @@ importers:
 
   packages/extension-rate-limit:
     dependencies:
+      '@agentback/common':
+        specifier: workspace:~
+        version: link:../common
+      '@agentback/core':
+        specifier: workspace:~
+        version: link:../core
       '@agentback/rest':
         specifier: workspace:~
         version: link:../rest
@@ -1621,6 +1642,10 @@ importers:
       tslib:
         specifier: ^2.8.1
         version: 2.8.1
+    devDependencies:
+      vitest:
+        specifier: ~4.1.10
+        version: 4.1.10(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(vite@8.0.13(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
 
   packages/files:
     dependencies:
@@ -1829,6 +1854,12 @@ importers:
 
   packages/mcp-connect:
     dependencies:
+      '@agentback/common':
+        specifier: workspace:~
+        version: link:../common
+      '@agentback/core':
+        specifier: workspace:~
+        version: link:../core
       '@agentback/mcp-client':
         specifier: workspace:~
         version: link:../mcp-client
@@ -1845,15 +1876,15 @@ importers:
         specifier: ^2.8.1
         version: 2.8.1
     devDependencies:
-      '@agentback/core':
-        specifier: workspace:~
-        version: link:../core
       '@agentback/mcp':
         specifier: workspace:~
         version: link:../mcp
       '@agentback/mcp-http':
         specifier: workspace:~
         version: link:../mcp-http
+      '@agentback/testing':
+        specifier: workspace:~
+        version: link:../testing
       '@agentback/testlab':
         specifier: workspace:~
         version: link:../testlab
@@ -2259,9 +2290,15 @@ importers:
 
   packages/payments:
     dependencies:
+      '@agentback/common':
+        specifier: workspace:~
+        version: link:../common
       '@agentback/context':
         specifier: workspace:~
         version: link:../context
+      '@agentback/core':
+        specifier: workspace:~
+        version: link:../core
       '@agentback/mcp':
         specifier: workspace:~
         version: link:../mcp

@@ -4,6 +4,7 @@
 
 import express, {type Express, type Request, type Response} from 'express';
 import type {RestApplication} from '@agentback/rest';
+import type {Installed} from '@agentback/core';
 import {RemoteRegistry, type AuthConfig} from './registry.js';
 
 export * from './registry.js';
@@ -37,23 +38,39 @@ const DEFAULT_PATH = '/mcp-connect';
 export async function installMcpConnect(
   app: RestApplication,
   options: McpConnectOptions = {},
-): Promise<RemoteRegistry> {
+): Promise<RemoteRegistry & Installed> {
+  const createdHere = !options.registry;
   const registry =
     options.registry ??
     new RemoteRegistry({allowPrivateTargets: options.allowPrivateTargets});
   const server = await app.restServer;
-  mountMcpConnect(server.expressApp, registry, options);
-  return registry;
+  const mounted = mountMcpConnect(server.expressApp, registry, options);
+  let uninstalled = false;
+  return Object.assign(registry, {
+    uninstall: async () => {
+      if (uninstalled) return;
+      uninstalled = true;
+      await mounted.uninstall();
+      // Close live upstream connections only when this install owns the
+      // registry; a caller-provided registry keeps its own lifecycle.
+      if (createdHere) await registry.closeAll();
+    },
+  });
 }
 
 export function mountMcpConnect(
   expressApp: Express,
   registry: RemoteRegistry,
   options: McpConnectOptions = {},
-): void {
+): Installed {
   const path = options.path ?? DEFAULT_PATH;
   const api = `${path}/api`;
   const json = express.json();
+  // Express cannot unmount a layer; every registration below shares one gate
+  // (revertible-installs.md, option 1).
+  let live = true;
+  const gate = (_req: Request, _res: Response, next: (e?: unknown) => void) =>
+    live ? next() : next('route');
 
   const fail = (res: Response, status: number, message: string) =>
     res.status(status).json({error: {message}});
@@ -66,10 +83,13 @@ export function mountMcpConnect(
   };
 
   // ---- target lifecycle ----
-  expressApp.get(`${api}/targets`, (_req, res) => res.json(registry.list()));
+  expressApp.get(`${api}/targets`, gate, (_req, res) =>
+    res.json(registry.list()),
+  );
 
   expressApp.post(
     `${api}/targets`,
+    gate,
     json,
     async (req: Request, res: Response) => {
       const {url, auth} = (req.body ?? {}) as {url?: string; auth?: AuthConfig};
@@ -85,13 +105,13 @@ export function mountMcpConnect(
     },
   );
 
-  expressApp.delete(`${api}/targets/:id`, async (req, res) => {
-    await registry.remove(req.params.id!);
+  expressApp.delete(`${api}/targets/:id`, gate, async (req, res) => {
+    await registry.remove(req.params.id as string);
     res.status(204).end();
   });
 
   // ---- proxied inspection / invocation ----
-  expressApp.get(`${api}/targets/:id/manifest`, async (req, res) => {
+  expressApp.get(`${api}/targets/:id/manifest`, gate, async (req, res) => {
     const source = requireSource(req, res);
     if (!source) return;
     try {
@@ -103,6 +123,7 @@ export function mountMcpConnect(
 
   expressApp.post(
     `${api}/targets/:id/tools/:name/call`,
+    gate,
     json,
     async (req, res) => {
       const source = requireSource(req, res);
@@ -110,7 +131,7 @@ export function mountMcpConnect(
       try {
         res.json(
           await source.callTool(
-            req.params.name!,
+            req.params.name as string,
             (req.body ?? {}) as Record<string, unknown>,
           ),
         );
@@ -122,6 +143,7 @@ export function mountMcpConnect(
 
   expressApp.post(
     `${api}/targets/:id/resources/read`,
+    gate,
     json,
     async (req, res) => {
       const source = requireSource(req, res);
@@ -136,18 +158,22 @@ export function mountMcpConnect(
     },
   );
 
-  expressApp.post(`${api}/targets/:id/prompts/:name/get`, async (req, res) => {
-    const source = requireSource(req, res);
-    if (!source) return;
-    try {
-      res.json(await source.getPrompt(req.params.name!));
-    } catch (err) {
-      fail(res, 400, (err as Error).message);
-    }
-  });
+  expressApp.post(
+    `${api}/targets/:id/prompts/:name/get`,
+    gate,
+    async (req, res) => {
+      const source = requireSource(req, res);
+      if (!source) return;
+      try {
+        res.json(await source.getPrompt(req.params.name as string));
+      } catch (err) {
+        fail(res, 400, (err as Error).message);
+      }
+    },
+  );
 
   // ---- OAuth redirect callback ----
-  expressApp.get(`${path}/oauth/callback`, async (req, res) => {
+  expressApp.get(`${path}/oauth/callback`, gate, async (req, res) => {
     const code = req.query.code as string | undefined;
     const state = req.query.state as string | undefined;
     let ok = false;
@@ -164,6 +190,11 @@ export function mountMcpConnect(
     }
     res.type('html').send(callbackHtml(ok, message));
   });
+  return {
+    uninstall: async () => {
+      live = false;
+    },
+  };
 }
 
 /** A tiny page that signals the opener window and closes the popup. */

@@ -9,6 +9,12 @@
   "exclude": ["dist", "node_modules"],
   "references": [
     {
+      "path": "../testing"
+    },
+    {
+      "path": "../common"
+    },
+    {
       "path": "../core"
     },
     {

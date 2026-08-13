@@ -3,6 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 import type {NextFunction, Request, RequestHandler, Response} from 'express';
+import type {Installed} from '@agentback/core';
 import type {RestApplication, RestServer} from '@agentback/rest';
 import {
   RateLimiterMemory,
@@ -126,20 +127,30 @@ export function createRateLimitMiddleware(
 export function mountRateLimit(
   server: RestServer,
   options: RateLimitOptions & {path?: string} = {},
-): void {
+): Installed {
   const {path, ...rateOptions} = options;
   const mw = createRateLimitMiddleware(rateOptions);
-  if (path) server.expressApp.use(path, mw);
-  else server.expressApp.use(mw);
+  // Express cannot unmount a layer; the limiter is gated so uninstall turns
+  // it into a pass-through (revertible-installs.md, option 1).
+  let live = true;
+  const gated: typeof mw = (req, res, next) =>
+    live ? mw(req, res, next) : next();
+  if (path) server.expressApp.use(path, gated);
+  else server.expressApp.use(gated);
+  return {
+    uninstall: async () => {
+      live = false;
+    },
+  };
 }
 
 /** Convenience: resolve the REST server and mount rate limiting on it. */
 export async function installRateLimit(
   app: RestApplication,
   options: RateLimitOptions & {path?: string} = {},
-): Promise<void> {
+): Promise<Installed> {
   const server: RestServer = await app.restServer;
-  mountRateLimit(server, options);
+  return mountRateLimit(server, options);
 }
 
 export {RateLimiterRes};

@@ -23,7 +23,8 @@ import {installMetrics, promClient} from '@agentback/extension-metrics';
 
 const app = new RestApplication({rest: {port: 3000}});
 
-await installMetrics(app, {
+const installed = await installMetrics(app, {
+  // installed.uninstall() retracts /metrics
   path: '/metrics', // default
   collectDefault: true, // Node.js process metrics (cpu, mem, gc, event-loop)
   defaultPrefix: '', // prefix for the default metrics, e.g. 'myapp_'
