@@ -136,11 +136,19 @@ export async function installConsole(
     }
   }
 
-  for (const feature of features) {
-    const r = await feature.install(app);
-    if (r && typeof (r as Installed).uninstall === 'function') {
-      td.push(() => (r as Installed).uninstall());
+  try {
+    for (const feature of features) {
+      const r = await feature.install(app);
+      if (r && typeof (r as Installed).uninstall === 'function') {
+        td.push(() => (r as Installed).uninstall());
+      }
     }
+  } catch (err) {
+    // A feature that throws (e.g. mcpConsoleFeature on an app with no MCP
+    // server bound) must not leave the already-installed features' footprint
+    // behind (revertible-installs.md, composition rule).
+    await td.run().catch(() => {});
+    throw err;
   }
 
   // Extract chat config from the chat feature, if present. We use duck-typing
@@ -152,13 +160,19 @@ export async function installConsole(
   );
   const chat = chatFeature?.chatConfig;
 
-  const mounted = mountConsole(server, {
-    basePath,
-    title,
-    features,
-    assets: options.assets,
-    chat,
-  });
+  let mounted: Installed;
+  try {
+    mounted = mountConsole(server, {
+      basePath,
+      title,
+      features,
+      assets: options.assets,
+      chat,
+    });
+  } catch (err) {
+    await td.run().catch(() => {});
+    throw err;
+  }
   td.push(() => mounted.uninstall());
   return {basePath, features, uninstall: () => td.run()};
 }

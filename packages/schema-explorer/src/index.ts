@@ -165,14 +165,22 @@ export async function installSchemaExplorer(
 ): Promise<Installed> {
   const opts = {...DEFAULTS, ...options};
   app.restController(SchemaExplorerController);
-  const server: RestServer = await app.restServer;
-  const mounted = mountSchemaExplorer(server, opts);
   const td = composeTeardown();
   td.push(() => {
     const key = findControllerBindingKey(app, SchemaExplorerController);
     if (key) app.unbind(key);
   });
-  td.push(() => mounted.uninstall());
+  const server: RestServer = await app.restServer;
+  try {
+    const mounted = mountSchemaExplorer(server, opts);
+    td.push(() => mounted.uninstall());
+  } catch (err) {
+    // A failed install cleans up its partial footprint before rethrowing
+    // (revertible-installs.md, composition rule) — e.g. a missing client
+    // bundle must not leave the API controller bound.
+    await td.run().catch(() => {});
+    throw err;
+  }
   return {uninstall: () => td.run()};
 }
 

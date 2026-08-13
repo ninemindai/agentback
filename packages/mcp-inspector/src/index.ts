@@ -194,10 +194,18 @@ export async function installInspector(
   const opts = {...DEFAULTS, ...options};
   const api = await installInspectorApi(app, {connect: options.connect});
   const server: RestServer = await app.restServer;
-  const mounted = mountInspector(server, opts, api.connect);
   const td = composeTeardown();
   td.push(() => api.uninstall());
-  td.push(() => mounted.uninstall());
+  try {
+    const mounted = mountInspector(server, opts, api.connect);
+    td.push(() => mounted.uninstall());
+  } catch (err) {
+    // A failed install cleans up its partial footprint before rethrowing
+    // (revertible-installs.md) — a missing client bundle must not leave the
+    // API controller (and any nested mcp-connect mount) behind.
+    await td.run().catch(() => {});
+    throw err;
+  }
   return {uninstall: () => td.run()};
 }
 
@@ -230,7 +238,13 @@ export async function installInspectorApi(
   if (!options.connect) return {connect: null, uninstall: unbindController};
   const copts: McpConnectOptions =
     options.connect === true ? {} : options.connect;
-  const connectInstalled = await installMcpConnect(app, copts);
+  let connectInstalled;
+  try {
+    connectInstalled = await installMcpConnect(app, copts);
+  } catch (err) {
+    await unbindController().catch(() => {});
+    throw err;
+  }
   const cpath = copts.path ?? DEFAULT_CONNECT_PATH;
   return {
     connect: {base: cpath + '/api', callbackPath: cpath + '/oauth/callback'},

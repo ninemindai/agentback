@@ -164,8 +164,8 @@ export function mountChatWebhooks(
     paths[adapter] = path;
     const handler = chat.webhooks[adapter];
 
-    const gate = (_req: ExRequest, _res: ExResponse, next: () => void) =>
-      live ? next() : (next as (err?: unknown) => void)('route');
+    const gate: import('express').RequestHandler = (_req, _res, next) =>
+      live ? next() : next('route');
     expressApp.post(path, gate, async (req: ExRequest, res: ExResponse) => {
       const rawBody = (req as ExRequest & {rawBody?: Buffer}).rawBody;
       if (!rawBody && !warnedRawBody) {
