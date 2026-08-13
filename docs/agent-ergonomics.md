@@ -246,6 +246,10 @@ A pure spec-first workflow writes `openapi.yaml` standalone, then generates code
 
 For most codebases this is the right trade. For codebases where the API spec is the source of truth and many teams build against it, the inversion would matter.
 
+### Boundary coherence is not lifecycle coherence
+
+This thesis is about one axis: every _boundary_ derives from one artifact. It says nothing about a second, orthogonal axis — whether a mounted capability can be _unmounted_ with its side effects fully reverted, and whether components react to dependency changes at runtime. Cordis (the plugin runtime extracted from Koishi) stakes exactly that claim, and its 2026 paper — which names self-evolving agent harnesses as the motivating workload — formalizes it as "spatiotemporal composability," with proofs that a hot-reloaded system quiesces at the state a from-scratch boot would produce. Our current answer on that axis is mostly process restart: `install*` helpers mount irreversibly, and while `ContextView`/`ContextObserver` give tag-scoped collections live bind/unbind reactivity (the middleware chain and extension points already re-resolve at runtime), constructor-injected dependencies resolve once and an unbound binding's prior side effects are never reverted — so swapping a provider is a restart. That is a deliberate simplicity trade, not an oversight — restart is the coarse-grained workaround the paper itself concedes everyone uses — but at agent edit-frequency it has real costs (discarded process state, disrupted in-flight work), and the cheapest hedge (mount helpers returning their own uninstall) is compatible with everything above — drafted as [proposals/revertible-installs.md](proposals/revertible-installs.md). See [docs/proposals/cordis-spatiotemporal-composability.md](proposals/cordis-spatiotemporal-composability.md) for the full study.
+
 ## Design decisions this thesis informs
 
 Whenever the framework gains a feature or absorbs an external pattern, the question to ask is: **does this preserve or degrade boundary coherence?**
