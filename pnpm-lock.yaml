@@ -2376,6 +2376,12 @@ importers:
 
   packages/rest-explorer:
     dependencies:
+      '@agentback/common':
+        specifier: workspace:~
+        version: link:../common
+      '@agentback/core':
+        specifier: workspace:~
+        version: link:../core
       '@agentback/rest':
         specifier: workspace:~
         version: link:../rest

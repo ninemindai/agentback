@@ -11,8 +11,8 @@ Also exports a `ConsoleFeature` (`apiConsoleFeature`) for embedding the explorer
 
 ## What it provides
 
-- `installExplorer(app, options?)` — mount Swagger UI on a `RestApplication`; call after registering controllers, before `app.start()`
-- `mountExplorer(server, options?)` — lower-level form that takes a `RestServer` directly
+- `installExplorer(app, options?)` — mount Swagger UI on a `RestApplication`; call after registering controllers, before `app.start()`. Returns an `Installed` whose `uninstall()` retracts the full footprint on both hosts (the first helper on the [revertible-install contract](../../docs/proposals/revertible-installs.md))
+- `mountExplorer(server, options?)` — lower-level form that takes a `RestServer` directly; same `Installed` return
 - `apiConsoleFeature(options?)` — returns a `ConsoleFeature` that installs the explorer and advertises the iframe URL to the console shell
 - `ExplorerOptions` — `{path?, specUrl?, title?}`
 
