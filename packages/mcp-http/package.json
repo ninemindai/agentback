@@ -37,6 +37,7 @@
     "node": ">=22.13"
   },
   "devDependencies": {
+    "@agentback/testing": "workspace:~",
     "@agentback/testlab": "workspace:~",
     "@modelcontextprotocol/client": "^2.0.0",
     "mcp-client-1-11": "npm:@modelcontextprotocol/sdk@1.11.0",

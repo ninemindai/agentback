@@ -14,6 +14,12 @@ import {describe, expect, it} from 'vitest';
 import type {Installed} from '@agentback/core';
 import type {RestApplication, RestServer} from '@agentback/rest';
 
+/**
+ * A probe: a GET path, or `{path, init}` for endpoints that need a method,
+ * headers, or a body (e.g. an MCP JSON-RPC POST).
+ */
+export type ServedProbe = string | {path: string; init?: RequestInit};
+
 export interface InstallConformanceOptions {
   /**
    * Build the app with every prerequisite registered (controllers,
@@ -24,19 +30,29 @@ export interface InstallConformanceOptions {
   /** The install under test. */
   install: (app: RestApplication) => Promise<Installed>;
   /**
-   * Paths that answer (2xx/3xx) while installed and 404 after uninstall,
+   * Probes that answer (2xx/3xx) while installed and 404 after uninstall,
    * checked on both the Express host and the neutral fetch host.
    */
-  served: string[];
-  /** Paths that must keep serving after uninstall (the app is untouched). */
-  untouched?: string[];
+  served: ServedProbe[];
+  /** Probes that must keep serving after uninstall (the app is untouched). */
+  untouched?: ServedProbe[];
+  /**
+   * Which hosts to probe. Defaults to both. A helper that mounts one host
+   * per app (e.g. installMcpHttp picks Express vs fetch from
+   * `rest.listener`) runs the suite once per host with a matching makeApp.
+   */
+  hosts?: Array<'express' | 'fetch'>;
 }
 
 export function runInstallConformance(
   label: string,
   options: InstallConformanceOptions,
 ): void {
-  const {makeApp, install, served, untouched = []} = options;
+  const {makeApp, install} = options;
+  const norm = (p: ServedProbe) => (typeof p === 'string' ? {path: p} : p);
+  const served = options.served.map(norm);
+  const untouched = (options.untouched ?? []).map(norm);
+  const hosts = options.hosts ?? ['express', 'fetch'];
 
   async function boot(): Promise<{
     app: RestApplication;
@@ -51,53 +67,67 @@ export function runInstallConformance(
   }
 
   describe(`install conformance: ${label}`, () => {
-    it('uninstall() retracts every served path on the Express host', async () => {
-      const {app, installed, server} = await boot();
-      try {
-        for (const path of served) {
-          const res = await fetch(server.url + path);
-          expect(res.status, `${path} while installed`).toBeLessThan(400);
-        }
+    it.runIf(hosts.includes('express'))(
+      'uninstall() retracts every served path on the Express host',
+      async () => {
+        const {app, installed, server} = await boot();
+        const hit = async (p: {path: string; init?: RequestInit}) => {
+          const res = await fetch(server.url + p.path, p.init);
+          await res.body?.cancel().catch(() => {});
+          return res.status;
+        };
+        try {
+          for (const p of served) {
+            expect(await hit(p), `${p.path} while installed`).toBeLessThan(400);
+          }
 
-        await installed.uninstall();
+          await installed.uninstall();
 
-        for (const path of served) {
-          const res = await fetch(server.url + path);
-          expect(res.status, `${path} after uninstall`).toBe(404);
+          for (const p of served) {
+            expect(await hit(p), `${p.path} after uninstall`).toBe(404);
+          }
+          for (const p of untouched) {
+            expect(await hit(p), `${p.path} must stay serving`).toBeLessThan(
+              400,
+            );
+          }
+        } finally {
+          await app.stop();
         }
-        for (const path of untouched) {
-          const res = await fetch(server.url + path);
-          expect(res.status, `${path} must stay serving`).toBeLessThan(400);
-        }
-      } finally {
-        await app.stop();
-      }
-    });
+      },
+    );
 
-    it('uninstall() retracts every served path on the fetch host', async () => {
-      const {app, installed, server} = await boot();
-      try {
-        const hit = (path: string) =>
-          server.fetchHandler().fetch(new Request(`http://conformance${path}`));
-        for (const path of served) {
-          const res = await hit(path);
-          expect(res.status, `${path} while installed`).toBeLessThan(400);
-        }
+    it.runIf(hosts.includes('fetch'))(
+      'uninstall() retracts every served path on the fetch host',
+      async () => {
+        const {app, installed, server} = await boot();
+        const hit = async (p: {path: string; init?: RequestInit}) => {
+          const res = await server
+            .fetchHandler()
+            .fetch(new Request(`http://conformance${p.path}`, p.init));
+          await res.body?.cancel().catch(() => {});
+          return res.status;
+        };
+        try {
+          for (const p of served) {
+            expect(await hit(p), `${p.path} while installed`).toBeLessThan(400);
+          }
 
-        await installed.uninstall();
+          await installed.uninstall();
 
-        for (const path of served) {
-          const res = await hit(path);
-          expect(res.status, `${path} after uninstall`).toBe(404);
+          for (const p of served) {
+            expect(await hit(p), `${p.path} after uninstall`).toBe(404);
+          }
+          for (const p of untouched) {
+            expect(await hit(p), `${p.path} must stay serving`).toBeLessThan(
+              400,
+            );
+          }
+        } finally {
+          await app.stop();
         }
-        for (const path of untouched) {
-          const res = await hit(path);
-          expect(res.status, `${path} must stay serving`).toBeLessThan(400);
-        }
-      } finally {
-        await app.stop();
-      }
-    });
+      },
+    );
 
     it('uninstall() is idempotent', async () => {
       const {app, installed} = await boot();
