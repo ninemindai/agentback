@@ -10,6 +10,7 @@ import type {
 import {composeTeardown, loggers} from '@agentback/common';
 import {unbindOwned} from '@agentback/core';
 import type {RestApplication} from '@agentback/rest';
+import {installGate} from '@agentback/rest';
 import {
   ChatBindings,
   type ChatDispatch,
@@ -165,7 +166,7 @@ export function mountChatWebhooks(
   const paths: Record<string, string> = {};
   // Express cannot unmount a layer; the webhook routes share one gate
   // (revertible-installs.md, option 1).
-  let live = true;
+  const g = installGate();
   let warnedRawBody = false;
 
   for (const adapter of Object.keys(chat.webhooks)) {
@@ -173,9 +174,7 @@ export function mountChatWebhooks(
     paths[adapter] = path;
     const handler = chat.webhooks[adapter];
 
-    const gate: import('express').RequestHandler = (_req, _res, next) =>
-      live ? next() : next('route');
-    expressApp.post(path, gate, async (req: ExRequest, res: ExResponse) => {
+    expressApp.post(path, g.gate, async (req: ExRequest, res: ExResponse) => {
       const rawBody = (req as ExRequest & {rawBody?: Buffer}).rawBody;
       if (!rawBody && !warnedRawBody) {
         warnedRawBody = true;
@@ -216,8 +215,6 @@ export function mountChatWebhooks(
   }
   return {
     paths,
-    uninstall: async () => {
-      live = false;
-    },
+    uninstall: async () => g.off(),
   };
 }

@@ -2,8 +2,9 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import type {Request, Response, NextFunction} from 'express';
+import type {Request, RequestHandler, Response} from 'express';
 import type {Installed} from '@agentback/core';
+import {installGate} from '@agentback/rest';
 import type {RestApplication, RestServer} from '@agentback/rest';
 import client from 'prom-client';
 
@@ -61,7 +62,8 @@ export function mountMetrics(
   // histogram is removed on uninstall only when this mount created it;
   // collectDefaultMetrics registers process-global collectors with no
   // removal handle — a documented carve-out.
-  let live = true;
+  const g = installGate();
+  let uninstalled = false;
 
   let durationHistogram: client.Histogram<string> | undefined;
   let createdHistogram = false;
@@ -83,8 +85,7 @@ export function mountMetrics(
   const expressApp = server.expressApp;
 
   if (durationHistogram) {
-    expressApp.use((req: Request, res: Response, next: NextFunction) => {
-      if (!live) return next();
+    const observe: RequestHandler = (req: Request, res: Response, next) => {
       const start = process.hrtime.bigint();
       res.on('finish', () => {
         const end = process.hrtime.bigint();
@@ -96,22 +97,19 @@ export function mountMetrics(
           .observe(seconds);
       });
       next();
-    });
+    };
+    expressApp.use(g.wrap(observe));
   }
 
-  expressApp.get(
-    opts.path,
-    (_req: Request, _res: Response, next: NextFunction) =>
-      live ? next() : next('route'),
-    async (_req, res) => {
-      res.set('Content-Type', registry.contentType);
-      res.send(await registry.metrics());
-    },
-  );
+  expressApp.get(opts.path, g.gate, async (_req, res) => {
+    res.set('Content-Type', registry.contentType);
+    res.send(await registry.metrics());
+  });
   return {
     uninstall: async () => {
-      if (!live) return;
-      live = false;
+      if (uninstalled) return;
+      uninstalled = true;
+      g.off();
       if (createdHistogram) {
         registry.removeSingleMetric('http_request_duration_seconds');
       }

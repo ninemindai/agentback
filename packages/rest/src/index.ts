@@ -4,6 +4,7 @@
 
 export * from './keys.js';
 export * from './controller-resolver.js';
+export * from './install-gate.js';
 export * from './types.js';
 export * from './errors.js';
 export * from './ax.js';

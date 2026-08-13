@@ -3,6 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 import type {Installed} from '@agentback/core';
+import {installGate} from '@agentback/rest';
 import {
   context as otelContext,
   propagation,
@@ -88,14 +89,9 @@ export function mountOtel(
 ): Installed {
   // Express cannot unmount a layer; the middleware is gated so uninstall
   // turns it into a pass-through (revertible-installs.md, option 1).
-  let live = true;
-  const mw = createOtelMiddleware(options);
-  server.expressApp.use((req, res, next) =>
-    live ? mw(req, res, next) : next(),
-  );
+  const g = installGate();
+  server.expressApp.use(g.wrap(createOtelMiddleware(options)));
   return {
-    uninstall: async () => {
-      live = false;
-    },
+    uninstall: async () => g.off(),
   };
 }

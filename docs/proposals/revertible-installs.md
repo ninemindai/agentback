@@ -255,12 +255,12 @@ capability mount), CLI-internal `install*` functions (unrelated namesakes).
 
 ## Follow-ups (from the PR #51 eng review + cross-model pass)
 
-- **Extract the gate helpers.** The gate pattern (`let live = true` +
-  `next('route')` route-gate, and the `live ? h(req, res, next) : next()`
-  wrap form) is hand-rolled in ~8 packages. Extract `routeGate()` /
-  `gatedWrap()` into `@agentback/rest` next to `findControllerBindingKey`
-  and migrate call sites — deferred from the review to keep the PR
-  reviewable, not because it isn't right.
+- **Extract the gate helpers.** ~~Hand-rolled in ~8 packages~~ **Done**
+  (post-merge follow-up): `installGate()` in `@agentback/rest` — one
+  liveness flag per install, `gate` for METHOD chains (dead →
+  `next('route')`), `wrap(mw)` for `use`-layers (dead → pass-through),
+  idempotent `off()`. All eleven call sites migrated; the conformance
+  suites are the regression net.
 - **Per-mount handles for `installMcpConnect` registry reuse.** Reusing one
   caller-provided registry across mounts currently chains uninstalls
   (nothing becomes unretractable, but retraction is coarse). The granular

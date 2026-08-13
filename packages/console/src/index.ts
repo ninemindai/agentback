@@ -13,7 +13,7 @@ import {schemaConsoleFeature} from '@agentback/schema-explorer';
 import type {Installed} from '@agentback/core';
 import {composeTeardown} from '@agentback/common';
 import type {RestApplication, RestServer} from '@agentback/rest';
-import {AssetSource, fromDisk} from '@agentback/rest';
+import {AssetSource, fromDisk, installGate} from '@agentback/rest';
 import {liveHandler} from './live.js';
 
 /**
@@ -125,13 +125,11 @@ export async function installConsole(
     }
     // Express cannot unmount; each auth layer is individually gated so
     // uninstall turns it into a pass-through (revertible-installs.md).
-    let authLive = true;
-    td.push(() => void (authLive = false));
+    const authGate = installGate();
+    td.push(() => authGate.off());
     for (const prefix of prefixes) {
       for (const h of handlers) {
-        server.expressApp.use(prefix, (req, res, next) =>
-          authLive ? h(req, res, next) : next(),
-        );
+        server.expressApp.use(prefix, authGate.wrap(h));
       }
     }
   }
@@ -202,11 +200,9 @@ export function mountConsole(
   // Express cannot unmount; the shell's layers share one gate
   // (revertible-installs.md, option 1).
   const td = composeTeardown();
-  let live = true;
-  td.push(() => void (live = false));
-  app.get(basePath + '/live', (req, res, next) =>
-    live ? liveHandler(req, res) : next(),
-  );
+  const g = installGate();
+  td.push(() => g.off());
+  app.get(basePath + '/live', g.gate, (req, res) => liveHandler(req, res));
   const clientDir = fileURLToPath(new URL('./client/', import.meta.url));
 
   if (!existsSync(clientDir + 'main.js')) {
@@ -217,14 +213,13 @@ export function mountConsole(
     );
   }
 
-  const statics = express.static(clientDir, {index: false});
-  app.use(basePath + '/assets', (req, res, next) =>
-    live ? statics(req, res, next) : next(),
+  app.use(
+    basePath + '/assets',
+    g.wrap(express.static(clientDir, {index: false})),
   );
   const hasCss = existsSync(clientDir + 'main.css');
   const html = indexHtml(basePath, title, features, hasCss, options.chat);
-  app.get([basePath, basePath + '/'], (_req, res, next) => {
-    if (!live) return next();
+  app.get([basePath, basePath + '/'], g.gate, (_req, res) => {
     res.type('html').send(html);
   });
 

@@ -28,6 +28,7 @@ import express, {
 } from 'express';
 import {MCPBindings, MCPServer} from '@agentback/mcp';
 import {Context, unbindOwned, type Installed} from '@agentback/core';
+import {installGate} from '@agentback/rest';
 import {composeTeardown} from '@agentback/common';
 import {loggers} from '@agentback/common';
 import {
@@ -407,9 +408,8 @@ export function mountMcpHttp(
   // so uninstall() flips it and requests fall through to the app's 404
   // (revertible-installs.md, option 1). next('route') skips this route's
   // remaining handlers, guards included.
-  let live = true;
-  const gate: RequestHandler = (_req, _res, next) =>
-    live ? next() : next('route');
+  const g = installGate();
+  const gate = g.gate;
   // For per-session servers: the principal that owns each session, so a later
   // request on the same session id can't be served to a different principal.
   const sessionOwners: Record<string, string | undefined> = {};
@@ -598,8 +598,7 @@ export function mountMcpHttp(
     return {
       closeAll: closeStateless,
       uninstall: async () => {
-        if (!live) return;
-        live = false;
+        g.off();
         await closeStateless();
       },
     };
@@ -749,8 +748,7 @@ export function mountMcpHttp(
   return {
     closeAll: closeSessions,
     uninstall: async () => {
-      if (!live) return;
-      live = false;
+      g.off();
       await closeSessions();
     },
   };

@@ -3,6 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 import type {Installed} from '@agentback/core';
+import {installGate} from '@agentback/rest';
 import type {RestApplication, RestServer} from '@agentback/rest';
 import {runChecks} from './health.runner.js';
 import {
@@ -48,10 +49,8 @@ export function mountHealth(
 
   // Express cannot unmount a layer; both probes share one gate
   // (revertible-installs.md, option 1).
-  let live = true;
-  const gate = (_req: unknown, _res: unknown, next: (e?: unknown) => void) =>
-    live ? next() : next('route');
-  expressApp.get(opts.healthPath, gate, async (_req, res) => {
+  const g = installGate();
+  expressApp.get(opts.healthPath, g.gate, async (_req, res) => {
     const results = await runChecks(ctx, 'liveness', opts.defaultTimeoutMs);
     const ok = results.every(r => r.ok);
     res
@@ -59,7 +58,7 @@ export function mountHealth(
       .json({status: ok ? 'UP' : 'DOWN', checks: results});
   });
 
-  expressApp.get(opts.readyPath, gate, async (_req, res) => {
+  expressApp.get(opts.readyPath, g.gate, async (_req, res) => {
     const results = await runChecks(ctx, 'readiness', opts.defaultTimeoutMs);
     const ok = results.every(r => r.ok);
     res.status(ok ? 200 : 503).json({
@@ -68,9 +67,7 @@ export function mountHealth(
     });
   });
   return {
-    uninstall: async () => {
-      live = false;
-    },
+    uninstall: async () => g.off(),
   };
 }
 
