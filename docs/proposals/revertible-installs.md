@@ -252,3 +252,21 @@ capability mount), CLI-internal `install*` functions (unrelated namesakes).
 3. Wave 4's `ConsoleFeature` is a public-ish interface; changing `install`'s
    return type is additive (`void → Installed`) but third-party features
    returning `void` should keep working — accept `void | Installed` there?
+
+## Follow-ups (from the PR #51 eng review + cross-model pass)
+
+- **Extract the gate helpers.** The gate pattern (`let live = true` +
+  `next('route')` route-gate, and the `live ? h(req, res, next) : next()`
+  wrap form) is hand-rolled in ~8 packages. Extract `routeGate()` /
+  `gatedWrap()` into `@agentback/rest` next to `findControllerBindingKey`
+  and migrate call sites — deferred from the review to keep the PR
+  reviewable, not because it isn't right.
+- **Per-mount handles for `installMcpConnect` registry reuse.** Reusing one
+  caller-provided registry across mounts currently chains uninstalls
+  (nothing becomes unretractable, but retraction is coarse). The granular
+  per-mount handle rides the `@agentback/plugin` unmount wave.
+- **Conformance suite depth.** Added this review: reinstall, stop-then-
+  uninstall, failure-cleanup, auth-gating, upload-side-effect tests. Still
+  worth adding when plugin unmount lands: same-path shadowing/restore
+  ordering, multi-install shared-state, and a resource-release audit
+  (handles/timers) per helper.
