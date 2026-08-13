@@ -14,10 +14,11 @@ import {
   injectable,
   type Context,
   type Installed,
+  unbindOwned,
 } from '@agentback/core';
 import {THEME_CSS, THEME_FONTS_HREF} from '@agentback/console-theme';
 import type {RestApplication, RestServer} from '@agentback/rest';
-import {findControllerBindingKey} from '@agentback/rest';
+
 import {composeTeardown} from '@agentback/common';
 import {serveStaticDir} from '@agentback/rest';
 import {buildSchemaInventory} from './inventory.js';
@@ -164,12 +165,9 @@ export async function installSchemaExplorer(
   options: SchemaExplorerOptions = {},
 ): Promise<Installed> {
   const opts = {...DEFAULTS, ...options};
-  app.restController(SchemaExplorerController);
+  const controllerBinding = app.restController(SchemaExplorerController);
   const td = composeTeardown();
-  td.push(() => {
-    const key = findControllerBindingKey(app, SchemaExplorerController);
-    if (key) app.unbind(key);
-  });
+  td.push(() => unbindOwned(app, controllerBinding));
   const server: RestServer = await app.restServer;
   try {
     const mounted = mountSchemaExplorer(server, opts);
@@ -195,12 +193,9 @@ export function schemaConsoleFeature() {
     apiBase: API_BASE,
     css: EXPLORER_CSS,
     install(app: RestApplication): Installed {
-      app.restController(SchemaExplorerController);
+      const binding = app.restController(SchemaExplorerController);
       return {
-        uninstall: async () => {
-          const key = findControllerBindingKey(app, SchemaExplorerController);
-          if (key) app.unbind(key);
-        },
+        uninstall: async () => unbindOwned(app, binding),
       };
     },
   };

@@ -97,7 +97,12 @@ Every `install*` helper's return type changes from `Promise<void>` to
 `Promise<Installed>` (helpers that already return a handle, like
 `mountMcpHttp`'s `McpHttpHandle`, extend it with `uninstall`). Callers who
 ignore the return value are unaffected — this is **non-breaking for every
-existing call site**.
+existing call site**. One nuance: code that stores an installer in an
+explicitly-typed registry (`install: () => Promise<void>`) still typechecks
+(return-type covariance), but a registry that _round-trips_ the resolved
+value through its own `void`-typed field loses the `Installed` — such
+registries should widen to `void | Installed`, as `ConsoleFeature.install`
+did.
 
 Rules of the contract:
 

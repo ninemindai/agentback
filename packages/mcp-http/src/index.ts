@@ -27,7 +27,7 @@ import express, {
   type Response,
 } from 'express';
 import {MCPBindings, MCPServer} from '@agentback/mcp';
-import {Context, type Installed} from '@agentback/core';
+import {Context, unbindOwned, type Installed} from '@agentback/core';
 import {composeTeardown} from '@agentback/common';
 import {loggers} from '@agentback/common';
 import {
@@ -345,36 +345,45 @@ export async function installMcpHttp(
   // Close every outstanding session context + transport on shutdown, so a
   // long-running app doesn't leak per-session DI contexts.
   const stopBinding = app.onStop(() => handle.closeAll());
-
-  // Contribute an AX section so the REST server's /llms.txt advertises the
-  // MCP surface. Dynamic value: the tool list is computed per request, so
-  // tools registered after install still appear.
-  const path = opts.path ?? DEFAULT_PATH;
-  app
-    .bind('ax.sections.mcp')
-    .toDynamicValue((): AxSection => {
-      const tools = mcp
-        .listTools()
-        .map(
-          t =>
-            `- \`${t.meta.name}\`${
-              t.meta.description ? ` — ${t.meta.description}` : ''
-            }`,
-        );
-      return {
-        title: 'MCP (Model Context Protocol)',
-        body:
-          `This service is also an MCP server: connect over Streamable ` +
-          `HTTP at \`${path}\`.` +
-          (tools.length ? `\n\nTools:\n\n${tools.join('\n')}` : ''),
-      };
-    })
-    .tag(AX_SECTION_TAG);
+  let axBinding;
+  try {
+    // Contribute an AX section so the REST server's /llms.txt advertises the
+    // MCP surface. Dynamic value: the tool list is computed per request, so
+    // tools registered after install still appear.
+    const path = opts.path ?? DEFAULT_PATH;
+    app
+      .bind('ax.sections.mcp')
+      .toDynamicValue((): AxSection => {
+        const tools = mcp
+          .listTools()
+          .map(
+            t =>
+              `- \`${t.meta.name}\`${
+                t.meta.description ? ` — ${t.meta.description}` : ''
+              }`,
+          );
+        return {
+          title: 'MCP (Model Context Protocol)',
+          body:
+            `This service is also an MCP server: connect over Streamable ` +
+            `HTTP at \`${path}\`.` +
+            (tools.length ? `\n\nTools:\n\n${tools.join('\n')}` : ''),
+        };
+      })
+      .tag(AX_SECTION_TAG);
+    axBinding = app.getBinding('ax.sections.mcp');
+  } catch (err) {
+    // A failed install cleans up its partial footprint before rethrowing
+    // (revertible-installs.md, composition rule).
+    await handle.uninstall().catch(() => {});
+    unbindOwned(app, stopBinding);
+    throw err;
+  }
 
   const td = composeTeardown();
   td.push(() => handle.uninstall());
-  td.push(() => void app.unbind(stopBinding.key));
-  td.push(() => void app.unbind('ax.sections.mcp'));
+  td.push(() => unbindOwned(app, stopBinding));
+  td.push(() => unbindOwned(app, axBinding));
   return {uninstall: () => td.run()};
 }
 
@@ -580,7 +589,10 @@ export function mountMcpHttp(
         // than let the adapter re-read a spent stream.
         node(req, res, req.body),
     );
+    let statelessClosed = false;
     const closeStateless = async () => {
+      if (statelessClosed) return;
+      statelessClosed = true;
       await statelessHandler.close();
     };
     return {
@@ -720,8 +732,14 @@ export function mountMcpHttp(
   expressApp.delete(path, gate, exposeSessionId, ...guards, onSessionRequest);
 
   const closeSessions = async () => {
+    const open = Object.values(transports);
+    // Clear the maps up front: close() is fired once per transport even if
+    // closeAll runs again (stop-then-uninstall), and dead gate layers no
+    // longer retain session state after uninstall.
+    for (const id of Object.keys(transports)) delete transports[id];
+    for (const id of Object.keys(sessionOwners)) delete sessionOwners[id];
     await Promise.all(
-      Object.values(transports).map(t =>
+      open.map(t =>
         t.close().catch(() => {
           /* best-effort on shutdown */
         }),
