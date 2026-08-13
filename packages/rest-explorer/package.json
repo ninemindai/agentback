@@ -20,6 +20,8 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@agentback/common": "workspace:~",
+    "@agentback/core": "workspace:~",
     "@agentback/rest": "workspace:~",
     "@types/express": "^5.0.6",
     "@types/swagger-ui-dist": "^3.30.6",

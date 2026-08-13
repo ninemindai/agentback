@@ -1425,14 +1425,23 @@ export class RestServer implements Server {
    * (for HTML shells, redirects, etc.). Complement to {@link addFetchPrefix}.
    * Call before the first `fetchHandler()` invocation (i.e. before
    * `installFastifyHost` / `Bun.serve`). `method` is case-insensitive.
+   * Returns a remover that retracts exactly this handler (the fetch-host half
+   * of the revertible-install contract).
    */
   addFetchHandler(
     method: string,
     path: string,
     fn: (req: globalThis.Request) => Promise<globalThis.Response>,
-  ): void {
-    this._fetchExact.push({method: method.toUpperCase(), path, fn});
+  ): () => void {
+    const entry = {method: method.toUpperCase(), path, fn};
+    this._fetchExact.push(entry);
     this._fetchHost = undefined;
+    return () => {
+      const i = this._fetchExact.indexOf(entry);
+      if (i < 0) return;
+      this._fetchExact.splice(i, 1);
+      this._fetchHost = undefined;
+    };
   }
 
   /**
@@ -1441,13 +1450,21 @@ export class RestServer implements Server {
    * the portion of the pathname after the prefix (the suffix, always starting
    * with `/` or empty). Return `undefined` to fall through to the next handler.
    * Intended for bundled static asset directories (use {@link serveStaticDir}).
+   * Returns a remover that retracts exactly this handler.
    */
   addFetchPrefix(
     prefix: string,
     fn: (suffix: string) => Promise<globalThis.Response | undefined>,
-  ): void {
-    this._fetchPrefixes.push({prefix, fn});
+  ): () => void {
+    const entry = {prefix, fn};
+    this._fetchPrefixes.push(entry);
     this._fetchHost = undefined;
+    return () => {
+      const i = this._fetchPrefixes.indexOf(entry);
+      if (i < 0) return;
+      this._fetchPrefixes.splice(i, 1);
+      this._fetchHost = undefined;
+    };
   }
 
   /**

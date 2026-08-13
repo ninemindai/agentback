@@ -20,6 +20,7 @@ export * from '@agentback/context';
 export * from './application.js';
 export * from './component.js';
 export * from './extension-point.js';
+export * from './installed.js';
 export * from './is-main.js';
 export * from './keys.js';
 export * from './lifecycle.js';

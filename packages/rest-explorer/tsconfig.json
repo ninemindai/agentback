@@ -9,6 +9,12 @@
   "exclude": ["dist", "node_modules", "src/client"],
   "references": [
     {
+      "path": "../common"
+    },
+    {
+      "path": "../core"
+    },
+    {
       "path": "../rest"
     },
     {

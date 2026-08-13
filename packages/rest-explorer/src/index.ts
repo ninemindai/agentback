@@ -4,6 +4,8 @@
 
 import express from 'express';
 import swaggerUI from 'swagger-ui-dist';
+import {composeTeardown} from '@agentback/common';
+import type {Installed} from '@agentback/core';
 import {
   AssetSource,
   fromDisk,
@@ -47,10 +49,10 @@ const DEFAULTS: Required<Omit<ExplorerOptions, 'assets'>> = {
 export async function installExplorer(
   app: RestApplication,
   options: ExplorerOptions = {},
-): Promise<void> {
+): Promise<Installed> {
   const opts = {...DEFAULTS, ...options};
   const server: RestServer = await app.restServer;
-  mountExplorer(server, opts);
+  return mountExplorer(server, opts);
 }
 
 /**
@@ -60,40 +62,55 @@ export async function installExplorer(
 export function mountExplorer(
   server: RestServer,
   options: ExplorerOptions = {},
-): void {
+): Installed {
   const opts = {...DEFAULTS, ...options};
   const app = server.expressApp;
   const fsPath = swaggerUI.getAbsoluteFSPath();
   const html = indexHtml(opts);
+  const td = composeTeardown();
 
-  // Express path (Node/Express hosts) — unchanged.
+  // Express path (Node/Express hosts). Express cannot unmount a layer, so all
+  // three handlers share one gate: after uninstall they call next() and the
+  // request falls through to the app's 404 (revertible-installs.md, option 1).
   // Order matters: register the index override BEFORE express.static, and
   // disable static's default index so it doesn't serve swagger-ui-dist's
   // bundled index.html (which points at the Petstore demo).
-  app.get(opts.path + '/', (_req, res) => {
+  let live = true;
+  td.push(() => void (live = false));
+  app.get(opts.path + '/', (_req, res, next) => {
+    if (!live) return next();
     res.type('html').send(html);
   });
-  app.get(opts.path, (_req, res) => {
+  app.get(opts.path, (_req, res, next) => {
+    if (!live) return next();
     res.redirect(301, opts.path + '/');
   });
-  app.use(opts.path, express.static(fsPath, {index: false}));
+  const statics = express.static(fsPath, {index: false});
+  app.use(opts.path, (req, res, next) =>
+    live ? statics(req, res, next) : next(),
+  );
 
   // Neutral fetch path (Bun/Deno/Fastify hosts via fetchHandler()).
   // The HTML shell and redirect are exact handlers (highest priority), then the
   // prefix handler serves static assets from the swagger-ui-dist directory.
   const serveAsset = opts.assets ?? fromDisk(fsPath);
-  server.addFetchHandler(
-    'GET',
-    opts.path + '/',
-    async () =>
-      new Response(html, {
-        headers: {'content-type': 'text/html; charset=utf-8'},
-      }),
+  td.push(
+    server.addFetchHandler(
+      'GET',
+      opts.path + '/',
+      async () =>
+        new Response(html, {
+          headers: {'content-type': 'text/html; charset=utf-8'},
+        }),
+    ),
   );
-  server.addFetchHandler('GET', opts.path, async req =>
-    Response.redirect(new URL(opts.path + '/', req.url).toString(), 301),
+  td.push(
+    server.addFetchHandler('GET', opts.path, async req =>
+      Response.redirect(new URL(opts.path + '/', req.url).toString(), 301),
+    ),
   );
-  server.addFetchPrefix(opts.path, suffix => serveAsset(suffix));
+  td.push(server.addFetchPrefix(opts.path, suffix => serveAsset(suffix)));
+  return {uninstall: () => td.run()};
 }
 
 /**

@@ -13,4 +13,5 @@ export * from './pmap.js';
 export * from './promise-timeout.js';
 export * from './safety.js';
 export * from './server-url.js';
+export * from './teardown.js';
 export * from './types.js';
