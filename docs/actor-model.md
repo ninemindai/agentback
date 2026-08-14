@@ -17,6 +17,32 @@ See the interactive [programming-model diagrams](architecture/diagrams/actor-pro
 
 The service object is behavior, not durable state. Actor state remains an explicit method argument and return value, so instance lifetime does not affect persistence, rollback, or passivation.
 
+## What it subtracts
+
+The case for an actor runtime is easier to read as a list of code you stop writing than as a list of concepts you take on. Each row below is machinery a service typically hand-rolls around a mutable per-entity record, and where that machinery moves to instead.
+
+| Hand-rolled around a per-entity record          | What replaces it                                                                                                  |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| An advisory/distributed lock for "one writer"   | The per-identity mailbox. A lease on Redis, one-object-per-name on Durable Objects, a promise chain in process.     |
+| An idempotency table plus a "did I already handle this?" read | `requestId` replay, committed in the **same** write as the state it produced.                        |
+| An outbox table so state and its events cannot diverge | `events` returned from the turn, appended inside the same Lua script / atomic `put` as state and dedup.       |
+| A cache in front of the hot entity              | State is loaded once per turn and lives in the turn. There is no second copy to invalidate.                         |
+| Payload checks repeated at each call site       | Zod on the command. Input is parsed before the method runs; next state and output before commit.                    |
+| A reaper for jobs that never finished           | Turn deadlines. A wedged turn is a **recorded failed turn** with a typed error and a freed seat, never a stuck row.  |
+| Compensating writes when a handler half-mutates | Rollback. State is an argument and a return value, so a thrown or schema-invalid turn commits nothing.              |
+
+The through-line is that each of these is normally correct-by-review rather than correct-by-construction: nothing fails loudly when a caller forgets the lock, skips the dedup read, or writes the event outside the transaction. Moving them into the turn makes forgetting them unrepresentable.
+
+## What it does not subtract
+
+Equally load-bearing, and the reason the list above stops where it does:
+
+- **Your database.** Actor state is a JSON document addressed by `{type, id}`, not a query surface. There is no cross-identity query, join, or reporting path. Postgres stays.
+- **Infrastructure, necessarily.** `actors-redis` does not remove Redis; it uses Redis to coordinate. Only the Durable Objects adapter genuinely co-locates state with compute — the "local read is ~100× a networked one" argument applies there and not to the Redis adapter, which loads state over the network per turn.
+- **Durable queueing of pending commands.** The mailbox is in-flight only. A command that must survive a crash before it runs belongs in a job whose processor calls `invoke` (see "The mailbox model").
+- **Side effects.** The runtime discards a state clone; it cannot unsend an email or unmake a payment. The outbox is still yours to write (see "State and side effects").
+- **Cross-actor transactions, reentrancy, placement, activation, fairness, timers, supervision.** All explicitly out of scope.
+
 ## 1. Author an actor service
 
 ```ts
