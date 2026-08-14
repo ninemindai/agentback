@@ -61,17 +61,21 @@ export async function loadPlugins(
 
   const refs = componentRefsFor(app);
   const outcomes: MountOutcome[] = [];
+  // Built LAZILY over the live `outcomes` array — eager construction would
+  // snapshot an empty list, and the inverse has to cover whatever had mounted
+  // when uninstall() is called, including a partial load that threw under
+  // `strict`. MEMOIZED because `composeTeardown` is idempotent per instance:
+  // rebuilding per call would re-run every disposer, decrementing component
+  // refcounts a second time and unbinding a component another live plugin
+  // still holds.
+  let teardown: (() => Promise<void>) | undefined;
   const report: PluginLoadReport = {
     discovered,
     mounted: [],
     skipped: gate.skipped,
     warnings,
     errors: [],
-    // Built LAZILY over the live `outcomes` array. Eager construction would
-    // snapshot an empty list, and the inverse has to cover whatever had
-    // mounted at the moment uninstall() is called — including a partial load
-    // that threw under `strict`.
-    uninstall: () => buildTeardown(app, outcomes, refs)(),
+    uninstall: () => (teardown ??= buildTeardown(app, outcomes, refs))(),
   };
 
   const fail = (err: PluginLoadError): void => {

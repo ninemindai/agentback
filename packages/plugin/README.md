@@ -54,9 +54,10 @@ Use `loadPlugins` (plural) for the declarative manifest path; use `loadPlugin`
 (singular) for an explicit, code-driven mount of a known target.
 
 `loadPlugin` returns an `Installed` — see [Unmounting](#unmounting). Mounting
-the same plugin twice **without an intervening `uninstall()`** still trips the
-collision guard (the second mount re-binds the component's own, now app-owned,
-key). Mount once, `uninstall()` first, or pass `allowOverride` deliberately.
+the same plugin twice is **refcounted**, not an error: `app.component()`
+early-returns for a component already bound to the same class, so the second
+mount binds nothing new and simply takes a second reference. Each call returns
+its own handle, and the plugin is retracted when the **last** one uninstalls.
 
 ## Unmounting
 
@@ -129,7 +130,7 @@ container remains the authority at resolution time, so under-declaring `inject`
 costs you ordering guarantees, not correctness. Two consequences: a key the
 **application itself** binds satisfies an `inject` with no edge (not every
 dependency comes from a plugin), and the graph cannot express "I need the
-*overridden* binding" when the app holds a default — a consumer that needs the
+_overridden_ binding" when the app holds a default — a consumer that needs the
 override should inject a key the overriding plugin uniquely provides.
 
 A runnable end-to-end demo of both entry points lives in

@@ -57,18 +57,24 @@ export function sortByGraph(input: SortInput): GraphResult {
   // 1. Who provides what. A key claimed twice is a collision unless the
   //    manifest says the override is intentional — two plugins re-binding one
   //    key under `allowOverride` is a supported case today.
-  const providers = new Map<string, string>();
+  // A key may legitimately have SEVERAL providers under `allowOverride`, and
+  // every one of them must mount before a consumer — edging only to the last
+  // declarer would let an earlier provider mount *after* the consumer and
+  // overwrite the binding the consumer was ordered to wait for. So this maps
+  // key -> ALL providers, and the edge builder consumes all of them.
+  const providers = new Map<string, string[]>();
   const duplicates = new Map<string, string[]>();
   for (const p of gated) {
     for (const key of p.provides) {
       const prior = providers.get(key);
       if (prior !== undefined && !allowOverride.has(key)) {
-        const list = duplicates.get(key) ?? [prior];
+        const list = duplicates.get(key) ?? [...prior];
         list.push(p.name);
         duplicates.set(key, list);
         continue;
       }
-      providers.set(key, p.name);
+      if (prior === undefined) providers.set(key, [p.name]);
+      else prior.push(p.name);
     }
   }
   for (const [key, names] of duplicates) {
@@ -98,7 +104,7 @@ export function sortByGraph(input: SortInput): GraphResult {
   for (const p of gated) {
     for (const key of p.inject) {
       if (appOwnedKeys.has(key)) continue;
-      const provider = providers.get(key);
+      const provider = providers.get(key)?.[0];
       if (provider === undefined) {
         const gatedOut = skippedProviders.get(key);
         errors.push({
@@ -112,7 +118,10 @@ export function sortByGraph(input: SortInput): GraphResult {
         });
         continue;
       }
-      if (provider !== p.name) dependsOn.get(p.name)!.add(provider);
+      // Edge to EVERY provider, not just one — see the providers map above.
+      for (const name of providers.get(key)!) {
+        if (name !== p.name) dependsOn.get(p.name)!.add(name);
+      }
     }
   }
   if (errors.length) return {ordered: [], errors, warnings};

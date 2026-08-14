@@ -1158,13 +1158,21 @@ export class MCPServer implements Server {
       // unknown>` statically — the registration-time guard above (which throws
       // unless the schema lowered to an object root) is what actually upholds
       // the invariant, hence the assertion here.
-      tools: Array.from(visible.values())
-        // Liveness: `visible` is baked when the server is built, so a tool
-        // whose binding was retracted afterwards must stop being advertised.
-        .filter(
-          v => findToolBindingKey(this.context, v.tool.ctor) !== undefined,
-        )
-        .map(v => v.entry) as ListToolsResult['tools'],
+      // Liveness: `visible` is baked when the server is built, so a tool whose
+      // binding was retracted afterwards must stop being advertised. Collect
+      // the live constructors in ONE container walk rather than calling
+      // findToolBindingKey per tool — that would make the common discovery
+      // request O(tools x bindings).
+      tools: (() => {
+        const live = new Set<unknown>(
+          this.context
+            .find(extensionFilter(MCP_SERVERS))
+            .map(b => b.valueConstructor),
+        );
+        return Array.from(visible.values())
+          .filter(v => live.has(v.tool.ctor))
+          .map(v => v.entry) as ListToolsResult['tools'];
+      })(),
     }));
     server.setRequestHandler(
       'tools/call',

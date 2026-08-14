@@ -141,3 +141,25 @@ describe('sortByGraph', () => {
     expect(r.ordered).toHaveLength(2);
   });
 });
+
+describe('sortByGraph — allowOverride with several providers', () => {
+  it('orders the consumer after EVERY provider, not just the last', () => {
+    // Both a and b provide services.X under allowOverride. Edging only to the
+    // last declarer would let the other mount AFTER the consumer and overwrite
+    // the binding the consumer was ordered to wait for.
+    const a = info('a', ['services.X']);
+    const b = info('b', ['services.X']);
+    const consumer = info('consumer', [], ['services.X']);
+    const r = sortByGraph({
+      ...EMPTY,
+      gated: [consumer, a, b],
+      allowOverride: new Set(['services.X']),
+      // order: asks for the consumer first; the edges must outrank it.
+      order: ['consumer'],
+    });
+    expect(r.errors).toEqual([]);
+    const names = r.ordered.map(p => p.name);
+    expect(names.indexOf('consumer')).toBeGreaterThan(names.indexOf('a'));
+    expect(names.indexOf('consumer')).toBeGreaterThan(names.indexOf('b'));
+  });
+});

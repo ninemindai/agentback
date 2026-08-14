@@ -10,7 +10,11 @@
   "agentback": {
     "plugin": true,
     "component": "BannerPlugin",
-    "provides": ["plugin.banner"],
-    "inject": ["plugin.greeting"]
+    "provides": [
+      "plugin.banner"
+    ],
+    "inject": [
+      "plugin.greeting"
+    ]
   }
 }

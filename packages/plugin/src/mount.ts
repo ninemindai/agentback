@@ -4,7 +4,11 @@
 
 import type {Binding} from '@agentback/context';
 import {composeTeardown} from '@agentback/common';
-import type {Application, Component, LifeCycleObserverRegistry} from '@agentback/core';
+import type {
+  Application,
+  Component,
+  LifeCycleObserverRegistry,
+} from '@agentback/core';
 import {CoreBindings, CoreTags, revertOwned} from '@agentback/core';
 import type {PluginInfo, PluginLoadError} from './types.js';
 
@@ -73,8 +77,7 @@ interface ComponentEntry {
 }
 
 export type MountOutcome =
-  | {ok: true; footprint: MountFootprint}
-  | {ok: false; error: PluginLoadError};
+  {ok: true; footprint: MountFootprint} | {ok: false; error: PluginLoadError};
 
 /**
  * Component refcounts, shared per Application.
@@ -209,8 +212,9 @@ export async function tryMount(
   const before = boundBindings(app);
   let rootKey: string;
   try {
-    rootKey = app.component(exported as new (...args: unknown[]) => Component)
-      .key;
+    rootKey = app.component(
+      exported as new (...args: unknown[]) => Component,
+    ).key;
   } catch (err) {
     return {
       ok: false,
@@ -323,12 +327,19 @@ export function buildTeardown(
         refs.delete(key);
       }
 
-      // Observers first — they must still be bound to resolve, and only for
+      // Observers next — they must still be bound to resolve, and only for
       // bindings this teardown is actually retracting. Gated on app state
       // because Application.stop() itself no-ops outside started|initialized,
       // and a third-party plugin's stop() is not guaranteed idempotent:
       // gating is what prevents a double-stop after app.stop(), rather than
       // trusting someone else's discipline.
+      //
+      // A failing stop() must NOT skip the reverts below. The refcounts were
+      // already decremented and their entries deleted above, so an early exit
+      // here would leave the bindings mounted with no record of who owns them
+      // — unrecoverable, and worse than the original failure. Hold the error
+      // and rethrow after the reverts; `composeTeardown` aggregates it.
+      let observerError: unknown;
       const state = app.state;
       if (state === 'started' || state === 'initialized') {
         const observerKeys = new Set(
@@ -342,10 +353,14 @@ export function buildTeardown(
             .map(t => t.binding.key),
         );
         if (observerKeys.size) {
-          const registry = await app.get<LifeCycleObserverRegistry>(
-            CoreBindings.LIFE_CYCLE_OBSERVER_REGISTRY,
-          );
-          await registry.stopObservers(observerKeys);
+          try {
+            const registry = await app.get<LifeCycleObserverRegistry>(
+              CoreBindings.LIFE_CYCLE_OBSERVER_REGISTRY,
+            );
+            await registry.stopObservers(observerKeys);
+          } catch (err) {
+            observerError = err;
+          }
         }
       }
 
@@ -354,6 +369,8 @@ export function buildTeardown(
         const {binding, displaced} = toRevert[i];
         revertOwned(app, binding, displaced);
       }
+
+      if (observerError !== undefined) throw observerError;
     });
   }
   return () => teardown.run();

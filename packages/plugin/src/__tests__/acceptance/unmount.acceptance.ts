@@ -168,6 +168,25 @@ describe('uninstall — shared nested components', () => {
     expect(app.isBound('components.SharedComponent')).toBe(false);
     expect(app.isBound('components.SharedBComponent')).toBe(false);
   });
+
+  it('a repeated uninstall does not retract what another plugin still holds', async () => {
+    // Idempotency has to be asserted against SHARED state. A single-plugin
+    // "second call resolves" test passes even when the second call re-runs
+    // every disposer, because the identity guard makes re-reverting an
+    // already-unbound key a silent no-op — there is nothing left to corrupt.
+    // With two plugins there is: a double decrement drops the shared
+    // component's refcount to zero and unbinds it under the other plugin.
+    const app = new Application();
+    const a = await loadPlugin(app, resolve(fixtures, 'shared-a'));
+    await loadPlugin(app, resolve(fixtures, 'shared-b'));
+
+    await a.uninstall();
+    await a.uninstall();
+    await a.uninstall();
+
+    expect(app.isBound('components.SharedComponent')).toBe(true);
+    expect(app.isBound('services.SharedDep')).toBe(true);
+  });
 });
 
 describe('uninstall — strict partial load', () => {
@@ -192,5 +211,49 @@ describe('uninstall — strict partial load', () => {
 
     await thrown!.report!.uninstall();
     expect(app.isBound('components.GoodComponent')).toBe(false);
+  });
+});
+
+describe('uninstall — repeated mounts are refcounted', () => {
+  it('two mounts of one plugin need two uninstalls', async () => {
+    // app.component() early-returns for a component already bound to the same
+    // class, so the second mount binds nothing and simply takes a reference.
+    const app = new Application();
+    const one = await loadPlugin(app, resolve(fixtures, 'good-plugin'));
+    const two = await loadPlugin(app, resolve(fixtures, 'good-plugin'));
+
+    await one.uninstall();
+    expect(app.isBound('components.GoodComponent')).toBe(true);
+
+    await two.uninstall();
+    expect(app.isBound('components.GoodComponent')).toBe(false);
+  });
+});
+
+describe('uninstall — a failing observer must not strand bindings', () => {
+  it('reverts everything even when stop() rejects, and still reports', async () => {
+    // The refcounts are decremented BEFORE observers run, so an early exit on
+    // a failing stop() would leave the bindings mounted with no record of who
+    // owns them — unrecoverable, and worse than the original failure.
+    const app = new Application();
+    const installed = await loadPlugin(
+      app,
+      resolve(fixtures, 'bad-observer-plugin'),
+    );
+    await app.start();
+    expect(app.isBound('plugin.badObserverMarker')).toBe(true);
+
+    // composeTeardown aggregates disposer failures into one AggregateError.
+    const err = await installed.uninstall().then(
+      () => undefined,
+      (e: unknown) => e as AggregateError,
+    );
+    expect(err).toBeInstanceOf(AggregateError);
+    expect(String(err!.errors[0])).toMatch(/exploded/);
+
+    // The failure is surfaced, AND the retraction completed.
+    expect(app.isBound('plugin.badObserverMarker')).toBe(false);
+    expect(app.isBound('components.BadObserverComponent')).toBe(false);
+    await app.stop();
   });
 });

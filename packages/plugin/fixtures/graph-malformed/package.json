@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "main": "index.js",
-  "exports": {".": "./index.js"},
+  "exports": {
+    ".": "./index.js"
+  },
   "agentback": {
     "plugin": true,
     "component": "MalformedComponent",

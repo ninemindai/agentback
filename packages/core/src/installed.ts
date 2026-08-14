@@ -18,11 +18,20 @@ export interface Installed {
   uninstall(): Promise<void>;
 }
 
-/** The subset of `Context` a revert needs. */
-interface RevertableContext {
+/** The subset of `Context` an unbind needs. */
+interface UnbindableContext {
   isBound(key: string): boolean;
   getBinding(key: string): unknown;
   unbind(key: string): boolean;
+}
+
+/**
+ * What a *restoring* revert additionally needs. Kept separate from
+ * {@link UnbindableContext} so `unbindOwned`'s published structural type is
+ * unchanged: it never restores, so requiring `add` would break any caller
+ * passing a narrower context object.
+ */
+interface RevertableContext extends UnbindableContext {
   add(binding: never): unknown;
 }
 
@@ -58,8 +67,9 @@ export function revertOwned(
  * {@link revertOwned} with no displaced binding to restore.
  */
 export function unbindOwned(
-  ctx: RevertableContext,
+  ctx: UnbindableContext,
   binding: {key: string},
 ): void {
-  revertOwned(ctx, binding);
+  // Safe: with no `displaced` argument `revertOwned` never reaches `add`.
+  revertOwned(ctx as RevertableContext, binding);
 }

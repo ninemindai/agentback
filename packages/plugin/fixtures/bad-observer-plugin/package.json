@@ -1,5 +1,5 @@
 {
-  "name": "@fixture/shared-b",
+  "name": "@fixture/bad-observer-plugin",
   "version": "1.0.0",
   "type": "module",
   "main": "index.js",
@@ -8,6 +8,6 @@
   },
   "agentback": {
     "plugin": true,
-    "component": "SharedBComponent"
+    "component": "BadObserverComponent"
   }
 }

@@ -151,5 +151,13 @@ export async function loadPlugin(
     e.error = error;
     throw e;
   }
-  return {...info, uninstall: () => buildTeardown(app, [outcome], refs)()};
+  // Memoized: `composeTeardown` is idempotent per instance, so rebuilding it
+  // on a second uninstall() would re-run every disposer — decrementing
+  // component refcounts twice and unbinding a shared component another live
+  // plugin still references.
+  let teardown: (() => Promise<void>) | undefined;
+  return {
+    ...info,
+    uninstall: () => (teardown ??= buildTeardown(app, [outcome], refs))(),
+  };
 }

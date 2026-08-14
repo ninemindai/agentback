@@ -106,12 +106,20 @@ async function retractionDemo(root: string) {
   });
 
   console.log('\n--- retraction ---');
-  console.log('bound before:', app.isBound('plugin.greeting'), app.isBound('plugin.stamp'));
+  console.log(
+    'bound before:',
+    app.isBound('plugin.greeting'),
+    app.isBound('plugin.stamp'),
+  );
 
   await one.uninstall(); // loadPlugin -> PluginInfo & Installed
   await report.uninstall(); // loadPlugins -> report satisfies Installed
 
-  console.log('bound after: ', app.isBound('plugin.greeting'), app.isBound('plugin.stamp'));
+  console.log(
+    'bound after: ',
+    app.isBound('plugin.greeting'),
+    app.isBound('plugin.stamp'),
+  );
   // Idempotent: a second call is a no-op, never an error.
   await report.uninstall();
 }

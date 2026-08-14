@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "type": "module",
   "main": "index.js",
-  "exports": {".": "./index.js"},
-  "agentback": {"plugin": true, "component": "ObserverComponent"}
+  "exports": {
+    ".": "./index.js"
+  },
+  "agentback": {
+    "plugin": true,
+    "component": "ObserverComponent"
+  }
 }

@@ -4,7 +4,7 @@
 
 **Goal:** Make a mounted plugin set retractable (`report.uninstall()`), and derive mount order from a declared `provides`/`inject` graph instead of a hand-maintained `order:` list.
 
-**Architecture:** `tryMount` already snapshots the app's bindings before and after `app.component()` and diffs them by binding *instance* identity; today that diff is read once for collision detection and discarded. We retain it as the retraction footprint, compose per-mount teardowns LIFO with `composeTeardown()`, and add a pure `graph.ts` that topologically sorts the gated plugin set. Component keys are refcounted (not read from the diff) because `app.component()` early-returns for an already-mounted nested component, leaving the second plugin's diff empty.
+**Architecture:** `tryMount` already snapshots the app's bindings before and after `app.component()` and diffs them by binding _instance_ identity; today that diff is read once for collision detection and discarded. We retain it as the retraction footprint, compose per-mount teardowns LIFO with `composeTeardown()`, and add a pure `graph.ts` that topologically sorts the gated plugin set. Component keys are refcounted (not read from the diff) because `app.component()` early-returns for an already-mounted nested component, leaving the second plugin's diff empty.
 
 **Tech Stack:** TypeScript 7 (`tsc` bin) / TS 6 module, ESM-only, Node 22.13+, pnpm 11 workspaces, Zod 4, vitest.
 
@@ -31,13 +31,15 @@
 
 ### Task 1: Guarded revert helper in `@agentback/core`
 
-The existing `unbindOwned` guards the *unbind*. The teardown also needs to *restore* a displaced binding, and that write needs the **same** guard — if a third party rebound the key after us, skipping the unbind but still restoring clobbers them. One identity check must gate both halves.
+The existing `unbindOwned` guards the _unbind_. The teardown also needs to _restore_ a displaced binding, and that write needs the **same** guard — if a third party rebound the key after us, skipping the unbind but still restoring clobbers them. One identity check must gate both halves.
 
 **Files:**
+
 - Modify: `packages/core/src/installed.ts:28-39`
 - Test: `packages/core/src/__tests__/unit/installed.unit.ts` (create if absent)
 
 **Interfaces:**
+
 - Consumes: nothing (foundation task)
 - Produces: `revertOwned(ctx, binding, displaced?): boolean` — returns `true` when the binding was still ours and was unbound (and `displaced` restored), `false` when a third party owns the key now and nothing was touched. `unbindOwned(ctx, binding): void` keeps its exact current signature and behavior.
 
@@ -186,11 +188,13 @@ the guard exists to prevent. unbindOwned now delegates, unchanged."
 ### Task 2: Read `provides` / `inject` from the package marker
 
 **Files:**
+
 - Modify: `packages/plugin/src/types.ts:13-32`
 - Modify: `packages/plugin/src/discovery.ts:49-76`
 - Test: `packages/plugin/src/__tests__/unit/discovery.unit.ts`
 
 **Interfaces:**
+
 - Consumes: nothing
 - Produces: `PluginInfo.provides: string[]` and `PluginInfo.inject: string[]` — always arrays, normalized to `[]` when the marker omits them or supplies a malformed value. `PluginPackageMarker.provides?: string[]`, `.inject?: string[]`.
 
@@ -389,10 +393,12 @@ dropped rather than fatal, matching how an invalid marker is already skipped."
 Pure data in, data out. No `Application`, no imports, no I/O — which is why it is its own file and its own test.
 
 **Files:**
+
 - Create: `packages/plugin/src/graph.ts`
 - Test: `packages/plugin/src/__tests__/unit/graph.unit.ts`
 
 **Interfaces:**
+
 - Consumes: `PluginInfo` (Task 2), `PluginLoadError` from `./types.js`
 - Produces: `sortByGraph(input: SortInput): GraphResult` where
   `SortInput = {gated: PluginInfo[]; skipped: PluginInfo[]; appOwnedKeys: ReadonlySet<string>; order: string[]; allowOverride: ReadonlySet<string>}`
@@ -500,7 +506,10 @@ describe('sortByGraph', () => {
   });
 
   it('reports an unsatisfiable inject', () => {
-    const r = sortByGraph({...EMPTY, gated: [info('a', [], ['services.Gone'])]});
+    const r = sortByGraph({
+      ...EMPTY,
+      gated: [info('a', [], ['services.Gone'])],
+    });
     expect(r.errors).toHaveLength(1);
     expect(r.errors[0].kind).toBe('unsatisfied-inject');
     expect(r.errors[0].package).toBe('a');
@@ -757,10 +766,12 @@ plugins re-binding one key is a supported case today."
 ### Task 4: Wire the graph into `loadPlugins`
 
 **Files:**
+
 - Modify: `packages/plugin/src/load-plugins.ts:37-48`
 - Test: `packages/plugin/src/__tests__/acceptance/load-plugins.acceptance.ts`
 
 **Interfaces:**
+
 - Consumes: `sortByGraph` (Task 3), `appOwnedContext` (`mount.ts:29`)
 - Produces: nothing new externally; `report.errors` may now carry the three graph kinds, and mount order follows the graph.
 
@@ -774,10 +785,11 @@ describe('loadPlugins — declared graph', () => {
     const app = new Application();
     const report = await loadPlugins(app, {
       cwd: fixtures,
-      config: {scan: false, dirs: ['.'], enable: [
-        '@fixture/graph-consumer',
-        '@fixture/graph-provider',
-      ]},
+      config: {
+        scan: false,
+        dirs: ['.'],
+        enable: ['@fixture/graph-consumer', '@fixture/graph-provider'],
+      },
     });
     expect(report.errors).toEqual([]);
     expect(report.mounted.map(p => p.name)).toEqual([
@@ -850,28 +862,28 @@ import {sortByGraph} from './graph.js';
 Then replace lines 37-50 (from `const warnings` through `const ctx = appOwnedContext(...)`) with:
 
 ```ts
-  const warnings: string[] = [];
-  const discovered = await discover(config, cwd, warnings);
-  const gate = applyGate(discovered, config);
-  warnings.push(...gate.warnings);
+const warnings: string[] = [];
+const discovered = await discover(config, cwd, warnings);
+const gate = applyGate(discovered, config);
+warnings.push(...gate.warnings);
 
-  const ctx = appOwnedContext(app, config.allowOverride);
-  const graph = sortByGraph({
-    gated: gate.ordered,
-    skipped: gate.skipped,
-    appOwnedKeys: new Set(ctx.owners.keys()),
-    order: config.order,
-    allowOverride: ctx.allowOverride,
-  });
-  warnings.push(...graph.warnings);
+const ctx = appOwnedContext(app, config.allowOverride);
+const graph = sortByGraph({
+  gated: gate.ordered,
+  skipped: gate.skipped,
+  appOwnedKeys: new Set(ctx.owners.keys()),
+  order: config.order,
+  allowOverride: ctx.allowOverride,
+});
+warnings.push(...graph.warnings);
 
-  const report: PluginLoadReport = {
-    discovered,
-    mounted: [],
-    skipped: gate.skipped,
-    warnings,
-    errors: [],
-  };
+const report: PluginLoadReport = {
+  discovered,
+  mounted: [],
+  skipped: gate.skipped,
+  warnings,
+  errors: [],
+};
 ```
 
 and change the mount loop's iterable from `gate.ordered` to `graph.ordered`, adding the graph-error gate immediately before it:
@@ -912,10 +924,12 @@ app.component() had run its side effects."
 ### Task 5: Capture the footprint and build the teardown
 
 **Files:**
+
 - Modify: `packages/plugin/src/mount.ts:44-94`
 - Test: `packages/plugin/src/__tests__/unit/mount.unit.ts` (create)
 
 **Interfaces:**
+
 - Consumes: `revertOwned` (Task 1), `composeTeardown` from `@agentback/common`
 - Produces:
   - `MountOutcome = {ok: true; footprint: MountFootprint} | {ok: false; error: PluginLoadError}` — `tryMount`'s new return type (internal, not exported from the package barrel).
@@ -960,7 +974,12 @@ describe('buildTeardown', () => {
     const ctx = appOwnedContext(app, ['services.Shared']);
     const refs = new Map<string, number>();
 
-    const outcome = await tryMount(app, fixtureInfo('collide-a', 'CollideAComponent'), ctx, refs);
+    const outcome = await tryMount(
+      app,
+      fixtureInfo('collide-a', 'CollideAComponent'),
+      ctx,
+      refs,
+    );
     expect(outcome.ok).toBe(true);
     expect(app.getSync('services.Shared')).toBe('a');
 
@@ -977,7 +996,12 @@ describe('buildTeardown', () => {
     const ctx = appOwnedContext(app, ['services.Shared']);
     const refs = new Map<string, number>();
 
-    const outcome = await tryMount(app, fixtureInfo('collide-a', 'CollideAComponent'), ctx, refs);
+    const outcome = await tryMount(
+      app,
+      fixtureInfo('collide-a', 'CollideAComponent'),
+      ctx,
+      refs,
+    );
     const teardown = buildTeardown(app, [outcome], refs);
 
     // Somebody else shadows the key AFTER the plugin mounted.
@@ -993,7 +1017,12 @@ describe('buildTeardown', () => {
     const app = new Application();
     const ctx = appOwnedContext(app);
     const refs = new Map<string, number>();
-    const outcome = await tryMount(app, fixtureInfo('good-plugin', 'GoodComponent'), ctx, refs);
+    const outcome = await tryMount(
+      app,
+      fixtureInfo('good-plugin', 'GoodComponent'),
+      ctx,
+      refs,
+    );
     const teardown = buildTeardown(app, [outcome], refs);
 
     await teardown();
@@ -1061,8 +1090,7 @@ export interface MountFootprint {
 }
 
 export type MountOutcome =
-  | {ok: true; footprint: MountFootprint}
-  | {ok: false; error: PluginLoadError};
+  {ok: true; footprint: MountFootprint} | {ok: false; error: PluginLoadError};
 
 /** Initialize a `MountContext` treating every already-bound key as app-owned. */
 export function appOwnedContext(
@@ -1121,7 +1149,10 @@ export async function tryMount(
   try {
     mod = (await import(info.importSpecifier)) as Record<string, unknown>;
   } catch (err) {
-    return {ok: false, error: {package: info.name, kind: 'import', message: String(err)}};
+    return {
+      ok: false,
+      error: {package: info.name, kind: 'import', message: String(err)},
+    };
   }
 
   const exported = mod[info.component];
@@ -1139,9 +1170,14 @@ export async function tryMount(
   const before = boundBindings(app);
   let rootKey: string;
   try {
-    rootKey = app.component(exported as new (...args: unknown[]) => Component).key;
+    rootKey = app.component(
+      exported as new (...args: unknown[]) => Component,
+    ).key;
   } catch (err) {
-    return {ok: false, error: {package: info.name, kind: 'import', message: String(err)}};
+    return {
+      ok: false,
+      error: {package: info.name, kind: 'import', message: String(err)},
+    };
   }
   const after = boundBindings(app);
 
@@ -1227,17 +1263,17 @@ Confirm `packages/core/src/index.ts` re-exports `./installed.js`. If it exports 
 In `packages/plugin/src/load-plugins.ts`, the loop becomes:
 
 ```ts
-  const refs = new Map<string, number>();
-  const outcomes: MountOutcome[] = [];
-  for (const info of graph.ordered) {
-    const outcome = await tryMount(app, info, ctx, refs);
-    if (!outcome.ok) {
-      fail(outcome.error);
-      continue;
-    }
-    outcomes.push(outcome);
-    report.mounted.push(info);
+const refs = new Map<string, number>();
+const outcomes: MountOutcome[] = [];
+for (const info of graph.ordered) {
+  const outcome = await tryMount(app, info, ctx, refs);
+  if (!outcome.ok) {
+    fail(outcome.error);
+    continue;
   }
+  outcomes.push(outcome);
+  report.mounted.push(info);
+}
 ```
 
 Import `MountOutcome` and `buildTeardown` from `./mount.js`. Do the same shape in `load-plugin.ts` (single element).
@@ -1270,10 +1306,12 @@ A colliding mount now rolls back instead of staying mounted and unreported."
 ### Task 6: Stop lifecycle observers through the registry
 
 **Files:**
+
 - Modify: `packages/plugin/src/mount.ts` (`buildTeardown`)
 - Test: `packages/plugin/src/__tests__/acceptance/unmount.acceptance.ts` (create)
 
 **Interfaces:**
+
 - Consumes: `MountFootprint` (Task 5), `CoreTags.LIFE_CYCLE_OBSERVER`
 - Produces: no new exports; `buildTeardown`'s returned function is now async-effectful (it already returns a promise).
 
@@ -1298,7 +1336,10 @@ const fixtures = resolve(here, '../../..', 'fixtures');
 describe('uninstall — lifecycle observers', () => {
   it('does NOT stop an observer when the app was never started', async () => {
     const app = new Application();
-    const installed = await loadPlugin(app, resolve(fixtures, 'observer-plugin'));
+    const installed = await loadPlugin(
+      app,
+      resolve(fixtures, 'observer-plugin'),
+    );
     await installed.uninstall();
 
     const stops = app.getSync<string[]>('test.observerStops');
@@ -1307,7 +1348,10 @@ describe('uninstall — lifecycle observers', () => {
 
   it('stops the observer when the app IS started', async () => {
     const app = new Application();
-    const installed = await loadPlugin(app, resolve(fixtures, 'observer-plugin'));
+    const installed = await loadPlugin(
+      app,
+      resolve(fixtures, 'observer-plugin'),
+    );
     await app.start();
     await installed.uninstall();
 
@@ -1318,7 +1362,10 @@ describe('uninstall — lifecycle observers', () => {
 
   it('app.stop() then uninstall() does not double-stop', async () => {
     const app = new Application();
-    const installed = await loadPlugin(app, resolve(fixtures, 'observer-plugin'));
+    const installed = await loadPlugin(
+      app,
+      resolve(fixtures, 'observer-plugin'),
+    );
     await app.start();
     await app.stop();
     await installed.uninstall();
@@ -1468,10 +1515,12 @@ assumption, which does not hold for third-party plugin observers."
 ### Task 7: `report.uninstall()` and `loadPlugin`'s `Installed`
 
 **Files:**
+
 - Modify: `packages/plugin/src/types.ts` (`PluginLoadReport`), `packages/plugin/src/load-plugins.ts`, `packages/plugin/src/load-plugin.ts`
 - Test: `packages/plugin/src/__tests__/acceptance/unmount.acceptance.ts`
 
 **Interfaces:**
+
 - Consumes: `buildTeardown` (Task 5)
 - Produces: `PluginLoadReport extends Installed`; `loadPlugin(...): Promise<PluginInfo & Installed>`.
 
@@ -1560,19 +1609,19 @@ export interface PluginLoadReport extends Installed {
 
 - [ ] **Step 4: Attach the teardown in `load-plugins.ts`**
 
-Build the report with a placeholder that is replaced once the loop finishes — the teardown must exist *before* `fail()` can throw, so the thrown error's attached report carries a working `uninstall`:
+Build the report with a placeholder that is replaced once the loop finishes — the teardown must exist _before_ `fail()` can throw, so the thrown error's attached report carries a working `uninstall`:
 
 ```ts
-  const refs = new Map<string, number>();
-  const outcomes: MountOutcome[] = [];
-  const report: PluginLoadReport = {
-    discovered,
-    mounted: [],
-    skipped: gate.skipped,
-    warnings,
-    errors: [],
-    uninstall: () => buildTeardown(app, outcomes, refs)(),
-  };
+const refs = new Map<string, number>();
+const outcomes: MountOutcome[] = [];
+const report: PluginLoadReport = {
+  discovered,
+  mounted: [],
+  skipped: gate.skipped,
+  warnings,
+  errors: [],
+  uninstall: () => buildTeardown(app, outcomes, refs)(),
+};
 ```
 
 `buildTeardown` closes over the live `outcomes` array, so the inverse covers
@@ -1592,7 +1641,9 @@ export async function loadPlugin(
   const refs = new Map<string, number>();
   const outcome = await tryMount(app, info, ctx, refs);
   if (!outcome.ok) {
-    throw new Error(`[plugin:${outcome.error.package}] ${outcome.error.kind}: ${outcome.error.message}`);
+    throw new Error(
+      `[plugin:${outcome.error.package}] ${outcome.error.kind}: ${outcome.error.message}`,
+    );
   }
   return {...info, uninstall: () => buildTeardown(app, [outcome], refs)()};
 }
@@ -1635,12 +1686,14 @@ succeed rather than leaving a half-mounted app with no inverse."
 ### Task 8: Shared nested components are refcounted
 
 **Files:**
+
 - Test: `packages/plugin/src/__tests__/acceptance/unmount.acceptance.ts`
 - Fixtures: `packages/plugin/fixtures/shared-a`, `packages/plugin/fixtures/shared-b`
 
 The mechanism landed in Task 5; this task proves it, because the failure is silent and no other test would catch it.
 
 **Interfaces:**
+
 - Consumes: `referencedComponentKeys`, `refs` (Task 5)
 - Produces: nothing new
 
@@ -1745,10 +1798,12 @@ first plugin's uninstall silently break the second."
 An unbound `@mcpServer` currently stays in a built server's `visible` map, and `resolveMember` falls back to `new ctor()` — so an unmounted tool remains callable **and** runs without its injected dependencies.
 
 **Files:**
+
 - Modify: `packages/mcp/src/mcp.server.ts:931-942` (`resolveMember`), and the `tools/list` handler built in `registerAllOn` (`:1100`)
 - Test: `packages/mcp/src/__tests__/integration/tool-retraction.integration.ts` (create)
 
 **Interfaces:**
+
 - Consumes: `extensionFilter(MCP_SERVERS)` (already imported in `mcp.server.ts`)
 - Produces: `findToolBindingKey(ctx, ctor): string | undefined` — the MCP counterpart of `findControllerBindingKey`, exported from `@agentback/mcp` for tests.
 
@@ -1788,7 +1843,9 @@ describe('MCP tool retraction', () => {
 
     app.unbind(binding.key);
 
-    expect((await server.listTools()).tools.map(t => t.name)).not.toContain('echo');
+    expect((await server.listTools()).tools.map(t => t.name)).not.toContain(
+      'echo',
+    );
     await app.stop();
   });
 
@@ -1801,9 +1858,9 @@ describe('MCP tool retraction', () => {
 
     app.unbind(binding.key);
 
-    await expect(
-      server.callTool('echo', {text: 'hi'}),
-    ).rejects.toThrow(/not bound|unknown tool/i);
+    await expect(server.callTool('echo', {text: 'hi'})).rejects.toThrow(
+      /not bound|unknown tool/i,
+    );
     await app.stop();
   });
 });
@@ -1871,29 +1928,26 @@ handlers consult liveness at request time.
 `tools/list` (currently `Array.from(visible.values(), v => v.entry)`):
 
 ```ts
-    server.setRequestHandler('tools/list', async () => ({
-      tools: Array.from(visible.values())
-        // Liveness: the map is baked at build time, so a tool whose binding
-        // was retracted after that must not still be advertised.
-        .filter(v => findToolBindingKey(this.context, v.tool.ctor) !== undefined)
-        .map(v => v.entry) as ListToolsResult['tools'],
-    }));
+server.setRequestHandler('tools/list', async () => ({
+  tools: Array.from(visible.values())
+    // Liveness: the map is baked at build time, so a tool whose binding
+    // was retracted after that must not still be advertised.
+    .filter(v => findToolBindingKey(this.context, v.tool.ctor) !== undefined)
+    .map(v => v.entry) as ListToolsResult['tools'],
+}));
 ```
 
 `tools/call` — fold liveness into the existing not-found branch so a retracted
 tool reuses the error shape callers already handle:
 
 ```ts
-          const found = visible.get(request.params.name);
-          if (
-            !found ||
-            findToolBindingKey(this.context, found.tool.ctor) === undefined
-          ) {
-            throw new ProtocolError(
-              ProtocolErrorCode.InvalidParams,
-              `Tool ${request.params.name} not found`,
-            );
-          }
+const found = visible.get(request.params.name);
+if (!found || findToolBindingKey(this.context, found.tool.ctor) === undefined) {
+  throw new ProtocolError(
+    ProtocolErrorCode.InvalidParams,
+    `Tool ${request.params.name} not found`,
+  );
+}
 ```
 
 Note `resolveMember` is also called for resources (`:434`) and prompts
@@ -1932,10 +1986,12 @@ controller liveness gate and removes the fallback."
 ### Task 10: `loadPlugin` through the shared install conformance suite
 
 **Files:**
+
 - Test: `packages/plugin/src/__tests__/acceptance/install-conformance.acceptance.ts` (create)
 - Fixture: `packages/plugin/fixtures/route-plugin`
 
 **Interfaces:**
+
 - Consumes: `runInstallConformance` from `@agentback/testing`, `loadPlugin` (Task 7)
 - Produces: nothing
 
@@ -2029,9 +2085,11 @@ helpers already run rather than adding a second plugin-specific one."
 `CLAUDE.md` requires every doc surface a major feature touches to be updated in the same change.
 
 **Files:**
+
 - Modify: `packages/plugin/README.md`, `docs/packages.md`, `skills/agentback/SKILL.md`, `skills/agentback/references/*.md`, `CLAUDE.md`, `examples/hello-plugin/`
 
 **Interfaces:**
+
 - Consumes: everything above
 - Produces: no code
 
@@ -2052,7 +2110,7 @@ observer stops.
 - [ ] **Step 4: `CLAUDE.md`** — update the `plugin` bullet in "New capability packages":
 
 ```markdown
-   - `plugin` — discover, gate, and mount Component-contributing plugins into an Application, and **retract them**: `loadPlugins` returns a report satisfying `Installed`, `loadPlugin` returns `PluginInfo & Installed`. The footprint is the binding snapshot diff `tryMount` already computes (**not** the `fromComponent` tag — `app.component()` instantiates before tagging, so a constructor that binds directly is untagged, and provenance is last-wins so it cannot name a displaced binding). One identity check gates both the unbind and the restore, because an unguarded restore clobbers a third-party shadow exactly as an unguarded unbind deletes one. `components.*` keys are **refcounted** by walking the resolved instance's `.components` tree, since `app.component()` early-returns for an already-mounted nested component and leaves the second plugin's diff empty. A colliding mount rolls back. Observers stop through the lifecycle registry, only while the app is `started`/`initialized`. The marker also takes **`provides`/`inject`** (binding keys): mount order is a topological sort with `order:` demoted to a tiebreaker, and a duplicate `provides` is caught **before any import** — `allowOverride` still permits an intentional one. Declarations are advisory; the container stays the authority, so under-declaring costs ordering, not correctness.
+- `plugin` — discover, gate, and mount Component-contributing plugins into an Application, and **retract them**: `loadPlugins` returns a report satisfying `Installed`, `loadPlugin` returns `PluginInfo & Installed`. The footprint is the binding snapshot diff `tryMount` already computes (**not** the `fromComponent` tag — `app.component()` instantiates before tagging, so a constructor that binds directly is untagged, and provenance is last-wins so it cannot name a displaced binding). One identity check gates both the unbind and the restore, because an unguarded restore clobbers a third-party shadow exactly as an unguarded unbind deletes one. `components.*` keys are **refcounted** by walking the resolved instance's `.components` tree, since `app.component()` early-returns for an already-mounted nested component and leaves the second plugin's diff empty. A colliding mount rolls back. Observers stop through the lifecycle registry, only while the app is `started`/`initialized`. The marker also takes **`provides`/`inject`** (binding keys): mount order is a topological sort with `order:` demoted to a tiebreaker, and a duplicate `provides` is caught **before any import** — `allowOverride` still permits an intentional one. Declarations are advisory; the container stays the authority, so under-declaring costs ordering, not correctness.
 ```
 
 - [ ] **Step 5: `pnpm agents-md`** — regenerate `AGENTS.md` from the edited `CLAUDE.md`.
