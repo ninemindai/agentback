@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Every install returns its inverse | AgentBack Blog</title>
+    <meta
+      name="description"
+      content="Mounting a capability is the easy half. AgentBack now pairs every install helper with the function that retracts it, an idea and a vocabulary borrowed from Cordis."
+    />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="../index.html">AgentBack blog</a>
+        <div class="nav-links">
+          <a href="../../README.md">Docs</a>
+          <a href="../../../README.md">Repo README</a>
+          <a href="../diagrams/system-boundary.html">Diagram</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="post-layout">
+      <article class="post-body">
+        <p class="post-meta">August 14, 2026</p>
+        <h1>Every install returns its inverse</h1>
+        <p class="lede">
+          Mounting a capability is the easy half. AgentBack now hands you the
+          function that takes it back out.
+        </p>
+
+        <p>
+          AgentBack has about eleven <code>install*</code> helpers.
+          <code>installExplorer</code> mounts Swagger UI at
+          <code>/explorer</code>. <code>installMcpHttp</code> mounts the MCP
+          endpoint at <code>/mcp</code>. <code>installConsole</code> mounts the
+          dev console. Each one takes an app and wires a capability into it.
+        </p>
+
+        <p>
+          Until recently none of them could be undone. The only way to remove an
+          explorer was to stop the process. That sounds like a small gap. It is
+          the reason plugin systems can gate and mount but never dismount, the
+          reason teardown paths go untested, and the reason a dev server
+          restarts instead of reloading.
+        </p>
+
+        <blockquote>
+          A mount function that returns nothing is a side effect. A mount
+          function that returns its inverse is a value you can hand back.
+        </blockquote>
+
+        <h2>Where the idea came from</h2>
+
+        <p>
+          We took it from
+          <a href="https://github.com/cordiverse/cordis">Cordis</a>, the plugin
+          runtime extracted from Koishi, a chatbot framework with more than four
+          thousand community plugins. Its authors published a preprint in August
+          2026,
+          <a href="https://github.com/cordiverse/paper"
+            >A Programming Paradigm for Spatiotemporal Composability</a
+          >, written at Peking University with DeepSeek-AI, which names
+          self-evolving agent harnesses as the motivating workload.
+        </p>
+
+        <p>The paper splits dynamic composition into two axes.</p>
+
+        <p>
+          <strong>Temporal composability</strong> means removing a component
+          reverts its effects on the shared environment.
+          <strong>Spatial composability</strong> means a component declares what
+          it needs and the runtime resolves those dependencies as providers
+          appear, change, or go away.
+        </p>
+
+        <p>
+          Cordis lifts both to runtime mechanisms. Every registration returns a
+          disposer, and disposal runs in reverse order. Every dependency is a
+          reactive subscription, so re-providing a service unloads and reloads
+          everything that injects it. We read the v4 core, about 1,850 lines,
+          before writing any of this.
+        </p>
+
+        <p>We took some of it and left the rest.</p>
+
+        <table class="post-table">
+          <thead>
+            <tr>
+              <th>Axis</th>
+              <th>Cordis mechanism</th>
+              <th>What AgentBack does</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Temporal</td>
+              <td>Every registration returns a disposer</td>
+              <td>
+                Taken. Every <code>install*</code> returns
+                <code>Installed</code>, composed LIFO.
+              </td>
+            </tr>
+            <tr>
+              <td>Temporal</td>
+              <td>
+                A traceability proxy reattaches a service's disposers to the
+                calling plugin
+              </td>
+              <td>
+                Skipped. It allocates a proxy per property access, and our
+                helpers already own their footprints.
+              </td>
+            </tr>
+            <tr>
+              <td>Spatial</td>
+              <td>Components declare what they need</td>
+              <td>
+                Taken, statically. <code>provides</code> and
+                <code>inject</code> in <code>package.json</code>, read off disk.
+              </td>
+            </tr>
+            <tr>
+              <td>Spatial</td>
+              <td>
+                Dependencies re-resolve at runtime; a provider swap reloads its
+                dependents
+              </td>
+              <td>Skipped. A provider change is a restart.</td>
+            </tr>
+            <tr>
+              <td>Both</td>
+              <td>
+                Fibers, epoch strings, hot module replacement with transactional
+                rollback
+              </td>
+              <td>
+                Skipped. Adopting it wholesale is a second framework inside the
+                framework.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p>
+          The paper's related-work section is the sharpest part of the argument.
+          OSGi and VS Code recover through hand-written deactivation callbacks,
+          where a forgotten one leaks in silence. Erlang migrates state forward
+          through hand-written upgrade functions. React's
+          <code>useEffect</code> pairs an effect with its inverse but cannot
+          compose them. Cordis pairs every <em>atomic</em> effect with an
+          inverse and derives the composite inverse by composition, which makes
+          complete recovery an invariant rather than a duty.
+        </p>
+
+        <h2>The contract we shipped</h2>
+
+        <p>
+          Every <code>install*</code> helper now returns an
+          <code>Installed</code>, which is one method:
+        </p>
+
+        <pre><code>const explorer = await installExplorer(app);
+// ...later
+await explorer.uninstall();   // /explorer answers 404 again</code></pre>
+
+        <p>
+          Helpers compose their own teardown with
+          <code>composeTeardown()</code>, a LIFO stack of disposers that runs in
+          reverse registration order, is idempotent, and aggregates failures
+          instead of stopping at the first one.
+        </p>
+
+        <p>
+          One rule does most of the work. A binding is retracted by
+          <em>ownership</em>, not by key possession. <code>Context.bind()</code>
+          replaces whatever sits at a key, so an uninstall that unbinds by name
+          would delete a binding the user shadowed over ours after we mounted.
+          The inverse checks that the binding at that key is still the exact
+          object it created, and does nothing otherwise.
+        </p>
+
+        <figure class="post-diagram">
+          <svg
+            viewBox="0 0 720 288"
+            role="img"
+            aria-label="An install helper records the routes, bindings and observers it mounted. On uninstall, each one passes an identity check: if the binding at that key is still the object the install created, it is reverted; if something else claimed the key, both the unbind and the restore are skipped."
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <defs>
+              <marker
+                id="ri-arrow"
+                markerWidth="9"
+                markerHeight="9"
+                refX="8"
+                refY="3"
+                orient="auto"
+              >
+                <path d="M0,0 L8,3 L0,6 z" fill="#5a645e" />
+              </marker>
+            </defs>
+            <g
+              font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+              font-size="13"
+            >
+              <rect
+                x="8"
+                y="16"
+                width="182"
+                height="40"
+                rx="8"
+                fill="#ffffff"
+                stroke="#0f6b4f"
+              />
+              <text x="99" y="41" text-anchor="middle" fill="#0f6b4f">
+                installExplorer(app)
+              </text>
+
+              <rect
+                x="264"
+                y="8"
+                width="200"
+                height="128"
+                rx="8"
+                fill="#ffffff"
+                stroke="#d9ded6"
+              />
+              <text
+                x="364"
+                y="30"
+                text-anchor="middle"
+                fill="#5a645e"
+                font-size="11"
+              >
+                FOOTPRINT
+              </text>
+              <text x="364" y="56" text-anchor="middle" fill="#17201b">
+                routes
+              </text>
+              <text x="364" y="82" text-anchor="middle" fill="#17201b">
+                bindings
+              </text>
+              <text x="364" y="108" text-anchor="middle" fill="#17201b">
+                observers
+              </text>
+
+              <rect
+                x="530"
+                y="16"
+                width="182"
+                height="40"
+                rx="8"
+                fill="#ffffff"
+                stroke="#0f6b4f"
+              />
+              <text x="621" y="41" text-anchor="middle" fill="#0f6b4f">
+                Installed
+              </text>
+
+              <line
+                x1="190"
+                y1="36"
+                x2="258"
+                y2="60"
+                stroke="#5a645e"
+                marker-end="url(#ri-arrow)"
+              />
+              <line
+                x1="464"
+                y1="60"
+                x2="524"
+                y2="36"
+                stroke="#5a645e"
+                marker-end="url(#ri-arrow)"
+              />
+
+              <rect
+                x="530"
+                y="100"
+                width="182"
+                height="40"
+                rx="8"
+                fill="#ffffff"
+                stroke="#6d4ca8"
+              />
+              <text x="621" y="125" text-anchor="middle" fill="#6d4ca8">
+                uninstall()
+              </text>
+              <line
+                x1="621"
+                y1="56"
+                x2="621"
+                y2="94"
+                stroke="#5a645e"
+                marker-end="url(#ri-arrow)"
+              />
+
+              <rect
+                x="238"
+                y="176"
+                width="252"
+                height="44"
+                rx="8"
+                fill="#ffffff"
+                stroke="#087b8c"
+              />
+              <text x="364" y="195" text-anchor="middle" fill="#087b8c">
+                is this binding still
+              </text>
+              <text x="364" y="212" text-anchor="middle" fill="#087b8c">
+                the object we bound?
+              </text>
+              <line
+                x1="530"
+                y1="128"
+                x2="494"
+                y2="180"
+                stroke="#5a645e"
+                marker-end="url(#ri-arrow)"
+              />
+
+              <text x="120" y="196" text-anchor="middle" fill="#0f6b4f">
+                yes
+              </text>
+              <text x="120" y="214" text-anchor="middle" fill="#17201b">
+                unbind + restore
+              </text>
+              <line
+                x1="234"
+                y1="198"
+                x2="196"
+                y2="198"
+                stroke="#5a645e"
+                marker-end="url(#ri-arrow)"
+              />
+
+              <text x="600" y="196" text-anchor="middle" fill="#b43b55">
+                no
+              </text>
+              <text x="600" y="214" text-anchor="middle" fill="#17201b">
+                touch nothing
+              </text>
+              <line
+                x1="494"
+                y1="198"
+                x2="532"
+                y2="198"
+                stroke="#5a645e"
+                marker-end="url(#ri-arrow)"
+              />
+
+              <text
+                x="364"
+                y="256"
+                text-anchor="middle"
+                fill="#5a645e"
+                font-size="12"
+              >
+                one check gates the unbind AND the restore
+              </text>
+              <text
+                x="364"
+                y="274"
+                text-anchor="middle"
+                fill="#5a645e"
+                font-size="12"
+              >
+                an unguarded write destroys as much as an unguarded delete
+              </text>
+            </g>
+          </svg>
+          <figcaption>
+            Ownership, not key possession. If something else claimed the key
+            after the mount, neither half of the revert fires.
+          </figcaption>
+        </figure>
+
+        <h2>What the contract actually cost</h2>
+
+        <p>
+          Three things went wrong on the way, and all three are the kind that
+          ship green.
+        </p>
+
+        <p>
+          The identity guard covers unbinding. It also has to cover restoring.
+          When a plugin re-binds a key it was permitted to override, the inverse
+          puts the displaced binding back, and for a while that restore ran
+          unguarded. If a third party had claimed the key in the meantime, the
+          unbind correctly did nothing and the restore then overwrote them,
+          which is the exact bug the guard exists to prevent. An unguarded write
+          destroys as much as an unguarded delete.
+        </p>
+
+        <p>
+          Shared components need reference counting.
+          <code>Application.component()</code> returns early when the key is
+          already bound to the same class, so when two plugins both list a
+          nested component, only the first plugin's binding diff contains it.
+          The plugin that has to retract it is whichever uninstalls last. We
+          record those bindings against the component instead of against a
+          plugin, and count references per application.
+        </p>
+
+        <p>
+          Our idempotency test passed while the code corrupted state. Each call
+          to <code>uninstall()</code> rebuilt its teardown, and
+          <code>composeTeardown</code> is idempotent only per instance, so a
+          second call re-ran every disposer and decremented a shared component's
+          reference count twice. The test used one plugin with nothing shared,
+          so the second pass had nothing left to corrupt: the identity guard
+          turned the repeat revert into a silent no-op and the assertion held.
+          Idempotency is invisible without shared state. The test that finds it
+          uses two plugins over one component.
+        </p>
+
+        <p>
+          Retraction also has to reach the transports. Express cannot unmount a
+          layer, so routes go dead behind a liveness flag the router checks per
+          request. MCP had a worse version of the same gap: a built server keeps
+          its tool map, and <code>resolveMember</code> fell back to
+          <code>new ctor()</code> when a binding vanished. An unmounted tool
+          stayed callable and ran without its injected dependencies. Removing
+          that fallback did not break any of the 129 existing MCP tests, which
+          is how we knew nothing depended on it.
+        </p>
+
+        <h2>Why we stop short of hot swap</h2>
+
+        <p>
+          We took the temporal axis and the cheapest static slice of the spatial
+          one. Plugins declare <code>provides</code> and <code>inject</code> in
+          their <code>package.json</code>, and mount order is a topological sort
+          over those declarations. There are no fibers, no reactive
+          re-resolution, and no hot module replacement. When a provider changes,
+          AgentBack restarts.
+        </p>
+
+        <figure class="post-diagram">
+          <svg
+            viewBox="0 0 720 210"
+            role="img"
+            aria-label="Directory scanning discovers banner-plugin before greeting-plugin because it reads alphabetically. banner-plugin declares it injects plugin.greeting, which greeting-plugin provides, so the topological sort mounts greeting-plugin first."
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <defs>
+              <marker
+                id="mo-arrow"
+                markerWidth="9"
+                markerHeight="9"
+                refX="8"
+                refY="3"
+                orient="auto"
+              >
+                <path d="M0,0 L8,3 L0,6 z" fill="#5a645e" />
+              </marker>
+            </defs>
+            <g
+              font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+              font-size="12"
+            >
+              <text x="10" y="24" fill="#5a645e" font-size="11">
+                DISCOVERY ORDER (alphabetical)
+              </text>
+              <rect
+                x="10"
+                y="34"
+                width="196"
+                height="34"
+                rx="6"
+                fill="#ffffff"
+                stroke="#d9ded6"
+              />
+              <text x="108" y="55" text-anchor="middle" fill="#17201b">
+                banner-plugin
+              </text>
+              <rect
+                x="10"
+                y="76"
+                width="196"
+                height="34"
+                rx="6"
+                fill="#ffffff"
+                stroke="#d9ded6"
+              />
+              <text x="108" y="97" text-anchor="middle" fill="#17201b">
+                greeting-plugin
+              </text>
+
+              <text x="258" y="24" fill="#5a645e" font-size="11">
+                DECLARED EDGE
+              </text>
+              <rect
+                x="258"
+                y="34"
+                width="204"
+                height="76"
+                rx="6"
+                fill="#ffffff"
+                stroke="#087b8c"
+              />
+              <text x="360" y="56" text-anchor="middle" fill="#087b8c">
+                banner injects
+              </text>
+              <text x="360" y="74" text-anchor="middle" fill="#17201b">
+                plugin.greeting
+              </text>
+              <text x="360" y="94" text-anchor="middle" fill="#087b8c">
+                greeting provides it
+              </text>
+
+              <text x="514" y="24" fill="#5a645e" font-size="11">
+                MOUNT ORDER
+              </text>
+              <rect
+                x="514"
+                y="34"
+                width="196"
+                height="34"
+                rx="6"
+                fill="#ffffff"
+                stroke="#0f6b4f"
+              />
+              <text x="612" y="55" text-anchor="middle" fill="#0f6b4f">
+                greeting-plugin
+              </text>
+              <rect
+                x="514"
+                y="76"
+                width="196"
+                height="34"
+                rx="6"
+                fill="#ffffff"
+                stroke="#0f6b4f"
+              />
+              <text x="612" y="97" text-anchor="middle" fill="#0f6b4f">
+                banner-plugin
+              </text>
+
+              <line
+                x1="210"
+                y1="72"
+                x2="252"
+                y2="72"
+                stroke="#5a645e"
+                marker-end="url(#mo-arrow)"
+              />
+              <line
+                x1="466"
+                y1="72"
+                x2="508"
+                y2="72"
+                stroke="#5a645e"
+                marker-end="url(#mo-arrow)"
+              />
+
+              <text x="360" y="146" text-anchor="middle" fill="#5a645e">
+                read off disk, before either package is imported
+              </text>
+              <text x="360" y="174" text-anchor="middle" fill="#5a645e">
+                with no declarations there are no edges, and the manifest's
+              </text>
+              <text x="360" y="192" text-anchor="middle" fill="#5a645e">
+                order: governs exactly as it did before
+              </text>
+            </g>
+          </svg>
+          <figcaption>
+            The order flips because of a declaration, not a hand-maintained
+            list. Both markers are read from
+            <code>package.json</code> before any plugin code runs.
+          </figcaption>
+        </figure>
+
+        <p>
+          The paper is the strongest argument we have read against that choice.
+          Its headline result is confluence: whatever sequence of loads,
+          unloads, and reloads a running system went through, it settles at the
+          state a from-scratch assembly would have produced. The dynamic history
+          leaves no trace. Without that property, long-running hot-reloaded
+          processes accumulate drift, which is why most teams restart instead.
+        </p>
+
+        <p>
+          Restart is the coarse workaround the paper concedes everyone uses, and
+          it costs more as edit frequency rises: discarded process state,
+          disrupted in-flight work, and a faulty self-modification that disables
+          the process you need in order to recover. We think that trade is right
+          for a framework whose job is serving requests rather than hosting four
+          thousand community plugins. Cordis is betting on lifecycle coherence.
+          We are betting on boundary coherence, one schema projected to every
+          surface. Those are different bets, and the paper made ours more honest
+          by naming what it gives up.
+        </p>
+
+        <h2>What it buys today</h2>
+
+        <p>
+          <code>loadPlugins(app)</code> returns a report that satisfies
+          <code>Installed</code>, so a mounted plugin set is retractable, and a
+          load that fails halfway still hands back an inverse for the plugins
+          that did mount. A plugin that contributes a REST controller has its
+          routes answer 404 after <code>uninstall()</code> and serve again after
+          a re-mount, on both the Express and the fetch host. Tests mount and
+          unmount in isolation instead of standing up a process each time.
+        </p>
+
+        <p>
+          A shared conformance suite runs the same install, serve, uninstall,
+          404, reinstall cycle against every helper that implements the
+          contract, which is what keeps it from decaying one helper at a time.
+        </p>
+
+        <div class="post-actions">
+          <a class="button" href="https://github.com/ninemindai/agentback"
+            >AgentBack on GitHub</a
+          >
+          <a
+            class="button secondary"
+            href="https://github.com/cordiverse/cordis"
+            >Read Cordis</a
+          >
+        </div>
+      </article>
+
+      <aside class="aside" aria-label="Post links">
+        <h2>Related</h2>
+        <a href="boundary-coherence.html">Boundary coherence is the product</a>
+        <a href="one-container-two-surfaces.html"
+          >One container, two surfaces</a
+        >
+        <a href="a-console-for-one-container.html"
+          >A console for one container</a
+        >
+        <a href="https://github.com/cordiverse/paper"
+          >Spatiotemporal Composability (preprint)</a
+        >
+        <a href="https://github.com/ninemindai/agentback">GitHub repo</a>
+      </aside>
+    </main>
+  </body>
+</html>

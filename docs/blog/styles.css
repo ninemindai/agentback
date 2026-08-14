@@ -411,6 +411,51 @@ pre code {
   text-align: center;
 }
 
+/* Inline SVG diagrams. Unlike .post-figure (screenshots), these are drawn in
+   the page: no asset to fetch, and they scale with the column. */
+.post-diagram {
+  margin: 32px 0;
+}
+
+.post-diagram svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.post-diagram figcaption {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-top: 10px;
+  text-align: center;
+}
+
+.post-table {
+  border-collapse: collapse;
+  font-size: 0.94rem;
+  margin: 28px 0;
+  width: 100%;
+}
+
+.post-table th,
+.post-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.post-table th {
+  color: var(--muted);
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.post-table td:first-child {
+  white-space: nowrap;
+}
+
 .diagram-frame {
   background: #020617;
   border: 1px solid var(--line);
