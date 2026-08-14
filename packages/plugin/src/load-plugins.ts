@@ -6,6 +6,7 @@ import type {Application} from '@agentback/core';
 import {PluginBindings, PluginsConfig} from './config.js';
 import {applyGate} from './gate.js';
 import {discover} from './discovery.js';
+import {sortByGraph} from './graph.js';
 import {appOwnedContext, tryMount} from './mount.js';
 import type {
   LoadPluginsOptions,
@@ -39,6 +40,19 @@ export async function loadPlugins(
   const gate = applyGate(discovered, config);
   warnings.push(...gate.warnings);
 
+  // `appOwnedContext` already snapshots every key bound before this call, so
+  // it doubles as the "satisfied by the application itself" set — an inject
+  // the app answers imposes no ordering constraint on any plugin.
+  const ctx = appOwnedContext(app, config.allowOverride);
+  const graph = sortByGraph({
+    gated: gate.ordered,
+    skipped: gate.skipped,
+    appOwnedKeys: new Set(ctx.owners.keys()),
+    order: config.order,
+    allowOverride: ctx.allowOverride,
+  });
+  warnings.push(...graph.warnings);
+
   const report: PluginLoadReport = {
     discovered,
     mounted: [],
@@ -46,8 +60,6 @@ export async function loadPlugins(
     warnings,
     errors: [],
   };
-
-  const ctx = appOwnedContext(app, config.allowOverride);
 
   const fail = (err: PluginLoadError): void => {
     report.errors.push(err);
@@ -60,7 +72,12 @@ export async function loadPlugins(
     }
   };
 
-  for (const info of gate.ordered) {
+  // Graph errors are detected before ANY import, so a strict failure here
+  // throws with zero mounts performed — unlike a collision, which the snapshot
+  // diff can only catch after `app.component()` ran its side effects.
+  for (const err of graph.errors) fail(err);
+
+  for (const info of graph.ordered) {
     const err = await tryMount(app, info, ctx);
     if (err) {
       fail(err);

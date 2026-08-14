@@ -14,6 +14,13 @@ export interface PluginPackageMarker {
   plugin: true;
   /** Named export of the package's main module that is a Component. */
   component: string;
+  /**
+   * DI keys this plugin contributes. Advisory: governs mount ordering and
+   * pre-import duplicate detection, never resolution.
+   */
+  provides?: string[];
+  /** DI keys this plugin needs bound before it mounts. Advisory. */
+  inject?: string[];
 }
 
 /** A discovered (not necessarily mounted) plugin. */
@@ -29,10 +36,20 @@ export interface PluginInfo {
    * - `source: 'dir'`  -> a `file://` URL string of the resolved entry module.
    */
   importSpecifier: string;
+  /** Normalized from the marker; `[]` when absent or malformed. */
+  provides: string[];
+  /** Normalized from the marker; `[]` when absent or malformed. */
+  inject: string[];
 }
 
 export type PluginLoadErrorKind =
-  'import' | 'missing-export' | 'not-a-component' | 'key-collision';
+  | 'import'
+  | 'missing-export'
+  | 'not-a-component'
+  | 'key-collision'
+  | 'unsatisfied-inject'
+  | 'dependency-cycle'
+  | 'duplicate-provides';
 
 export interface PluginLoadError {
   package: string;

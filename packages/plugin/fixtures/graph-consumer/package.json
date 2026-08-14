@@ -1,0 +1,12 @@
+{
+  "name": "@fixture/graph-consumer",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "exports": {".": "./index.js"},
+  "agentback": {
+    "plugin": true,
+    "component": "ConsumerComponent",
+    "inject": ["services.Shared"]
+  }
+}

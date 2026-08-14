@@ -1,0 +1,12 @@
+{
+  "name": "@fixture/graph-provider",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "exports": {".": "./index.js"},
+  "agentback": {
+    "plugin": true,
+    "component": "ProviderComponent",
+    "provides": ["services.Shared"]
+  }
+}

@@ -92,3 +92,52 @@ describe('loadPlugins (dir source)', () => {
     expect(app.getSync('services.Shared')).toBe('b');
   });
 });
+
+describe('loadPlugins — declared graph', () => {
+  it('mounts a provider before its consumer regardless of discovery order', async () => {
+    const app = new Application();
+    const report = await loadPlugins(app, {
+      cwd: pkgRoot,
+      config: {
+        scan: false,
+        dirs: ['fixtures'],
+        enable: ['@fixture/graph-consumer', '@fixture/graph-provider'],
+      },
+    });
+    expect(report.errors).toEqual([]);
+    expect(report.mounted.map(p => p.name)).toEqual([
+      '@fixture/graph-provider',
+      '@fixture/graph-consumer',
+    ]);
+  });
+
+  it('fails closed on an unsatisfiable inject, with NOTHING mounted', async () => {
+    const app = new Application();
+    await expect(
+      loadPlugins(app, {
+        cwd: pkgRoot,
+        config: {
+          scan: false,
+          dirs: ['fixtures'],
+          enable: ['@fixture/graph-consumer'],
+        },
+      }),
+    ).rejects.toThrow(/unsatisfied-inject/);
+    // The graph runs before any import, so no plugin was mounted.
+    expect(app.isBound('components.ConsumerComponent')).toBe(false);
+  });
+
+  it('a malformed provides is dropped, not fatal', async () => {
+    const app = new Application();
+    const report = await loadPlugins(app, {
+      cwd: pkgRoot,
+      config: {
+        scan: false,
+        dirs: ['fixtures'],
+        enable: ['@fixture/graph-malformed'],
+      },
+    });
+    expect(report.errors).toEqual([]);
+    expect(report.mounted[0].provides).toEqual([]);
+  });
+});

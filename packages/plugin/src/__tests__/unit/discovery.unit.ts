@@ -70,3 +70,27 @@ describe('resolvePackageDir (ESM exports-map regression)', () => {
     ).rejects.toThrow();
   });
 });
+
+describe('readMarker — provides/inject', () => {
+  it('normalizes a missing provides/inject to empty arrays', () => {
+    const info = readMarker(resolve(fixtures, 'good-plugin'), 'dir');
+    expect(info?.provides).toEqual([]);
+    expect(info?.inject).toEqual([]);
+  });
+
+  it('reads declared provides and inject', () => {
+    const provider = readMarker(resolve(fixtures, 'graph-provider'), 'dir');
+    expect(provider?.provides).toEqual(['services.Shared']);
+    expect(provider?.inject).toEqual([]);
+
+    const consumer = readMarker(resolve(fixtures, 'graph-consumer'), 'dir');
+    expect(consumer?.inject).toEqual(['services.Shared']);
+  });
+
+  it('drops a malformed provides without failing discovery', () => {
+    // A marker field is caller-authored JSON; a non-array must not be fatal.
+    const info = readMarker(resolve(fixtures, 'graph-malformed'), 'dir');
+    expect(info).not.toBeNull();
+    expect(info?.provides).toEqual([]);
+  });
+});

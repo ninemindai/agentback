@@ -43,6 +43,16 @@ export function entryRelative(pkg: PackageJson): string {
 }
 
 /**
+ * A marker field is caller-authored JSON, so a malformed value must not crash
+ * discovery — `readMarker` already skips an invalid marker rather than
+ * throwing. Non-arrays and non-string entries are dropped.
+ */
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((v): v is string => typeof v === 'string' && v !== '');
+}
+
+/**
  * Read the `agentback` marker from a package directory OFF DISK.
  * Returns null when the dir has no package.json, no marker, or an invalid marker.
  */
@@ -72,6 +82,8 @@ export function readMarker(
     source,
     path: pkgDir,
     importSpecifier,
+    provides: stringArray(marker.provides),
+    inject: stringArray(marker.inject),
   };
 }
 

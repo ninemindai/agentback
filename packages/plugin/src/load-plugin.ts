@@ -39,6 +39,8 @@ function infoFromDir(dir: string, component: string): PluginInfo {
     source: 'dir',
     path: dir,
     importSpecifier: pathToFileURL(resolve(dir, entryRelative(pkg ?? {}))).href,
+    provides: [],
+    inject: [],
   };
 }
 
@@ -87,6 +89,8 @@ export async function resolvePlugin(
       source: 'dir',
       path: dirname(abs),
       importSpecifier: pathToFileURL(abs).href,
+      provides: [],
+      inject: [],
     };
   }
 
@@ -108,6 +112,8 @@ export async function resolvePlugin(
     source: 'deps',
     path: dir,
     importSpecifier: specifier,
+    provides: [],
+    inject: [],
   };
 }
 

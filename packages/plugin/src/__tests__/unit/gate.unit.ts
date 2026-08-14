@@ -15,6 +15,8 @@ function info(name: string): PluginInfo {
     source: 'deps',
     path: `/x/${name}`,
     importSpecifier: name,
+    provides: [],
+    inject: [],
   };
 }
 
