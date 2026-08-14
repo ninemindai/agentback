@@ -183,194 +183,196 @@ await explorer.uninstall();   // /explorer answers 404 again</code></pre>
         </p>
 
         <figure class="post-diagram">
-          <svg
-            viewBox="0 0 720 288"
-            role="img"
-            aria-label="An install helper records the routes, bindings and observers it mounted. On uninstall, each one passes an identity check: if the binding at that key is still the object the install created, it is reverted; if something else claimed the key, both the unbind and the restore are skipped."
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <defs>
-              <marker
-                id="ri-arrow"
-                markerWidth="9"
-                markerHeight="9"
-                refX="8"
-                refY="3"
-                orient="auto"
-              >
-                <path d="M0,0 L8,3 L0,6 z" fill="#5a645e" />
-              </marker>
-            </defs>
-            <g
-              font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
-              font-size="13"
+          <div class="diagram-scroll">
+            <svg
+              viewBox="0 0 720 288"
+              role="img"
+              aria-label="An install helper records the routes, bindings and observers it mounted. On uninstall, each one passes an identity check: if the binding at that key is still the object the install created, it is reverted; if something else claimed the key, both the unbind and the restore are skipped."
+              xmlns="http://www.w3.org/2000/svg"
             >
-              <rect
-                x="8"
-                y="16"
-                width="182"
-                height="40"
-                rx="8"
-                fill="#ffffff"
-                stroke="#0f6b4f"
-              />
-              <text x="99" y="41" text-anchor="middle" fill="#0f6b4f">
-                installExplorer(app)
-              </text>
-
-              <rect
-                x="264"
-                y="8"
-                width="200"
-                height="128"
-                rx="8"
-                fill="#ffffff"
-                stroke="#d9ded6"
-              />
-              <text
-                x="364"
-                y="30"
-                text-anchor="middle"
-                fill="#5a645e"
-                font-size="11"
+              <defs>
+                <marker
+                  id="ri-arrow"
+                  markerWidth="9"
+                  markerHeight="9"
+                  refX="8"
+                  refY="3"
+                  orient="auto"
+                >
+                  <path d="M0,0 L8,3 L0,6 z" fill="#5a645e" />
+                </marker>
+              </defs>
+              <g
+                font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+                font-size="13"
               >
-                FOOTPRINT
-              </text>
-              <text x="364" y="56" text-anchor="middle" fill="#17201b">
-                routes
-              </text>
-              <text x="364" y="82" text-anchor="middle" fill="#17201b">
-                bindings
-              </text>
-              <text x="364" y="108" text-anchor="middle" fill="#17201b">
-                observers
-              </text>
+                <rect
+                  x="8"
+                  y="16"
+                  width="182"
+                  height="40"
+                  rx="8"
+                  fill="#ffffff"
+                  stroke="#0f6b4f"
+                />
+                <text x="99" y="41" text-anchor="middle" fill="#0f6b4f">
+                  installExplorer(app)
+                </text>
 
-              <rect
-                x="530"
-                y="16"
-                width="182"
-                height="40"
-                rx="8"
-                fill="#ffffff"
-                stroke="#0f6b4f"
-              />
-              <text x="621" y="41" text-anchor="middle" fill="#0f6b4f">
-                Installed
-              </text>
+                <rect
+                  x="264"
+                  y="8"
+                  width="200"
+                  height="128"
+                  rx="8"
+                  fill="#ffffff"
+                  stroke="#d9ded6"
+                />
+                <text
+                  x="364"
+                  y="30"
+                  text-anchor="middle"
+                  fill="#5a645e"
+                  font-size="11"
+                >
+                  FOOTPRINT
+                </text>
+                <text x="364" y="56" text-anchor="middle" fill="#17201b">
+                  routes
+                </text>
+                <text x="364" y="82" text-anchor="middle" fill="#17201b">
+                  bindings
+                </text>
+                <text x="364" y="108" text-anchor="middle" fill="#17201b">
+                  observers
+                </text>
 
-              <line
-                x1="190"
-                y1="36"
-                x2="258"
-                y2="60"
-                stroke="#5a645e"
-                marker-end="url(#ri-arrow)"
-              />
-              <line
-                x1="464"
-                y1="60"
-                x2="524"
-                y2="36"
-                stroke="#5a645e"
-                marker-end="url(#ri-arrow)"
-              />
+                <rect
+                  x="530"
+                  y="16"
+                  width="182"
+                  height="40"
+                  rx="8"
+                  fill="#ffffff"
+                  stroke="#0f6b4f"
+                />
+                <text x="621" y="41" text-anchor="middle" fill="#0f6b4f">
+                  Installed
+                </text>
 
-              <rect
-                x="530"
-                y="100"
-                width="182"
-                height="40"
-                rx="8"
-                fill="#ffffff"
-                stroke="#6d4ca8"
-              />
-              <text x="621" y="125" text-anchor="middle" fill="#6d4ca8">
-                uninstall()
-              </text>
-              <line
-                x1="621"
-                y1="56"
-                x2="621"
-                y2="94"
-                stroke="#5a645e"
-                marker-end="url(#ri-arrow)"
-              />
+                <line
+                  x1="190"
+                  y1="36"
+                  x2="258"
+                  y2="60"
+                  stroke="#5a645e"
+                  marker-end="url(#ri-arrow)"
+                />
+                <line
+                  x1="464"
+                  y1="60"
+                  x2="524"
+                  y2="36"
+                  stroke="#5a645e"
+                  marker-end="url(#ri-arrow)"
+                />
 
-              <rect
-                x="238"
-                y="176"
-                width="252"
-                height="44"
-                rx="8"
-                fill="#ffffff"
-                stroke="#087b8c"
-              />
-              <text x="364" y="195" text-anchor="middle" fill="#087b8c">
-                is this binding still
-              </text>
-              <text x="364" y="212" text-anchor="middle" fill="#087b8c">
-                the object we bound?
-              </text>
-              <line
-                x1="530"
-                y1="128"
-                x2="494"
-                y2="180"
-                stroke="#5a645e"
-                marker-end="url(#ri-arrow)"
-              />
+                <rect
+                  x="530"
+                  y="100"
+                  width="182"
+                  height="40"
+                  rx="8"
+                  fill="#ffffff"
+                  stroke="#6d4ca8"
+                />
+                <text x="621" y="125" text-anchor="middle" fill="#6d4ca8">
+                  uninstall()
+                </text>
+                <line
+                  x1="621"
+                  y1="56"
+                  x2="621"
+                  y2="94"
+                  stroke="#5a645e"
+                  marker-end="url(#ri-arrow)"
+                />
 
-              <text x="120" y="196" text-anchor="middle" fill="#0f6b4f">
-                yes
-              </text>
-              <text x="120" y="214" text-anchor="middle" fill="#17201b">
-                unbind + restore
-              </text>
-              <line
-                x1="234"
-                y1="198"
-                x2="196"
-                y2="198"
-                stroke="#5a645e"
-                marker-end="url(#ri-arrow)"
-              />
+                <rect
+                  x="238"
+                  y="176"
+                  width="252"
+                  height="44"
+                  rx="8"
+                  fill="#ffffff"
+                  stroke="#087b8c"
+                />
+                <text x="364" y="195" text-anchor="middle" fill="#087b8c">
+                  is this binding still
+                </text>
+                <text x="364" y="212" text-anchor="middle" fill="#087b8c">
+                  the object we bound?
+                </text>
+                <line
+                  x1="530"
+                  y1="128"
+                  x2="494"
+                  y2="180"
+                  stroke="#5a645e"
+                  marker-end="url(#ri-arrow)"
+                />
 
-              <text x="600" y="196" text-anchor="middle" fill="#b43b55">
-                no
-              </text>
-              <text x="600" y="214" text-anchor="middle" fill="#17201b">
-                touch nothing
-              </text>
-              <line
-                x1="494"
-                y1="198"
-                x2="532"
-                y2="198"
-                stroke="#5a645e"
-                marker-end="url(#ri-arrow)"
-              />
+                <text x="120" y="196" text-anchor="middle" fill="#0f6b4f">
+                  yes
+                </text>
+                <text x="120" y="214" text-anchor="middle" fill="#17201b">
+                  unbind + restore
+                </text>
+                <line
+                  x1="234"
+                  y1="198"
+                  x2="196"
+                  y2="198"
+                  stroke="#5a645e"
+                  marker-end="url(#ri-arrow)"
+                />
 
-              <text
-                x="364"
-                y="256"
-                text-anchor="middle"
-                fill="#5a645e"
-                font-size="12"
-              >
-                one check gates the unbind AND the restore
-              </text>
-              <text
-                x="364"
-                y="274"
-                text-anchor="middle"
-                fill="#5a645e"
-                font-size="12"
-              >
-                an unguarded write destroys as much as an unguarded delete
-              </text>
-            </g>
-          </svg>
+                <text x="600" y="196" text-anchor="middle" fill="#b43b55">
+                  no
+                </text>
+                <text x="600" y="214" text-anchor="middle" fill="#17201b">
+                  touch nothing
+                </text>
+                <line
+                  x1="494"
+                  y1="198"
+                  x2="532"
+                  y2="198"
+                  stroke="#5a645e"
+                  marker-end="url(#ri-arrow)"
+                />
+
+                <text
+                  x="364"
+                  y="256"
+                  text-anchor="middle"
+                  fill="#5a645e"
+                  font-size="12"
+                >
+                  one check gates the unbind AND the restore
+                </text>
+                <text
+                  x="364"
+                  y="274"
+                  text-anchor="middle"
+                  fill="#5a645e"
+                  font-size="12"
+                >
+                  an unguarded write destroys as much as an unguarded delete
+                </text>
+              </g>
+            </svg>
+          </div>
           <figcaption>
             Ownership, not key possession. If something else claimed the key
             after the mount, neither half of the revert fires.
@@ -439,134 +441,136 @@ await explorer.uninstall();   // /explorer answers 404 again</code></pre>
         </p>
 
         <figure class="post-diagram">
-          <svg
-            viewBox="0 0 720 210"
-            role="img"
-            aria-label="Directory scanning discovers banner-plugin before greeting-plugin because it reads alphabetically. banner-plugin declares it injects plugin.greeting, which greeting-plugin provides, so the topological sort mounts greeting-plugin first."
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <defs>
-              <marker
-                id="mo-arrow"
-                markerWidth="9"
-                markerHeight="9"
-                refX="8"
-                refY="3"
-                orient="auto"
-              >
-                <path d="M0,0 L8,3 L0,6 z" fill="#5a645e" />
-              </marker>
-            </defs>
-            <g
-              font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
-              font-size="12"
+          <div class="diagram-scroll">
+            <svg
+              viewBox="0 0 720 210"
+              role="img"
+              aria-label="Directory scanning discovers banner-plugin before greeting-plugin because it reads alphabetically. banner-plugin declares it injects plugin.greeting, which greeting-plugin provides, so the topological sort mounts greeting-plugin first."
+              xmlns="http://www.w3.org/2000/svg"
             >
-              <text x="10" y="24" fill="#5a645e" font-size="11">
-                DISCOVERY ORDER (alphabetical)
-              </text>
-              <rect
-                x="10"
-                y="34"
-                width="196"
-                height="34"
-                rx="6"
-                fill="#ffffff"
-                stroke="#d9ded6"
-              />
-              <text x="108" y="55" text-anchor="middle" fill="#17201b">
-                banner-plugin
-              </text>
-              <rect
-                x="10"
-                y="76"
-                width="196"
-                height="34"
-                rx="6"
-                fill="#ffffff"
-                stroke="#d9ded6"
-              />
-              <text x="108" y="97" text-anchor="middle" fill="#17201b">
-                greeting-plugin
-              </text>
+              <defs>
+                <marker
+                  id="mo-arrow"
+                  markerWidth="9"
+                  markerHeight="9"
+                  refX="8"
+                  refY="3"
+                  orient="auto"
+                >
+                  <path d="M0,0 L8,3 L0,6 z" fill="#5a645e" />
+                </marker>
+              </defs>
+              <g
+                font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+                font-size="12"
+              >
+                <text x="10" y="24" fill="#5a645e" font-size="11">
+                  DISCOVERY ORDER (alphabetical)
+                </text>
+                <rect
+                  x="10"
+                  y="34"
+                  width="196"
+                  height="34"
+                  rx="6"
+                  fill="#ffffff"
+                  stroke="#d9ded6"
+                />
+                <text x="108" y="55" text-anchor="middle" fill="#17201b">
+                  banner-plugin
+                </text>
+                <rect
+                  x="10"
+                  y="76"
+                  width="196"
+                  height="34"
+                  rx="6"
+                  fill="#ffffff"
+                  stroke="#d9ded6"
+                />
+                <text x="108" y="97" text-anchor="middle" fill="#17201b">
+                  greeting-plugin
+                </text>
 
-              <text x="258" y="24" fill="#5a645e" font-size="11">
-                DECLARED EDGE
-              </text>
-              <rect
-                x="258"
-                y="34"
-                width="204"
-                height="76"
-                rx="6"
-                fill="#ffffff"
-                stroke="#087b8c"
-              />
-              <text x="360" y="56" text-anchor="middle" fill="#087b8c">
-                banner injects
-              </text>
-              <text x="360" y="74" text-anchor="middle" fill="#17201b">
-                plugin.greeting
-              </text>
-              <text x="360" y="94" text-anchor="middle" fill="#087b8c">
-                greeting provides it
-              </text>
+                <text x="258" y="24" fill="#5a645e" font-size="11">
+                  DECLARED EDGE
+                </text>
+                <rect
+                  x="258"
+                  y="34"
+                  width="204"
+                  height="76"
+                  rx="6"
+                  fill="#ffffff"
+                  stroke="#087b8c"
+                />
+                <text x="360" y="56" text-anchor="middle" fill="#087b8c">
+                  banner injects
+                </text>
+                <text x="360" y="74" text-anchor="middle" fill="#17201b">
+                  plugin.greeting
+                </text>
+                <text x="360" y="94" text-anchor="middle" fill="#087b8c">
+                  greeting provides it
+                </text>
 
-              <text x="514" y="24" fill="#5a645e" font-size="11">
-                MOUNT ORDER
-              </text>
-              <rect
-                x="514"
-                y="34"
-                width="196"
-                height="34"
-                rx="6"
-                fill="#ffffff"
-                stroke="#0f6b4f"
-              />
-              <text x="612" y="55" text-anchor="middle" fill="#0f6b4f">
-                greeting-plugin
-              </text>
-              <rect
-                x="514"
-                y="76"
-                width="196"
-                height="34"
-                rx="6"
-                fill="#ffffff"
-                stroke="#0f6b4f"
-              />
-              <text x="612" y="97" text-anchor="middle" fill="#0f6b4f">
-                banner-plugin
-              </text>
+                <text x="514" y="24" fill="#5a645e" font-size="11">
+                  MOUNT ORDER
+                </text>
+                <rect
+                  x="514"
+                  y="34"
+                  width="196"
+                  height="34"
+                  rx="6"
+                  fill="#ffffff"
+                  stroke="#0f6b4f"
+                />
+                <text x="612" y="55" text-anchor="middle" fill="#0f6b4f">
+                  greeting-plugin
+                </text>
+                <rect
+                  x="514"
+                  y="76"
+                  width="196"
+                  height="34"
+                  rx="6"
+                  fill="#ffffff"
+                  stroke="#0f6b4f"
+                />
+                <text x="612" y="97" text-anchor="middle" fill="#0f6b4f">
+                  banner-plugin
+                </text>
 
-              <line
-                x1="210"
-                y1="72"
-                x2="252"
-                y2="72"
-                stroke="#5a645e"
-                marker-end="url(#mo-arrow)"
-              />
-              <line
-                x1="466"
-                y1="72"
-                x2="508"
-                y2="72"
-                stroke="#5a645e"
-                marker-end="url(#mo-arrow)"
-              />
+                <line
+                  x1="210"
+                  y1="72"
+                  x2="252"
+                  y2="72"
+                  stroke="#5a645e"
+                  marker-end="url(#mo-arrow)"
+                />
+                <line
+                  x1="466"
+                  y1="72"
+                  x2="508"
+                  y2="72"
+                  stroke="#5a645e"
+                  marker-end="url(#mo-arrow)"
+                />
 
-              <text x="360" y="146" text-anchor="middle" fill="#5a645e">
-                read off disk, before either package is imported
-              </text>
-              <text x="360" y="174" text-anchor="middle" fill="#5a645e">
-                with no declarations there are no edges, and the manifest's
-              </text>
-              <text x="360" y="192" text-anchor="middle" fill="#5a645e">
-                order: governs exactly as it did before
-              </text>
-            </g>
-          </svg>
+                <text x="360" y="146" text-anchor="middle" fill="#5a645e">
+                  read off disk, before either package is imported
+                </text>
+                <text x="360" y="174" text-anchor="middle" fill="#5a645e">
+                  with no declarations there are no edges, and the manifest's
+                </text>
+                <text x="360" y="192" text-anchor="middle" fill="#5a645e">
+                  order: governs exactly as it did before
+                </text>
+              </g>
+            </svg>
+          </div>
           <figcaption>
             The order flips because of a declaration, not a hand-maintained
             list. Both markers are read from

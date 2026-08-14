@@ -417,10 +417,18 @@ pre code {
   margin: 32px 0;
 }
 
+/* Below the min-width the diagram scrolls instead of scaling down. The SVG
+   carries fixed type in a 720-unit viewBox, so letting it shrink to a 350px
+   phone column would render 13px labels at about 6px. */
+.diagram-scroll {
+  overflow-x: auto;
+}
+
 .post-diagram svg {
   display: block;
-  width: 100%;
   height: auto;
+  min-width: 600px;
+  width: 100%;
 }
 
 .post-diagram figcaption {
