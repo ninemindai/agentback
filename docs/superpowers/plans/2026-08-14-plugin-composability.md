@@ -1409,13 +1409,37 @@ and make the pushed disposer async, running the observer step first:
         // …unchanged from Task 5…
 ```
 
-> Note on scope: the spec calls for stopping through the lifecycle registry so
-> group ordering and the `parallel` setting are honored. `LifeCycleRegistry`
-> exposes no public "stop this subset" entry point today. Resolve this in the
-> implementation by adding one — a `stopObservers(bindings)` method on
-> `LifeCycleRegistry` that reuses its existing `notifyObservers` — rather than
-> by hand-rolling a second notify path here. The loop above is the shape; the
-> call inside it must become `registry.stopObservers(observerBindings)`.
+First add the subset entry point. `LifeCycleObserverRegistry` has no public
+"stop these" method, and hand-rolling a second notify path here would lose
+exactly what going through the registry buys. Append to
+`packages/core/src/lifecycle-registry.ts` after `stop()` (line 270):
+
+```ts
+  /**
+   * Notify a SUBSET of observers of `stop`, by binding key.
+   *
+   * Reuses the full `stop()` path — group order (reversed), `disabledGroups`,
+   * the `parallel` setting, and `invokeMethod` argument injection — so a
+   * partial retraction behaves exactly like a shutdown restricted to those
+   * observers. A plugin uninstall needs this: it stops what it is retracting
+   * and nothing else.
+   */
+  public async stopObservers(keys: ReadonlySet<string>): Promise<void> {
+    if (!keys.size) return;
+    const groups = this.getObserverGroupsByOrder()
+      .map(g => ({...g, bindings: g.bindings.filter(b => keys.has(b.key))}))
+      .filter(g => g.bindings.length > 0);
+    if (!groups.length) return;
+    await this.notifyGroups(['stop'], groups, true);
+  }
+```
+
+`.filter()` returns a fresh array, which matters: `notifyGroups` reverses
+`group.bindings` **in place** at line 229, and passing it a filtered copy keeps
+that mutation off the registry's own group objects.
+
+The observers must still be bound when this runs, so the teardown stops first
+and unbinds second.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -1841,14 +1865,41 @@ and replace `resolveMember`'s body (lines 931-942):
 
 - [ ] **Step 4: Gate `tools/list` and `tools/call` on liveness**
 
-In `registerAllOn` (`mcp.server.ts:1100`), the `visible` map is built once per
-server. Filter it at request time in both handlers by checking
-`findToolBindingKey(this.context, t.ctor) !== undefined`:
+In `registerAllOn`, the `visible` map is built once per server, so both
+handlers consult liveness at request time.
 
-- in the `tools/list` handler, skip entries whose binding is gone before
-  building the response array;
-- in the `tools/call` handler, treat a gone binding exactly as an unknown tool
-  name, so the error shape callers already handle is reused.
+`tools/list` (currently `Array.from(visible.values(), v => v.entry)`):
+
+```ts
+    server.setRequestHandler('tools/list', async () => ({
+      tools: Array.from(visible.values())
+        // Liveness: the map is baked at build time, so a tool whose binding
+        // was retracted after that must not still be advertised.
+        .filter(v => findToolBindingKey(this.context, v.tool.ctor) !== undefined)
+        .map(v => v.entry) as ListToolsResult['tools'],
+    }));
+```
+
+`tools/call` — fold liveness into the existing not-found branch so a retracted
+tool reuses the error shape callers already handle:
+
+```ts
+          const found = visible.get(request.params.name);
+          if (
+            !found ||
+            findToolBindingKey(this.context, found.tool.ctor) === undefined
+          ) {
+            throw new ProtocolError(
+              ProtocolErrorCode.InvalidParams,
+              `Tool ${request.params.name} not found`,
+            );
+          }
+```
+
+Note `resolveMember` is also called for resources (`:434`) and prompts
+(`:473`), so removing its fallback covers those too. That is intended and the
+same argument applies — every one is discovered through a tagged binding, so
+the branch is unreachable except when something was retracted.
 
 Under the stateless default (`protocol: 'both'`) a fresh server is built per
 request, so `tools/list` would self-correct; the gate is what makes the session

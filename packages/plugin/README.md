@@ -53,9 +53,84 @@ interface LoadPluginOptions {
 Use `loadPlugins` (plural) for the declarative manifest path; use `loadPlugin`
 (singular) for an explicit, code-driven mount of a known target.
 
-`loadPlugin` is **not idempotent**: mounting the same plugin twice trips the
-collision guard (the second mount re-binds the component's own — now
-app-owned — key). Mount each plugin once, or pass `allowOverride` deliberately.
+`loadPlugin` returns an `Installed` — see [Unmounting](#unmounting). Mounting
+the same plugin twice **without an intervening `uninstall()`** still trips the
+collision guard (the second mount re-binds the component's own, now app-owned,
+key). Mount once, `uninstall()` first, or pass `allowOverride` deliberately.
+
+## Unmounting
+
+Both entry points return their inverse, per the
+[revertible-install contract](../../docs/proposals/revertible-installs.md):
+
+```ts
+const report = await loadPlugins(app);
+await report.uninstall(); // retracts every plugin that mounted, LIFO
+
+const one = await loadPlugin(app, '@acme/foo');
+await one.uninstall(); // PluginInfo & Installed
+```
+
+`uninstall()` is idempotent, and retracts:
+
+- **bindings** the mount added — and **restores** any it displaced under
+  `allowOverride`;
+- **lifecycle observers**, through the lifecycle registry (so group order,
+  `disabledGroups` and the `parallel` setting all hold), and only while the app
+  is `started`/`initialized`;
+- **routes**, as a consequence: unbinding a controller makes its routes 404 on
+  both hosts.
+
+Four behaviors worth knowing, each of which exists because the naive version is
+wrong:
+
+- **Ownership, not key possession.** If something else re-bound one of the
+  plugin's keys after it mounted, `uninstall()` touches neither the unbind nor
+  the restore. An unguarded restore would clobber that third party exactly as
+  an unguarded unbind would delete it.
+- **A rejected mount leaves nothing behind.** `app.component()` runs its side
+  effects before a collision is detectable, so a losing plugin is rolled back
+  rather than left bound and absent from `report.mounted`.
+- **Shared nested components are refcounted, per application.** Two plugins
+  listing the same nested `Component` both keep it alive; it is retracted by
+  whichever uninstalls last, not by whichever mounted it first.
+- **A partial `strict` load is still retractable.** The thrown error carries
+  the report, and that report's `uninstall()` retracts the mounts that did
+  succeed.
+
+Not retracted: side effects that already left the process, and anything a
+component's constructor did beyond binding.
+
+## Declaring dependencies
+
+A plugin can declare which DI keys it contributes and which it needs:
+
+```jsonc
+"agentback": {
+  "plugin": true,
+  "component": "MyComponent",
+  "provides": ["services.Catalog"],
+  "inject": ["services.Auth"]
+}
+```
+
+Mount order is then a topological sort over `inject → provides`, and `order:`
+becomes a **tiebreaker** among plugins that are otherwise independent. With no
+declarations anywhere there are no edges, so `order:` alone governs — exactly
+as before this existed.
+
+Because discovery reads the stanza off disk without importing anything, three
+checks run **before any plugin code executes**: a duplicate `provides` (unless
+the key is in `allowOverride`), an `inject` nothing provides, and a cycle. Each
+fails with the plugins named.
+
+Declarations are **advisory**. They govern ordering and early detection; the DI
+container remains the authority at resolution time, so under-declaring `inject`
+costs you ordering guarantees, not correctness. Two consequences: a key the
+**application itself** binds satisfies an `inject` with no edge (not every
+dependency comes from a plugin), and the graph cannot express "I need the
+*overridden* binding" when the app holds a default — a consumer that needs the
+override should inject a key the overriding plugin uniquely provides.
 
 A runnable end-to-end demo of both entry points lives in
 [`examples/hello-plugin`](../../examples/hello-plugin).

@@ -68,6 +68,16 @@ async function main() {
   // the app (or an earlier plugin) already owns throws unless you pass it in
   // `allowOverride`. Here the two plugins bind disjoint keys, so all is well.
 
+  // 3. Mount order is DERIVED, not hand-maintained. banner-plugin declares
+  // `inject: ["plugin.greeting"]` and greeting-plugin declares the matching
+  // `provides`, so the provider mounts first even though directory scanning
+  // discovers "banner-plugin" earlier (alphabetically). With no declarations
+  // at all there are no edges, and the manifest's `order:` governs as before.
+  console.log(
+    '\nmount order (topological, not discovery order):',
+    report.mounted.map(p => p.name).join(' → '),
+  );
+
   app.restController(InfoController);
   await app.start();
 
@@ -76,9 +86,42 @@ async function main() {
   console.log(`    GET ${server.url}/info`);
 }
 
+/**
+ * 4. Retraction. Both entry points return their inverse, so a mounted plugin
+ * set is a value you can hand back rather than a one-way side effect.
+ *
+ * Runs against its own throwaway app so the served example above stays up —
+ * uninstalling the plugins the live controller injects would break `/info`,
+ * which is exactly the point: `uninstall()` really does remove them.
+ */
+async function retractionDemo(root: string) {
+  const app = new RestApplication({});
+  const report = await loadPlugins(app, {
+    cwd: root,
+    config: {scan: false, dirs: ['plugins']},
+  });
+  const one = await loadPlugin(app, './plugins/stamp-plugin', {
+    cwd: root,
+    component: 'StampPlugin',
+  });
+
+  console.log('\n--- retraction ---');
+  console.log('bound before:', app.isBound('plugin.greeting'), app.isBound('plugin.stamp'));
+
+  await one.uninstall(); // loadPlugin -> PluginInfo & Installed
+  await report.uninstall(); // loadPlugins -> report satisfies Installed
+
+  console.log('bound after: ', app.isBound('plugin.greeting'), app.isBound('plugin.stamp'));
+  // Idempotent: a second call is a no-op, never an error.
+  await report.uninstall();
+}
+
 if (isMain(import.meta)) {
   try {
     await main();
+    await retractionDemo(
+      resolve(dirname(fileURLToPath(import.meta.url)), '..'),
+    );
   } catch (err) {
     console.error(err);
     process.exit(1);

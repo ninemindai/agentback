@@ -44,7 +44,12 @@ auth strategy, an enforcement point — halts startup unless allow-listed). A
 package opts in with one `package.json` stanza:
 
 ```jsonc
-"agentback": {"plugin": true, "component": "MyComponent"}
+"agentback": {
+  "plugin": true,
+  "component": "MyComponent",
+  "provides": ["services.Catalog"], // optional: DI keys it contributes
+  "inject": ["services.Auth"] // optional: DI keys it needs first
+}
 ```
 
 Two entry points, both before `app.start()`:
@@ -53,20 +58,41 @@ Two entry points, both before `app.start()`:
 import {loadPlugins, loadPlugin} from '@agentback/plugin';
 
 // Declarative: discover from declared deps + scanned dirs, gate, mount, report.
-await loadPlugins(app); // reads PluginBindings.CONFIG or options.config
+const report = await loadPlugins(app); // reads PluginBindings.CONFIG or options.config
 
 // Imperative: mount ONE plugin by npm name or path — need not be a declared
 // dep, need not carry the marker (pass {component} when it doesn't).
-await loadPlugin(app, '@acme/foo');
+const foo = await loadPlugin(app, '@acme/foo');
 await loadPlugin(app, './plugins/bare.js', {component: 'MyComponent'});
+
+// Both return their inverse (the revertible-install contract).
+await report.uninstall();
+await foo.uninstall();
 ```
 
 `loadPlugins` returns an auditable `PluginLoadReport` and obeys
 `enable`/`disable`/`order`/`allowOverride`/`strict` from the manifest.
-`loadPlugin` returns the mounted `PluginInfo` and throws on failure; both share
+`loadPlugin` returns `PluginInfo & Installed` and throws on failure; both share
 the same DI-key collision detection. Use the plural for the dependency-graph
-path, the singular for an explicit code-driven mount. See
-`packages/plugin/README.md` and the runnable `examples/hello-plugin`.
+path, the singular for an explicit code-driven mount.
+
+**`provides`/`inject` derive mount order** (topological sort), demoting `order:`
+to a tiebreaker among independent plugins — with no declarations anywhere,
+`order:` alone governs exactly as before. Because discovery reads the stanza off
+disk without importing, a duplicate `provides` (unless allow-listed), an
+unsatisfiable `inject`, and a cycle are all caught **before any plugin code
+runs**. Declarations are advisory: the container stays the authority, so
+under-declaring costs ordering, not correctness, and a key the **app itself**
+binds satisfies an `inject` with no edge.
+
+**`uninstall()`** is idempotent and retracts bindings (restoring any displaced
+under `allowOverride`), lifecycle observers (through the registry, only while
+the app is running), and — as a consequence of unbinding controllers — routes,
+which 404 on both hosts. It will not touch a key something else re-bound after
+the mount, a rejected mount is rolled back rather than left behind, and a
+nested `Component` shared by two plugins is refcounted so it survives until the
+last one uninstalls. See `packages/plugin/README.md` and the runnable
+`examples/hello-plugin`.
 
 ## Middleware
 

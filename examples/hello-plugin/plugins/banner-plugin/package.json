@@ -1,5 +1,5 @@
 {
-  "name": "@hello/greeting-plugin",
+  "name": "@hello/banner-plugin",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -9,9 +9,8 @@
   },
   "agentback": {
     "plugin": true,
-    "component": "GreetingPlugin",
-    "provides": [
-      "plugin.greeting"
-    ]
+    "component": "BannerPlugin",
+    "provides": ["plugin.banner"],
+    "inject": ["plugin.greeting"]
   }
 }
