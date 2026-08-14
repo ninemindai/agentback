@@ -264,7 +264,8 @@ capability mount), CLI-internal `install*` functions (unrelated namesakes).
 - **Per-mount handles for `installMcpConnect` registry reuse.** Reusing one
   caller-provided registry across mounts currently chains uninstalls
   (nothing becomes unretractable, but retraction is coarse). The granular
-  per-mount handle rides the `@agentback/plugin` unmount wave.
+  per-mount handle rides the `@agentback/plugin` unmount wave — now drafted
+  as [plugin-composability.md](plugin-composability.md).
 - **Conformance suite depth.** Added this review: reinstall, stop-then-
   uninstall, failure-cleanup, auth-gating, upload-side-effect tests. Still
   worth adding when plugin unmount lands: same-path shadowing/restore

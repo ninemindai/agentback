@@ -153,7 +153,11 @@ Takeaways, in decreasing order of actionability:
    functions return their inverse_. That is the cheapest 20% of Cordis, it
    buys the option of hot component swap later, and it is most relevant to
    `@agentback/plugin`. Now drafted as
-   [revertible-installs.md](revertible-installs.md).
+   [revertible-installs.md](revertible-installs.md), which shipped as the
+   substrate; the plugin-seam half — unmount, plus the cheapest _static_ slice
+   of the spatial axis (declared `provides`/`inject` for derived mount order
+   and pre-import collision detection, with no reactivity) — is drafted as
+   [plugin-composability.md](plugin-composability.md).
 2. **Restart is our current answer to evolution, and it now has a named
    counterpoint.** The see-and-evolve agent-console direction treats
    evolution as _source edit + process restart_. That is defensible — restart
