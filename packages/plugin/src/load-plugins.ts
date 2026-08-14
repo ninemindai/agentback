@@ -7,7 +7,13 @@ import {PluginBindings, PluginsConfig} from './config.js';
 import {applyGate} from './gate.js';
 import {discover} from './discovery.js';
 import {sortByGraph} from './graph.js';
-import {appOwnedContext, tryMount} from './mount.js';
+import {
+  appOwnedContext,
+  buildTeardown,
+  componentRefsFor,
+  tryMount,
+} from './mount.js';
+import type {MountOutcome} from './mount.js';
 import type {
   LoadPluginsOptions,
   PluginLoadError,
@@ -53,12 +59,19 @@ export async function loadPlugins(
   });
   warnings.push(...graph.warnings);
 
+  const refs = componentRefsFor(app);
+  const outcomes: MountOutcome[] = [];
   const report: PluginLoadReport = {
     discovered,
     mounted: [],
     skipped: gate.skipped,
     warnings,
     errors: [],
+    // Built LAZILY over the live `outcomes` array. Eager construction would
+    // snapshot an empty list, and the inverse has to cover whatever had
+    // mounted at the moment uninstall() is called — including a partial load
+    // that threw under `strict`.
+    uninstall: () => buildTeardown(app, outcomes, refs)(),
   };
 
   const fail = (err: PluginLoadError): void => {
@@ -78,11 +91,12 @@ export async function loadPlugins(
   for (const err of graph.errors) fail(err);
 
   for (const info of graph.ordered) {
-    const err = await tryMount(app, info, ctx);
-    if (err) {
-      fail(err);
+    const outcome = await tryMount(app, info, ctx, refs);
+    if (!outcome.ok) {
+      fail(outcome.error);
       continue;
     }
+    outcomes.push(outcome);
     report.mounted.push(info);
   }
 

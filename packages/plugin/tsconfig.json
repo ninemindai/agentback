@@ -8,6 +8,7 @@
   "include": ["src/**/*"],
   "exclude": ["dist", "node_modules"],
   "references": [
+    {"path": "../common"},
     {"path": "../context"},
     {"path": "../core"},
     {"path": "../testlab"}

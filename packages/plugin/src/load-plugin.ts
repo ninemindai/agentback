@@ -5,14 +5,19 @@
 import {isAbsolute, dirname, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {statSync} from 'node:fs';
-import type {Application} from '@agentback/core';
+import type {Application, Installed} from '@agentback/core';
 import {
   entryRelative,
   readMarker,
   readPackageJson,
   resolvePackageDir,
 } from './discovery.js';
-import {appOwnedContext, tryMount} from './mount.js';
+import {
+  appOwnedContext,
+  buildTeardown,
+  componentRefsFor,
+  tryMount,
+} from './mount.js';
 import type {LoadPluginOptions, PluginInfo} from './types.js';
 
 /**
@@ -132,17 +137,19 @@ export async function loadPlugin(
   app: Application,
   specifier: string,
   options: LoadPluginOptions = {},
-): Promise<PluginInfo> {
+): Promise<PluginInfo & Installed> {
   const cwd = options.cwd ?? process.cwd();
   const info = await resolvePlugin(specifier, cwd, options.component);
   const ctx = appOwnedContext(app, options.allowOverride ?? []);
-  const err = await tryMount(app, info, ctx);
-  if (err) {
+  const refs = componentRefsFor(app);
+  const outcome = await tryMount(app, info, ctx, refs);
+  if (!outcome.ok) {
+    const {error} = outcome;
     const e = new Error(
-      `[plugin:${err.package}] ${err.kind}: ${err.message}`,
-    ) as Error & {error?: typeof err};
-    e.error = err;
+      `[plugin:${error.package}] ${error.kind}: ${error.message}`,
+    ) as Error & {error?: typeof error};
+    e.error = error;
     throw e;
   }
-  return info;
+  return {...info, uninstall: () => buildTeardown(app, [outcome], refs)()};
 }

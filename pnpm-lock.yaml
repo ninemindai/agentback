@@ -2321,6 +2321,9 @@ importers:
 
   packages/plugin:
     dependencies:
+      '@agentback/common':
+        specifier: workspace:~
+        version: link:../common
       '@agentback/context':
         specifier: workspace:~
         version: link:../context

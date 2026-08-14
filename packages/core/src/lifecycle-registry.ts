@@ -268,4 +268,26 @@ export class LifeCycleObserverRegistry implements LifeCycleObserver {
     // Stop in the reverse order
     await this.notifyGroups(['stop'], groups, true);
   }
+
+  /**
+   * Notify a SUBSET of observers of `stop`, selected by binding key.
+   *
+   * Reuses the full `stop()` path — reversed group order, `disabledGroups`,
+   * the `parallel` setting, and `invokeMethod` argument injection — so a
+   * partial retraction behaves like a shutdown restricted to those observers.
+   * A plugin uninstall needs exactly this: stop what it is retracting, and
+   * nothing else.
+   *
+   * The filtered arrays are fresh copies, which matters — `notifyGroups`
+   * reverses `group.bindings` in place, and a copy keeps that mutation off
+   * the registry's own group objects.
+   */
+  public async stopObservers(keys: ReadonlySet<string>): Promise<void> {
+    if (!keys.size) return;
+    const groups = this.getObserverGroupsByOrder()
+      .map(g => ({...g, bindings: g.bindings.filter(b => keys.has(b.key))}))
+      .filter(g => g.bindings.length > 0);
+    if (!groups.length) return;
+    await this.notifyGroups(['stop'], groups, true);
+  }
 }

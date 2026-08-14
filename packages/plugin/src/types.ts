@@ -2,6 +2,8 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import type {Installed} from '@agentback/core';
+
 /**
  * The `agentback` stanza a plugin package adds to its `package.json`.
  *
@@ -58,7 +60,16 @@ export interface PluginLoadError {
   collidingKeys?: string[];
 }
 
-export interface PluginLoadReport {
+/**
+ * The record of one `loadPlugins` call — and its inverse. `uninstall()`
+ * retracts every plugin that mounted, LIFO, restoring displaced bindings and
+ * stopping retracted lifecycle observers. Idempotent.
+ *
+ * It is attached even when a `strict` load throws mid-way, so the error's
+ * report retracts the mounts that DID succeed rather than leaving a
+ * half-mounted app with no inverse.
+ */
+export interface PluginLoadReport extends Installed {
   discovered: PluginInfo[];
   mounted: PluginInfo[];
   skipped: Array<PluginInfo & {reason: 'disabled' | 'not-enabled'}>;
