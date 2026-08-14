@@ -82,6 +82,26 @@ export interface ToolBinding {
   meta: ToolMetadata;
 }
 
+/**
+ * The binding key {@link MCPServer.resolveMember} would resolve `ctor`
+ * through, or `undefined` when the class is not (or no longer) bound.
+ *
+ * The MCP counterpart of REST's `findControllerBindingKey`. Tool maps are
+ * baked into a server at build time, so dispatch consults this per request:
+ * an unbound tool is retracted (absent from `tools/list`, not found on
+ * `tools/call`) instead of being served by a class the container no longer
+ * knows about. That is what lets an install helper or a plugin uninstall
+ * retract a tool with `unbind()`.
+ */
+export function findToolBindingKey(
+  ctx: Context,
+  ctor: Function,
+): string | undefined {
+  return ctx
+    .find(extensionFilter(MCP_SERVERS))
+    .find(b => b.valueConstructor === ctor)?.key;
+}
+
 /** One tool's `tools/list` entry, as published to clients. */
 interface ToolListEntry {
   name: string;
@@ -932,13 +952,17 @@ export class MCPServer implements Server {
     ctor: Function,
     ctx: Context = this.context,
   ): Promise<T> {
-    const binding = ctx
-      .find(extensionFilter(MCP_SERVERS))
-      .find(b => b.valueConstructor === ctor);
-    if (binding) return ctx.get<T>(binding.key);
-    // Safety net: a discovered tool always has a tagged binding, so this is only
-    // reached for a class invoked without one — instantiate with no DI.
-    return new (ctor as new () => T)();
+    const key = findToolBindingKey(ctx, ctor);
+    if (key !== undefined) return ctx.get<T>(key);
+    // NO `new ctor()` fallback. Instantiating without DI silently runs user
+    // code with un-injected dependencies — strictly worse than a typed error,
+    // and after the dispatch-time liveness gate the only way to reach here is
+    // a class that was retracted (e.g. by a plugin uninstall).
+    throw new Error(
+      `MCP member ${ctor.name} is not bound. Register it with ` +
+        `app.service(${ctor.name}), or it was retracted after this server ` +
+        `was built.`,
+    );
   }
 
   /**
@@ -1134,10 +1158,13 @@ export class MCPServer implements Server {
       // unknown>` statically — the registration-time guard above (which throws
       // unless the schema lowered to an object root) is what actually upholds
       // the invariant, hence the assertion here.
-      tools: Array.from(
-        visible.values(),
-        v => v.entry,
-      ) as ListToolsResult['tools'],
+      tools: Array.from(visible.values())
+        // Liveness: `visible` is baked when the server is built, so a tool
+        // whose binding was retracted afterwards must stop being advertised.
+        .filter(
+          v => findToolBindingKey(this.context, v.tool.ctor) !== undefined,
+        )
+        .map(v => v.entry) as ListToolsResult['tools'],
     }));
     server.setRequestHandler(
       'tools/call',
@@ -1146,7 +1173,13 @@ export class MCPServer implements Server {
       async (request, extra): Promise<CallToolResult> => {
         try {
           const found = visible.get(request.params.name);
-          if (!found) {
+          // A retracted tool is treated exactly as an unknown name, so it
+          // reuses the error shape callers already handle rather than
+          // surfacing a resolver failure from deeper in the pipeline.
+          if (
+            !found ||
+            findToolBindingKey(this.context, found.tool.ctor) === undefined
+          ) {
             throw new ProtocolError(
               ProtocolErrorCode.InvalidParams,
               `Tool ${request.params.name} not found`,
