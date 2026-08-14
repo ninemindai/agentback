@@ -46,31 +46,31 @@ Read top-to-bottom the first time; jump around afterwards.
 
 ### Guides — _build something_
 
-| Guide                                                                  | Outcome                                                                                                      |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| [Build a REST API](guides/build-a-rest-api.md)                         | A Zod-validated REST service with auto-emitted OpenAPI 3.1 and Swagger UI.                                   |
-| [Build an MCP server](guides/build-an-mcp-server.md)                   | Tools, resources, and prompts an MCP client (or Claude) can call, with an inspector UI.                      |
-| [Build a hybrid app](guides/build-a-hybrid-app.md)                     | REST + MCP from a single process and a single set of schemas, plus a type-safe HTTP client.                  |
-| [Typed streaming (SSE & JSONL)](guides/streaming.md)                   | `streamOf:` routes: per-item Zod validation, typed client `for await`, MCP progress, bring-your-own streams. |
-| [Render a widget with MCP Apps](guides/mcp-apps-widgets.md)            | An interactive `ui://` widget a host (Claude Desktop) renders inline for a tool's result (SEP-1865).         |
-| [Composition & extensibility](guides/composition-and-extensibility.md) | The modular toolkit: components, middleware, interceptors, extension points, and subclassing the dispatcher. |
-| [Testing](guides/testing.md)                                           | `createTestApp` and the four client surfaces: typed calls, supertest, in-memory MCP, DI assertions.          |
-| [Secure MCP over HTTP](guides/secure-mcp-over-http.md)                 | Auth modes (strategies vs OAuth 2.1 resource server), scope-gated tools, DNS-rebinding, rate limits.         |
-| [Agent console security](guides/agent-console.md)                      | Security model for the ACP agent dock: off by default, loopback-only, auth requirements, permission scoping. |
-| [Run AI SDK agents](guides/agents.md)                                  | An agent whose tools ARE your `@tool` classes: projection, per-turn identity, quota preflight, usage events. |
-| [Build an operator CLI](guides/command.md)                             | Turn your `@tool` classes into a runnable command (`my-svc forecast --city Tokyo`) — argv→Zod, streaming, `--llms`. |
-| [HTTP hosts](guides/deploy-to-edge.md)                                 | Run REST + MCP on Node, Fastify, Hono, Bun, Deno, or Workers from one `fetchHandler()`. The native listener. |
-| [Deploy to production](guides/deploy-to-production.md)                 | Containers, validated config, K8s probes, metrics/tracing, graceful shutdown, multi-instance checklist.      |
+| Guide                                                                  | Outcome                                                                                                                                                           |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Build a REST API](guides/build-a-rest-api.md)                         | A Zod-validated REST service with auto-emitted OpenAPI 3.1 and Swagger UI.                                                                                        |
+| [Build an MCP server](guides/build-an-mcp-server.md)                   | Tools, resources, and prompts an MCP client (or Claude) can call, with an inspector UI.                                                                           |
+| [Build a hybrid app](guides/build-a-hybrid-app.md)                     | REST + MCP from a single process and a single set of schemas, plus a type-safe HTTP client.                                                                       |
+| [Typed streaming (SSE & JSONL)](guides/streaming.md)                   | `streamOf:` routes: per-item Zod validation, typed client `for await`, MCP progress, bring-your-own streams.                                                      |
+| [Render a widget with MCP Apps](guides/mcp-apps-widgets.md)            | An interactive `ui://` widget a host (Claude Desktop) renders inline for a tool's result (SEP-1865).                                                              |
+| [Composition & extensibility](guides/composition-and-extensibility.md) | The modular toolkit: components, middleware, interceptors, extension points, plugins (mount and retract a third-party Component), and subclassing the dispatcher. |
+| [Testing](guides/testing.md)                                           | `createTestApp` and the four client surfaces: typed calls, supertest, in-memory MCP, DI assertions.                                                               |
+| [Secure MCP over HTTP](guides/secure-mcp-over-http.md)                 | Auth modes (strategies vs OAuth 2.1 resource server), scope-gated tools, DNS-rebinding, rate limits.                                                              |
+| [Agent console security](guides/agent-console.md)                      | Security model for the ACP agent dock: off by default, loopback-only, auth requirements, permission scoping.                                                      |
+| [Run AI SDK agents](guides/agents.md)                                  | An agent whose tools ARE your `@tool` classes: projection, per-turn identity, quota preflight, usage events.                                                      |
+| [Build an operator CLI](guides/command.md)                             | Turn your `@tool` classes into a runnable command (`my-svc forecast --city Tokyo`) — argv→Zod, streaming, `--llms`.                                               |
+| [HTTP hosts](guides/deploy-to-edge.md)                                 | Run REST + MCP on Node, Fastify, Hono, Bun, Deno, or Workers from one `fetchHandler()`. The native listener.                                                      |
+| [Deploy to production](guides/deploy-to-production.md)                 | Containers, validated config, K8s probes, metrics/tracing, graceful shutdown, multi-instance checklist.                                                           |
 
 ### Reference & design
 
-| Doc                                                          | Purpose                                                                                                                                         |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Architecture overview](architecture/overview.md)            | The big picture: how a request flows, how servers discover bindings, full package layering. Diagrams included.                                  |
-| [Package catalog](packages.md)                               | Every `@agentback/*` package and `create-agentback`, grouped by layer (DI foundation, REST/MCP/clients, platform).                              |
-| [Metering & payments](architecture/metering-and-payments.md) | Counting every REST/MCP call (`metering`) and gating or billing the paid ones — x402 / MPP / Stripe (`payments`). Diagrams.                     |
-| [Boundary coherence (design thesis)](agent-ergonomics.md)    | _Why_ the framework is shaped this way — the "one artifact, viewed differently" bet and what it buys AI-led teams.                              |
-| [Database story](db-story.md)                                | The framework's stance on persistence (Drizzle recipe), and why there's no built-in ORM.                                                        |
+| Doc                                                          | Purpose                                                                                                                                                            |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [Architecture overview](architecture/overview.md)            | The big picture: how a request flows, how servers discover bindings, full package layering. Diagrams included.                                                     |
+| [Package catalog](packages.md)                               | Every `@agentback/*` package and `create-agentback`, grouped by layer (DI foundation, REST/MCP/clients, platform).                                                 |
+| [Metering & payments](architecture/metering-and-payments.md) | Counting every REST/MCP call (`metering`) and gating or billing the paid ones — x402 / MPP / Stripe (`payments`). Diagrams.                                        |
+| [Boundary coherence (design thesis)](agent-ergonomics.md)    | _Why_ the framework is shaped this way — the "one artifact, viewed differently" bet and what it buys AI-led teams.                                                 |
+| [Database story](db-story.md)                                | The framework's stance on persistence (Drizzle recipe), and why there's no built-in ORM.                                                                           |
 | [Actor model](actor-model.md)                                | The actor model: `@actor` services, per-identity serialized turns, the `ActorRuntime` port, and the Redis + Durable Objects adapters. See `examples/hello-actors`. |
 
 Every package under [`packages/`](../packages/) carries its own `README.md` with
@@ -129,17 +129,17 @@ pnpm -F hello-hybrid start       # REST + MCP from one process, both UIs
 pnpm -F hello-client start       # the typed client calling hello-rest's schemas
 ```
 
-| Example                        | Demonstrates                                                 | Guide                                                                     |
-| ------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------------------- |
-| `examples/hello-rest`          | REST + SSE streaming + auth + health + metrics + explorers   | [REST](guides/build-a-rest-api.md), [Streaming](guides/streaming.md)      |
-| `examples/hello-mcp`           | MCP tools over stdio                                         | [MCP](guides/build-an-mcp-server.md)                                      |
-| `examples/hello-hybrid`        | REST + MCP in one process                                    | [Hybrid](guides/build-a-hybrid-app.md)                                    |
-| `examples/hello-client`        | Schema-shared typed client                                   | [Hybrid](guides/build-a-hybrid-app.md#a-type-safe-client-with-no-codegen) |
-| `examples/hello-mcp-apps`      | MCP Apps `ui://` widget rendered by a host                   | [MCP Apps](guides/mcp-apps-widgets.md)                                    |
-| `examples/hello-actors`        | Addressable, serialized actors over REST                     | [Actor model](actor-model.md)                                             |
-| `examples/hello-agent-console` | Introspection MCP + agent console dock (see + evolve)        | [Agent console security](guides/agent-console.md)                         |
-| `examples/hello-agents`        | AI SDK agent calling the app's own tools (mock model)        | [Run AI SDK agents](guides/agents.md)                                     |
-| `examples/hello-plugin`        | Declarative `loadPlugins` + imperative `loadPlugin` mounting | [Composition](../packages/plugin/README.md)                               |
+| Example                        | Demonstrates                                                  | Guide                                                                                                    |
+| ------------------------------ | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `examples/hello-rest`          | REST + SSE streaming + auth + health + metrics + explorers    | [REST](guides/build-a-rest-api.md), [Streaming](guides/streaming.md)                                     |
+| `examples/hello-mcp`           | MCP tools over stdio                                          | [MCP](guides/build-an-mcp-server.md)                                                                     |
+| `examples/hello-hybrid`        | REST + MCP in one process                                     | [Hybrid](guides/build-a-hybrid-app.md)                                                                   |
+| `examples/hello-client`        | Schema-shared typed client                                    | [Hybrid](guides/build-a-hybrid-app.md#a-type-safe-client-with-no-codegen)                                |
+| `examples/hello-mcp-apps`      | MCP Apps `ui://` widget rendered by a host                    | [MCP Apps](guides/mcp-apps-widgets.md)                                                                   |
+| `examples/hello-actors`        | Addressable, serialized actors over REST                      | [Actor model](actor-model.md)                                                                            |
+| `examples/hello-agent-console` | Introspection MCP + agent console dock (see + evolve)         | [Agent console security](guides/agent-console.md)                                                        |
+| `examples/hello-agents`        | AI SDK agent calling the app's own tools (mock model)         | [Run AI SDK agents](guides/agents.md)                                                                    |
+| `examples/hello-plugin`        | Mount plugins, derive order from `provides`/`inject`, retract | [Composition](guides/composition-and-extensibility.md#5-plugins--mount-a-component-from-another-package) |
 
 ## Conventions in these docs
 

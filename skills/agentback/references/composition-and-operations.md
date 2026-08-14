@@ -85,14 +85,27 @@ runs**. Declarations are advisory: the container stays the authority, so
 under-declaring costs ordering, not correctness, and a key the **app itself**
 binds satisfies an `inject` with no edge.
 
-**`uninstall()`** is idempotent and retracts bindings (restoring any displaced
-under `allowOverride`), lifecycle observers (through the registry, only while
-the app is running), and — as a consequence of unbinding controllers — routes,
-which 404 on both hosts. It will not touch a key something else re-bound after
-the mount, a rejected mount is rolled back rather than left behind, and a
-nested `Component` shared by two plugins is refcounted so it survives until the
-last one uninstalls. See `packages/plugin/README.md` and the runnable
-`examples/hello-plugin`.
+**`uninstall()`** is idempotent (the handle memoizes its inverse) and retracts
+bindings (restoring any displaced under `allowOverride`), lifecycle observers
+(through the registry, only while the app is `started`/`initialized`), and — as
+a consequence of unbinding controllers — routes, which 404 on both hosts. It
+will not touch a key something else re-bound after the mount; a rejected mount
+is rolled back rather than left behind; a nested `Component` shared by two
+plugins is refcounted **per application** so it survives until the last holder
+uninstalls; mounting the same plugin twice takes a second reference rather than
+erroring; and a plugin whose `stop()` rejects still gets its bindings reverted,
+with the failure surfaced as an `AggregateError`.
+
+**Retracting an `@mcpServer` works too**: unbinding a tool class removes it from
+`tools/list` and makes `tools/call` report not-found, instead of the old
+behavior where it stayed callable and ran with un-injected dependencies.
+
+**Read `report.warnings`.** An unrecognized `agentback` marker key (`provide`
+for `provides`) is reported there rather than silently dropped — the plugin
+still mounts, so a swallowed typo would leave you debugging an ordering problem
+with no visible cause. See `packages/plugin/README.md`,
+[docs/guides/composition-and-extensibility.md](../../../docs/guides/composition-and-extensibility.md),
+and the runnable `examples/hello-plugin`.
 
 ## Middleware
 

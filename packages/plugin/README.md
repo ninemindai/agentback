@@ -82,13 +82,21 @@ await one.uninstall(); // PluginInfo & Installed
 - **routes**, as a consequence: unbinding a controller makes its routes 404 on
   both hosts.
 
-Four behaviors worth knowing, each of which exists because the naive version is
+Six behaviors worth knowing, each of which exists because the naive version is
 wrong:
 
 - **Ownership, not key possession.** If something else re-bound one of the
   plugin's keys after it mounted, `uninstall()` touches neither the unbind nor
   the restore. An unguarded restore would clobber that third party exactly as
   an unguarded unbind would delete it.
+- **Idempotent means idempotent.** A handle memoizes its inverse, so repeat
+  calls change nothing. This is load-bearing rather than cosmetic: a rebuilt
+  teardown would decrement a shared component's refcount a second time and
+  retract it under a plugin that still holds it.
+- **A failing observer still gets you a clean retraction.** If a plugin's
+  `stop()` rejects, the bindings are still reverted and the error surfaces as
+  an `AggregateError`. Bailing out early would leave them mounted with no
+  record of who owns them — worse than the original failure.
 - **A rejected mount leaves nothing behind.** `app.component()` runs its side
   effects before a collision is detectable, so a losing plugin is rolled back
   rather than left bound and absent from `report.mounted`.
@@ -129,6 +137,11 @@ A **typo'd marker key is reported, not swallowed** — `provide` for `provides`
 lands in `report.warnings` naming the key, because a silently-dropped
 declaration leaves you debugging an ordering problem with no visible cause.
 Print `report.warnings`.
+
+When several plugins declare the same `provides` key under `allowOverride`, a
+consumer injecting it is ordered after **every** one of them — edging only to
+the last declarer would let an earlier provider mount afterwards and overwrite
+the binding the consumer was ordered to wait for.
 
 Declarations are **advisory**. They govern ordering and early detection; the DI
 container remains the authority at resolution time, so under-declaring `inject`

@@ -4,13 +4,14 @@ This is the guide that makes the "modular, extensible, composable" promise
 concrete. The framework gives you five tools, ordered here from "reach for
 first" to "deepest hook." Pick the lightest one that does the job.
 
-| Tool                                                        | Scope                     | Use for                                   |
-| ----------------------------------------------------------- | ------------------------- | ----------------------------------------- |
-| [Components](#1-components--package-a-feature)              | a bundle of bindings      | shipping/reusing a whole feature          |
-| [Interceptors](#2-interceptors--wrap-method-calls)          | around method invocations | logging, caching, timing, tx, retries     |
-| [Middleware](#3-middleware--around-http-requests)           | around HTTP requests      | CORS, rate limit, probes, request tracing |
-| [Extension points](#4-extension-points--open-a-plugin-slot) | a registry others fill    | "any number of X" plugin surfaces         |
-| [Subclassing dispatch](#subclassing-the-dispatcher)         | the REST pipeline itself  | response envelopes, custom error shapes   |
+| Tool                                                          | Scope                            | Use for                                       |
+| ------------------------------------------------------------- | -------------------------------- | --------------------------------------------- |
+| [Components](#1-components--package-a-feature)                | a bundle of bindings             | shipping/reusing a whole feature              |
+| [Interceptors](#2-interceptors--wrap-method-calls)            | around method invocations        | logging, caching, timing, tx, retries         |
+| [Middleware](#3-middleware--around-http-requests)             | around HTTP requests             | CORS, rate limit, probes, request tracing     |
+| [Extension points](#4-extension-points--open-a-plugin-slot)   | a registry others fill           | "any number of X" plugin surfaces             |
+| [Plugins](#5-plugins--mount-a-component-from-another-package) | a Component from another package | third-party features, mounted and retractable |
+| [Subclassing dispatch](#subclassing-the-dispatcher)           | the REST pipeline itself         | response envelopes, custom error shapes       |
 
 Underneath all of them is the same principle: **add a binding, don't edit the
 core.** ([Why](../concepts/dependency-injection.md#why-this-matters-for-composition).)
@@ -137,6 +138,75 @@ container. New languages are new bindings — the registry grows without editing
 `GreetingService`. (`@inject.tag(tag)` is the lower-level form: inject an array
 of everything carrying a tag.)
 
+## 5. Plugins — mount a Component from another package
+
+Everything above composes code you own. `@agentback/plugin` mounts a
+`Component` that ships in **someone else's package**, with governance, and
+retracts it again.
+
+A package opts in with one `package.json` stanza:
+
+```jsonc
+"agentback": {
+  "plugin": true,
+  "component": "MyComponent",
+  "provides": ["services.Catalog"], // optional: DI keys it contributes
+  "inject": ["services.Auth"] // optional: DI keys it needs first
+}
+```
+
+```ts
+import {loadPlugin, loadPlugins} from '@agentback/plugin';
+
+// Declarative: discover from declared deps + scanned dirs, gate, mount.
+const report = await loadPlugins(app);
+for (const w of report.warnings) console.warn(w);
+
+// Imperative: mount one, by npm name or path.
+const foo = await loadPlugin(app, '@acme/foo');
+
+// Both return their inverse.
+await foo.uninstall();
+await report.uninstall();
+```
+
+**Mount order is derived, not maintained.** `inject → provides` is
+topologically sorted, and the manifest's `order:` becomes a tiebreaker among
+plugins that are otherwise independent. With no declarations there are no
+edges, so `order:` alone governs — which is what makes adopting this
+non-breaking. Because discovery reads the stanza off disk without importing
+anything, a duplicate `provides`, an unsatisfiable `inject`, and a cycle are
+all caught **before any plugin code runs**.
+
+Declarations are **advisory**: the container stays the authority at resolution
+time, so under-declaring `inject` costs ordering, not correctness. A key the
+**application itself** binds satisfies an `inject` with no edge.
+
+**Retraction is governed too.** `uninstall()` unbinds what the mount bound,
+restores anything it displaced, stops the lifecycle observers it contributed,
+and — because unbinding a controller retracts its routes — makes those routes
+404 again on both hosts.
+
+```text
+                    ┌── ownership, not key possession ──┐
+loadPlugins ──► mount ──► [ bindings | observers | routes ]
+     ▲                                    │
+     └────────── uninstall() ◄────────────┘
+                 · skips any key something else re-bound after the mount
+                 · a rejected mount is rolled back, never left half-applied
+                 · a shared nested Component is refcounted — retracted by
+                   whoever uninstalls LAST, not whoever mounted it first
+                 · idempotent: repeat calls change nothing
+```
+
+Governance is fail-closed: a plugin that silently re-binds a first-party key
+(an auth strategy, an enforcement point) halts startup unless the key is listed
+in `allowOverride`. That posture is the point — a third-party plugin quietly
+shadowing your auth is the failure a plugin system cannot have.
+
+See [`@agentback/plugin`](https://github.com/ninemindai/agentback/blob/main/packages/plugin/README.md)
+and the runnable `examples/hello-plugin`.
+
 ## Inspect the container
 
 Two UIs help you _see_ the composition you've built:
@@ -191,7 +261,8 @@ When adding a capability, ask in order:
 2. Is it behavior around a method call (any transport)? → **Interceptor**.
 3. Is it about the HTTP request/response? → **Middleware** (or built-in CORS).
 4. Is it "many plugins of a kind"? → **Extension point**.
-5. Does it reshape the REST pipeline itself? → **Subclass `RestServer`**.
+5. Does it ship in someone else's package? → **Plugin** (`loadPlugins`).
+6. Does it reshape the REST pipeline itself? → **Subclass `RestServer`**.
 
 If none fit, it's probably just a new binding — which is the whole point.
 
