@@ -114,7 +114,9 @@ export function sortByGraph(input: SortInput): GraphResult {
             ? `injects "${key}", provided by ${gatedOut}, which the manifest ` +
               `gate excluded (enable/disable).`
             : `injects "${key}", which no mounted plugin provides and the ` +
-              `application has not bound.`,
+              `application has not bound. Declare it in a provider's ` +
+              `"provides", bind it on the app before loadPlugins(), or drop ` +
+              `it from this plugin's "inject".`,
         });
         continue;
       }

@@ -125,6 +125,11 @@ checks run **before any plugin code executes**: a duplicate `provides` (unless
 the key is in `allowOverride`), an `inject` nothing provides, and a cycle. Each
 fails with the plugins named.
 
+A **typo'd marker key is reported, not swallowed** — `provide` for `provides`
+lands in `report.warnings` naming the key, because a silently-dropped
+declaration leaves you debugging an ordering problem with no visible cause.
+Print `report.warnings`.
+
 Declarations are **advisory**. They govern ordering and early detection; the DI
 container remains the authority at resolution time, so under-declaring `inject`
 costs you ordering guarantees, not correctness. Two consequences: a key the

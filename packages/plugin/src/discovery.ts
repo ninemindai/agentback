@@ -56,10 +56,14 @@ function stringArray(value: unknown): string[] {
  * Read the `agentback` marker from a package directory OFF DISK.
  * Returns null when the dir has no package.json, no marker, or an invalid marker.
  */
+/** Every key the `agentback` marker recognizes. */
+const MARKER_KEYS = new Set(['plugin', 'component', 'provides', 'inject']);
+
 export function readMarker(
   pkgDir: string,
   source: 'deps' | 'dir',
   bareSpecifier?: string,
+  warnings?: string[],
 ): PluginInfo | null {
   const pkg = readPackageJson(pkgDir);
   if (!pkg) return null;
@@ -71,6 +75,20 @@ export function readMarker(
   ) {
     return null;
   }
+  // An unrecognized marker key is almost always a typo (`provide` for
+  // `provides`, `injects` for `inject`), and dropping it silently is the
+  // worst outcome: the plugin still mounts, the declaration is simply
+  // ignored, and the author debugs an ordering problem that has no visible
+  // cause. Warn with the key named.
+  const unknown = Object.keys(marker).filter(k => !MARKER_KEYS.has(k));
+  if (unknown.length && warnings) {
+    warnings.push(
+      `${pkg.name ?? pkgDir}: unrecognized "agentback" marker key(s) ` +
+        `${unknown.map(k => `"${k}"`).join(', ')} — ignored. Valid keys: ` +
+        `${[...MARKER_KEYS].join(', ')}.`,
+    );
+  }
+
   const importSpecifier =
     source === 'deps'
       ? (bareSpecifier ?? pkg.name ?? pkgDir)
@@ -113,7 +131,10 @@ export async function resolvePackageDir(
 }
 
 /** Discover marked plugins from the app's declared dependencies. */
-export async function discoverFromDeps(cwd: string): Promise<PluginInfo[]> {
+export async function discoverFromDeps(
+  cwd: string,
+  warnings: string[] = [],
+): Promise<PluginInfo[]> {
   const appPkg = readPackageJson(cwd);
   const deps = Object.keys(appPkg?.dependencies ?? {});
   const parentURL = pathToFileURL(resolve(cwd, 'package.json')).href;
@@ -121,7 +142,7 @@ export async function discoverFromDeps(cwd: string): Promise<PluginInfo[]> {
   for (const dep of deps) {
     const dir = await resolvePackageDir(dep, parentURL);
     if (!dir) continue;
-    const info = readMarker(dir, 'deps', dep);
+    const info = readMarker(dir, 'deps', dep, warnings);
     if (info) out.push(info);
   }
   return out;
@@ -151,7 +172,7 @@ export function discoverFromDirs(
       } catch {
         continue;
       }
-      const info = readMarker(sub, 'dir');
+      const info = readMarker(sub, 'dir', undefined, warnings);
       if (info) out.push(info);
     }
   }
@@ -165,7 +186,7 @@ export async function discover(
   warnings: string[],
 ): Promise<PluginInfo[]> {
   const found: PluginInfo[] = [];
-  if (config.scan) found.push(...(await discoverFromDeps(cwd)));
+  if (config.scan) found.push(...(await discoverFromDeps(cwd, warnings)));
   if (config.dirs.length) {
     found.push(...discoverFromDirs(config.dirs, cwd, warnings));
   }

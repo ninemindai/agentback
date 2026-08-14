@@ -204,7 +204,10 @@ export async function tryMount(
       error: {
         package: info.name,
         kind: 'missing-export',
-        message: `named export "${info.component}" is missing or not a class`,
+        message:
+          `named export "${info.component}" is missing or not a class. ` +
+          `Check the "component" name in its agentback marker matches an ` +
+          `exported Component class on the package's main module.`,
       },
     };
   }
@@ -259,7 +262,10 @@ export async function tryMount(
       error: {
         package: info.name,
         kind: 'key-collision',
-        message: `re-binds key(s) owned by another plugin: ${collisions.join(', ')}`,
+        message:
+          `re-binds key(s) owned by another plugin: ${collisions.join(', ')}. ` +
+          `Add them to plugins.allowOverride if the override is intentional, ` +
+          `or disable one of the plugins.`,
         collidingKeys: collisions,
       },
     };

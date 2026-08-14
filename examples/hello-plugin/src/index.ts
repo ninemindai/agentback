@@ -55,6 +55,10 @@ async function main() {
     'loadPlugins → mounted:   ',
     report.mounted.map(p => p.name),
   );
+  // Warnings are non-fatal but worth surfacing: a typo'd marker key lands
+  // here rather than failing the load, so an app that never prints them is
+  // an app whose plugin declarations can silently stop applying.
+  for (const w of report.warnings) console.log('loadPlugins ⚠  ', w);
 
   // 2. Imperative mount of the UNMARKED stamp-plugin. It need not be a declared
   // dependency and carries no marker, so we name the export with {component}.

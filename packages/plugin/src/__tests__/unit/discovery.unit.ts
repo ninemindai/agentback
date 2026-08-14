@@ -39,7 +39,9 @@ describe('discoverFromDirs', () => {
     const warnings: string[] = [];
     const found = discoverFromDirs([fixtures], fixtures, warnings);
     expect(found.map(p => p.name)).toContain('@fixture/good-plugin');
-    expect(warnings).toEqual([]);
+    // The fixtures dir deliberately contains `marker-typo`, whose bad key is
+    // reported. Everything else scans clean.
+    expect(warnings.filter(w => !w.includes('marker-typo'))).toEqual([]);
   });
 
   it('warns and continues when a configured dir is missing', () => {
@@ -92,5 +94,29 @@ describe('readMarker — provides/inject', () => {
     const info = readMarker(resolve(fixtures, 'graph-malformed'), 'dir');
     expect(info).not.toBeNull();
     expect(info?.provides).toEqual([]);
+  });
+});
+
+describe('readMarker — typo detection', () => {
+  it('warns on an unrecognized marker key instead of dropping it silently', () => {
+    // `provide` for `provides` still mounts, so a silent drop leaves the
+    // author debugging an ordering problem with no visible cause.
+    const warnings: string[] = [];
+    const info = readMarker(
+      resolve(fixtures, 'marker-typo'),
+      'dir',
+      undefined,
+      warnings,
+    );
+    expect(info).not.toBeNull();
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('"provide"');
+    expect(warnings[0]).toContain('provides');
+  });
+
+  it('says nothing when every marker key is recognized', () => {
+    const warnings: string[] = [];
+    readMarker(resolve(fixtures, 'graph-provider'), 'dir', undefined, warnings);
+    expect(warnings).toEqual([]);
   });
 });
