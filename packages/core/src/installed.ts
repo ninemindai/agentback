@@ -18,22 +18,48 @@ export interface Installed {
   uninstall(): Promise<void>;
 }
 
+/** The subset of `Context` a revert needs. */
+interface RevertableContext {
+  isBound(key: string): boolean;
+  getBinding(key: string): unknown;
+  unbind(key: string): boolean;
+  add(binding: never): unknown;
+}
+
+/**
+ * Retract a binding we own: unbind it, and restore whatever it displaced.
+ *
+ * ONE identity check gates BOTH halves, and that is the point. `Context.bind()`
+ * REPLACES an existing binding at the same key, so an uninstall that blindly
+ * unbinds removes a binding the user (or a reinstall) has since shadowed over
+ * ours — and an uninstall that blindly *restores* is the same hazard mirrored,
+ * overwriting that shadow with a stale binding. Ownership, not key possession,
+ * is what an inverse may retract; when the key is no longer ours, nothing
+ * happens at all.
+ *
+ * @returns `true` when the binding was still ours (unbound, and `displaced`
+ * restored when given); `false` when the context was left untouched.
+ */
+export function revertOwned(
+  ctx: RevertableContext,
+  binding: {key: string},
+  displaced?: {key: string},
+): boolean {
+  if (!ctx.isBound(binding.key)) return false;
+  if (ctx.getBinding(binding.key) !== binding) return false;
+  ctx.unbind(binding.key);
+  if (displaced !== undefined) ctx.add(displaced as never);
+  return true;
+}
+
 /**
  * Unbind `binding`'s key only if that exact binding is still the one bound —
- * the identity-guarded inverse of a bind. `Context.bind()` REPLACES an
- * existing binding at the same key, so an uninstall that blindly unbinds by
- * key would remove a binding the user (or a reinstall) has since shadowed
- * over ours. Ownership, not key possession, is what an inverse may retract.
+ * the identity-guarded inverse of a bind. Thin wrapper over
+ * {@link revertOwned} with no displaced binding to restore.
  */
 export function unbindOwned(
-  ctx: {
-    isBound(key: string): boolean;
-    getBinding(key: string): unknown;
-    unbind(key: string): boolean;
-  },
+  ctx: RevertableContext,
   binding: {key: string},
 ): void {
-  if (ctx.isBound(binding.key) && ctx.getBinding(binding.key) === binding) {
-    ctx.unbind(binding.key);
-  }
+  revertOwned(ctx, binding);
 }
