@@ -43,7 +43,10 @@ hand — the "manual boot sequencing" a declared graph exists to remove.
 | 3 | `uninstall()` vs. running lifecycle observers | Unbind **and** await `stop()` | Unbinding deregisters an observer from future lifecycle runs but leaves an already-started one holding its resources. Accepted cost: `uninstall()` can now fail for non-binding reasons, which `composeTeardown`'s `AggregateError` already handles. |
 | 4 | What `inject` names | Binding keys only | Matches `provides` and the container's own vocabulary; avoids nominal plugin-to-plugin coupling, and lets a plugin depend on a key the **app itself** binds. |
 | 5 | Footprint mechanism | Snapshot diff; the provenance tag is **not** a retraction source | See below — the tag provably misses bindings and cannot express the override case. |
-| 6 | Does `app.stop()` uninstall plugins? | No — independent lifecycles | Inherited unchanged from `revertible-installs.md`; disposers are idempotent so either order is safe. |
+| 6 | Does `app.stop()` uninstall plugins? | No — independent lifecycles, but **order-guarded** | Inherited from `revertible-installs.md`. The inherited rationale said "disposers are idempotent so either order is safe"; the eng review showed that premise is false for observers we do not own (see decision 8), so uninstall gates on app state instead of assuming idempotence. |
+| 7 | Part B kept, against the outside voice | Ship A+B | Codex argued `provides`/`inject` is a second source of truth that can go stale. Rejected: the declaration never replaces the snapshot diff (which stays the net for undeclared bindings), and it moves duplicate-key detection **ahead of** `app.component()`'s side effects — something the diff structurally cannot do. The staleness point is real and is recorded under Known limits. |
+| 8 | How `uninstall()` stops observers | Through the lifecycle registry, only when the app is `started`/`initialized` | Calling `observer.stop()` directly bypasses `invokeMethod` method injection, group ordering, disabled groups, and the `parallel` setting (`lifecycle-registry.ts:153-165`), and would run `stop()` on a never-started app where `Application.stop()` explicitly no-ops (`application.ts:406`). |
+| 9 | MCP-contributed tools | Retract them properly, in this change | An unbound `@mcpServer` stays in a built server's `tools/list`, and `resolveMember` falls back to `new ctor()` (`mcp.server.ts:938-940`) — so an unmounted tool stays **callable, without DI**. A silently-live unmounted tool is exactly the failure this package's posture forbids. |
 
 ### Why the provenance tag is not the mechanism (decision 5)
 
@@ -85,16 +88,102 @@ loadPlugins(app)
   ├─ for each plugin, in derived order:
   │    tryMount()    snapshot → app.component() → snapshot
   │                    · diff by binding INSTANCE identity      (already written)
+  │                    · NEW: build the teardown FIRST, from the diff
   │                    · collision check                        (already written)
-  │                    · NEW: retain {touched, displaced}; push a teardown
+  │                    · NEW: on collision → RUN that teardown (rollback), then
+  │                      return the error — a rejected mount leaves nothing behind
+  │                    · NEW: on success → retain it; refcount component keys
   │                    · NEW: warn when a declared `provides` key was never bound
   │
   └─ report.uninstall()   composeTeardown().run()  — LIFO across mounts
          per mount, in reverse:
            · await stop() on each retracting lifeCycleObserver binding
-           · unbindOwned(key) for every touched key             (already written)
-           · re-add the displaced binding where one existed (the allowOverride case)
+           · for each touched key, ONE identity check drives BOTH halves:
+               still ours?  → unbind, then restore the displaced binding
+               not ours?    → skip BOTH (never restore over a third party)
+           · a `components.*` key is unbound only when its refcount hits 0
 ```
+
+### The identity check gates unbind *and* restore (eng review A1)
+
+`unbindOwned` already refuses to unbind a key something else has since
+rebound (`installed.ts:36-38`) — ownership, not key possession, is what an
+inverse may retract. The restore half needs the *same* guard, because an
+unguarded write is as destructive as an unguarded delete: if a third party
+rebound the key after us, skipping the unbind but still re-adding the
+displaced binding clobbers them, which is the exact bug the guard exists to
+prevent. One check, both branches — never two independent checks that can
+disagree.
+
+### Shared nested components are refcounted (eng review A2)
+
+`mountComponent` recurses into `component.components` (`component.ts:195-199`)
+via `app.component()`, which **early-returns when the key is already bound to
+the same constructor** (`application.ts:478-481`). So when plugin A and plugin
+B both list `SharedComponent`, A mounts it and B's snapshot diff is **empty**
+for those keys. Uninstalling A would unbind bindings B still depends on, and
+the collision detector never fires because B never re-bound them.
+
+The footprint therefore cannot come from the diff alone for component keys.
+After each mount, resolve the plugin's component instance (already bound and
+instantiated by `app.component()`), walk its `.components` array recursively,
+and derive each nested key exactly as `application.ts:472-476` does —
+`createBindingFromClass(c, {namespace: CoreBindings.COMPONENTS, …})`. Every
+key on that walk takes a refcount **whether or not the mount bound it**, and
+teardown unbinds a `components.*` key only when its count reaches zero.
+
+The refcount map is per-`loadPlugins` run and dies with the report. A
+component a constructor binds dynamically (not listed in `.components`) is
+outside the walk — the same untracked-side-effect carve-out already recorded
+under Known limits.
+
+### A rejected mount leaves nothing behind (eng review X1)
+
+`tryMount` mounts first and detects the collision second: `app.component()`
+runs at `mount.ts:67`, the collision is computed at `:73-83`, and the error
+returns at `:84-90`. Nothing undoes the mount. Under `strict: false` the
+plugin is left **mounted but absent from `report.mounted`**, so no teardown
+ever covers it — a leak that is invisible in the report, which is the one
+artifact the package offers as its audit trail.
+
+Since the teardown is now built from the same diff the collision check reads,
+the fix is ordering: build it before checking, and run it on the error path.
+A mount either fully happened and is retractable, or did not happen at all.
+
+### Observers stop through the registry, not by hand (eng review X2)
+
+`uninstall()` does not call `observer.stop()`. It goes through the lifecycle
+registry, because a direct call bypasses `invokeMethod` method injection,
+group ordering, disabled groups, and the `parallel` setting
+(`lifecycle-registry.ts:153-165`).
+
+It is also **gated on app state**: no observer is stopped unless the app is
+`started` or `initialized`, mirroring `application.ts:406`. This replaces the
+inherited "disposers are idempotent so either order is safe" assumption,
+which does not hold here — the observers belong to third-party plugins, and
+nothing makes a plugin author's `stop()` idempotent. Gating on state means
+`app.stop()` then `uninstall()` cannot double-stop, without relying on
+someone else's discipline.
+
+### MCP tools are retracted, not just unbound (eng review X5)
+
+Unbinding a controller already retracts its routes as 404 through the REST
+controller liveness gate. MCP has no equivalent, and two things go wrong:
+a built server keeps the unbound tool in its `visible` map, so `tools/list`
+and `tools/call` still serve it; and `resolveMember` **falls back to
+`new ctor()`** when the binding is gone (`mcp.server.ts:938-940`, whose own
+comment reads "instantiate with no DI"). The net effect is an unmounted tool
+that stays callable *and* runs without its injected dependencies.
+
+Two changes in `@agentback/mcp`:
+
+1. A per-dispatch liveness check mirroring the REST gate — a tool whose
+   binding is gone is absent from `tools/list` and errors on `tools/call`.
+2. **Remove the `new ctor()` fallback.** A missing binding must throw. The
+   comment already concedes the branch is only reachable "for a class invoked
+   without one"; silently running un-injected user code is a worse answer
+   than a typed error, and after change 1 the branch is genuinely
+   unreachable through the normal path.
 
 ### Reuse, not new machinery
 
@@ -182,6 +271,16 @@ the tiebreaker for genuinely independent plugins.
 | `load-plugins.ts` | wire the sort; collect per-mount teardowns; attach `uninstall` to the report |
 | `load-plugin.ts` | return `PluginInfo & Installed` |
 | `config.ts` | unchanged |
+| **`mcp/src/mcp.server.ts`** | per-dispatch liveness check; **remove** the `new ctor()` fallback at `:938-940` so a missing binding throws |
+
+`graph.ts` must honor `allowOverride` (eng review X3): two plugins may
+legitimately declare the same `provides` key when the manifest lists it, so a
+`duplicate-provides` error that ignores `allowOverride` would break a
+currently-supported case and make the change non-additive.
+
+Both `loadPlugin` and `loadPlugins` build their teardown through the **same**
+`buildTeardown()` helper (eng review C1). The conditional-restore logic lives
+there once; a second hand-rolled copy is the DRY violation that drifts.
 
 `graph.ts` is separate because it is the one genuinely new algorithm and is
 fully testable without an `Application`.
@@ -219,6 +318,12 @@ remaining plugins' bindings. The caller sees one `AggregateError`.
 | observer test | `stop()` is awaited on retraction; a rejecting `stop()` aggregates without stranding the rest |
 | idempotency test | a second `uninstall()` is a no-op (inherited from `composeTeardown`, asserted here because it is now public contract) |
 | strict-partial test | a `strict: true` failure mid-load throws, and the attached report's `uninstall()` retracts the mounts that already succeeded |
+| **third-party rebind** | after the mount, something else rebinds a touched key: `uninstall()` must skip **both** the unbind and the restore — the single highest-value test here, since the naive implementation passes every other row |
+| **collision rollback** | a colliding mount leaves **zero** bindings behind under both `strict: true` and `strict: false` |
+| **shared nested component** | A and B both list `SharedComponent`; `A.uninstall()` leaves B fully working; only after both uninstall is it unbound |
+| **observer gating** | no `stop()` on a never-started app; `app.stop()` then `uninstall()` does not double-stop; stop runs through the registry, honoring group order |
+| **MCP retraction** | an unmounted `@mcpServer` disappears from `tools/list` **and** `tools/call` errors — never `new ctor()` |
+| **allowOverride + duplicate provides** | two plugins declaring the same `provides` key mount cleanly when the manifest lists it in `allowOverride` |
 
 **The re-mount leg is load-bearing, not a nicety.** `app.component()`
 early-returns when the key is already bound to the same constructor
@@ -263,6 +368,18 @@ exported.
   dependencies as the stopgap.
 - **Bindings created lazily after a mount returns** (e.g. on first request)
   are outside any static footprint.
+- **Declarations can go stale** (outside voice). `provides`/`inject` restate
+  facts the code already expresses, and nothing forces them to agree. The
+  mitigations are that the snapshot diff remains the authority for what was
+  actually bound, and that a declared-but-never-bound `provides` warns. A
+  stale declaration costs ordering accuracy, never correctness.
+- **The graph cannot express "I need the overridden binding"** (eng review
+  X4). When the app binds a default and a plugin overrides it, a consumer
+  injecting that key is satisfied by the app's binding and gets **no edge** —
+  so it may mount before the override lands. A consumer that needs the
+  override must inject a key the overriding plugin uniquely provides. Adding
+  override-awareness to the graph would mean modelling binding precedence,
+  which is the container's job, not the manifest's.
 
 ## Documentation surfaces
 
@@ -277,3 +394,30 @@ Those belong in the implementation plan, not this spec.
 - [docs/proposals/revertible-installs.md](../../proposals/revertible-installs.md) — the shipped substrate
 - [docs/proposals/cordis-spatiotemporal-composability.md](../../proposals/cordis-spatiotemporal-composability.md) — research note the two axes come from
 - [docs/superpowers/plans/2026-06-04-plugin-loader.md](../plans/2026-06-04-plugin-loader.md) — the original loader plan
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Codex Review | `/codex review` | Independent 2nd opinion | 1 | RAN (codex) | 9 findings, 2 duplicated the Claude pass |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR (PLAN) | 11 issues, 0 critical gaps, all folded |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+**CODEX:** 9 findings. 2 independently matched the Claude pass (unguarded
+restore; shared-nested-component footprint) — cross-model agreement, both
+already folded. 4 new and accepted (collision rollback, observer stop
+mechanism, `allowOverride` vs `duplicate-provides`, app-default vs override
+injects). 1 new and accepted with scope expansion (MCP retraction). 1
+rejected by the user (drop Part B). 1 absorbed as a Known limit (declaration
+staleness).
+
+**CROSS-MODEL:** Both reviewers independently found that `unbindOwned`'s
+identity guard covers only the unbind, and that `app.component()`'s
+early-return empties the second plugin's footprint for a shared nested
+component. Neither found the other's remaining items, which is why both ran.
+
+**VERDICT:** ENG CLEARED — ready to implement.
+
+NO UNRESOLVED DECISIONS
