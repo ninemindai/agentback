@@ -2337,6 +2337,15 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      '@agentback/openapi':
+        specifier: workspace:~
+        version: link:../openapi
+      '@agentback/rest':
+        specifier: workspace:~
+        version: link:../rest
+      '@agentback/testing':
+        specifier: workspace:~
+        version: link:../testing
       '@agentback/testlab':
         specifier: workspace:~
         version: link:../testlab

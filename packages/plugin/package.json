@@ -27,6 +27,9 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@agentback/openapi": "workspace:~",
+    "@agentback/rest": "workspace:~",
+    "@agentback/testing": "workspace:~",
     "@agentback/testlab": "workspace:~",
     "vitest": "~4.1.10"
   },

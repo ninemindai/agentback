@@ -11,6 +11,9 @@
     {"path": "../common"},
     {"path": "../context"},
     {"path": "../core"},
+    {"path": "../openapi"},
+    {"path": "../rest"},
+    {"path": "../testing"},
     {"path": "../testlab"}
   ]
 }
