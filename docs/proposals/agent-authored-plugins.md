@@ -141,20 +141,29 @@ builders are read-only and stay read-only.
   construction. Persisting one is writing a package, which is the existing
   path.
 
+## Built after this proposal
+
+**The provider-outlives-consumer guard.** Retracting a plugin whose `provides`
+key another live plugin declares in `inject` now throws
+`PluginRetractionBlockedError` naming both, before any teardown work. LIFO
+composition already gave that ordering within one report; the guard covers
+independent handles.
+
+Cordis spends an `UNLOADING` lifecycle state and a guarded two-phase rule on
+the same problem, with a progress theorem. That machinery buys the ability to
+keep serving through the transition, which is only worth its weight next to the
+reactive re-resolution we deliberately do not have. Where a provider change is
+a restart, a declarative check gets the same safety property for a fraction of
+the surface. It reads the same advisory declarations as the graph, so an
+under-declared `inject` is invisible to it, which is pinned by a test.
+
 ## Not in scope, and why each is separate
 
-**The provider-outlives-consumer guard.** A provider must stay resolvable
-through its consumers' *entire* teardown, because a consumer's cleanup often
-needs the dependency it is losing. Cordis spends an `UNLOADING` lifecycle state
-and a guarded rule on this, with a progress theorem showing the guard always
-releases. We get the same ordering from LIFO composition, which holds for a
-plugin set retracted through one report and does not hold for two independent
-handles uninstalled in the wrong order. That is a correctness gap worth closing
-on its own schedule, and it is not blocked by anything here.
+**The provider-outlives-consumer guard — built (2026-08-15), see below.**
 
-**Per-plugin capability restriction.** Interceptors in this codebase wrap
-*method invocations* (`InterceptedInvocationContext`, keyed on `targetName`),
-not *dependency resolutions*. There is no way to say "this community plugin
+**Per-plugin capability restriction — decided out of scope (2026-08-15).** Interceptors in this codebase wrap
+_method invocations_ (`InterceptedInvocationContext`, keyed on `targetName`),
+not _dependency resolutions_. There is no way to say "this community plugin
 resolves `FileStore` to a path-restricted view while first-party code gets the
 full one." Cordis calls the equivalent coeffect interception and attaches it to
 the context rather than to either party, so an orchestrator can adjust it
@@ -164,8 +173,16 @@ container and a real project.
 It also would not make hosting untrusted code safe. The preprint concedes that
 language-level access control does not hold against a malicious component and
 that real isolation needs an execution boundary outside the language. Closing
-this gap buys defense-in-depth against mistakes, not safety against attacks,
-and the proposal that takes it on should say so in its first paragraph.
+this gap buys defense-in-depth against mistakes, not safety against attacks.
+
+**Decision: not building it.** Plugins are trusted code — first-party or
+vendored. This package governs collisions, ordering and lifecycle, and the
+boundary for code you do not trust is a process or a container, not a DI
+container. Recorded in `packages/plugin/README.md` under "Plugins are trusted
+code" so a reader hits it where they would otherwise infer an unfinished
+feature. Narrowing what a plugin resolves, by binding a restricted port
+implementation into a child context, stays available and stays a way to limit
+mistakes rather than a security control.
 
 ## What this unlocks that Harness does not have
 
@@ -173,7 +190,7 @@ An agent-authored `@tool` in AgentBack projects to REST, MCP, the operator CLI,
 the agent surface, and the OpenAPI document from one Zod schema. A
 plugin-contributed tool in a Cordis host is a tool. Here the agent writes one
 contract and every consumer of the process sees it, including the OpenAPI
-document that a *different* agent reads. That is boundary coherence applied to
+document that a _different_ agent reads. That is boundary coherence applied to
 a component that did not exist when the process started.
 
 ## Verification
@@ -190,9 +207,14 @@ a component that did not exist when the process started.
 
 ## Open questions
 
-1. Should `mountComponent` be in `@agentback/plugin`, or in a new package that
-   carries the trust gate with it? (Lean: `@agentback/plugin`, since it is the
-   same governance; the trust gate belongs on whatever exposes it as a *tool*.)
+1. ~~Should `mountComponent` be in `@agentback/plugin`, or in a new package
+   that carries the trust gate with it?~~ **Resolved (2026-08-15):**
+   `@agentback/plugin`, and no agent-callable tool ships at all. Shipping one
+   would ship a default answer to "who may rewrite this process". The README
+   carries it as a recipe instead, including the part the recipe deliberately
+   does not do: turn agent-written text into a class. `mountComponent` takes a
+   constructor, so producing one from source is an evaluation step the caller
+   owns, and its trust level is the process's trust level.
 2. Does a memory plugin appear in `report.mounted` of a later `loadPlugins`
    call, or only in the registry? (Lean: registry only. The report is the
    record of one discovery run.)

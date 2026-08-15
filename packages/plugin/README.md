@@ -117,6 +117,24 @@ wrong:
 Not retracted: side effects that already left the process, and anything a
 component's constructor did beyond binding.
 
+## Plugins are trusted code
+
+This package governs collisions, ordering, and lifecycle. It does not sandbox.
+A mounted plugin runs with the app's full authority: it can bind any key it is
+allowed to, reach any port in the container, and do anything the process can.
+There is no per-plugin capability restriction and none is planned.
+
+That is a scope statement, not an unfinished feature. Language-level access
+control does not hold against a component that is actively hostile, a point
+the [Spatiotemporal Composability preprint](https://github.com/cordiverse/paper)
+makes about its own design: real isolation needs an execution boundary outside
+the language. If you need to run code you do not trust, the boundary is a
+process or a container, not a DI container.
+
+What you _can_ do inside this model is narrow what a plugin resolves, by
+binding a restricted implementation of a port into a child context before
+mounting it. That limits honest mistakes. It is not a security control.
+
 ## Mounting a class you wrote at runtime
 
 `loadPlugin` resolves a specifier against disk or npm, which assumes a human
@@ -142,6 +160,39 @@ in different turns can share a class name, and the owners ledger keys on it.
 Mounting is a write, so this is deliberately **not** on the read-only
 introspection surface. Whatever exposes it as an agent-callable tool owns the
 trust gate.
+
+### Exposing it to an agent is your call, not ours
+
+There is deliberately no built-in tool that lets an agent mount a component.
+Shipping one would ship a default answer to "who may rewrite this process",
+and that is the decision least suited to having a default. Wire it yourself,
+with your own scope:
+
+```ts
+@mcpServer()
+class PluginAdminTools {
+  constructor(
+    @inject(CoreBindings.APPLICATION_INSTANCE) private app: Application,
+  ) {}
+
+  @authorize({scopes: ['plugins:write']})
+  @tool('mount', {input: MountIn, output: MountOut})
+  async mount(input: z.infer<typeof MountIn>) {
+    const ctor = KNOWN_COMPONENTS[input.component]; // an allow-list you own
+    if (!ctor) throw new AgentError(`Unknown component ${input.component}.`);
+    const handle = await mountComponent(this.app, ctor, {name: input.name});
+    this.handles.set(input.name, handle);
+    return {mounted: input.name};
+  }
+}
+```
+
+Note what that example does **not** do: turn agent-written text into a class.
+`mountComponent` takes a constructor, so something has to compile or evaluate
+source to produce one, and AgentBack does not do that and should not. An
+allow-list of components your app already ships is the version with a sane
+trust story. Going further means an evaluation step you own, and its trust
+level is the trust level of the whole process.
 
 ## What is mounted right now
 
