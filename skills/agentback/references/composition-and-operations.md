@@ -100,6 +100,8 @@ with the failure surfaced as an `AggregateError`.
 `tools/list` and makes `tools/call` report not-found, instead of the old
 behavior where it stayed callable and ran with un-injected dependencies.
 
+**`mountComponent(app, Class, {name, allowOverride})`** mounts a class with no specifier — for a `Component` written at runtime — with identical governance and an `Installed` back. **`PluginBindings.REGISTRY`** answers what is mounted right now (`mounted()` / `componentRefs()`), which a report cannot, and `@agentback/introspection` exposes it as the `plugin` kind so an agent can inspect the tree before changing it. Mounting is a write and is deliberately absent from the read-only introspection surface; whatever exposes it as a tool owns the trust gate.
+
 **Read `report.warnings`.** An unrecognized `agentback` marker key (`provide`
 for `provides`) is reported there rather than silently dropped — the plugin
 still mounts, so a swallowed typo would leave you debugging an ordering problem

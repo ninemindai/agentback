@@ -98,3 +98,53 @@ describe('getNode', () => {
     }
   });
 });
+
+describe('plugin kind', () => {
+  // The registry is read structurally, so this stands in for
+  // @agentback/plugin without introspection depending on it — which is the
+  // point of duck-typing it.
+  function appWithRegistry() {
+    const app = new Application();
+    app.bind('plugins.registry').to({
+      mounted: () => [
+        {
+          name: 'agent:scratch',
+          version: '0.0.0',
+          component: 'ScratchComponent',
+          source: 'memory',
+          provides: [],
+          inject: ['services.Auth'],
+        },
+      ],
+      componentRefs: () => new Map(),
+    });
+    return app;
+  }
+
+  it('reports nothing when no registry is bound', () => {
+    const app = new Application();
+    expect(buildInventory(app, 'plugin')).toEqual([]);
+  });
+
+  it('inventories a mounted plugin', () => {
+    const nodes = buildInventory(appWithRegistry(), 'plugin');
+    expect(nodes).toEqual([
+      {
+        kind: 'plugin',
+        id: 'agent:scratch',
+        label: 'ScratchComponent (memory)',
+      },
+    ]);
+  });
+
+  it('gets one plugin by name, and 404s an unknown one', () => {
+    const app = appWithRegistry();
+    const p = getNode(app, {kind: 'plugin', id: 'agent:scratch'}) as {
+      inject: string[];
+    };
+    expect(p.inject).toEqual(['services.Auth']);
+    expect(() => getNode(app, {kind: 'plugin', id: 'nope'})).toThrow(
+      AgentError,
+    );
+  });
+});

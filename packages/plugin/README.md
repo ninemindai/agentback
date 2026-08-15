@@ -110,6 +110,47 @@ wrong:
 Not retracted: side effects that already left the process, and anything a
 component's constructor did beyond binding.
 
+## Mounting a class you wrote at runtime
+
+`loadPlugin` resolves a specifier against disk or npm, which assumes a human
+with a filesystem. `mountComponent` takes the class directly and applies the
+same governance:
+
+```ts
+import {mountComponent} from '@agentback/plugin';
+
+const handle = await mountComponent(app, MyComponent, {
+  name: 'agent:scratch-1', // identity in the ledger and the registry
+  allowOverride: ['services.Cache'],
+});
+await handle.uninstall();
+```
+
+Collision detection, rollback on rejection, component refcounting and
+retraction are the same code paths a package on disk takes, because everything
+that makes a mount safe lives after the import and both entry points share it.
+`name` is required rather than derived from the class: two components authored
+in different turns can share a class name, and the owners ledger keys on it.
+
+Mounting is a write, so this is deliberately **not** on the read-only
+introspection surface. Whatever exposes it as an agent-callable tool owns the
+trust gate.
+
+## What is mounted right now
+
+`PluginBindings.REGISTRY` is live state, where a `PluginLoadReport` is the
+record of one discovery run:
+
+```ts
+const registry = app.getSync(PluginBindings.REGISTRY);
+registry.mounted(); // MountedPlugin[] — name, version, component, source, provides, inject
+registry.componentRefs(); // components.* key -> live reference count
+```
+
+`source` is `deps`, `dir`, or `memory`. Entries disappear as plugins retract.
+`@agentback/introspection` exposes the same data as its `plugin` kind, so an
+agent can inspect the tree before changing it.
+
 ## Declaring dependencies
 
 A plugin can declare which DI keys it contributes and which it needs:

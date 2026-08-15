@@ -14,8 +14,46 @@ export const IntrospectionKind = z.enum([
   'schema-entity',
   'route',
   'tool',
+  'plugin',
 ]);
 export type IntrospectionKind = z.infer<typeof IntrospectionKind>;
+
+/** `@agentback/plugin`'s `MountedPlugin`, structurally. */
+interface MountedPluginLike {
+  name: string;
+  version: string;
+  component: string;
+  source: string;
+  provides: string[];
+  inject: string[];
+}
+
+/**
+ * Read the live plugin registry WITHOUT importing `@agentback/plugin`.
+ *
+ * Duck-typed on purpose, the same way `installConsole` reads a feature's
+ * `chatConfig` without importing `console-chat`: an app with no plugins should
+ * not acquire the package, and introspection should not grow a dependency on
+ * something it only reports.
+ *
+ * This resolves a binding *value*, which is the second documented exception to
+ * "bindings are metadata-only" (schema-tagged bindings are the first). It is
+ * safe for the same reason: the registry holds names, versions, sources and
+ * refcounts. It is metadata by construction and can carry no secret.
+ */
+function readPlugins(ctx: Context): MountedPluginLike[] {
+  if (!ctx.isBound('plugins.registry')) return [];
+  try {
+    const registry = ctx.getSync('plugins.registry') as {
+      mounted?: () => MountedPluginLike[];
+    };
+    return typeof registry?.mounted === 'function' ? registry.mounted() : [];
+  } catch {
+    // A registry that cannot be resolved synchronously reports nothing rather
+    // than failing the whole inventory.
+    return [];
+  }
+}
 
 /** A single inventory entry — the same `{kind,id}` shape the dock's focus chip
  * uses, so `get(focusChip)` is the natural drill-down. `label` is a display hint. */
@@ -59,6 +97,9 @@ export function buildInventory(
       push({kind: 'tool', id: t.name, label: t.title});
     }
   }
+  for (const p of readPlugins(ctx)) {
+    push({kind: 'plugin', id: p.name, label: `${p.component} (${p.source})`});
+  }
   for (const n of buildSchemaInventory(ctx).nodes) {
     // Bound schemas get a stable id (their binding key). Unbound schemas fall
     // back to the per-call synthesized id (`s0`, `s1`, …) which is stable only
@@ -101,6 +142,11 @@ export function getNode(
     );
     if (!n) throw notFound(kind, id);
     return n;
+  }
+  if (kind === 'plugin') {
+    const p = readPlugins(ctx).find(x => x.name === id);
+    if (!p) throw notFound(kind, id);
+    return p;
   }
   if (kind === 'route') {
     for (const b of buildModel(ctx).bindings) {
