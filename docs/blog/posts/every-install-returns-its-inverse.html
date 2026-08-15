@@ -6,7 +6,7 @@
     <title>Every install returns its inverse | AgentBack Blog</title>
     <meta
       name="description"
-      content="Mounting a capability is the easy half. AgentBack now pairs every install helper with the function that retracts it, an idea and a vocabulary borrowed from Cordis."
+      content="Mounting a capability is the easy half. AgentBack now pairs every install helper with the function that retracts it, an idea and a vocabulary borrowed from Cordis, the plugin kernel under DeepSeek Harness."
     />
     <link rel="stylesheet" href="../styles.css" />
   </head>
@@ -56,14 +56,25 @@
 
         <p>
           We took it from
-          <a href="https://github.com/cordiverse/cordis">Cordis</a>, the plugin
-          runtime extracted from Koishi, a chatbot framework with more than four
-          thousand community plugins. Its authors published a preprint in August
-          2026,
+          <a href="https://github.com/cordiverse/cordis">Cordis</a>, a plugin
+          and context kernel built on dependency injection and revertible side
+          effects. It came out of the Koishi ecosystem, and in August 2026 it
+          became the substrate under
+          <a href="https://github.com/deepseek-ai/deepseek-harness"
+            >DeepSeek Harness</a
+          >, a local coding agent whose tagline is "Everything is a Plugin."
+          Model access, the tool registry, the session log, the approval policy,
+          and the agent loop itself are all plugins there.
+        </p>
+
+        <p>
+          DeepSeek published the theory alongside it:
           <a href="https://github.com/cordiverse/paper"
             >A Programming Paradigm for Spatiotemporal Composability</a
-          >, written at Peking University with DeepSeek-AI, which names
-          self-evolving agent harnesses as the motivating workload.
+          >, by Yifan Shi, Wei Zhang, and Tianyi Cui, at Peking University with
+          DeepSeek-AI. Eighty pages, twenty-odd theorems, and almost no
+          discussion of models. It names self-evolving agent harnesses as the
+          motivating workload.
         </p>
 
         <p>The paper splits dynamic composition into two axes.</p>
@@ -145,14 +156,29 @@
         </table>
 
         <p>
-          The paper's related-work section is the sharpest part of the argument.
-          OSGi and VS Code recover through hand-written deactivation callbacks,
-          where a forgotten one leaks in silence. Erlang migrates state forward
-          through hand-written upgrade functions. React's
-          <code>useEffect</code> pairs an effect with its inverse but cannot
-          compose them. Cordis pairs every <em>atomic</em> effect with an
-          inverse and derives the composite inverse by composition, which makes
-          complete recovery an invariant rather than a duty.
+          The paper makes the case empirically rather than by assertion. It
+          counted the hundred most-installed VS Code extensions: eighty-seven
+          contain executable code, so removing any of them requires restarting
+          the extension host and everything else loaded in it. Seven declare
+          dependencies on non-builtin extensions. The value you get back from
+          <code>getExtension(...).exports</code> is typed <code>any</code>, so
+          there is no checked interface between two extensions.
+          <code>deactivate</code> exists, but it runs at host shutdown, and it
+          separates destroying an effect from creating it, which is what makes a
+          forgotten line leak in silence.
+        </p>
+
+        <p>
+          React's <code>useEffect</code> is named as the closest structural
+          relative, since it does pair an effect with a cleanup the runtime
+          calls. Its limit is composition: a hook has to sit at the top level of
+          a component or another hook, never inside a condition, loop, or nested
+          function, and the effect body takes neither an async function nor an
+          iterator. Effects cannot be assembled out of other effects, so nothing
+          can derive a composite inverse from them. Cordis pairs every
+          <em>atomic</em> effect with an inverse and gets the composite inverse
+          by composition, which makes teardown derived from setup rather than
+          written beside it.
         </p>
 
         <h2>The contract we shipped</h2>
@@ -180,6 +206,23 @@ await explorer.uninstall();   // /explorer answers 404 again</code></pre>
           would delete a binding the user shadowed over ours after we mounted.
           The inverse checks that the binding at that key is still the exact
           object it created, and does nothing otherwise.
+        </p>
+
+        <p>
+          The paper models an effect as a function of type
+          <code>&Gamma; &rarr; &Gamma; &times; (&Gamma; &rarr; &Gamma;)</code>:
+          apply it to the context, get back the modified context and an explicit
+          inverse. The inverse is supplied by the caller at the moment the
+          effect is applied, and the runtime does not verify it. Writing a
+          correct one is the component author's obligation.
+        </p>
+
+        <p>
+          We check a little more than that, and only because our effects are
+          narrow enough to afford it. Every footprint entry is a binding, so the
+          runtime can ask whether the binding at a key is still the one it
+          created. A general effect system has nothing to compare, which is
+          exactly why the paper puts that burden on the author instead.
         </p>
 
         <figure class="post-diagram">
@@ -429,6 +472,22 @@ await explorer.uninstall();   // /explorer answers 404 again</code></pre>
           is how we knew nothing depended on it.
         </p>
 
+        <p>
+          One thing we get by convention rather than by construction, and the
+          paper is clear about why that is the weaker version. A provider has to
+          outlive its consumers through their <em>whole</em> teardown, because a
+          consumer's own cleanup often needs the dependency it is losing:
+          closing a pool means handing connections back to the thing that
+          provided them. Cordis spends a lifecycle state on this. A component
+          marked for deactivation stops offering its services immediately but
+          keeps everyone's existing view intact, and the step that actually runs
+          the inverse is guarded until nothing resolves to it. A progress
+          theorem shows the guard always releases. We get the same ordering from
+          composing teardowns last-in-first-out, which holds for a plugin set
+          retracted through one report and does not hold for two independent
+          handles uninstalled in the wrong order.
+        </p>
+
         <h2>Why we stop short of hot swap</h2>
 
         <p>
@@ -592,11 +651,22 @@ await explorer.uninstall();   // /explorer answers 404 again</code></pre>
           it costs more as edit frequency rises: discarded process state,
           disrupted in-flight work, and a faulty self-modification that disables
           the process you need in order to recover. We think that trade is right
-          for a framework whose job is serving requests rather than hosting four
-          thousand community plugins. Cordis is betting on lifecycle coherence.
-          We are betting on boundary coherence, one schema projected to every
-          surface. Those are different bets, and the paper made ours more honest
-          by naming what it gives up.
+          for a framework whose job is serving requests. Cordis is betting on
+          lifecycle coherence. We are betting on boundary coherence, one schema
+          projected to every surface. Those are different bets, and the paper
+          made ours more honest by naming what it gives up.
+        </p>
+
+        <p>
+          The people who wrote the theory shipped the careful version too.
+          DeepSeek Harness has a creation mode where the agent inspects its own
+          plugin tree and mounts or unmounts temporary plugins while it runs,
+          which is the self-modifying harness the paper is aimed at. It is off
+          by default, its trust level is documented as equivalent to shell
+          access, and the temporary plugins live in process memory only: no
+          files written, no packages installed, no config changed, all of it
+          gone on restart. Even with proofs behind the recovery guarantee, the
+          shipped default is the conservative one.
         </p>
 
         <h2>What it buys today</h2>
@@ -640,6 +710,9 @@ await explorer.uninstall();   // /explorer answers 404 again</code></pre>
         >
         <a href="https://github.com/cordiverse/paper"
           >Spatiotemporal Composability (preprint)</a
+        >
+        <a href="https://github.com/deepseek-ai/deepseek-harness"
+          >DeepSeek Harness</a
         >
         <a href="https://github.com/ninemindai/agentback">GitHub repo</a>
       </aside>
