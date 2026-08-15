@@ -8,3 +8,4 @@ export * from './discovery.js';
 export * from './gate.js';
 export * from './load-plugins.js';
 export * from './load-plugin.js';
+export * from './mount-component.js';

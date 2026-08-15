@@ -212,16 +212,40 @@ export async function tryMount(
     };
   }
 
+  return mountResolved(
+    app,
+    info.name,
+    exported as new (...args: unknown[]) => Component,
+    ctx,
+    refs,
+  );
+}
+
+/**
+ * The governed half of a mount, on an ALREADY-RESOLVED class.
+ *
+ * Everything that makes a mount safe lives here and not in the import above:
+ * the binding diff, collision detection against the owners ledger, rollback of
+ * a rejected mount, component refcounting, and the footprint the inverse is
+ * built from. Splitting at the import boundary is what lets a class an agent
+ * wrote at runtime get identical treatment to a package on disk — see
+ * `mountComponent`.
+ */
+export async function mountResolved(
+  app: Application,
+  name: string,
+  ctor: new (...args: unknown[]) => Component,
+  ctx: MountContext,
+  refs: Map<string, ComponentEntry>,
+): Promise<MountOutcome> {
   const before = boundBindings(app);
   let rootKey: string;
   try {
-    rootKey = app.component(
-      exported as new (...args: unknown[]) => Component,
-    ).key;
+    rootKey = app.component(ctor).key;
   } catch (err) {
     return {
       ok: false,
-      error: {package: info.name, kind: 'import', message: String(err)},
+      error: {package: name, kind: 'import', message: String(err)},
     };
   }
   const after = boundBindings(app);
@@ -237,10 +261,10 @@ export async function tryMount(
     touched.push({binding, displaced: priorBinding});
     const prior = ctx.owners.get(key);
     priorOwners.set(key, prior);
-    if (prior && prior !== info.name && !ctx.allowOverride.has(key)) {
+    if (prior && prior !== name && !ctx.allowOverride.has(key)) {
       collisions.push(key);
     }
-    ctx.owners.set(key, info.name);
+    ctx.owners.set(key, name);
   }
   const componentKeys = referencedComponentKeys(app, rootKey);
 
@@ -260,7 +284,7 @@ export async function tryMount(
     return {
       ok: false,
       error: {
-        package: info.name,
+        package: name,
         kind: 'key-collision',
         message:
           `re-binds key(s) owned by another plugin: ${collisions.join(', ')}. ` +
