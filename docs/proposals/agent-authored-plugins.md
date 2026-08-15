@@ -176,7 +176,16 @@ that real isolation needs an execution boundary outside the language. Closing
 this gap buys defense-in-depth against mistakes, not safety against attacks.
 
 **Decision: not building it.** Plugins are trusted code — first-party or
-vendored. This package governs collisions, ordering and lifecycle, and the
+vendored.
+
+That is an assumption with a visible expiry, not a permanent property. Within
+two days of DeepSeek Harness shipping, its `dsh-plugin` GitHub topic passed
+3,900 repositories, which is what "plugins are trusted code" stops being true
+of. AgentBack is nowhere near that and may never be, since it is an API and
+MCP framework rather than a coding agent. But the condition to watch is
+concrete: many third-party plugins, installed on reputation, whose source
+nobody on the team has read. Reopen this then, and do not inherit it as
+settled. This package governs collisions, ordering and lifecycle, and the
 boundary for code you do not trust is a process or a container, not a DI
 container. Recorded in `packages/plugin/README.md` under "Plugins are trusted
 code" so a reader hits it where they would otherwise infer an unfinished

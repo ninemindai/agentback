@@ -135,6 +135,16 @@ What you _can_ do inside this model is narrow what a plugin resolves, by
 binding a restricted implementation of a port into a child context before
 mounting it. That limits honest mistakes. It is not a security control.
 
+**The assumption, so you can check whether it still holds.** This scope
+depends on plugins being first-party or vendored, which is true of every
+AgentBack app today. What would invalidate it is a real third-party ecosystem:
+many plugins, installed on reputation, whose source nobody on your team has
+read. If you get there, the missing piece is per-plugin capability restriction
+(dependency resolution carrying cross-cutting metadata, so one plugin resolves
+a port to a narrowed view while first-party code does not), and this decision
+should be reopened rather than inherited. Recorded 2026-08-15 against
+[agent-authored-plugins.md](../../docs/proposals/agent-authored-plugins.md).
+
 ## Mounting a class you wrote at runtime
 
 `loadPlugin` resolves a specifier against disk or npm, which assumes a human
@@ -265,6 +275,10 @@ component from the package root):
 
 Discovery reads this stanza off disk, so it never imports a package just to learn
 whether it is a plugin.
+
+The marker makes a plugin **loadable**. To make it **findable**, add the
+`agentback-plugin` topic to its GitHub repository. That is the convention this
+project uses, and it costs nothing to adopt.
 
 ## Manifest
 
