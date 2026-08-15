@@ -24,7 +24,7 @@
 
     <main class="post-layout">
       <article class="post-body">
-        <p class="post-meta">August 14, 2026</p>
+        <p class="post-meta">August 15, 2026</p>
         <h1>Every install returns its inverse</h1>
         <p class="lede">
           Mounting a capability is the easy half. AgentBack now hands you the
@@ -32,7 +32,7 @@
         </p>
 
         <p>
-          AgentBack has about eleven <code>install*</code> helpers.
+          AgentBack has a couple of dozen <code>install*</code> helpers.
           <code>installExplorer</code> mounts Swagger UI at
           <code>/explorer</code>. <code>installMcpHttp</code> mounts the MCP
           endpoint at <code>/mcp</code>. <code>installConsole</code> mounts the
@@ -482,10 +482,16 @@ await explorer.uninstall();   // /explorer answers 404 again</code></pre>
           marked for deactivation stops offering its services immediately but
           keeps everyone's existing view intact, and the step that actually runs
           the inverse is guarded until nothing resolves to it. A progress
-          theorem shows the guard always releases. We get the same ordering from
-          composing teardowns last-in-first-out, which holds for a plugin set
-          retracted through one report and does not hold for two independent
-          handles uninstalled in the wrong order.
+          theorem shows the guard always releases. We get the ordering itself
+          from composing teardowns last-in-first-out, which holds inside one
+          report and not across independent handles, so the handles carry a
+          check instead: retracting a plugin whose declared
+          <code>provides</code> another live plugin still declares in
+          <code>inject</code> is refused, naming both, before any teardown runs.
+          That is the declarative version of the same property. It costs a
+          lifecycle state less and buys correspondingly less, since it cannot
+          keep serving through a transition, which is only worth having next to
+          the reactive re-resolution we do not do.
         </p>
 
         <h2>Why we stop short of hot swap</h2>

@@ -1,7 +1,7 @@
 {
   "name": "@agentback/authentication",
-  "version": "0.10.1",
-  "description": "Authentication decorator + strategy interface — minimal port of @loopback/authentication",
+  "version": "0.11.0",
+  "description": "Authentication decorator + strategy interface \u2014 minimal port of @loopback/authentication",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
