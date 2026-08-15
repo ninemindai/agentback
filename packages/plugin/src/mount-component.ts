@@ -9,7 +9,7 @@ import {
   componentRefsFor,
   mountResolved,
 } from './mount.js';
-import {pluginRegistryFor} from './registry.js';
+import {assertRetractable, pluginRegistryFor} from './registry.js';
 
 export interface MountComponentOptions {
   /**
@@ -76,7 +76,11 @@ export async function mountComponent(
   const inverse = buildTeardown(app, [outcome], refs);
   let teardownRun: Promise<void> | undefined;
   return {
-    uninstall: () =>
-      (teardownRun ??= inverse().finally(() => registry.remove(options.name))),
+    uninstall: async () => {
+      if (!teardownRun) assertRetractable(registry, new Set([options.name]));
+      return (teardownRun ??= inverse().finally(() =>
+        registry.remove(options.name),
+      ));
+    },
   };
 }

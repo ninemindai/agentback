@@ -89,6 +89,13 @@ wrong:
   plugin's keys after it mounted, `uninstall()` touches neither the unbind nor
   the restore. An unguarded restore would clobber that third party exactly as
   an unguarded unbind would delete it.
+- **A provider outlives its consumers.** Retracting a plugin whose
+  `provides` key another live plugin still declares in `inject` is refused,
+  naming both. A consumer's own teardown routinely needs the dependency it is
+  losing, so this is not tidiness. LIFO composition already gives the ordering
+  inside one report; the guard is what covers independent handles. It reads
+  the same advisory declarations as the graph, so an under-declared `inject`
+  is invisible to it.
 - **Idempotent means idempotent.** A handle memoizes its inverse, so repeat
   calls change nothing. This is load-bearing rather than cosmetic: a rebuilt
   teardown would decrement a shared component's refcount a second time and

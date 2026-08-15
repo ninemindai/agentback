@@ -83,3 +83,71 @@ export function pluginRegistryFor(
   app.bind(key).to(registry);
   return registry;
 }
+
+/** One live consumer blocking a retraction, and the key it needs. */
+export interface RetractionBlocker {
+  consumer: string;
+  key: string;
+  provider: string;
+}
+
+/**
+ * Thrown when retracting a plugin would leave a live consumer resolving a key
+ * nothing provides.
+ */
+export class PluginRetractionBlockedError extends Error {
+  constructor(readonly blockers: RetractionBlocker[]) {
+    const lines = blockers.map(
+      b => `${b.consumer} injects "${b.key}", provided by ${b.provider}`,
+    );
+    super(
+      `cannot retract: ${lines.join('; ')}. Uninstall the consumer first, or ` +
+        `retract both through the report that mounted them.`,
+    );
+    this.name = 'PluginRetractionBlockedError';
+  }
+}
+
+/**
+ * A provider must outlive its consumers.
+ *
+ * A consumer's own teardown routinely needs the dependency it is losing:
+ * closing a pool means handing connections back to whatever provided them. So
+ * retracting a provider out from under a live consumer is not merely untidy,
+ * it can break that consumer's cleanup.
+ *
+ * LIFO composition already gives this ordering WITHIN one report, because the
+ * graph mounts providers first and the inverse replays in reverse. It gives
+ * nothing across independent handles, which is what this guards.
+ *
+ * Fail-closed, matching how this package treats every other ordering problem:
+ * a duplicate `provides`, an unsatisfiable `inject`, and a cycle all stop with
+ * the plugins named. The escape hatch is to retract the consumer too.
+ *
+ * Reads the same advisory declarations as the rest of the graph, so an
+ * under-declared `inject` is invisible here. Closing that would mean resolving
+ * the container at teardown time to discover real edges, which is a different
+ * and much larger design.
+ */
+export function assertRetractable(
+  registry: PluginRegistry,
+  retracting: ReadonlySet<string>,
+): void {
+  const mounted = registry.mounted();
+  const goingAway = new Map<string, string>();
+  for (const m of mounted) {
+    if (!retracting.has(m.name)) continue;
+    for (const key of m.provides) goingAway.set(key, m.name);
+  }
+  if (!goingAway.size) return;
+
+  const blockers: RetractionBlocker[] = [];
+  for (const m of mounted) {
+    if (retracting.has(m.name)) continue; // leaving in the same breath
+    for (const key of m.inject) {
+      const provider = goingAway.get(key);
+      if (provider) blockers.push({consumer: m.name, key, provider});
+    }
+  }
+  if (blockers.length) throw new PluginRetractionBlockedError(blockers);
+}

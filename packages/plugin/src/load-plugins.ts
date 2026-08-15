@@ -14,7 +14,11 @@ import {
   tryMount,
 } from './mount.js';
 import type {MountOutcome} from './mount.js';
-import {entryFromInfo, pluginRegistryFor} from './registry.js';
+import {
+  assertRetractable,
+  entryFromInfo,
+  pluginRegistryFor,
+} from './registry.js';
 import type {
   LoadPluginsOptions,
   PluginLoadError,
@@ -82,10 +86,18 @@ export async function loadPlugins(
     skipped: gate.skipped,
     warnings,
     errors: [],
-    uninstall: () =>
-      (teardownRun ??= buildTeardown(app, outcomes, refs)().finally(() => {
-        for (const p of report.mounted) registry.remove(p.name);
-      })),
+    uninstall: async () => {
+      // Everything this report mounted leaves together, so a consumer it also
+      // mounted is not a blocker.
+      if (!teardownRun) {
+        assertRetractable(registry, new Set(report.mounted.map(p => p.name)));
+      }
+      return (teardownRun ??= buildTeardown(app, outcomes, refs)().finally(
+        () => {
+          for (const p of report.mounted) registry.remove(p.name);
+        },
+      ));
+    },
   };
 
   const fail = (err: PluginLoadError): void => {

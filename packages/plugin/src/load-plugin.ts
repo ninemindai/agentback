@@ -18,7 +18,11 @@ import {
   componentRefsFor,
   tryMount,
 } from './mount.js';
-import {entryFromInfo, pluginRegistryFor} from './registry.js';
+import {
+  assertRetractable,
+  entryFromInfo,
+  pluginRegistryFor,
+} from './registry.js';
 import type {LoadPluginOptions, PluginInfo} from './types.js';
 
 /**
@@ -164,7 +168,14 @@ export async function loadPlugin(
   let teardownRun: Promise<void> | undefined;
   return {
     ...info,
-    uninstall: () =>
-      (teardownRun ??= inverse().finally(() => registry.remove(info.name))),
+    uninstall: async () => {
+      // Before any teardown work, so a blocked retraction leaves nothing
+      // moved. Skipped once the inverse has already run, since a second
+      // uninstall() must stay a no-op.
+      if (!teardownRun) assertRetractable(registry, new Set([info.name]));
+      return (teardownRun ??= inverse().finally(() =>
+        registry.remove(info.name),
+      ));
+    },
   };
 }
