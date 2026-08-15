@@ -4,6 +4,7 @@
 
 import {BindingKey} from '@agentback/context';
 import {z} from 'zod';
+import type {PluginRegistry} from './registry.js';
 
 export const PluginsConfig = z
   .object({
@@ -22,4 +23,6 @@ export type PluginsConfigResolved = z.output<typeof PluginsConfig>;
 
 export namespace PluginBindings {
   export const CONFIG = BindingKey.create<PluginsConfigInput>('plugins.config');
+  /** Live mounted-plugin state. Bound on first use by the loader. */
+  export const REGISTRY = BindingKey.create<PluginRegistry>('plugins.registry');
 }

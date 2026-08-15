@@ -14,6 +14,7 @@ import {
   tryMount,
 } from './mount.js';
 import type {MountOutcome} from './mount.js';
+import {entryFromInfo, pluginRegistryFor} from './registry.js';
 import type {
   LoadPluginsOptions,
   PluginLoadError,
@@ -49,6 +50,10 @@ export async function loadPlugins(
   // `appOwnedContext` already snapshots every key bound before this call, so
   // it doubles as the "satisfied by the application itself" set — an inject
   // the app answers imposes no ordering constraint on any plugin.
+  // Before the snapshot, so the registry is app-owned rather than part of
+  // the first plugin's footprint.
+  const refs = componentRefsFor(app);
+  const registry = pluginRegistryFor(app, refs);
   const ctx = appOwnedContext(app, config.allowOverride);
   const graph = sortByGraph({
     gated: gate.ordered,
@@ -59,7 +64,6 @@ export async function loadPlugins(
   });
   warnings.push(...graph.warnings);
 
-  const refs = componentRefsFor(app);
   const outcomes: MountOutcome[] = [];
   // Built LAZILY over the live `outcomes` array — eager construction would
   // snapshot an empty list, and the inverse has to cover whatever had mounted
@@ -68,14 +72,20 @@ export async function loadPlugins(
   // rebuilding per call would re-run every disposer, decrementing component
   // refcounts a second time and unbinding a component another live plugin
   // still holds.
-  let teardown: (() => Promise<void>) | undefined;
+  // Memoize the PROMISE, not a function that builds one. `teardown ??= () =>
+  // build()` would memoize the builder and re-invoke it on every call, which
+  // is the same double-retraction this comment exists to prevent.
+  let teardownRun: Promise<void> | undefined;
   const report: PluginLoadReport = {
     discovered,
     mounted: [],
     skipped: gate.skipped,
     warnings,
     errors: [],
-    uninstall: () => (teardown ??= buildTeardown(app, outcomes, refs))(),
+    uninstall: () =>
+      (teardownRun ??= buildTeardown(app, outcomes, refs)().finally(() => {
+        for (const p of report.mounted) registry.remove(p.name);
+      })),
   };
 
   const fail = (err: PluginLoadError): void => {
@@ -101,6 +111,7 @@ export async function loadPlugins(
       continue;
     }
     outcomes.push(outcome);
+    registry.add(entryFromInfo(info));
     report.mounted.push(info);
   }
 

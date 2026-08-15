@@ -18,6 +18,7 @@ import {
   componentRefsFor,
   tryMount,
 } from './mount.js';
+import {entryFromInfo, pluginRegistryFor} from './registry.js';
 import type {LoadPluginOptions, PluginInfo} from './types.js';
 
 /**
@@ -140,8 +141,11 @@ export async function loadPlugin(
 ): Promise<PluginInfo & Installed> {
   const cwd = options.cwd ?? process.cwd();
   const info = await resolvePlugin(specifier, cwd, options.component);
-  const ctx = appOwnedContext(app, options.allowOverride ?? []);
   const refs = componentRefsFor(app);
+  // Before the snapshot: a registry bound inside the mount window would join
+  // this plugin's footprint and vanish when it retracts.
+  const registry = pluginRegistryFor(app, refs);
+  const ctx = appOwnedContext(app, options.allowOverride ?? []);
   const outcome = await tryMount(app, info, ctx, refs);
   if (!outcome.ok) {
     const {error} = outcome;
@@ -155,9 +159,12 @@ export async function loadPlugin(
   // on a second uninstall() would re-run every disposer — decrementing
   // component refcounts twice and unbinding a shared component another live
   // plugin still references.
-  let teardown: (() => Promise<void>) | undefined;
+  registry.add(entryFromInfo(info));
+  const inverse = buildTeardown(app, [outcome], refs);
+  let teardownRun: Promise<void> | undefined;
   return {
     ...info,
-    uninstall: () => (teardown ??= buildTeardown(app, [outcome], refs))(),
+    uninstall: () =>
+      (teardownRun ??= inverse().finally(() => registry.remove(info.name))),
   };
 }

@@ -9,6 +9,7 @@ import {
   componentRefsFor,
   mountResolved,
 } from './mount.js';
+import {pluginRegistryFor} from './registry.js';
 
 export interface MountComponentOptions {
   /**
@@ -47,8 +48,11 @@ export async function mountComponent(
   ctor: new (...args: unknown[]) => Component,
   options: MountComponentOptions,
 ): Promise<Installed> {
-  const ctx = appOwnedContext(app, options.allowOverride ?? []);
   const refs = componentRefsFor(app);
+  // Before appOwnedContext snapshots, so the registry binding is already
+  // app-owned and can never land in this mount's footprint.
+  const registry = pluginRegistryFor(app, refs);
+  const ctx = appOwnedContext(app, options.allowOverride ?? []);
   const outcome = await mountResolved(app, options.name, ctor, ctx, refs);
   if (!outcome.ok) {
     const {error} = outcome;
@@ -61,8 +65,18 @@ export async function mountComponent(
   // Memoized for the same reason every other handle memoizes: composeTeardown
   // is idempotent per instance, so rebuilding would decrement a shared
   // component's refcount twice.
-  let teardown: (() => Promise<void>) | undefined;
+  registry.add({
+    name: options.name,
+    version: '0.0.0',
+    component: ctor.name,
+    source: 'memory',
+    provides: [],
+    inject: [],
+  });
+  const inverse = buildTeardown(app, [outcome], refs);
+  let teardownRun: Promise<void> | undefined;
   return {
-    uninstall: () => (teardown ??= buildTeardown(app, [outcome], refs))(),
+    uninstall: () =>
+      (teardownRun ??= inverse().finally(() => registry.remove(options.name))),
   };
 }

@@ -71,7 +71,7 @@ export interface MountFootprint {
  * the one that must retract them is whichever uninstalls LAST. Attaching them
  * to the component instead of to a plugin is what makes both ends work.
  */
-interface ComponentEntry {
+export interface ComponentEntry {
   count: number;
   touched: TouchedBinding[];
 }

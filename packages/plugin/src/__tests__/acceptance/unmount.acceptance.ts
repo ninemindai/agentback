@@ -257,3 +257,29 @@ describe('uninstall — a failing observer must not strand bindings', () => {
     await app.stop();
   });
 });
+
+describe('uninstall — report.uninstall() idempotency, against shared state', () => {
+  it('a repeated report.uninstall() does not retract what another holder keeps', async () => {
+    // The loadPlugin path had this test; the loadPlugins path did not, and the
+    // single-plugin "second call resolves" test above cannot see the failure
+    // because there is nothing shared left to corrupt. Memoizing a BUILDER
+    // instead of the promise passes that test and fails this one.
+    const app = new Application();
+    const report = await loadPlugins(app, {
+      cwd: pkgRoot,
+      config: {scan: false, dirs: ['fixtures'], enable: ['@fixture/shared-a']},
+    });
+    const other = await loadPlugin(app, resolve(fixtures, 'shared-b'));
+    expect(app.isBound('services.SharedDep')).toBe(true);
+
+    await report.uninstall();
+    await report.uninstall();
+    await report.uninstall();
+
+    expect(app.isBound('services.SharedDep')).toBe(true);
+    expect(app.isBound('components.SharedComponent')).toBe(true);
+
+    await other.uninstall();
+    expect(app.isBound('components.SharedComponent')).toBe(false);
+  });
+});
