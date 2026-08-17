@@ -214,6 +214,150 @@ describe('LifeCycleRegistry', () => {
     expect(events).toEqual(['2-stop', '1-stop']);
   });
 
+  it('startObservers stops what it started when a SERIAL sibling throws', async () => {
+    givenObserverWithInit('1');
+    givenThrowingStartObserver('boom');
+    givenObserverWithInit('2');
+    const keys = new Set([
+      'observers.observer-1',
+      'observers.observer-boom',
+      'observers.observer-2',
+    ]);
+
+    await expect(registry.startObservers(keys)).rejects.toThrow(
+      'start exploded',
+    );
+
+    // The serial loop starts 1, then boom throws — 2 never starts. 1 must not
+    // be left running: its bindings are about to be unbound by the caller's
+    // rollback, after which the full stop() pass can no longer reach it.
+    expect(events).toContain('1-start');
+    expect(events).not.toContain('2-start');
+    expect(events).toContain('1-stop');
+  });
+
+  it('startObservers stops what it started when a PARALLEL sibling throws', async () => {
+    // The harder half: Promise.all rejects on the FIRST failure while its
+    // siblings keep running, so a naive unwind races observers that are still
+    // starting and misses one it then has to stop. `settle` is what makes the
+    // started-set complete before the error surfaces.
+    givenObserverWithInit('1');
+    givenThrowingStartObserver('boom');
+    givenObserverWithInit('2');
+    registry.setParallel(true);
+    const keys = new Set([
+      'observers.observer-1',
+      'observers.observer-boom',
+      'observers.observer-2',
+    ]);
+
+    await expect(registry.startObservers(keys)).rejects.toThrow(
+      'start exploded',
+    );
+
+    // Both siblings started concurrently and BOTH must be stopped.
+    expect(events).toContain('1-start');
+    expect(events).toContain('2-start');
+    expect(events).toContain('1-stop');
+    expect(events).toContain('2-stop');
+  });
+
+  it('startObservers waits for an in-flight PARALLEL sibling before unwinding', async () => {
+    // This is what `settle` buys, and it needs a SLOW sibling to show it: with
+    // plain Promise.all the rejection surfaces while `slow` is still starting,
+    // so the unwind runs against an incomplete started-set and leaks the very
+    // observer that finishes a moment later. With allSettled, `slow` is
+    // recorded before the error propagates and is therefore stopped.
+    givenSlowStartObserver('slow', 20);
+    givenThrowingStartObserver('boom');
+    registry.setParallel(true);
+
+    await expect(
+      registry.startObservers(
+        new Set(['observers.observer-slow', 'observers.observer-boom']),
+      ),
+    ).rejects.toThrow('start exploded');
+
+    expect(events).toContain('slow-start');
+    expect(events).toContain('slow-stop');
+  });
+
+  it('startObservers surfaces the start failure even if the unwind also fails', async () => {
+    // A failed unwind is additional damage; it must not replace the diagnosis
+    // the caller actually needs.
+    givenObserverWithFailingStop('bad');
+    givenThrowingStartObserver('boom');
+
+    const err = (await registry
+      .startObservers(
+        new Set(['observers.observer-bad', 'observers.observer-boom']),
+      )
+      .catch((e: unknown) => e)) as AggregateError;
+
+    expect(err).toBeInstanceOf(AggregateError);
+    expect(
+      err.errors.some(e => (e as Error).message.includes('start exploded')),
+    ).toBe(true);
+  });
+
+  function givenThrowingStartObserver(name: string, group = '') {
+    @injectable({tags: {[CoreTags.LIFE_CYCLE_OBSERVER_GROUP]: group}})
+    class MyObserver implements LifeCycleObserver {
+      init() {
+        events.push(`${name}-init`);
+      }
+      start(): void {
+        throw new Error('start exploded');
+      }
+      stop() {
+        events.push(`${name}-stop`);
+      }
+    }
+    context.add(
+      createBindingFromClass(MyObserver, {
+        key: `observers.observer-${name}`,
+      }).apply(asLifeCycleObserver),
+    );
+    return MyObserver;
+  }
+
+  function givenSlowStartObserver(name: string, delayInMs: number, group = '') {
+    @injectable({tags: {[CoreTags.LIFE_CYCLE_OBSERVER_GROUP]: group}})
+    class MyObserver implements LifeCycleObserver {
+      async start() {
+        await sleep(delayInMs);
+        events.push(`${name}-start`);
+      }
+      async stop() {
+        events.push(`${name}-stop`);
+      }
+    }
+    context.add(
+      createBindingFromClass(MyObserver, {
+        key: `observers.observer-${name}`,
+      }).apply(asLifeCycleObserver),
+    );
+    return MyObserver;
+  }
+
+  function givenObserverWithFailingStop(name: string, group = '') {
+    @injectable({tags: {[CoreTags.LIFE_CYCLE_OBSERVER_GROUP]: group}})
+    class MyObserver implements LifeCycleObserver {
+      start() {
+        events.push(`${name}-start`);
+      }
+      stop(): void {
+        throw new Error('stop exploded');
+      }
+    }
+    context.add(
+      createBindingFromClass(MyObserver, {
+        key: `observers.observer-${name}`,
+      }).apply(asLifeCycleObserver),
+    );
+    return MyObserver;
+  }
+
   function givenContext() {
     context = new Context('app');
   }
