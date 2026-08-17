@@ -11,7 +11,7 @@ import {apiConsoleFeature} from '@agentback/rest-explorer';
 import {mcpConsoleFeature} from '@agentback/mcp-inspector';
 import {schemaConsoleFeature} from '@agentback/schema-explorer';
 import type {Installed} from '@agentback/core';
-import {composeTeardown} from '@agentback/common';
+import {composeTeardown, installSteps} from '@agentback/common';
 import type {RestApplication, RestServer} from '@agentback/rest';
 import {AssetSource, fromDisk, installGate} from '@agentback/rest';
 import {liveHandler} from './live.js';
@@ -108,71 +108,67 @@ export async function installConsole(
     );
   }
 
-  // Gate BEFORE features register their routes, so the auth middleware sits
-  // ahead of them in the Express stack. Covers the UI, each panel API, and any
-  // remote-connect base advertised via a feature's `extra.connect`.
-  const td = composeTeardown();
-  if (options.auth) {
-    const handlers = Array.isArray(options.auth)
-      ? options.auth
-      : [options.auth];
-    const prefixes = new Set<string>([basePath]);
-    for (const f of features) {
-      prefixes.add(f.apiBase);
-      const connect = (f.extra as {connect?: {base?: string}} | undefined)
-        ?.connect;
-      if (connect?.base) prefixes.add(connect.base);
-    }
-    // Express cannot unmount; each auth layer is individually gated so
-    // uninstall turns it into a pass-through (revertible-installs.md).
-    const authGate = installGate();
-    td.push(() => authGate.off());
-    for (const prefix of prefixes) {
-      for (const h of handlers) {
-        server.expressApp.use(prefix, authGate.wrap(h));
+  // Each step hands over its inverse before the next one runs, so a throw
+  // anywhere below reverts what already landed and rethrows — no rollback
+  // `catch` per early exit, and no region left uncovered by one
+  // (revertible-installs.md, composition rule).
+  const {value, teardown} = await installSteps(async function* () {
+    // Gate BEFORE features register their routes, so the auth middleware sits
+    // ahead of them in the Express stack. Covers the UI, each panel API, and
+    // any remote-connect base advertised via a feature's `extra.connect`.
+    if (options.auth) {
+      const handlers = Array.isArray(options.auth)
+        ? options.auth
+        : [options.auth];
+      const prefixes = new Set<string>([basePath]);
+      for (const f of features) {
+        prefixes.add(f.apiBase);
+        const connect = (f.extra as {connect?: {base?: string}} | undefined)
+          ?.connect;
+        if (connect?.base) prefixes.add(connect.base);
+      }
+      // Express cannot unmount; each auth layer is individually gated so
+      // uninstall turns it into a pass-through (revertible-installs.md).
+      const authGate = installGate();
+      yield () => authGate.off();
+      for (const prefix of prefixes) {
+        for (const h of handlers) {
+          server.expressApp.use(prefix, authGate.wrap(h));
+        }
       }
     }
-  }
 
-  try {
+    // A feature that throws (e.g. mcpConsoleFeature on an app with no MCP
+    // server bound) must not leave the already-installed features' footprint
+    // behind.
     for (const feature of features) {
       const r = await feature.install(app);
       if (r && typeof (r as Installed).uninstall === 'function') {
-        td.push(() => (r as Installed).uninstall());
+        yield () => (r as Installed).uninstall();
       }
     }
-  } catch (err) {
-    // A feature that throws (e.g. mcpConsoleFeature on an app with no MCP
-    // server bound) must not leave the already-installed features' footprint
-    // behind (revertible-installs.md, composition rule).
-    await td.run().catch(() => {});
-    throw err;
-  }
 
-  // Extract chat config from the chat feature, if present. We use duck-typing
-  // to avoid a static import of @agentback/console-chat (which depends on
-  // @agentback/console — importing it here would be a circular dep).
-  const chatFeature = features.find(
-    (f): f is ConsoleFeature & {chatConfig: ConsoleChatConfig} =>
-      'chatConfig' in f,
-  );
-  const chat = chatFeature?.chatConfig;
+    // Extract chat config from the chat feature, if present. We use
+    // duck-typing to avoid a static import of @agentback/console-chat (which
+    // depends on @agentback/console — importing it here would be a circular
+    // dep).
+    const chatFeature = features.find(
+      (f): f is ConsoleFeature & {chatConfig: ConsoleChatConfig} =>
+        'chatConfig' in f,
+    );
 
-  let mounted: Installed;
-  try {
-    mounted = mountConsole(server, {
+    const mounted = mountConsole(server, {
       basePath,
       title,
       features,
       assets: options.assets,
-      chat,
+      chat: chatFeature?.chatConfig,
     });
-  } catch (err) {
-    await td.run().catch(() => {});
-    throw err;
-  }
-  td.push(() => mounted.uninstall());
-  return {basePath, features, uninstall: () => td.run()};
+    yield () => mounted.uninstall();
+
+    return {basePath, features};
+  });
+  return {...value, uninstall: () => teardown.run()};
 }
 
 /**
