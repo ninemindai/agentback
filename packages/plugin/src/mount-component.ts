@@ -10,6 +10,7 @@ import {
   mountResolved,
 } from './mount.js';
 import {assertRetractable, pluginRegistryFor} from './registry.js';
+import {commitSurfaces} from './commit-surfaces.js';
 
 export interface MountComponentOptions {
   /**
@@ -74,6 +75,9 @@ export async function mountComponent(
     inject: [],
   });
   const inverse = buildTeardown(app, [outcome], refs);
+  await commitSurfaces(app, options.name, inverse, () =>
+    registry.remove(options.name),
+  );
   let teardownRun: Promise<void> | undefined;
   return {
     uninstall: async () => {

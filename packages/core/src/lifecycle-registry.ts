@@ -52,6 +52,18 @@ export type LifeCycleObserverOptions = {
 export const DEFAULT_ORDERED_GROUPS = ['server'];
 
 /**
+ * Per-call knobs for a notification pass. Both exist for
+ * {@link LifeCycleObserverRegistry.startObservers}'s rollback; the full
+ * `init`/`start`/`stop` passes pass neither and are unchanged.
+ */
+interface NotifyOptions {
+  /** Called with a binding key AFTER that observer's handler resolved. */
+  onNotified?: (key: string) => void;
+  /** Await every parallel notification's settlement before throwing. */
+  settle?: boolean;
+}
+
+/**
  * A context-based registry for life cycle observers
  */
 export class LifeCycleObserverRegistry implements LifeCycleObserver {
@@ -154,31 +166,44 @@ export class LifeCycleObserverRegistry implements LifeCycleObserver {
     observers: LifeCycleObserver[],
     bindings: Readonly<Binding<LifeCycleObserver>>[],
     event: keyof LifeCycleObserver,
+    opts: NotifyOptions = {},
   ) {
     if (!this.options.parallel) {
       let index = 0;
       for (const observer of observers) {
-        log.debug(
-          'Invoking %s observer for binding %s',
-          event,
-          bindings[index].key,
-        );
+        const key = bindings[index].key;
+        log.debug('Invoking %s observer for binding %s', event, key);
         index++;
         await this.invokeObserver(observer, event);
+        opts.onNotified?.(key);
       }
       return;
     }
 
     // Parallel invocation
-    const notifiers = observers.map((observer, index) => {
-      log.debug(
-        'Invoking %s observer for binding %s',
-        event,
-        bindings[index].key,
-      );
-      return this.invokeObserver(observer, event);
+    const notifiers = observers.map(async (observer, index) => {
+      const key = bindings[index].key;
+      log.debug('Invoking %s observer for binding %s', event, key);
+      await this.invokeObserver(observer, event);
+      opts.onNotified?.(key);
     });
-    await Promise.all(notifiers);
+    if (!opts.settle) {
+      await Promise.all(notifiers);
+      return;
+    }
+    // `settle` exists for start-with-rollback. `Promise.all` rejects on the
+    // FIRST failure while its siblings keep running, so a caller that starts
+    // unwinding on that rejection races observers that are still starting —
+    // and can miss one it then has to stop. Waiting for every settlement makes
+    // `onNotified` complete before the error surfaces.
+    const results = await Promise.allSettled(notifiers);
+    const failures = results
+      .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+      .map(r => r.reason);
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) {
+      throw new AggregateError(failures, `${event} failed`);
+    }
   }
 
   /**
@@ -208,6 +233,7 @@ export class LifeCycleObserverRegistry implements LifeCycleObserver {
     events: (keyof LifeCycleObserver)[],
     groups: LifeCycleObserverGroup[],
     reverse = false,
+    opts: NotifyOptions = {},
   ) {
     const observers = await this.observersView.values();
     const bindings = this.observersView.bindings;
@@ -235,7 +261,12 @@ export class LifeCycleObserverRegistry implements LifeCycleObserver {
 
       for (const event of events) {
         log.debug('Beginning notification %s of %s...', event);
-        await this.notifyObservers(observersForGroup, group.bindings, event);
+        await this.notifyObservers(
+          observersForGroup,
+          group.bindings,
+          event,
+          opts,
+        );
         log.debug('Finished notification %s of %s', event);
       }
     }
@@ -276,18 +307,112 @@ export class LifeCycleObserverRegistry implements LifeCycleObserver {
    * the `parallel` setting, and `invokeMethod` argument injection — so a
    * partial retraction behaves like a shutdown restricted to those observers.
    * A plugin uninstall needs exactly this: stop what it is retracting, and
-   * nothing else.
-   *
-   * The filtered arrays are fresh copies, which matters — `notifyGroups`
-   * reverses `group.bindings` in place, and a copy keeps that mutation off
-   * the registry's own group objects.
+   * nothing else. See {@link selectGroups} for why the filtered arrays are
+   * fresh copies.
    */
   public async stopObservers(keys: ReadonlySet<string>): Promise<void> {
-    if (!keys.size) return;
-    const groups = this.getObserverGroupsByOrder()
-      .map(g => ({...g, bindings: g.bindings.filter(b => keys.has(b.key))}))
-      .filter(g => g.bindings.length > 0);
+    const groups = this.selectGroups(keys);
     if (!groups.length) return;
     await this.notifyGroups(['stop'], groups, true);
+  }
+
+  /**
+   * Notify a SUBSET of observers of `init` then `start`, selected by binding
+   * key — the additive counterpart of {@link stopObservers}.
+   *
+   * A plugin mounted into an ALREADY-RUNNING app needs exactly this. Its
+   * observers are bound after `app.start()` has run, so the app-wide `init()`
+   * and `start()` passes are long over and nothing would ever notify them: the
+   * plugin mounts inert, silently, which is the worst failure shape available.
+   *
+   * The two events are two SEPARATE passes, not `notifyGroups(['init',
+   * 'start'])`. `notifyGroups` iterates events *inside* each group, so the
+   * single-call form yields `groupA.init, groupA.start, groupB.init,
+   * groupB.start` — whereas `Application` runs `registry.init()` across every
+   * group and only then `registry.start()`. An observer in a later group whose
+   * `init` must precede an earlier group's `start` is served by the app-wide
+   * ordering and broken by the interleaved one. Partial start reuses the real
+   * ordering rather than approximating it.
+   */
+  public async startObservers(keys: ReadonlySet<string>): Promise<void> {
+    const groups = this.selectGroups(keys);
+    if (!groups.length) return;
+
+    // TRANSACTIONAL. A partial start is the worst outcome available: the
+    // caller's rollback unbinds, and an observer that already started then
+    // keeps its sockets and timers alive while becoming UNREACHABLE — the full
+    // `stop()` pass resolves observers through the view, which no longer
+    // contains an unbound key. So nothing outside can ever stop it.
+    //
+    // Tracking has to be per-observer, not per-call: `notifyObservers` walks a
+    // serial `await` loop (and `Promise.all` in parallel mode), so a throw
+    // leaves the EARLIER observers started with no record of which. Hence
+    // `onNotified`, and `settle` so a parallel sibling cannot still be starting
+    // while we unwind.
+    const started = new Set<string>();
+    const track = {onNotified: (key: string) => void started.add(key), settle: true};
+    try {
+      await this.notifyGroups(['init'], groups, false, track);
+      // `init` completing for every observer is not a reason to forget them:
+      // `stop()` is the documented inverse of both, and an observer that
+      // allocated in `init` still needs it.
+      await this.notifyGroups(['start'], groups, false, track);
+    } catch (err) {
+      if (started.size) {
+        try {
+          await this.stopObservers(started);
+        } catch (stopErr) {
+          // The start failure is the caller's diagnosis and must survive; a
+          // failed unwind is additional damage, reported alongside rather than
+          // in place of it.
+          throw new AggregateError(
+            [err, stopErr],
+            'observer start failed, and stopping the partially-started ' +
+              'observers also failed',
+          );
+        }
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Notify a SUBSET of observers of `init` only — for a mount into an app that
+   * has been initialized but not yet started.
+   *
+   * `Application.start()` is `if (!this._initialized) await this.init()`, so on
+   * such an app `init` will never run again while its pending `registry.start()`
+   * still notifies every bound observer. Sending `start` here too would
+   * double-start them; sending nothing would leave them un-initialized. Without
+   * this, the same plugin got a different lifecycle depending on when it
+   * mounted.
+   */
+  public async initObservers(keys: ReadonlySet<string>): Promise<void> {
+    const groups = this.selectGroups(keys);
+    if (!groups.length) return;
+    await this.notifyGroups(['init'], groups);
+  }
+
+  /**
+   * Ordered observer groups restricted to `keys`, empty when nothing matches.
+   *
+   * The filtered arrays are fresh copies, which matters — `notifyGroups`
+   * reverses `group.bindings` in place for the stop path, and a copy keeps that
+   * mutation off the registry's own group objects. The binding objects
+   * themselves are NOT copied: `notifyGroups` locates each observer by
+   * `bindings.indexOf(binding)` against the live view, so identity must hold.
+   */
+  private selectGroups(keys: ReadonlySet<string>): LifeCycleObserverGroup[] {
+    if (!keys.size) return [];
+    // The view caches its bindings and is invalidated by context observers,
+    // which are notified ASYNCHRONOUSLY. A partial notify is called precisely
+    // because bindings just changed, so the cache is reliably stale at that
+    // moment — a plugin mounted into a running app would find its brand-new
+    // observer absent from every group and silently never start. Invalidate
+    // first: `bindings` then re-runs the filter against the live registry.
+    this.observersView.refresh();
+    return this.getObserverGroupsByOrder()
+      .map(g => ({...g, bindings: g.bindings.filter(b => keys.has(b.key))}))
+      .filter(g => g.bindings.length > 0);
   }
 }

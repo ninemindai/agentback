@@ -412,6 +412,13 @@ export class RestServer implements Server {
    * register routes.
    */
   controller(ctor: Function): void {
+    // Express appends layers and never replaces them, so mounting the same
+    // controller twice leaves a second, permanently-shadowed copy of every
+    // route — dead weight that also double-counts in any layer walk. Skipping
+    // is what makes `refreshSurface()` safe to call repeatedly on a running
+    // app, where most refreshes have nothing new to mount.
+    if (this._mountedControllers.has(ctor)) return;
+
     const spec = getControllerSpec(ctor);
     const prefix = (this.config.basePath ?? '') + (spec.basePath ?? '');
 
@@ -473,6 +480,10 @@ export class RestServer implements Server {
         }
       }
     }
+    // Marked only after every route landed: a throw partway (e.g. the path
+    // placeholder guard) must leave the class retryable rather than recorded
+    // as mounted with only some of its routes present.
+    this._mountedControllers.add(ctor);
   }
 
   /**
@@ -1442,6 +1453,52 @@ export class RestServer implements Server {
   /** Get the underlying express app (escape hatch). */
   get expressApp(): Express {
     return this.ensureExpressApp();
+  }
+
+  /** Controllers already mounted on Express; see {@link controller}. */
+  private readonly _mountedControllers = new Set<Function>();
+
+  /**
+   * Re-derive the served surface from the current controller bindings — the
+   * {@link RefreshableSurface} half of runtime capability mounting.
+   *
+   * Routes are otherwise collected exactly once: `mountAllControllers()` runs
+   * in `start()`, and the fetch router is memoized on first use. A controller
+   * bound into a RUNNING app is therefore never served. Retraction already
+   * works from the other side (the per-request controller-liveness gate 404s an
+   * unbound controller), so this closes the asymmetry rather than adding a new
+   * mechanism.
+   *
+   * Idempotent and cheap when nothing changed: `controller()` skips what it has
+   * already mounted, and dropping the fetch memo only costs a rebuild on the
+   * next request.
+   */
+  refreshSurface(): void {
+    if (this.listenerMode === 'native') {
+      // VALIDATE BEFORE COMMITTING. `start()` runs these checks once; a refresh
+      // that only dropped the memo let a plugin mount cleanly and then break
+      // the NEXT request — a duplicate route throws out of the router build,
+      // and an Express-coupled route cannot be served by the Web pipeline at
+      // all. Building a throwaway table first moves both failures back onto the
+      // mount that caused them, where the caller can still roll it back.
+      this.assertNoExpressCoupledRoute();
+      const probe = new Router<RouteValue>();
+      for (const r of collectRoutes(this.context, this.config.basePath ?? '')) {
+        probe.add(r);
+      }
+      // Only now is the committed state touched. The native listener re-reads
+      // fetchHandler() per request, so dropping the memo is the whole commit.
+      this._fetchHost = undefined;
+      return;
+    }
+    // Express appends layers and cannot unmount, so there is no dry run to be
+    // had: `controller()` validates each route as it mounts (path placeholders
+    // against the `path:` schema) and throws partway. That is survivable
+    // precisely because retraction is enforced per request — the caller rolls
+    // the mount back, the controller binding goes, and the layers that did land
+    // 404 through the liveness gate.
+    this.mountAllControllers();
+    this._fetchHost = undefined;
   }
 
   private _fetchHost?: FetchHost;

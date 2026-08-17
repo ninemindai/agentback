@@ -26,5 +26,6 @@ export * from './keys.js';
 export * from './lifecycle.js';
 export * from './lifecycle-registry.js';
 export * from './mixin-target.js';
+export * from './refreshable-surface.js';
 export * from './server.js';
 export * from './service.js';

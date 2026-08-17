@@ -51,7 +51,11 @@ export type PluginLoadErrorKind =
   | 'key-collision'
   | 'unsatisfied-inject'
   | 'dependency-cycle'
-  | 'duplicate-provides';
+  | 'duplicate-provides'
+  /** An observer's `init`/`start` threw while mounting into a running app. */
+  | 'lifecycle-start'
+  /** A server could not re-derive its served surface, so the mount was undone. */
+  | 'surface-refresh';
 
 export interface PluginLoadError {
   package: string;

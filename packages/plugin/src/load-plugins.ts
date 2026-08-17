@@ -24,6 +24,7 @@ import type {
   PluginLoadError,
   PluginLoadReport,
 } from './types.js';
+import {commitSurfaces} from './commit-surfaces.js';
 
 function resolveConfig(app: Application, options: LoadPluginsOptions) {
   if (options.config !== undefined) return PluginsConfig.parse(options.config);
@@ -125,6 +126,22 @@ export async function loadPlugins(
     outcomes.push(outcome);
     registry.add(entryFromInfo(info));
     report.mounted.push(info);
+  }
+
+  // ONCE, after the whole batch — a refresh is a global reconcile, so doing it
+  // per mount rebuilt the route table once per plugin for no added effect.
+  // Fail-closed like the singular entry points, and at batch granularity to
+  // match: `report.uninstall()` is already the batch's inverse, so if the
+  // servers cannot serve what was mounted, the batch leaves nothing behind.
+  if (report.mounted.length) {
+    await commitSurfaces(
+      app,
+      report.mounted.map(p => p.name).join(', '),
+      () => report.uninstall(),
+      () => {
+        report.mounted.length = 0;
+      },
+    );
   }
 
   return report;

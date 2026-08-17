@@ -149,6 +149,63 @@ describe('uninstall — lifecycle observers', () => {
   });
 });
 
+describe('mount — lifecycle observers on a running app', () => {
+  /**
+   * The fixture's arrays are module-scoped (ESM evaluates it once), so a
+   * throwaway mount is how a test gets a handle to reset them before the
+   * mounts it actually asserts on.
+   */
+  async function givenResetStarts(): Promise<string[]> {
+    const probe = new Application();
+    await loadPlugin(probe, resolve(fixtures, 'observer-plugin'));
+    const starts = probe.getSync<string[]>('test.observerStarts');
+    starts.length = 0;
+    return starts;
+  }
+
+  it('does NOT start an observer mounted before app.start()', async () => {
+    const starts = await givenResetStarts();
+    const app = new Application();
+    await loadPlugin(app, resolve(fixtures, 'observer-plugin'));
+
+    // The pending app.start() is what notifies it; mounting must not.
+    expect(starts).toEqual([]);
+  });
+
+  it('starts an observer mounted into an ALREADY-RUNNING app', async () => {
+    const starts = await givenResetStarts();
+    const app = new Application();
+    await app.start();
+
+    const installed = await loadPlugin(
+      app,
+      resolve(fixtures, 'observer-plugin'),
+    );
+    // Without startObservers the plugin mounts inert — bound, discoverable,
+    // and silently never notified.
+    expect(starts).toEqual(['observer-plugin']);
+
+    await installed.uninstall();
+    await app.stop();
+  });
+
+  it('rolls the mount back when start() rejects on a running app', async () => {
+    const app = new Application();
+    await app.start();
+
+    await expect(
+      loadPlugin(app, resolve(fixtures, 'bad-start-plugin')),
+    ).rejects.toThrow(/start\(\) exploded/);
+
+    // A half-started plugin must leave nothing behind: no bindings, and no
+    // component root for a later uninstall to trip over.
+    expect(app.isBound('plugin.badStartMarker')).toBe(false);
+    expect(app.isBound('components.BadStartComponent')).toBe(false);
+
+    await app.stop();
+  });
+});
+
 describe('uninstall — shared nested components', () => {
   it('uninstalling one plugin leaves the other working', async () => {
     const app = new Application();

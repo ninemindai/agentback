@@ -1113,22 +1113,23 @@ export class MCPServer implements Server {
    * `tools/call` are gated by construction. When `scopes` is undefined (stdio /
    * unauthenticated), every tool is registered.
    */
-  private registerAllOn(target: McpServer, scopes?: string[]) {
-    // Tools register through the SDK's LOW-LEVEL request handlers (the
-    // `Server` underneath the high-level `McpServer`): the high-level
-    // `registerTool` consumes a `ZodRawShape`, which would lock tool schemas
-    // to Zod. Declaring tools as emitted JSON Schema and validating
-    // input/output framework-side (`standardParse` in `dispatchTool`)
-    // supports any Standard Schema vendor. Resources/prompts keep the
-    // high-level registration below.
+  /**
+   * The visible-tool map for one caller: every discovered tool, minus those
+   * whose `@authorize({scopes})` requirement `scopes` does not satisfy.
+   *
+   * Split out of {@link registerAllOn} so it can be recomputed on a live
+   * server — see {@link refreshSurface}. Cheap to repeat: the expensive,
+   * caller-invariant half (JSON Schema emission, entry construction, required
+   * scopes) is memoized per (class, method) by `compileTool`.
+   */
+  private computeVisibleTools(
+    scopes?: string[],
+  ): Map<string, {tool: ToolBinding; entry: ToolListEntry}> {
     const visible = new Map<
       string,
       {tool: ToolBinding; entry: ToolListEntry}
     >();
     for (const t of this.collectAllTools()) {
-      // The expensive, caller-invariant half (JSON Schema emission, entry
-      // construction, required scopes) is memoized per (class, method); only
-      // the visibility check below varies by caller.
       const compiled = compileTool(t);
       // Visibility: scopes from `@authorize({scopes})` (or the legacy
       // `@tool(..., {scope})`) gate registration on authenticated transports.
@@ -1149,30 +1150,60 @@ export class MCPServer implements Server {
       this.warnOnClassLevelGating(t);
       visible.set(t.meta.name, {tool: t, entry: compiled.entry});
     }
+    return visible;
+  }
+
+  /**
+   * Register discovered tools/resources/prompts onto `target`.
+   *
+   * Registration wires HANDLERS, never a snapshot: what each handler answers is
+   * derived from the container at request time. See the comment inside.
+   */
+  private registerAllOn(target: McpServer, scopes?: string[]): void {
+    // Tools register through the SDK's LOW-LEVEL request handlers (the
+    // `Server` underneath the high-level `McpServer`): the high-level
+    // `registerTool` consumes a `ZodRawShape`, which would lock tool schemas
+    // to Zod. Declaring tools as emitted JSON Schema and validating
+    // input/output framework-side (`standardParse` in `dispatchTool`)
+    // supports any Standard Schema vendor.
+    //
+    // Resources and prompts register through low-level handlers too, for the
+    // SAME reason rather than for schema flexibility: the high-level
+    // `registerResource`/`registerPrompt` reject a duplicate name, so anything
+    // registered through them is frozen for the life of the server. A plugin
+    // mounted at runtime could then contribute a tool that appears and a
+    // `ui://` resource that never does — and `@tool({ui})` makes exactly that
+    // pairing a shipped feature.
+    //
+    // Every list is therefore DERIVED PER REQUEST, not baked at build time.
+    // That is what makes a long-lived connection see a capability mounted a
+    // moment ago, and it is also what retracts one whose binding is gone: both
+    // directions fall out of asking the container at request time instead of
+    // remembering an answer and maintaining it. `compileTool` memoizes the
+    // expensive, caller-invariant half, so the repeat cost is one container
+    // walk — which `tools/list` already paid for its liveness check, now
+    // deleted as redundant.
+    // Deriving per request must NOT also defer schema validation. `compileTool`
+    // emits JSON Schema eagerly on purpose, so a schema that can validate but
+    // not describe itself fails at `app.start()`/`buildServer()` rather than at
+    // some client's first `tools/list` — and moving derivation into the
+    // handlers silently moved that failure with it (five guardrail tests
+    // caught exactly this). Compile once here, discard the result: it is
+    // memoized per (class, method), so the per-request derivations below reuse
+    // it, and a failure is deliberately not cached so every build re-throws.
+    this.computeVisibleTools(scopes);
 
     const server = target.server;
     server.setRequestHandler('tools/list', async () => ({
       // SDK v2 types handler returns from the method name, and its `Tool` type
       // requires a literal `type: 'object'` inputSchema. Ours is JSON Schema
       // *emitted* from a Standard Schema, so it is only `Record<string,
-      // unknown>` statically — the registration-time guard above (which throws
+      // unknown>` statically — the registration-time guard (which throws
       // unless the schema lowered to an object root) is what actually upholds
       // the invariant, hence the assertion here.
-      // Liveness: `visible` is baked when the server is built, so a tool whose
-      // binding was retracted afterwards must stop being advertised. Collect
-      // the live constructors in ONE container walk rather than calling
-      // findToolBindingKey per tool — that would make the common discovery
-      // request O(tools x bindings).
-      tools: (() => {
-        const live = new Set<unknown>(
-          this.context
-            .find(extensionFilter(MCP_SERVERS))
-            .map(b => b.valueConstructor),
-        );
-        return Array.from(visible.values())
-          .filter(v => live.has(v.tool.ctor))
-          .map(v => v.entry) as ListToolsResult['tools'];
-      })(),
+      tools: Array.from(this.computeVisibleTools(scopes).values()).map(
+        v => v.entry,
+      ) as ListToolsResult['tools'],
     }));
     server.setRequestHandler(
       'tools/call',
@@ -1180,7 +1211,9 @@ export class MCPServer implements Server {
       // the per-request DI child context built below.
       async (request, extra): Promise<CallToolResult> => {
         try {
-          const found = visible.get(request.params.name);
+          const found = this.computeVisibleTools(scopes).get(
+            request.params.name,
+          );
           // A retracted tool is treated exactly as an unknown name, so it
           // reuses the error shape callers already handle rather than
           // surfacing a resolver failure from deeper in the pipeline.
@@ -1251,73 +1284,121 @@ export class MCPServer implements Server {
       },
     );
 
-    for (const r of this.collectAllResources()) {
-      // Visibility: `@authorize({scopes})` gates registration on
-      // authenticated transports, exactly like tools. Roles/voter-gated
-      // resources stay visible and are denied at read time.
+    server.setRequestHandler('resources/list', async () => ({
+      resources: this.computeVisibleResources(scopes).map(r => ({
+        name: r.meta.name,
+        uri: r.meta.uri,
+        description: r.meta.description,
+        mimeType: r.meta.mimeType,
+      })),
+    }));
+
+    // Always empty, and that is not a regression. `@resource`'s doc mentions
+    // RFC 6570 templates, but nothing in this package ever expanded one: `@arg`
+    // was removed, and the SDK's `registerResource(name, uri, ...)` treated a
+    // templated string as a STATIC resource whose URI is the literal template.
+    // Exact-URI matching in `resources/read` below therefore preserves the
+    // previous behaviour byte for byte. The method is answered rather than left
+    // unhandled because an unhandled method is a protocol error, and a client
+    // probing templates during discovery should see "none", not a failure.
+    server.setRequestHandler('resources/templates/list', async () => ({
+      resourceTemplates: [],
+    }));
+
+    server.setRequestHandler('resources/read', async (request, extra) => {
+      const uri = request.params.uri;
+      const found = this.computeVisibleResources(scopes).find(
+        r => r.meta.uri === uri,
+      );
+      // A resource whose binding was retracted is treated exactly as an unknown
+      // URI, matching how `tools/call` handles a retracted tool.
+      if (!found) {
+        throw new ProtocolError(
+          ProtocolErrorCode.InvalidParams,
+          `Resource ${uri} not found`,
+        );
+      }
+      return this.dispatchResource(found, this.requestContextFor(extra));
+    });
+
+    server.setRequestHandler('prompts/list', async () => ({
+      prompts: this.computeVisiblePrompts(scopes).map(p => ({
+        name: p.meta.name,
+        description: p.meta.description,
+      })),
+    }));
+
+    server.setRequestHandler('prompts/get', async (request, extra) => {
+      const name = request.params.name;
+      const found = this.computeVisiblePrompts(scopes).find(
+        p => p.meta.name === name,
+      );
+      if (!found) {
+        throw new ProtocolError(
+          ProtocolErrorCode.InvalidParams,
+          `Prompt ${name} not found`,
+        );
+      }
+      // Registering through the low-level handler also drops the SDK's
+      // high-level `registerPrompt` argument plumbing, which had no
+      // zero-argument form and needed a cast to avoid breaking no-arg calls.
+      // `@prompt` methods take no arguments, so there is nothing to validate.
+      return this.dispatchPrompt(found, this.requestContextFor(extra));
+    });
+  }
+
+  /**
+   * The visible resources for one caller. Same scope gate as tools:
+   * `@authorize({scopes})` hides a resource on an authenticated transport;
+   * roles/voter-gated resources stay visible and are denied at read time.
+   */
+  private computeVisibleResources(
+    scopes?: string[],
+  ): {ctor: Function; meta: ResourceMetadata}[] {
+    return this.collectAllResources().filter(r => {
       const required = requiredScopesForMember(
         r.ctor,
         r.meta.methodName as string,
       );
-      if (
-        scopes &&
-        required.length &&
-        !required.every(s => scopes.includes(s))
-      ) {
+      if (scopes && required.length && !required.every(s => scopes.includes(s))) {
         log.debug(
           'skipping resource %s (requires scopes %j)',
           r.meta.name,
           required,
         );
-        continue;
+        return false;
       }
-      log.debug('registering resource %s -> %s', r.meta.name, r.meta.uri);
-      target.registerResource(
-        r.meta.name,
-        r.meta.uri,
-        {
-          description: r.meta.description,
-          mimeType: r.meta.mimeType,
-        },
-        (_uri, extra) =>
-          this.dispatchResource(r, this.requestContextFor(extra)),
-      );
-    }
+      return true;
+    });
+  }
 
-    for (const p of this.collectAllPrompts()) {
+  /** The visible prompts for one caller. See {@link computeVisibleResources}. */
+  private computeVisiblePrompts(
+    scopes?: string[],
+  ): {ctor: Function; meta: PromptMetadata}[] {
+    return this.collectAllPrompts().filter(p => {
       const required = requiredScopesForMember(
         p.ctor,
         p.meta.methodName as string,
       );
-      if (
-        scopes &&
-        required.length &&
-        !required.every(s => scopes.includes(s))
-      ) {
+      if (scopes && required.length && !required.every(s => scopes.includes(s))) {
         log.debug(
           'skipping prompt %s (requires scopes %j)',
           p.meta.name,
           required,
         );
-        continue;
+        return false;
       }
-      log.debug('registering prompt %s', p.meta.name);
-      // `registerPrompt` has no zero-argument form: its generic always types
-      // the callback as `(args, extra)`. We register WITHOUT `argsSchema`, so at
-      // runtime the SDK invokes `cb(extra)` and does no `arguments` validation —
-      // identical to the old `prompt()` overload (passing `argsSchema: {}` to
-      // satisfy the type instead breaks no-arg calls: getPrompt sends no
-      // arguments → "expected object, received undefined"). The one-arg callback
-      // is cast to the param type; this only sheds the deprecation hint.
-      target.registerPrompt(p.meta.name, {description: p.meta.description}, ((
-        extra: ToolRequestExtra,
-      ) =>
-        this.dispatchPrompt(
-          p,
-          this.requestContextFor(extra),
-        )) as unknown as Parameters<typeof target.registerPrompt>[2]);
-    }
+      return true;
+    });
   }
+
+  // NOTE: MCPServer deliberately does NOT implement `RefreshableSurface`.
+  // Every list it serves is derived per request (see `registerAllOn`), so a
+  // capability mounted at runtime is already visible and there is nothing to
+  // refresh. A refresher here would also have been pointed at the wrong
+  // object: under the default `protocol: 'both'` this.mcp is never connected
+  // to a transport at all — `serveStdio` builds one server per connection.
 
   async start(): Promise<void> {
     this.registerAllOn(this.mcp);

@@ -241,3 +241,97 @@ spike proved vs what is still assumed.
 **Depends on:** S7's deletion step is blocked by the four removal criteria in
 §5.1 of the design doc — the compatibility matrix now exists, and criterion 1
 (more than one 1.x release covered) is not yet met.
+
+### Reload consumers when a provider binding is swapped at runtime
+
+**What:** When a plugin providing DI key `K` is retracted and another mounts in
+its place, every live plugin that declared `inject: [K]` keeps whatever it
+resolved at its own mount time. Cordis solves this by revoking the consumer's
+effects and re-running its `apply` against the new implementation.
+
+**Why:** Without it, runtime provider swap is only safe for consumers that
+re-resolve through the container on every use. Any SINGLETON that captured the
+dependency in its constructor — the common shape — silently keeps the dead one.
+This is the last of the four Cordis gaps identified 2026-08-16; the other three
+(observer start, derived surfaces, mount atomicity) shipped with the runtime
+mount work.
+
+**Context — the blocker is not the mechanism, it is the graph.** `provides` /
+`inject` on the plugin marker are **advisory**: `packages/plugin/README.md`
+states "the container stays the authority, so under-declaring costs ordering,
+not correctness". That is right for mount ordering and fatal for a reload
+scheduler, which must reload *exactly* the dependent set — under-declaring means
+reloading too few and leaving stale captures, a silent correctness bug rather
+than a missed ordering. Cordis can do this because its `inject` is load-bearing:
+a plugin physically cannot start before its declared services exist, so the
+graph is complete by construction.
+
+So the real prerequisite is a **status change on the declaration** (advisory →
+authoritative), which is a breaking change to the plugin marker contract. Do not
+start with the reload machinery.
+
+Worth noting before anyone builds it: DSH ships the reload machinery and then
+organises packages specifically to avoid firing it — the Definition/Provider/
+Consumer split with a registry `Map` absorbing high-frequency provider changes.
+`packages/plugin/README.md` already documents that same three-package shape. The
+cheaper answer may be to lean harder on the registry pattern and never reload.
+
+**Effort:** L (breaking marker-contract change + scheduler + re-run primitive)
+**Priority:** P3
+**Depends on:** a decision to make `provides`/`inject` authoritative. Blocked on
+a real use case — nobody has asked to hot-swap an implementation in a live app.
+
+### Per-session plugin scoping (an `isolate` equivalent)
+
+**What:** Plugins mount onto the Application root, so two sessions cannot mount
+the same plugin — the second collides on the exclusive binding key. Cordis's
+`isolate` gives a group a private resolution namespace for named services.
+
+**Why:** Unlocks per-session plugin trees: different sessions in one process
+running different tool/prompt sets, which is how DSH ships its four CLI modes as
+four YAML preset directories with zero TypeScript branching.
+
+**Context:** AgentBack already has child contexts, used per request. What is
+missing is a private *resolution namespace* for a mounted subtree, so a
+`provide`-style exclusive key resolves within the group rather than globally.
+Note DSH's own footgun here, which any implementation should design against: a
+preset author who forgets to wrap per-session services in an `isolate` group
+gets a duplicate-key error on the second session — the constraint is real and
+the type system does not catch it. A konsistent rule is the natural place to
+enforce the equivalent here.
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** nothing technically. Gated on wanting multi-tenant / per-session
+plugin trees at all, which today nothing needs.
+
+### Partial lifecycle notify resolves every observer, not the selected ones
+
+**What:** `LifeCycleObserverRegistry.notifyGroups` does
+`const observers = await this.observersView.values()` and then indexes into the
+result, so `startObservers(keys)` / `stopObservers(keys)` resolve **all**
+observers in the app to notify a handful.
+
+**Why:** Two costs. Performance: uninstalling N plugins re-resolves the whole
+observer set N times, and `selectGroups` now calls `observersView.refresh()`
+first so the cache is reliably cold each time. Correctness-adjacent: for a
+TRANSIENT-scoped observer, the re-resolution hands `stop()` a **fresh instance
+that never ran `start()`**.
+
+**Context:** Both properties pre-date the 2026-08-16 runtime-mount work —
+`notifyGroups` is ported upstream LB4 code, and the view is invalidated by any
+bind/unbind, so the cache was already cold in almost every real case. The
+refresh made it deterministic rather than introducing it. The sanctioned path
+`app.lifeCycleObserver()` sets `defaultScope: BindingScope.SINGLETON`
+(`packages/core/src/application.ts`), so observers registered that way are
+unaffected; a hand-rolled `createBindingFromClass(...).apply(asLifeCycleObserver)`
+with no scope defaults to TRANSIENT (`packages/context/src/binding.ts:364`) and
+is exposed. This repo's own lifecycle-registry unit tests bind that way.
+
+Fixing it means resolving only the filtered bindings instead of the whole view,
+which is a change to ported upstream code — deliberately out of scope for the
+runtime-mount change, which documented the cost in `selectGroups` instead.
+
+**Effort:** S (the fix is small; the care is in not breaking the ported path)
+**Priority:** P3
+**Depends on:** nothing. Do it opportunistically next time `notifyGroups` is open.

@@ -59,6 +59,48 @@ early-returns for a component already bound to the same class, so the second
 mount binds nothing new and simply takes a second reference. Each call returns
 its own handle, and the plugin is retracted when the **last** one uninstalls.
 
+## Mounting into a running app
+
+Both entry points also work **after** `app.start()`, and a handle they return
+means the plugin is **bound, lifecycle-started, and served**. Anything less
+fails and unwinds — a success value that means "probably serving" would push a
+check onto every caller that no caller writes.
+
+Three things happen that do not happen before `start()`:
+
+- **Lifecycle.** The app-wide passes are over, so the mount notifies the
+  observers it just bound. What is owed depends on the phase: from `started`,
+  `init` + `start`; from `initialized`, `init` only, because the pending
+  `app.start()` still notifies every bound observer and would otherwise
+  double-start them. The mount phase therefore never changes the lifecycle a
+  plugin receives.
+- **Served surfaces.** Routes and MCP capabilities are derived, not stored, so
+  the entry point asks every bound server to re-derive once per call
+  (`refreshSurfaces`, `@agentback/core`). Once per *call*, not per mount — a
+  refresh is a global reconcile, so `loadPlugins` does it once for the batch.
+- **Rollback covers all three.** A failing observer `start()` is transactional
+  at the registry: anything that did start is stopped before the mount's
+  bindings are unbound. A server that cannot re-derive fails the mount
+  (`surface-refresh`) and the whole thing is retracted.
+
+Two properties worth knowing:
+
+- **Servers validate before they commit.** `RestServer.refreshSurface()` on the
+  native host builds the candidate route table and runs the same checks
+  `start()` does (duplicate routes, Express-coupled routes) *before* touching
+  anything served, so a bad route fails its own mount instead of the next
+  request. On Express there is no dry run — layers cannot be unmounted — but a
+  partially-mounted route is harmless because the rollback unbinds the
+  controller and the per-request liveness gate 404s it.
+- **`refreshSurfaces` no-ops unless the app is `started`.** `getSync` resolves a
+  binding rather than reading a cached one, so refreshing earlier would
+  construct every server as a side effect; and before `start()` the normal
+  collection pass has yet to run.
+
+MCP has **no** carve-out here: tools, resources and prompts are all derived per
+request, so a runtime-mounted `@tool({ui})` widget and the `ui://` resource it
+names both go live together.
+
 ## Unmounting
 
 Both entry points return their inverse, per the

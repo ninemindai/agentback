@@ -24,6 +24,7 @@ import {
   pluginRegistryFor,
 } from './registry.js';
 import type {LoadPluginOptions, PluginInfo} from './types.js';
+import {commitSurfaces} from './commit-surfaces.js';
 
 /**
  * A specifier is a filesystem path (not a bare package name) when it is
@@ -165,6 +166,9 @@ export async function loadPlugin(
   // plugin still references.
   registry.add(entryFromInfo(info));
   const inverse = buildTeardown(app, [outcome], refs);
+  await commitSurfaces(app, info.name, inverse, () =>
+    registry.remove(info.name),
+  );
   let teardownRun: Promise<void> | undefined;
   return {
     ...info,

@@ -163,6 +163,57 @@ describe('LifeCycleRegistry', () => {
     ]);
   });
 
+  it('startObservers notifies only the selected observers', async () => {
+    givenObserverWithInit('1');
+    givenObserverWithInit('2');
+    await registry.startObservers(new Set(['observers.observer-2']));
+    expect(events).toEqual(['2-init', '2-start']);
+  });
+
+  it('startObservers runs init across ALL groups before any start', async () => {
+    // The property that forces two `notifyGroups` passes: a single
+    // `notifyGroups(['init', 'start'])` iterates events INSIDE each group and
+    // would yield 1-init, 1-start, 2-init, 2-start — so an observer in g2
+    // whose init must precede g1's start would be broken.
+    givenObserverWithInit('1', 'g1');
+    givenObserverWithInit('2', 'g2');
+    registry.setOrderedGroups(['g1', 'g2']);
+    await registry.startObservers(
+      new Set(['observers.observer-1', 'observers.observer-2']),
+    );
+    expect(events).toEqual(['1-init', '2-init', '1-start', '2-start']);
+  });
+
+  it('startObservers honors group order and disabled groups', async () => {
+    givenObserverWithInit('1', 'g1');
+    givenObserverWithInit('2', 'g2');
+    registry.setOrderedGroups(['g2', 'g1']);
+    registry.setDisabledGroups(['g2']);
+    await registry.startObservers(
+      new Set(['observers.observer-1', 'observers.observer-2']),
+    );
+    expect(events).toEqual(['1-init', '1-start']);
+  });
+
+  it('startObservers is a no-op for an empty or non-matching key set', async () => {
+    givenObserverWithInit('1');
+    await registry.startObservers(new Set());
+    await registry.startObservers(new Set(['observers.observer-absent']));
+    expect(events).toEqual([]);
+  });
+
+  it('startObservers leaves the registry usable for a later full stop', async () => {
+    // Guards the in-place `group.bindings.reverse()` hazard: a partial start
+    // must not mutate the registry's own group objects.
+    givenObserverWithInit('1', 'g1');
+    givenObserverWithInit('2', 'g2');
+    registry.setOrderedGroups(['g1', 'g2']);
+    await registry.startObservers(new Set(['observers.observer-1']));
+    events.splice(0, events.length);
+    await registry.stop();
+    expect(events).toEqual(['2-stop', '1-stop']);
+  });
+
   function givenContext() {
     context = new Context('app');
   }
@@ -201,6 +252,28 @@ describe('LifeCycleRegistry', () => {
   function givenObserver(name: string, group = '') {
     @injectable({tags: {[CoreTags.LIFE_CYCLE_OBSERVER_GROUP]: group}})
     class MyObserver implements LifeCycleObserver {
+      start() {
+        events.push(`${name}-start`);
+      }
+      stop() {
+        events.push(`${name}-stop`);
+      }
+    }
+    const binding = createBindingFromClass(MyObserver, {
+      key: `observers.observer-${name}`,
+    }).apply(asLifeCycleObserver);
+    context.add(binding);
+
+    return MyObserver;
+  }
+
+  /** Like {@link givenObserver}, plus an `init` — for the partial-start path. */
+  function givenObserverWithInit(name: string, group = '') {
+    @injectable({tags: {[CoreTags.LIFE_CYCLE_OBSERVER_GROUP]: group}})
+    class MyObserver implements LifeCycleObserver {
+      init() {
+        events.push(`${name}-init`);
+      }
       start() {
         events.push(`${name}-start`);
       }

@@ -238,6 +238,61 @@ export async function mountResolved(
   ctx: MountContext,
   refs: Map<string, ComponentEntry>,
 ): Promise<MountOutcome> {
+  return withMountLock(app, () =>
+    mountResolvedExclusive(app, name, ctor, ctx, refs),
+  );
+}
+
+/** In-flight mount chain per Application. See {@link withMountLock}. */
+const mountLocks = new WeakMap<Application, Promise<unknown>>();
+
+/**
+ * Serialize mounts per Application.
+ *
+ * PREVENTIVE, not a bug fix — be accurate about this. The stretch from the
+ * binding snapshot to the bookkeeping used to hold no `await` at all, and
+ * notifying lifecycle observers put one inside it. That looked like it opened a
+ * corrupting interleave, but tracing it does not: `touched` and the owners
+ * ledger are written synchronously before the await, and only the component
+ * refcount increments land after, which are synchronous read-modify-writes that
+ * compose correctly in either order. No failing case could be constructed.
+ *
+ * The lock is kept anyway, cheaply, because the section's safety currently
+ * rests on WHERE the awaits happen to sit — a property no comment enforced and
+ * the next edit can silently break. With the lock, any await a later edit adds
+ * inside that section is safe by construction rather than safe by the editor
+ * noticing. Cost is that two independent mounts no longer overlap; mounting is
+ * not a throughput path.
+ */
+async function withMountLock<T>(
+  app: Application,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const prev = mountLocks.get(app) ?? Promise.resolve();
+  let release!: () => void;
+  const held = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  // Chain BEFORE awaiting, so a mount that starts while this one is pending
+  // queues behind it rather than racing it.
+  mountLocks.set(app, prev.then(() => held, () => held));
+  // A previous mount's rejection is its caller's problem, not a reason to
+  // refuse this one — but we still wait for it to finish unwinding.
+  await prev.catch(() => undefined);
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
+
+async function mountResolvedExclusive(
+  app: Application,
+  name: string,
+  ctor: new (...args: unknown[]) => Component,
+  ctx: MountContext,
+  refs: Map<string, ComponentEntry>,
+): Promise<MountOutcome> {
   const before = boundBindings(app);
   let rootKey: string;
   try {
@@ -268,11 +323,11 @@ export async function mountResolved(
   }
   const componentKeys = referencedComponentKeys(app, rootKey);
 
-  if (collisions.length) {
-    // Roll back directly from this mount's own diff — no refcounts involved,
-    // because nothing has been recorded or incremented yet. `touched` is
-    // exactly what this mount created, so reverting it removes everything and
-    // touches nothing another plugin owns.
+  // Roll back directly from this mount's own diff — no refcounts involved,
+  // because nothing has been recorded or incremented yet. `touched` is exactly
+  // what this mount created, so reverting it removes everything and touches
+  // nothing another plugin owns.
+  const rollback = () => {
     for (let i = touched.length - 1; i >= 0; i--) {
       const {binding, displaced} = touched[i];
       revertOwned(app, binding, displaced);
@@ -281,6 +336,10 @@ export async function mountResolved(
       if (prior === undefined) ctx.owners.delete(key);
       else ctx.owners.set(key, prior);
     }
+  };
+
+  if (collisions.length) {
+    rollback();
     return {
       ok: false,
       error: {
@@ -293,6 +352,62 @@ export async function mountResolved(
         collidingKeys: collisions,
       },
     };
+  }
+
+  // Mounting into an app whose lifecycle has already advanced: the app-wide
+  // passes are over for whatever phase it reached, so nothing else will notify
+  // these observers and the plugin would mount inert — bound, discoverable,
+  // and silently doing nothing.
+  //
+  // Which events are owed depends on the phase, and getting this wrong makes
+  // the mount TIME change the lifecycle a plugin receives:
+  //   'started'     -> init and start are both over  -> owe init + start
+  //   'initialized' -> init is over, start is pending -> owe init ONLY
+  //                    (`Application.start()` is `if (!this._initialized)
+  //                    await this.init()`, so init never runs again — but its
+  //                    `registry.start()` still notifies every bound observer,
+  //                    so starting here would double-start them)
+  //   anything else -> the normal passes have yet to run -> owe nothing
+  //
+  // Only bindings in THIS diff are notified. A shared nested component that
+  // was already mounted contributes no new bindings (`app.component()`
+  // early-returns), so it is absent from `touched` and its running observers
+  // are left alone rather than started a second time.
+  const newObservers = touched
+    .filter(t => t.binding.tagMap[CoreTags.LIFE_CYCLE_OBSERVER] !== undefined)
+    .map(t => t.binding.key);
+  const owed =
+    app.state === 'started'
+      ? 'init+start'
+      : app.state === 'initialized'
+        ? 'init'
+        : 'none';
+  if (newObservers.length && owed !== 'none') {
+    try {
+      const registry = await app.get<LifeCycleObserverRegistry>(
+        CoreBindings.LIFE_CYCLE_OBSERVER_REGISTRY,
+      );
+      const keys = new Set(newObservers);
+      if (owed === 'init+start') await registry.startObservers(keys);
+      else await registry.initObservers(keys);
+    } catch (err) {
+      // `startObservers`/`initObservers` are transactional — anything they
+      // started is already stopped by the time this runs — so the mount only
+      // has to undo its own bindings. A half-started plugin is worse than a
+      // rejected one: some observers hold resources, the rest never ran, and
+      // no inverse exists yet for the caller to retract.
+      rollback();
+      return {
+        ok: false,
+        error: {
+          package: name,
+          kind: 'lifecycle-start',
+          message:
+            `failed to start its lifecycle observers on the running app: ` +
+            `${String(err)}. The mount was rolled back.`,
+        },
+      };
+    }
   }
 
   // Attribute each touched binding to the component whose lifetime governs it;
