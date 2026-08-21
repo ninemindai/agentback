@@ -86,7 +86,7 @@ See `examples/hello-drizzle` for the second pattern end to end.
 
 ## OKF export (Knowledge tab)
 
-The same schema graph serializes to an **[OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf)
+The same schema graph serializes to an **[OKF](https://github.com/GoogleCloudPlatform/open-knowledge-format)
 (Open Knowledge Format) bundle** — a portable, vendor-neutral directory of
 markdown + YAML-frontmatter docs an agent can ingest verbatim or you can commit
 to git. It's a sixth projection of the one source of truth (alongside OpenAPI,

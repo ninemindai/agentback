@@ -48,7 +48,7 @@ function isDevTooling(surface: SchemaSurfaceNode): boolean {
 
 /**
  * Serialize a {@link SchemaInventory} into an OKF
- * (https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf)
+ * (https://github.com/GoogleCloudPlatform/open-knowledge-format)
  * bundle: a portable, vendor-neutral directory of markdown + YAML-frontmatter
  * documents an agent can ingest verbatim.
  *

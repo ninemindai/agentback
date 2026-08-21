@@ -217,8 +217,8 @@ describe('inventoryToOkf', () => {
   });
 });
 
-// Conformance with the OKF v0.2 spec (GoogleCloudPlatform/knowledge-catalog,
-// okf/SPEC.md). These pin the rules the emitter previously got wrong or
+// Conformance with the OKF v0.2 spec (GoogleCloudPlatform/open-knowledge-format,
+// SPEC.md). These pin the rules the emitter previously got wrong or
 // omitted — the existing tests above cover structure and determinism, and all
 // of them passed while the bundle carried frontmatter on its index files,
 // which §8 forbids. Format rules need format assertions.
