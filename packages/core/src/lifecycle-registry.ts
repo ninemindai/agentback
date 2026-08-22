@@ -61,6 +61,11 @@ interface NotifyOptions {
   onNotified?: (key: string) => void;
   /** Await every parallel notification's settlement before throwing. */
   settle?: boolean;
+  /**
+   * Resolve only the bindings in the given groups instead of the whole
+   * observer view. Set by the partial (`init`/`start`/`stop` subset) paths.
+   */
+  partial?: boolean;
 }
 
 /**
@@ -235,12 +240,19 @@ export class LifeCycleObserverRegistry implements LifeCycleObserver {
     reverse = false,
     opts: NotifyOptions = {},
   ) {
-    const observers = await this.observersView.values();
-    const bindings = this.observersView.bindings;
-    const found = observers.some(observer =>
-      events.some(e => typeof observer[e] === 'function'),
-    );
-    if (!found) return;
+    // The whole-app path is UNCHANGED, deliberately. It resolves the view once
+    // and indexes into it, which is right when every observer is being notified
+    // anyway. `opts.partial` takes the other route — see below.
+    let observers: LifeCycleObserver[] = [];
+    let bindings: readonly Readonly<Binding<LifeCycleObserver>>[] = [];
+    if (!opts.partial) {
+      observers = await this.observersView.values();
+      bindings = this.observersView.bindings;
+      const found = observers.some(observer =>
+        events.some(e => typeof observer[e] === 'function'),
+      );
+      if (!found) return;
+    }
     if (reverse) {
       // Do not reverse the original `groups` in place
       groups = [...groups].reverse();
@@ -250,26 +262,76 @@ export class LifeCycleObserverRegistry implements LifeCycleObserver {
         log.debug('Notification skipped (Group is disabled): %s', group.group);
         continue;
       }
-      const observersForGroup: LifeCycleObserver[] = [];
       const bindingsInGroup = reverse
         ? group.bindings.reverse()
         : group.bindings;
-      for (const binding of bindingsInGroup) {
-        const index = bindings.indexOf(binding);
-        observersForGroup.push(observers[index]);
+
+      let observersForGroup: LifeCycleObserver[];
+      let bindingsForGroup: readonly Readonly<Binding<LifeCycleObserver>>[];
+      if (opts.partial) {
+        // Resolve ONLY this group's bindings. The whole-app path resolves every
+        // observer in the app to notify a handful, which is pure waste on a
+        // partial notify — and worse than waste for a TRANSIENT-scoped
+        // observer, where "resolving" CONSTRUCTS one, so an observer nobody
+        // asked about gets instantiated and thrown away on every plugin mount
+        // or retraction.
+        //
+        // This also sidesteps an alignment hazard inherited from the other
+        // path: `ContextView.resolve` drops null values from `observers` but
+        // `bindings` keeps them, so `bindings.indexOf(binding)` can select the
+        // wrong observer (or `undefined`) once anything resolves to null.
+        // Pairing each observer with its own binding cannot drift.
+        const pairs = await this.resolveObserverPairs(bindingsInGroup);
+        observersForGroup = pairs.map(pr => pr.observer);
+        bindingsForGroup = pairs.map(pr => pr.binding);
+        // No `found` pre-check here: on the whole-app path it runs AFTER the
+        // expensive resolve, so it never saved the resolution — only the loop.
+        // `invokeObserver` already skips an observer lacking the method.
+        if (!observersForGroup.length) continue;
+      } else {
+        observersForGroup = bindingsInGroup.map(
+          binding => observers[bindings.indexOf(binding)],
+        );
+        bindingsForGroup = group.bindings;
       }
 
       for (const event of events) {
         log.debug('Beginning notification %s of %s...', event);
         await this.notifyObservers(
           observersForGroup,
-          group.bindings,
+          bindingsForGroup as Readonly<Binding<LifeCycleObserver>>[],
           event,
           opts,
         );
         log.debug('Finished notification %s of %s', event);
       }
     }
+  }
+
+  /**
+   * Resolve each binding to its observer, keeping the two paired.
+   *
+   * Uses the same resolution shape as `ContextView.resolve`: a value that
+   * resolves to null is dropped (an observer that is not there cannot be
+   * notified), and resolution starts a fresh session rather than nesting in
+   * the caller's, matching the view's own circular-dependency guard.
+   */
+  private async resolveObserverPairs(
+    bindings: readonly Readonly<Binding<LifeCycleObserver>>[],
+  ): Promise<
+    {observer: LifeCycleObserver; binding: Readonly<Binding<LifeCycleObserver>>}[]
+  > {
+    const pairs: {
+      observer: LifeCycleObserver;
+      binding: Readonly<Binding<LifeCycleObserver>>;
+    }[] = [];
+    for (const binding of bindings) {
+      const observer = await this.context.get<LifeCycleObserver>(binding.key, {
+        optional: true,
+      });
+      if (observer != null) pairs.push({observer, binding});
+    }
+    return pairs;
   }
 
   /**
@@ -313,7 +375,7 @@ export class LifeCycleObserverRegistry implements LifeCycleObserver {
   public async stopObservers(keys: ReadonlySet<string>): Promise<void> {
     const groups = this.selectGroups(keys);
     if (!groups.length) return;
-    await this.notifyGroups(['stop'], groups, true);
+    await this.notifyGroups(['stop'], groups, true, {partial: true});
   }
 
   /**
@@ -350,7 +412,11 @@ export class LifeCycleObserverRegistry implements LifeCycleObserver {
     // `onNotified`, and `settle` so a parallel sibling cannot still be starting
     // while we unwind.
     const started = new Set<string>();
-    const track = {onNotified: (key: string) => void started.add(key), settle: true};
+    const track = {
+      onNotified: (key: string) => void started.add(key),
+      settle: true,
+      partial: true,
+    };
     try {
       await this.notifyGroups(['init'], groups, false, track);
       // `init` completing for every observer is not a reason to forget them:
@@ -390,7 +456,7 @@ export class LifeCycleObserverRegistry implements LifeCycleObserver {
   public async initObservers(keys: ReadonlySet<string>): Promise<void> {
     const groups = this.selectGroups(keys);
     if (!groups.length) return;
-    await this.notifyGroups(['init'], groups);
+    await this.notifyGroups(['init'], groups, false, {partial: true});
   }
 
   /**

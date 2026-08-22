@@ -305,33 +305,33 @@ enforce the equivalent here.
 **Depends on:** nothing technically. Gated on wanting multi-tenant / per-session
 plugin trees at all, which today nothing needs.
 
-### Partial lifecycle notify resolves every observer, not the selected ones
+### ~~Partial lifecycle notify resolves every observer~~ — CLOSED, narrowed, shipped
 
-**What:** `LifeCycleObserverRegistry.notifyGroups` does
-`const observers = await this.observersView.values()` and then indexes into the
-result, so `startObservers(keys)` / `stopObservers(keys)` resolve **all**
-observers in the app to notify a handful.
+**Done (2026-08-21).** `notifyGroups` takes a `partial` flag; the three subset
+paths (`startObservers`, `initObservers`, `stopObservers`) set it and now
+resolve only the bindings in their own groups instead of the whole observer
+view.
 
-**Why:** Two costs. Performance: uninstalling N plugins re-resolves the whole
-observer set N times, and `selectGroups` now calls `observersView.refresh()`
-first so the cache is reliably cold each time. Correctness-adjacent: for a
-TRANSIENT-scoped observer, the re-resolution hands `stop()` a **fresh instance
-that never ran `start()`**.
+**What this fixed.** A TRANSIENT-scoped observer is CONSTRUCTED when resolved,
+so resolving the whole view to notify a handful instantiated bystanders and
+discarded them — on every plugin mount and every retraction. Pinned by a test
+that counts constructions of an unselected TRANSIENT observer and is verified
+to fail with the partial route disabled. It also sidesteps an alignment hazard
+inherited from the other path: `ContextView.resolve` drops null values from
+`observers` while `bindings` keeps them, so `bindings.indexOf(binding)` can
+select the wrong observer once anything resolves to null. Pairing each observer
+with its own binding cannot drift.
 
-**Context:** Both properties pre-date the 2026-08-16 runtime-mount work —
-`notifyGroups` is ported upstream LB4 code, and the view is invalidated by any
-bind/unbind, so the cache was already cold in almost every real case. The
-refresh made it deterministic rather than introducing it. The sanctioned path
-`app.lifeCycleObserver()` sets `defaultScope: BindingScope.SINGLETON`
-(`packages/core/src/application.ts`), so observers registered that way are
-unaffected; a hand-rolled `createBindingFromClass(...).apply(asLifeCycleObserver)`
-with no scope defaults to TRANSIENT (`packages/context/src/binding.ts:364`) and
-is exposed. This repo's own lifecycle-registry unit tests bind that way.
+**What this did NOT fix, deliberately.** A TRANSIENT observer still gets a
+different instance for `stop()` than ran `start()`. That is inherent to
+TRANSIENT plus resolve-per-call, it pre-dates this work, and no narrowing of
+the selection changes it. Observers bound through the sanctioned
+`app.lifeCycleObserver()` are SINGLETON (`defaultScope`) and unaffected; a
+hand-rolled `createBindingFromClass(...).apply(asLifeCycleObserver)` defaults
+TRANSIENT (`packages/context/src/binding.ts`) and is exposed. If that ever
+matters, the fix is scope, not resolution.
 
-Fixing it means resolving only the filtered bindings instead of the whole view,
-which is a change to ported upstream code — deliberately out of scope for the
-runtime-mount change, which documented the cost in `selectGroups` instead.
-
-**Effort:** S (the fix is small; the care is in not breaking the ported path)
-**Priority:** P3
-**Depends on:** nothing. Do it opportunistically next time `notifyGroups` is open.
+**The whole-app `init`/`start`/`stop` path is byte-identical** — it resolves the
+view once and indexes into it, which is correct when every observer is being
+notified anyway. That was the constraint this TODO named ("the care is in not
+breaking the ported path") and it is why the flag exists rather than a rewrite.

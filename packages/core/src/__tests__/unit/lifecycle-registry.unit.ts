@@ -214,6 +214,48 @@ describe('LifeCycleRegistry', () => {
     expect(events).toEqual(['2-stop', '1-stop']);
   });
 
+  it('a partial notify does not resolve observers outside the selection', async () => {
+    // The point of resolving per-group. A TRANSIENT-scoped observer is
+    // CONSTRUCTED when it is resolved, so resolving the whole view to notify a
+    // handful instantiates bystanders and throws them away — on every plugin
+    // mount and every retraction.
+    let bystanderConstructions = 0;
+
+    @injectable({tags: {[CoreTags.LIFE_CYCLE_OBSERVER_GROUP]: ''}})
+    class Bystander implements LifeCycleObserver {
+      constructor() {
+        bystanderConstructions++;
+      }
+      start() {
+        events.push('bystander-start');
+      }
+      stop() {
+        events.push('bystander-stop');
+      }
+    }
+    // No defaultScope => TRANSIENT (Binding defaults to it), which is exactly
+    // the case `app.lifeCycleObserver()` avoids and a hand-rolled binding hits.
+    context.add(
+      createBindingFromClass(Bystander, {
+        key: 'observers.observer-bystander',
+      }).apply(asLifeCycleObserver),
+    );
+    givenObserverWithInit('target');
+
+    await registry.startObservers(new Set(['observers.observer-target']));
+
+    expect(events).toEqual(['target-init', 'target-start']);
+    expect(bystanderConstructions).toBe(0);
+
+    await registry.stopObservers(new Set(['observers.observer-target']));
+    expect(bystanderConstructions).toBe(0);
+
+    // The whole-app path still reaches it — this narrowed the partial paths
+    // only, it did not hide anyone from a real shutdown.
+    await registry.stop();
+    expect(events).toContain('bystander-stop');
+  });
+
   it('startObservers stops what it started when a SERIAL sibling throws', async () => {
     givenObserverWithInit('1');
     givenThrowingStartObserver('boom');
