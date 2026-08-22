@@ -4,6 +4,7 @@
 
 import {describe, it, beforeEach, expect} from 'vitest';
 import {
+  Binding,
   BindingScope,
   Context,
   createBindingFromClass,
@@ -212,6 +213,22 @@ describe('LifeCycleRegistry', () => {
     events.splice(0, events.length);
     await registry.stop();
     expect(events).toEqual(['2-stop', '1-stop']);
+  });
+
+  it('REPRO: an observer binding resolving to null must not misalign the rest', async () => {
+    // ContextView.resolve filters null out of `observers` but `bindings` keeps
+    // it, so notifyGroups' `bindings.indexOf(binding)` indexes a SHORTER array
+    // — every observer after the null one shifts.
+    context.add(
+      Binding.bind<LifeCycleObserver>('observers.observer-null')
+        .to(null as unknown as LifeCycleObserver)
+        .apply(asLifeCycleObserver),
+    );
+    givenObserver('real');
+
+    await registry.start();
+
+    expect(events).toEqual(['real-start']);
   });
 
   it('a partial notify does not resolve observers outside the selection', async () => {

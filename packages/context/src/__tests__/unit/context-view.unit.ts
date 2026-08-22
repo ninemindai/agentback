@@ -303,3 +303,42 @@ describe('ContextView', () => {
     bindings.push(app.bind('foo').to('FOO').tag('foo', 'bar', {phase: 'b'}));
   }
 });
+
+describe('ContextView value/binding alignment', () => {
+  it('returns the same shape whether values are cached or freshly resolved', () => {
+    // The cache used to be built by zipping UNFILTERED bindings against an
+    // ALREADY-FILTERED value array, so one binding resolving to null shifted
+    // every entry after it: values() returned [real] on the first call and
+    // [real, null] on the second.
+    const ctx = new Context('alignment');
+    ctx.add(Binding.bind('probe.null').to(null).tag('probe'));
+    ctx.add(Binding.bind('probe.real').to('real').tag('probe'));
+    const view = ctx.createView<unknown>(b => b.tagNames.includes('probe'));
+
+    const fresh = view.resolve() as unknown[];
+    const cached = view.resolve() as unknown[];
+
+    expect(fresh).toEqual(['real']);
+    expect(cached).toEqual(fresh);
+  });
+
+  it('keeps the cache keyed to the binding that produced each value', () => {
+    // The misaligned map made observe() report another binding's value as the
+    // unbound one's cachedValue.
+    const ctx = new Context('alignment2');
+    ctx.add(Binding.bind('probe.null').to(null).tag('probe'));
+    ctx.add(Binding.bind('probe.real').to('real').tag('probe'));
+    const view = ctx.createView<unknown>(b => b.tagNames.includes('probe'));
+    view.resolve();
+
+    const cache = (
+      view as unknown as {_cachedValues?: Map<{key: string}, unknown>}
+    )._cachedValues!;
+    const byKey = new Map(
+      [...cache.entries()].map(([binding, value]) => [binding.key, value]),
+    );
+
+    expect(byKey.get('probe.null')).toBeNull();
+    expect(byKey.get('probe.real')).toBe('real');
+  });
+});

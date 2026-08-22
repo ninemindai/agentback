@@ -59,7 +59,7 @@ export class ContextView<T = unknown>
   /**
    * A map of cached values by binding
    */
-  protected _cachedValues: Map<Readonly<Binding<T>>, T> | undefined;
+  protected _cachedValues: Map<Readonly<Binding<T>>, T | undefined> | undefined;
   private _subscription: Subscription | undefined;
 
   /**
@@ -81,7 +81,7 @@ export class ContextView<T = unknown>
    * Update the cached values keyed by binding
    * @param values - An array of resolved values
    */
-  private updateCachedValues(values: T[]) {
+  private updateCachedValues(values: (T | undefined)[]) {
     if (this._cachedBindings == null) return undefined;
     this._cachedValues = new Map();
     for (let i = 0; i < this._cachedBindings?.length; i++) {
@@ -91,10 +91,24 @@ export class ContextView<T = unknown>
   }
 
   /**
+   * Values as returned to callers: nulls dropped.
+   *
+   * The cache is keyed by binding and therefore holds every resolved value,
+   * including null; the PUBLIC shape has always been the filtered list. Keeping
+   * the filter here is what makes a cached read agree with a fresh one — before
+   * this, `values()` returned `[a]` on the first call and `[a, null]` on the
+   * second, because the cache was built by zipping unfiltered bindings against
+   * an already-filtered array.
+   */
+  private filterValues(values: (T | undefined)[]): T[] {
+    return values.filter(v => v != null) as T[];
+  }
+
+  /**
    * Get an array of cached values
    */
   private getCachedValues() {
-    return Array.from(this._cachedValues?.values() ?? []);
+    return this.filterValues(Array.from(this._cachedValues?.values() ?? []));
   }
 
   /**
@@ -211,15 +225,20 @@ export class ContextView<T = unknown>
     });
     if (isPromiseLike(result)) {
       result = result.then(values => {
-        const list = values.filter(v => v != null) as T[];
-        this.updateCachedValues(list);
+        // Cache the RAW values, aligned 1:1 with `_cachedBindings`. Caching the
+        // filtered list instead silently shifted every entry after a null, so
+        // the map associated bindings with other bindings' values — and
+        // `observe()` then reported the wrong `cachedValue` on unbind.
+        this.updateCachedValues(values);
+        const list = this.filterValues(values);
         this.emit('resolve', list);
         return list;
       });
     } else {
+      const raw = result as (T | undefined)[];
+      this.updateCachedValues(raw);
       // Clone the array so that the cached values won't be mutated
-      const list = (result = result.filter(v => v != null) as T[]);
-      this.updateCachedValues(list);
+      const list = (result = this.filterValues(raw));
       this.emit('resolve', list);
     }
     return result as ValueOrPromise<T[]>;
