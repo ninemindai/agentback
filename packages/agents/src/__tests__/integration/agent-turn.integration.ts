@@ -17,11 +17,13 @@ import {MCPComponent, mcpServer, tool, type MCPServer} from '@agentback/mcp';
 import {
   InMemoryQuotaService,
   InMemoryUsageSink,
+  Meter,
   MeteringBindings,
   MeteringComponent,
 } from '@agentback/metering';
 import {securityId, SecurityBindings} from '@agentback/security';
 import type {UserProfile} from '@agentback/security';
+import {wrapModel} from '@agentback/model-gateway';
 import {AgentBindings} from '../../keys.js';
 import {toHostTools} from '../../host-tools.js';
 import {installAgent} from '../../install.js';
@@ -379,5 +381,65 @@ describe('agent turn cancellation', () => {
     expect(toolSawSignal!.aborted).toBe(false);
     controller.abort();
     expect(toolSawSignal!.aborted).toBe(true);
+  });
+});
+
+describe('agent turn — model accounting scope', () => {
+  it('bills a gateway-wrapped model in tokens, to the turn principal', async () => {
+    const {app} = await givenApp();
+    app.component(MeteringComponent);
+    const sink = new InMemoryUsageSink();
+    app.bind(MeteringBindings.SINK.key).to(sink);
+
+    // The realistic shape: ONE model built at boot, wrapped once, handed to a
+    // singleton agent. Nothing here knows which request it will serve.
+    const model = await wrapModel(
+      toolCallingModel('forecast', {city: 'Tokyo'}),
+      {accounting: {meter: new Meter(sink)}, retry: false},
+    );
+    const agent = new ToolLoopAgent({
+      model,
+      tools: await toHostTools(app, {include: ['forecast']}),
+    });
+    installAgent(app, {agent});
+
+    const reqCtx = new Context(app, 'request');
+    reqCtx.bind(SecurityBindings.USER).to(admin);
+    const wrapped = await reqCtx.get<AgentPort>(AgentBindings.AGENT.key);
+    await wrapped.generate({prompt: 'go'});
+
+    const modelEvents = sink.all().filter(e => e.operation === 'model.call');
+    expect(modelEvents.length).toBeGreaterThan(0);
+    // Units are TOKENS, and the principal came from the request context —
+    // neither the model nor the agent was told which request this is.
+    expect(modelEvents[0].units).toBeGreaterThan(0);
+    expect(modelEvents[0].principal).toEqual({kind: 'user', id: 'admin-1'});
+
+    // Same correlation id as the turn's own 'agent' event, so a sink can
+    // group a turn's model spend with the turn that caused it.
+    const [agentEvent] = sink.all().filter(e => e.surface === 'agent' && e.operation === 'agent.turn');
+    expect(modelEvents[0].meta?.correlationId).toBe(
+      agentEvent.meta?.correlationId,
+    );
+  });
+
+  it('enforces a per-turn token budget', async () => {
+    const {app} = await givenApp();
+    const model = await wrapModel(
+      toolCallingModel('forecast', {city: 'Tokyo'}),
+      {retry: false},
+    );
+    const agent = new ToolLoopAgent({
+      model,
+      tools: await toHostTools(app, {include: ['forecast']}),
+    });
+    installAgent(app, {agent});
+    const wrapped = await app.get<AgentPort>(AgentBindings.AGENT.key);
+
+    // A step cap counts steps, not spend. The mock model reports 20 input +
+    // 40 output per call, so a 1-token budget stops the SECOND model call.
+    await expect(
+      wrapped.generate({prompt: 'go', tokenBudget: 1}),
+    ).rejects.toThrow(/[Tt]oken budget exceeded/);
   });
 });

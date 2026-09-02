@@ -48,6 +48,7 @@ Each package also ships its own `README.md` under [`packages/`](../packages/).
 | `@agentback/extension-otel`        | OpenTelemetry spans across REST, MCP, and jobs                                                                                                      |
 | `@agentback/extension-rate-limit`  | In-memory or Redis-backed rate limiting                                                                                                             |
 | `@agentback/metering`              | Per-principal REST/MCP/agent usage events, audit sinks, and quota                                                                                   |
+| `@agentback/model-gateway`         | The model-call seam — retry classification, circuit breaker, provider fallback, token-granular metering, as language-model middleware              |
 | `@agentback/agents`                | Opt-in AI SDK agent wiring — `@tool` classes projected as host-executed agent tools, per-turn identity, sessions, metering                          |
 | `@agentback/payments`              | x402/MPP/Stripe payment authorization and billing seams                                                                                             |
 | `@agentback/messaging`             | Zod-typed JobQueue/EventBus/Scheduler ports with in-memory adapter                                                                                  |

@@ -1,0 +1,145 @@
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// This file is licensed under the MIT License.
+// License text available at https://opensource.org/license/mit/
+
+import {loggers} from '@agentback/common';
+import type {Meter, PrincipalRef} from '@agentback/metering';
+import {TokenBudgetExceededError} from './errors.js';
+import {currentModelScope} from './scope.js';
+import {
+  modelLabel,
+  totalTokens,
+  type ModelGenerateResult,
+  type ModelMiddleware,
+  type ModelStreamResult,
+  type ModelUsage,
+} from './types.js';
+
+const log = loggers('agentback:model-gateway:accounting');
+
+const ANONYMOUS: PrincipalRef = {kind: 'anonymous', id: 'anon'};
+
+export interface AccountingOptions {
+  /** Where usage events go. Omit to account tokens without emitting events. */
+  meter?: Meter;
+  /**
+   * A model call is billed in TOKENS, not calls — the whole reason this policy
+   * exists. One request can be 500 tokens or 500,000, so a per-call counter
+   * describes traffic and says nothing about spend.
+   */
+  operation?: string;
+}
+
+/**
+ * Token accounting for every model call: emits one `'agent'`-surface usage
+ * event whose `units` are total tokens, and enforces the ambient scope's
+ * `tokenBudget`.
+ *
+ * The budget is checked BEFORE the call (a scope already over its ceiling
+ * never reaches the provider) and the spend is added after, so the last call
+ * of a scope may overshoot by one response — the provider decides how many
+ * tokens it emits, and a bounded overshoot beats pretending we can predict it.
+ */
+export function accountingPolicy(
+  opts: AccountingOptions = {},
+): ModelMiddleware {
+  const operation = opts.operation ?? 'model.call';
+
+  const preflight = (): void => {
+    const scope = currentModelScope();
+    if (scope?.tokenBudget === undefined) return;
+    if (scope.tokensSpent >= scope.tokenBudget) {
+      throw new TokenBudgetExceededError(scope.tokensSpent, scope.tokenBudget);
+    }
+  };
+
+  const settle = async (
+    usage: ModelUsage | undefined,
+    label: string,
+    startedAt: number,
+    status: 'ok' | 'error',
+  ): Promise<void> => {
+    const tokens = totalTokens(usage);
+    const scope = currentModelScope();
+    if (scope) scope.tokensSpent += tokens;
+    if (!opts.meter) return;
+    await opts.meter
+      .record({
+        surface: 'agent',
+        operation,
+        principal: scope?.principal ?? ANONYMOUS,
+        units: tokens,
+        status,
+        latencyMs: Date.now() - startedAt,
+        meta: {
+          model: label,
+          inputTokens: usage?.inputTokens?.total,
+          outputTokens: usage?.outputTokens?.total,
+          cachedInputTokens: usage?.inputTokens?.cacheRead,
+          ...(scope?.correlationId ? {correlationId: scope.correlationId} : {}),
+        },
+      })
+      .catch(err => log.warn('failed to record model usage: %O', err));
+  };
+
+  return {
+    async wrapGenerate({doGenerate, model}) {
+      preflight();
+      const startedAt = Date.now();
+      const label = modelLabel(model);
+      try {
+        const result = (await doGenerate()) as ModelGenerateResult;
+        await settle(result.usage, label, startedAt, 'ok');
+        return result;
+      } catch (err) {
+        // A failed call still burned input tokens at the provider in most
+        // cases, but we have no report of them — record the attempt with zero
+        // units rather than inventing a number.
+        await settle(undefined, label, startedAt, 'error');
+        throw err;
+      }
+    },
+
+    async wrapStream({doStream, model}) {
+      preflight();
+      const startedAt = Date.now();
+      const label = modelLabel(model);
+      const result = (await doStream()) as ModelStreamResult & {
+        stream?: ReadableStream<unknown>;
+      };
+      if (!result.stream) return result;
+
+      // Usage on a stream is only knowable at the END, in the `finish` part.
+      // Tap the stream rather than skipping streamed calls — streaming is the
+      // common case for agents, so metering that ignored it would miss most of
+      // the bill.
+      let usage: ModelUsage | undefined;
+      let settled = false;
+      const finish = (status: 'ok' | 'error') => {
+        if (settled) return;
+        settled = true;
+        void settle(usage, label, startedAt, status);
+      };
+
+      const tap = new TransformStream<unknown, unknown>({
+        transform(part, controller) {
+          const p = part as {type?: string; usage?: ModelUsage};
+          if (p?.type === 'finish' && p.usage) usage = p.usage;
+          controller.enqueue(part);
+        },
+        flush() {
+          finish('ok');
+        },
+        // A consumer that walks away mid-stream still spent what it spent.
+        cancel() {
+          finish('error');
+        },
+      });
+
+      return {
+        ...result,
+        stream: result.stream.pipeThrough(tap),
+      } as ModelStreamResult;
+    },
+  };
+}

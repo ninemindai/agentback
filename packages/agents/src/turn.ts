@@ -14,6 +14,7 @@ import {
   type QuotaService,
   type UsageDescriptor,
 } from '@agentback/metering';
+import {withModelScope} from '@agentback/model-gateway';
 import {isProjectedTool} from './host-tools.js';
 import type {AgentPort, AgentToolContext, AgentTurnOptions} from './port.js';
 import type {AgentSessionRegistry} from './session-registry.js';
@@ -29,6 +30,8 @@ interface PreparedTurn {
   options: AgentTurnOptions;
   meter?: Meter;
   descriptor: () => UsageDescriptor;
+  /** Run `fn` inside this turn's model-accounting scope. */
+  scoped: <T>(fn: () => T) => T;
   /** Post-turn quota charge (success only — metering records failures). */
   succeed: () => Promise<void>;
 }
@@ -60,7 +63,11 @@ export function wrapAgent(
     },
     async generate(options: AgentTurnOptions) {
       const turn = await prepareTurn(raw, ctx, options, cfg);
-      const run = () => raw.generate(turn.options);
+      // The model is usually built once at boot, so it cannot know which
+      // request it is serving. The turn does — so it opens the ambient
+      // accounting scope, and a gateway-wrapped model bills this turn's
+      // principal in tokens without either side knowing about the other.
+      const run = () => turn.scoped(() => raw.generate(turn.options));
       const result = turn.meter
         ? await turn.meter.observe(turn.descriptor, run)
         : await run();
@@ -71,7 +78,7 @@ export function wrapAgent(
   if (raw.stream) {
     port.stream = async (options: AgentTurnOptions) => {
       const turn = await prepareTurn(raw, ctx, options, cfg);
-      const result = (await raw.stream!(turn.options)) as {
+      const result = (await turn.scoped(() => raw.stream!(turn.options))) as {
         finishReason?: Promise<unknown>;
       };
       // Detached finalization: the stream's usage is only knowable at
@@ -161,6 +168,17 @@ async function prepareTurn(
 
   return {
     options: turnOptions,
+    scoped: fn =>
+      withModelScope(
+        {
+          principal,
+          correlationId: turnId,
+          ...(options.tokenBudget !== undefined
+            ? {tokenBudget: options.tokenBudget}
+            : {}),
+        },
+        fn,
+      ),
     meter,
     descriptor: () => ({
       surface: 'agent' as const,

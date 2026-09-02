@@ -46,6 +46,16 @@ export interface AgentTurnOptions {
    * hangs up stops the bill, not just the reading. An explicit value wins.
    */
   abortSignal?: AbortSignal;
+  /**
+   * Token ceiling for this turn, enforced by `@agentback/model-gateway`'s
+   * accounting policy when the agent's model is gateway-wrapped (a plain model
+   * has nothing to enforce it).
+   *
+   * An agent loop has no natural end and a step cap counts steps, not spend:
+   * one step can be 500 tokens or 500,000. A bounded failure beats an
+   * unbounded bill.
+   */
+  tokenBudget?: number;
 }
 
 /** The structural subset of an AI SDK `GenerateTextResult` the port relies on. */
