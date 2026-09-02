@@ -36,7 +36,7 @@ import type {
   InputRequiredResult,
   ListToolsResult,
 } from '@modelcontextprotocol/server';
-import {extensionFilter, Server} from '@agentback/core';
+import {CoreBindings, extensionFilter, Server} from '@agentback/core';
 import {MetadataAccessor, MetadataInspector} from '@agentback/metadata';
 import {
   buildErrorEnvelope,
@@ -287,6 +287,16 @@ export interface CallToolOptions {
    * registration is static after boot.
    */
   binding?: ToolBinding;
+  /**
+   * Cancellation for this call — bound as {@link CoreBindings.ABORT_SIGNAL} in
+   * the per-call context, so the tool body and anything it injects can stop.
+   * Overrides a signal inherited from {@link ctx}; omit it to inherit.
+   *
+   * The MCP transports pass the SDK's own per-request signal here
+   * automatically; this option is for the in-process callers (an agent turn,
+   * `@agentback/command`, a job worker) that own the unit of work themselves.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -401,6 +411,9 @@ export class MCPServer implements Server {
       opts?.binding ?? this.collectAllTools().find(t => t.meta.name === name);
     if (!tool) throw new Error(`Unknown tool: ${name}`);
     const reqCtx = new Context(opts?.ctx ?? this.context, 'mcp.request');
+    // Bound on the child, so it shadows any signal the parent context carries
+    // — an explicit per-call signal is a narrower statement than the turn's.
+    if (opts?.signal) reqCtx.bind(CoreBindings.ABORT_SIGNAL).to(opts.signal);
     return this.dispatchTool(tool, input, reqCtx, {principal: opts?.principal});
   }
 
@@ -1087,6 +1100,10 @@ export class MCPServer implements Server {
     }
     ctx.bind(MCPBindings.REQUEST_EXTRA).to(extra);
     ctx.bind(MCPBindings.PROGRESS).to(progressFnFor(extra));
+    // The SDK aborts this when the client sends notifications/cancelled or the
+    // connection drops. Republished under the neutral key so a tool body reads
+    // the same seam a REST handler does, with no MCP import.
+    ctx.bind(CoreBindings.ABORT_SIGNAL).to(extra.mcpReq.signal);
     return ctx;
   }
 

@@ -3,6 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 import {Context, resolveInjectedArguments} from '@agentback/context';
+import {CoreBindings} from '@agentback/core';
 import {
   findControllerBindingKey,
   resolveControllerInstance,
@@ -47,6 +48,7 @@ import {
   executeIdempotent,
 } from '../confirm-idempotency.js';
 import {invalidRequestBody} from '../errors.js';
+import {linkedAbortSignal} from '../abort.js';
 import {fileFieldsOf, type FileFieldEntry} from '@agentback/openapi';
 import {FILE_STORE, type FileStore} from '@agentback/files';
 import {parseWebMultipart} from './multipart.js';
@@ -149,6 +151,10 @@ export class RestHandler {
     // Bind the Web Request under WEB_REQUEST (not HTTP_REQUEST, which is the
     // Express surface); inject with {optional: true} — absent on the Express path.
     reqCtx.bind(RestBindings.WEB_REQUEST).to(req);
+    // Same neutral seam the Express path binds. `req.signal` already aborts on
+    // a disconnect on every fetch host; `linkedAbortSignal` only normalizes the
+    // reason so a route reads the same on workerd, Bun, Deno and node-server.
+    reqCtx.bind(CoreBindings.ABORT_SIGNAL).to(linkedAbortSignal(req.signal));
 
     // Dispatch hooks wrap the WHOLE per-request pipeline (auth → authz →
     // validation → controller method), exactly as the Express

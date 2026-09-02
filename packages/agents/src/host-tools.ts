@@ -130,7 +130,10 @@ export async function toHostTools(
       // Identity is PER-TURN: the wrapper delivers {principal, turnCtx} via
       // toolsContext; `binding: t` (captured at projection time — tool
       // registration is static after boot) skips the per-call container scan.
-      execute: (input: unknown, options?: {context?: AgentToolContext}) => {
+      execute: (
+        input: unknown,
+        options?: {context?: AgentToolContext; abortSignal?: AbortSignal},
+      ) => {
         const c = options?.context;
         if (log.debug.enabled) {
           log.debug(
@@ -142,7 +145,15 @@ export async function toHostTools(
         return mcp.callTool(
           t.meta.name,
           (input ?? {}) as Record<string, unknown>,
-          {principal: c?.principal, ctx: c?.turnCtx, binding: t},
+          {
+            principal: c?.principal,
+            ctx: c?.turnCtx,
+            binding: t,
+            // The AI SDK's per-call signal is the narrowest statement about
+            // this tool call; without one the turn context still supplies the
+            // ambient signal through the chain walk.
+            signal: options?.abortSignal,
+          },
         );
       },
     } as unknown as ToolSet[string];

@@ -54,6 +54,33 @@ export namespace CoreBindings {
    */
   export const FETCH = BindingKey.create<Fetch>('application.fetch');
 
+  /**
+   * Binding key for the in-flight unit of work's {@link AbortSignal} — the
+   * neutral "stop doing this now" seam. Bound into the per-invocation context
+   * by every entry point that owns a cancellable unit of work (a REST request,
+   * an MCP tool call, a queue job), and aborted when the caller goes away or a
+   * deadline elapses.
+   *
+   * Inject it (always optionally — a plain service call has no ambient unit of
+   * work) and hand it to whatever actually spends time or money:
+   *
+   * ```ts
+   * async forecast(
+   *   input: Input,
+   *   @inject(CoreBindings.ABORT_SIGNAL, {optional: true}) signal?: AbortSignal,
+   * ) {
+   *   const res = await this.fetch(url, {signal});   // stop paying on hangup
+   * }
+   * ```
+   *
+   * The reason is a `DOMException` named `AbortError` carrying one of
+   * `AbortReasons` (`@agentback/common`), so `fetch` and the AI SDK rethrow it
+   * unchanged and `isAbortError()` recognizes it downstream.
+   */
+  export const ABORT_SIGNAL = BindingKey.create<AbortSignal>(
+    'application.abortSignal',
+  );
+
   // server
   /**
    * Binding key for servers

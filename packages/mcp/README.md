@@ -18,6 +18,7 @@ pnpm add @agentback/mcp zod
 - `MCPApplication` — `Application` subclass with `MCPComponent` pre-mounted; for stdio-only servers.
 - `MCPServer` — the server class. Exposes `listTools()`, `listResources()`, `listPrompts()`, `callTool()`, `readResource()`, `getPrompt()` for in-process introspection (used by `@agentback/mcp-inspector`). Also `buildServer(options)` to produce a fresh SDK `McpServer` per session for Streamable HTTP transports.
 - `MCPBindings.SERVER`, `MCPBindings.REQUEST_AUTH` — DI binding keys.
+- Per-call cancellation: `CoreBindings.ABORT_SIGNAL` is bound into every tool/resource/prompt request context from the SDK's own signal (so `notifications/cancelled` and a dropped connection reach the tool body). `callTool(name, input, {signal})` supplies one on the programmatic path; it shadows a signal inherited from `{ctx}`. See [docs/concepts/cancellation.md](../../docs/concepts/cancellation.md).
 - `ToolMetadata`, `ResourceMetadata`, `PromptMetadata` — types stored on the decorator and read by `MCPServer`.
 
 ## Usage

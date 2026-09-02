@@ -37,9 +37,14 @@ const EmailJob = defineQueue(
 );
 
 class EmailWorker {
-  @jobProcessor(EmailJob, {concurrency: 10})
+  // `timeoutMs` is the wall-clock backstop for one attempt. Opt-in, no
+  // default. Hand `job.signal` to whatever spends time or money — that is the
+  // difference between a cancelled job and one nobody is waiting for that
+  // keeps billing.
+  @jobProcessor(EmailJob, {concurrency: 10, timeoutMs: 900_000})
   async send(job: JobContext<{to: string; body: string}>) {
     // job.data is typed + already Zod-decoded
+    await send(job.data, {signal: job.signal});
   }
 }
 
@@ -80,4 +85,6 @@ package, never the reverse.
 ## Notes
 
 - **Validate on consume, not just produce.** A message can sit across a deploy, so the schema is re-asserted at handle time — schema drift or corruption becomes a poison message routed to fail/redelivery, never a deep handler crash.
+- **Deadlines are the only real backstop.** An agent job has no natural end, and a retry cap counts _attempts_ — a run stalled **inside** an attempt (a provider holding a socket, a tool waiting on a connection) stops counting while it keeps billing. `WorkerOptions.timeoutMs` ends it. The attempt is **abandoned, not killed** (Node cannot interrupt running code: the signal aborts, the attempt is recorded failed, the seat is freed, and a handler that ignores its signal runs on unread), and it is **never retried** even under `attempts: 3` — redelivering a hang buys the same hang on the next worker. Opt-in with no default, so existing handlers are unchanged.
+- **`cancel()` on a started job is process-local.** It removes a job that has not started; if it has, it aborts that attempt's signal — which only reaches a worker in **this** process. A job picked up elsewhere answers `false`. Cross-process cancel needs a side channel and is deliberately not implied. See [docs/concepts/cancellation.md](../../docs/concepts/cancellation.md).
 - **In-memory limitations (by design):** repeatable firing (`everyMs`/cron) and `priority` ordering are recorded/validated but not acted on here — they belong to the BullMQ adapter. See the L1 notes in the adapter source and the spec's non-goals.

@@ -2,6 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+export * from './abort.js';
 export * from './debug-factory.js';
 export * from './debug.js';
 export * from './env.js';

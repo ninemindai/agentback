@@ -36,6 +36,22 @@ export interface WorkerOptions {
   lockDurationMs?: number;
   lockRenewMs?: number;
   autorun?: boolean;
+  /**
+   * Wall-clock budget for one attempt, in ms. On elapse the attempt's
+   * {@link JobContext.signal} aborts, the slot is freed, and the job fails
+   * **terminally** — an abandoned attempt is never retried, because
+   * redelivering a hang just buys the same hang on the next worker.
+   *
+   * No default: an unbounded handler keeps working exactly as before. Set one
+   * on any queue whose handler calls a model or a third-party API — a retry
+   * cap counts attempts, and a run stalled *inside* an attempt stops counting
+   * while it keeps billing. A clock is the only thing that ends that.
+   *
+   * The handler is abandoned, not killed: Node cannot interrupt running code,
+   * so a handler that ignores its signal runs on with nobody reading its
+   * result. Honor the signal to actually stop the work.
+   */
+  timeoutMs?: number;
 }
 
 /** The decoded job handed to a processor. */
@@ -47,6 +63,20 @@ export interface JobContext<T> {
   readonly enqueuedAt: number;
   /** Transport metadata from {@link EnqueueOptions.meta} (`{}` if absent). */
   readonly meta: Record<string, string>;
+  /**
+   * Cancellation for this attempt. Aborts when {@link WorkerOptions.timeoutMs}
+   * elapses or `JobQueue.cancel()` reaches this worker's process.
+   *
+   * Hand it to whatever spends time or money — it is the difference between a
+   * cancelled job and a job nobody is waiting for that keeps billing:
+   *
+   * ```ts
+   * queue.process(Forecasts, async job => {
+   *   const res = await fetch(url, {signal: job.signal});
+   * }, {timeoutMs: 900_000});
+   * ```
+   */
+  readonly signal: AbortSignal;
   log(message: string): void;
 }
 

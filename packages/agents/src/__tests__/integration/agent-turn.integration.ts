@@ -11,8 +11,8 @@ import {z} from 'zod';
 import {ToolLoopAgent} from 'ai';
 import {MockLanguageModelV4} from 'ai/test';
 import {authorize} from '@agentback/authorization';
-import {Context} from '@agentback/context';
-import {Application} from '@agentback/core';
+import {Context, inject} from '@agentback/context';
+import {Application, CoreBindings} from '@agentback/core';
 import {MCPComponent, mcpServer, tool, type MCPServer} from '@agentback/mcp';
 import {
   InMemoryQuotaService,
@@ -53,7 +53,21 @@ class WeatherTools {
     yield 2;
     yield 1;
   }
+
+  /** Reports the ambient cancellation seam the tool body can reach. */
+  @tool('probe_signal', {input: z.object({})})
+  probeSignal(
+    _input: Record<string, never>,
+    @inject(CoreBindings.ABORT_SIGNAL, {optional: true})
+    signal?: AbortSignal,
+  ) {
+    toolSawSignal = signal;
+    return {seen: signal !== undefined};
+  }
 }
+
+/** Set by `probe_signal` on each call. */
+let toolSawSignal: AbortSignal | undefined;
 
 const usage = {
   inputTokens: {
@@ -270,5 +284,100 @@ describe('agent turn (ToolLoopAgent + toHostTools, mock model)', () => {
     const wrapped = await app.get<AgentPort>(AgentBindings.AGENT.key);
     const result = await wrapped.generate({prompt: 'go'});
     expect(result.text).toBe('done');
+  });
+});
+
+describe('agent turn cancellation', () => {
+  it('inherits the request signal and forwards it to the model', async () => {
+    const {app} = await givenApp();
+    let sawSignal: AbortSignal | undefined;
+    const agent: AgentPort = {
+      tools: {},
+      async generate(options) {
+        sawSignal = options.abortSignal;
+        return {text: 'ok'};
+      },
+    };
+    installAgent(app, {agent});
+
+    // The shape a REST controller produces: the request context carries the
+    // signal, the agent is resolved from it, the turn must pick it up.
+    const controller = new AbortController();
+    const reqCtx = new Context(app, 'request');
+    reqCtx.bind(CoreBindings.ABORT_SIGNAL).to(controller.signal);
+    const wrapped = await reqCtx.get<AgentPort>(AgentBindings.AGENT.key);
+
+    await wrapped.generate({prompt: 'hi'});
+    expect(sawSignal).toBe(controller.signal);
+  });
+
+  it('an explicit per-turn signal wins over the ambient one', async () => {
+    const {app} = await givenApp();
+    let sawSignal: AbortSignal | undefined;
+    const agent: AgentPort = {
+      tools: {},
+      async generate(options) {
+        sawSignal = options.abortSignal;
+        return {text: 'ok'};
+      },
+    };
+    installAgent(app, {agent});
+
+    const ambient = new AbortController();
+    const explicit = new AbortController();
+    const reqCtx = new Context(app, 'request');
+    reqCtx.bind(CoreBindings.ABORT_SIGNAL).to(ambient.signal);
+    const wrapped = await reqCtx.get<AgentPort>(AgentBindings.AGENT.key);
+
+    await wrapped.generate({prompt: 'hi', abortSignal: explicit.signal});
+    expect(sawSignal).toBe(explicit.signal);
+  });
+
+  it('leaves abortSignal unset when nothing is cancellable', async () => {
+    const {app} = await givenApp();
+    let called = false;
+    let sawSignal: AbortSignal | undefined;
+    const agent: AgentPort = {
+      tools: {},
+      async generate(options) {
+        called = true;
+        sawSignal = options.abortSignal;
+        return {text: 'ok'};
+      },
+    };
+    installAgent(app, {agent});
+    const wrapped = await app.get<AgentPort>(AgentBindings.AGENT.key);
+    await wrapped.generate({prompt: 'hi'});
+    expect(called).toBe(true);
+    expect(sawSignal).toBeUndefined();
+  });
+
+  it('a projected tool reaches the turn signal through the context chain', async () => {
+    const {app} = await givenApp();
+    const tools = await toHostTools(app, {include: ['probe_signal']});
+    const agent = new ToolLoopAgent({
+      model: toolCallingModel('probe_signal', {}),
+      tools,
+    });
+    installAgent(app, {agent});
+
+    const controller = new AbortController();
+    const reqCtx = new Context(app, 'request');
+    reqCtx.bind(CoreBindings.ABORT_SIGNAL).to(controller.signal);
+    const wrapped = await reqCtx.get<AgentPort>(AgentBindings.AGENT.key);
+
+    toolSawSignal = undefined;
+    const result = await wrapped.generate({prompt: 'probe'});
+    const toolResults = (
+      result as unknown as {steps: Array<{toolResults?: unknown[]}>}
+    ).steps.flatMap(step => step.toolResults ?? []);
+    expect(toolResults[0]).toMatchObject({output: {seen: true}});
+    // The AI SDK hands `execute` its own per-call signal, which `callTool`
+    // binds on the child context — so the tool sees a signal that fires when
+    // EITHER the turn or the request is aborted.
+    expect(toolSawSignal).toBeDefined();
+    expect(toolSawSignal!.aborted).toBe(false);
+    controller.abort();
+    expect(controller.signal.aborted).toBe(true);
   });
 });
