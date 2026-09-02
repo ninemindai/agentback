@@ -86,6 +86,7 @@ import {
   type AxSection,
 } from './ax.js';
 import {lookupSuccessStatus} from './route-meta.js';
+import {nodeAbortSignal} from './abort.js';
 import {SSE_FRAMER, JSONL_FRAMER} from './stream-framers.js';
 import {collectRoutes} from './web/collect-routes.js';
 import {assertPathSchemaMatch} from './route-path-validation.js';
@@ -615,7 +616,10 @@ export class RestServer implements Server {
     const value: RouteValue = {ctor, methodName, schemas, successStatus};
     return async (req: Request, res: Response, next: NextFunction) => {
       try {
-        const webReq = webRequestForWebDispatch(req);
+        // The synthetic Web Request carries the REAL connection's abort
+        // signal — without it `req.signal` would be a fresh signal that never
+        // fires and web-mode would silently lose cancellation.
+        const webReq = webRequestForWebDispatch(req, nodeAbortSignal(res));
         // Express already decoded `req.params`; RestHandler's RouteMatch expects
         // decoded param values (its own Router decodes too), so pass them as-is
         // — no double-decode.
@@ -716,6 +720,10 @@ export class RestServer implements Server {
     // auth-less routes can reach them. Two cheap binds per request.
     reqCtx.bind(RestBindings.HTTP_REQUEST).to(req);
     reqCtx.bind(RestBindings.HTTP_RESPONSE).to(res);
+    // The neutral "stop now" seam: a handler injects it and hands it to
+    // whatever spends time or money, so a caller who hangs up stops the bill
+    // instead of merely stopping the reading.
+    reqCtx.bind(CoreBindings.ABORT_SIGNAL).to(nodeAbortSignal(res));
 
     const auth = await this.authenticate(req, ctor, methodName);
     if (auth.user) reqCtx.bind(SecurityBindings.USER).to(auth.user);
@@ -1721,7 +1729,10 @@ function injectsRawExpressObjects(ctor: Function, methodName: string): boolean {
  * Express path reads off `req.body`. Headers (auth / confirmation / idempotency)
  * are preserved.
  */
-function webRequestForWebDispatch(req: Request): globalThis.Request {
+function webRequestForWebDispatch(
+  req: Request,
+  signal?: AbortSignal,
+): globalThis.Request {
   const host = req.get('host') ?? 'localhost';
   const url = `${req.protocol}://${host}${req.originalUrl ?? req.url}`;
   const headers = new Headers();
@@ -1731,7 +1742,7 @@ function webRequestForWebDispatch(req: Request): globalThis.Request {
     else headers.set(name, value);
   }
 
-  const init: RequestInit = {method: req.method, headers};
+  const init: RequestInit = {method: req.method, headers, signal};
   const method = req.method.toUpperCase();
   const contentType = (req.get('content-type') ?? '').toLowerCase();
   if (method !== 'GET' && method !== 'HEAD') {

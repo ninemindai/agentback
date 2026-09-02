@@ -17,11 +17,15 @@ import {PROCESSED_JOBS, type ProcessedJobs} from './processed-store.js';
 export class EmailWorker {
   constructor(@inject(PROCESSED_JOBS) private processed: ProcessedJobs) {}
 
-  @jobProcessor(SendEmail)
+  // `timeoutMs` is the wall-clock backstop for one attempt: a run stalled
+  // inside an attempt stops counting turns while it keeps billing, and only a
+  // clock ends that. On elapse the attempt is abandoned (job.signal aborts,
+  // the seat is freed) and NOT retried.
+  @jobProcessor(SendEmail, {timeoutMs: 30_000})
   async send(job: JobContext<z.infer<typeof EmailJob>>): Promise<void> {
-    // A real worker would hand off to an email provider here. We record the
-    // completed job so the controller's status route and the test can observe
-    // that processing finished.
+    // A real worker would hand off to an email provider here — passing
+    // `job.signal` into that call is what makes the deadline actually stop
+    // the work rather than merely stop waiting for it.
     this.processed.record({jobId: job.id, payload: job.data});
   }
 }

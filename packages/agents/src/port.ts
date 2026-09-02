@@ -37,6 +37,15 @@ export interface AgentTurnOptions {
    * entries for projected tools; caller-supplied entries win per tool.
    */
   toolsContext?: Record<string, unknown>;
+  /**
+   * Cancellation for the turn, forwarded to the AI SDK so an abort stops the
+   * model mid-generation rather than at the next step boundary.
+   *
+   * The turn wrapper fills this in from `CoreBindings.ABORT_SIGNAL` on the
+   * resolution context when the caller leaves it unset — so a REST caller who
+   * hangs up stops the bill, not just the reading. An explicit value wins.
+   */
+  abortSignal?: AbortSignal;
 }
 
 /** The structural subset of an AI SDK `GenerateTextResult` the port relies on. */

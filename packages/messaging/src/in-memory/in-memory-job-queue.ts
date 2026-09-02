@@ -2,7 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {loggers} from '@agentback/common';
+import {isAbortError, loggers} from '@agentback/common';
 import type {QueueDescriptor} from '../descriptors.js';
 import type {JobQueue} from '../ports.js';
 import type {
@@ -13,6 +13,7 @@ import type {
   Subscription,
   WorkerOptions,
 } from '../types.js';
+import {JobDeadlines} from '../job-deadlines.js';
 import {InMemoryStore, type StoredJob} from './in-memory-store.js';
 
 const {error: logError} = loggers('messaging:in-memory:job-queue');
@@ -38,6 +39,8 @@ export class InMemoryJobQueue implements JobQueue {
   }
 
   private wakers = new Map<string, () => void>();
+  /** In-flight attempts, so `cancel()` can reach a job that already started. */
+  private readonly deadlines = new JobDeadlines();
 
   async enqueue<T>(
     q: QueueDescriptor<T>,
@@ -92,14 +95,17 @@ export class InMemoryJobQueue implements JobQueue {
       void (async () => {
         try {
           const data = q.schema.parse(job.raw) as T;
-          await handler({
-            id: job.id,
-            data,
-            attempt: job.attempt,
-            enqueuedAt: job.enqueuedAt,
-            meta: job.opts.meta ?? {},
-            log: () => {},
-          });
+          await this.deadlines.run(job.id, opts.timeoutMs, signal =>
+            handler({
+              id: job.id,
+              data,
+              attempt: job.attempt,
+              enqueuedAt: job.enqueuedAt,
+              meta: job.opts.meta ?? {},
+              signal,
+              log: () => {},
+            }),
+          );
           job.state = 'completed';
           // L1 adapter honors only the boolean form; the {count,ageSecs} object
           // form is a BullMQ (Layer 2) concern and is treated as "keep".
@@ -109,7 +115,9 @@ export class InMemoryJobQueue implements JobQueue {
         } catch (err) {
           job.attempt++;
           const max = job.opts.attempts ?? 1;
-          if (job.attempt < max) {
+          // An abandoned attempt is terminal. Retrying it re-runs work someone
+          // asked to stop, and on a deadline buys the same hang next time.
+          if (!isAbortError(err) && job.attempt < max) {
             job.availableAt =
               Date.now() + backoffDelay(job.opts.backoff, job.attempt);
             job.state = 'waiting';
@@ -181,6 +189,8 @@ export class InMemoryJobQueue implements JobQueue {
       this.store.remove(q.name, id);
       return true;
     }
-    return false;
+    // Already started: cancelling means aborting its signal, not deleting the
+    // record. Only reaches an attempt running in THIS process.
+    return this.deadlines.abort(id);
   }
 }

@@ -134,6 +134,99 @@ export function runJobQueueConformance(
       await sub.close();
     });
 
+    it('hands the handler a live, unaborted signal', async () => {
+      const q = makeQueue();
+      const seen: Array<{present: boolean; aborted: boolean}> = [];
+      const sub = q.process(Q, async job => {
+        seen.push({
+          present: job.signal instanceof AbortSignal,
+          aborted: job.signal.aborted,
+        });
+      });
+      await q.enqueue(Q, {n: 1});
+      await waitFor(() =>
+        expect(seen).toEqual([{present: true, aborted: false}]),
+      );
+      await sub.close();
+    });
+
+    it('timeoutMs abandons a stalled handler and frees the slot', async () => {
+      const q = makeQueue();
+      let aborted = false;
+      let secondRan = false;
+      const sub = q.process(
+        Q,
+        async job => {
+          if (job.data.n === 1) {
+            // Never returns on its own — the clock is the only way out.
+            await new Promise<void>(resolve => {
+              job.signal.addEventListener('abort', () => {
+                aborted = true;
+                resolve();
+              });
+            });
+            return;
+          }
+          secondRan = true;
+        },
+        {concurrency: 1, timeoutMs: 100},
+      );
+      const stalled = await q.enqueue(Q, {n: 1}, {attempts: 1});
+      await q.enqueue(Q, {n: 2});
+
+      await waitFor(async () => {
+        expect(aborted).toBe(true);
+        expect((await q.get(Q, stalled.id))?.state).toBe('failed');
+        // The whole point of a deadline: the next job gets the seat.
+        expect(secondRan).toBe(true);
+      });
+      await sub.close();
+    });
+
+    it('never retries an abandoned attempt', async () => {
+      const q = makeQueue();
+      let starts = 0;
+      const sub = q.process(
+        Q,
+        async job => {
+          starts++;
+          await new Promise<void>(resolve =>
+            job.signal.addEventListener('abort', () => resolve()),
+          );
+        },
+        {timeoutMs: 100},
+      );
+      // attempts: 3 would retry an ordinary failure twice more. A deadline is
+      // not an ordinary failure: redelivering it buys the same hang again.
+      const ref = await q.enqueue(Q, {n: 1}, {attempts: 3});
+      await waitFor(async () => {
+        expect((await q.get(Q, ref.id))?.state).toBe('failed');
+      });
+      await settle();
+      expect(starts).toBe(1);
+      await sub.close();
+    });
+
+    it('cancel aborts a job that already started in this process', async () => {
+      const q = makeQueue();
+      let started = false;
+      let aborted = false;
+      const sub = q.process(Q, async job => {
+        started = true;
+        await new Promise<void>(resolve =>
+          job.signal.addEventListener('abort', () => {
+            aborted = true;
+            resolve();
+          }),
+        );
+      });
+      const ref = await q.enqueue(Q, {n: 1}, {attempts: 1});
+      await waitFor(() => expect(started).toBe(true));
+      expect(await q.cancel(Q, ref.id)).toBe(true);
+      await waitFor(() => expect(aborted).toBe(true));
+      await sub.close();
+    });
+
     it('round-trips enqueue meta to JobContext.meta and JobInfo.meta', async () => {
       const q = makeQueue();
       const seen: Array<Record<string, string>> = [];

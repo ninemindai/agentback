@@ -5,6 +5,7 @@
 export * from './descriptors.js';
 export * from './types.js';
 export * from './ports.js';
+export {JobDeadlines} from './job-deadlines.js';
 export * from './keys.js';
 export * from './decorators.js';
 export {

@@ -5,6 +5,7 @@
 import {randomUUID} from 'node:crypto';
 import {loggers} from '@agentback/common';
 import {Context} from '@agentback/context';
+import {CoreBindings} from '@agentback/core';
 import {SecurityBindings} from '@agentback/security';
 import {
   MeteringBindings,
@@ -131,6 +132,16 @@ async function prepareTurn(
   if (user) turnCtx.bind(SecurityBindings.USER).to(user);
   turnCtx.bind(MeteringBindings.CORRELATION_ID.key).to(turnId);
 
+  // Cancellation, in precedence order: what the caller passed for this turn,
+  // else the ambient signal of whatever unit of work we are running inside (a
+  // REST request, an MCP tool call, a job). Forwarded to the model AND bound
+  // on the turn context, so a projected tool inherits it through the chain.
+  // Without this an abandoned caller keeps paying for tokens nobody reads.
+  const abortSignal =
+    options.abortSignal ??
+    ctx.getSync(CoreBindings.ABORT_SIGNAL, {optional: true});
+  if (abortSignal) turnCtx.bind(CoreBindings.ABORT_SIGNAL).to(abortSignal);
+
   // toolsContext entries for every projected tool on the agent; entries the
   // caller supplied win per tool.
   const generated: Record<string, AgentToolContext> = {};
@@ -144,10 +155,12 @@ async function prepareTurn(
     optional: true,
   })) as Meter | undefined;
 
+  const turnOptions: AgentTurnOptions = {...options};
+  if (Object.keys(toolsContext).length) turnOptions.toolsContext = toolsContext;
+  if (abortSignal) turnOptions.abortSignal = abortSignal;
+
   return {
-    options: Object.keys(toolsContext).length
-      ? {...options, toolsContext}
-      : options,
+    options: turnOptions,
     meter,
     descriptor: () => ({
       surface: 'agent' as const,

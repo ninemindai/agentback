@@ -2,7 +2,8 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {loggers} from '@agentback/common';
+import {isAbortError, loggers} from '@agentback/common';
+import {JobDeadlines} from '@agentback/messaging';
 import type {
   EnqueueOptions,
   JobInfo,
@@ -142,6 +143,8 @@ function mapJobState(state: string): JobInfo['state'] {
 export class BullMQJobQueue implements JobQueue {
   private queues = new Map<string, Queue>();
   private workers = new Set<Worker>();
+  /** In-flight attempts on THIS process, so `cancel()` can reach a started job. */
+  private readonly deadlines = new JobDeadlines();
 
   constructor(
     readonly connections: RedisConnectionManager,
@@ -220,16 +223,36 @@ export class BullMQJobQueue implements JobQueue {
             `Payload for queue "${q.name}" failed schema validation: ${decoded.error.message}`,
           );
         }
-        await handler({
-          id: job.id ?? '',
-          data: decoded.data,
-          // BullMQ v5 increments attemptsMade after an attempt finishes, so
-          // it is 0-based during processing — exactly JobContext.attempt.
-          attempt: job.attemptsMade,
-          enqueuedAt: job.timestamp,
-          meta,
-          log: message => void job.log(message).catch(() => {}),
-        });
+        try {
+          await this.deadlines.run(job.id ?? '', opts.timeoutMs, signal =>
+            handler({
+              id: job.id ?? '',
+              data: decoded.data,
+              // BullMQ v5 increments attemptsMade after an attempt finishes,
+              // so it is 0-based during processing — exactly
+              // JobContext.attempt.
+              attempt: job.attemptsMade,
+              enqueuedAt: job.timestamp,
+              meta,
+              signal,
+              log: message => void job.log(message).catch(() => {}),
+            }),
+          );
+        } catch (err) {
+          // An abandoned attempt must leave BullMQ's retry path. With late
+          // acks a plain throw is redelivered, so a job that hangs would hang
+          // again on the next worker, and the one after that, billing each
+          // time. `UnrecoverableError` fails it once.
+          if (isAbortError(err)) {
+            logError('job %s on %s abandoned: %O', job.id, q.name, err);
+            throw new UnrecoverableError(
+              `Job ${job.id} on "${q.name}" was abandoned: ${
+                (err as Error).message
+              }`,
+            );
+          }
+          throw err;
+        }
       },
       workerOptions,
     );
@@ -268,16 +291,18 @@ export class BullMQJobQueue implements JobQueue {
     const job = await this.queueFor(q.name).getJob(id);
     if (!job) return false;
     const state = await job.getState();
-    // Layer-1 parity: only not-yet-started jobs can be cancelled.
     if (state !== 'waiting' && state !== 'delayed' && state !== 'prioritized') {
-      return false;
+      // Already started: cancelling means aborting the attempt's signal, not
+      // deleting the record. Only reaches a worker in THIS process — a job
+      // picked up elsewhere keeps its own registry and answers `false` here.
+      return this.deadlines.abort(id);
     }
     try {
       await job.remove();
       return true;
     } catch {
-      // Raced into active (now locked) — treat as not cancellable.
-      return false;
+      // Raced into active: it may now be running here, so try the same reach.
+      return this.deadlines.abort(id);
     }
   }
 

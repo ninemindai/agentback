@@ -19,6 +19,7 @@ customization lives on decorator options; cross-cutting concerns go in Express m
 - `RestServerConfig` — `{port?, host?, basePath?, openApiSpec?: {path?, overrides?}, cors?}`
 - `RestBindings` — DI keys: `RestBindings.SERVER`, `RestBindings.CONFIG`
 - Controllers are discovered by the core `controller` tag (`CoreTags.CONTROLLER` from `@agentback/core`); `app.restController()` is a thin, REST-flavored alias for `app.controller()` and adds no separate tag
+- Per-request cancellation: `CoreBindings.ABORT_SIGNAL` is bound into every request context on both the Express and Web pipelines, aborting when the client hangs up. Inject it optionally and hand it to whatever spends time or money — see [docs/concepts/cancellation.md](../../docs/concepts/cancellation.md)
 - Error helpers: `invalidParameter(field, message)`, `invalidRequestBody(details)`, `zodIssuesToDetails(issues)` — produce HTTP 400/422 error shapes from Zod validation failures
 
 ## Request pipeline
