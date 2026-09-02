@@ -9,12 +9,10 @@
   "exclude": ["dist", "node_modules"],
   "references": [
     {"path": "../common"},
-    {"path": "../authorization"},
     {"path": "../context"},
     {"path": "../core"},
-    {"path": "../mcp"},
+    {"path": "../security"},
     {"path": "../metering"},
-    {"path": "../model-gateway"},
-    {"path": "../security"}
+    {"path": "../testlab"}
   ]
 }

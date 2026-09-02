@@ -70,6 +70,8 @@ ESM-only, Node 22.13+, TypeScript 7, pnpm workspaces. **Relative imports use
 13. **Stop work that nobody is waiting for — a disconnected caller, a hung job,
     a runaway agent turn?** →
     Cancellation ([cancellation.md](references/cancellation.md))
+14. **Make model calls survive a flaky or degraded provider, and bill them in
+    tokens?** → Model gateway ([model-gateway.md](references/model-gateway.md))
 
 ## Getting Started: scaffold a new app
 
@@ -298,6 +300,9 @@ vercel|cloudflare` (`@agentback/cli`). The schema-typed `client` depends on
   commands + lease-free `@actorQuery`, the typed `ref(Class, id)` proxy /
   `@injectActor`, per-identity serialization + `requestId` idempotency, the event
   log, and the in-memory / event-sourced / Redis runtimes.
+- **Model gateway**: [references/model-gateway.md](references/model-gateway.md)
+  — `wrapModel`, retry classification, the circuit breaker, provider fallback,
+  and token-granular metering via `withModelScope`.
 - **Cancellation**: [references/cancellation.md](references/cancellation.md) —
   the one `CoreBindings.ABORT_SIGNAL` seam across REST/MCP/jobs/agent turns,
   job `WorkerOptions.timeoutMs`, and why an abandoned attempt is never retried.

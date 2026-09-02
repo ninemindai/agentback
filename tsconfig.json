@@ -44,6 +44,7 @@
     {"path": "packages/files-s3"},
     {"path": "packages/files-sdk"},
     {"path": "packages/metering"},
+    {"path": "packages/model-gateway"},
     {"path": "packages/agents"},
     {"path": "packages/payments"},
     {"path": "packages/messaging-bullmq"},

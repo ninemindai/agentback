@@ -1,0 +1,125 @@
+// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// This file is licensed under the MIT License.
+// License text available at https://opensource.org/license/mit/
+
+import {isAbortError, loggers} from '@agentback/common';
+import {CircuitOpenError, TokenBudgetExceededError} from './errors.js';
+import type {ModelMiddleware} from './types.js';
+
+const log = loggers('agentback:model-gateway:retry');
+
+/** HTTP statuses worth trying again. Everything else is the caller's fault. */
+const RETRYABLE_STATUS = new Set([408, 409, 429, 500, 502, 503, 504]);
+
+export interface RetryOptions {
+  /** Total attempts including the first. Default 3. */
+  attempts?: number;
+  /** First backoff step in ms; doubles per attempt. Default 500. */
+  baseDelayMs?: number;
+  /** Ceiling for one backoff, before jitter. Default 30_000. */
+  maxDelayMs?: number;
+  /** Injectable sleep, for deterministic tests. */
+  sleep?: (ms: number) => Promise<void>;
+  /** Injectable jitter factor in [0.5, 1.5), for deterministic tests. */
+  jitter?: () => number;
+}
+
+/** Pull an HTTP status off whatever shape the provider threw. */
+function statusOf(err: unknown): number | undefined {
+  if (err == null || typeof err !== 'object') return undefined;
+  const e = err as {statusCode?: unknown; status?: unknown};
+  const raw = e.statusCode ?? e.status;
+  return typeof raw === 'number' ? raw : undefined;
+}
+
+/** `Retry-After` in ms when the provider told us how long to wait. */
+function retryAfterMs(err: unknown): number | undefined {
+  if (err == null || typeof err !== 'object') return undefined;
+  const headers = (err as {responseHeaders?: Record<string, string>})
+    .responseHeaders;
+  const raw = headers?.['retry-after'] ?? headers?.['Retry-After'];
+  if (!raw) return undefined;
+  const seconds = Number(raw);
+  return Number.isFinite(seconds) ? seconds * 1000 : undefined;
+}
+
+/**
+ * Whether an error is worth another attempt.
+ *
+ * The rule is *retry the transport, never the reasoning*. A 429, a dropped
+ * socket, a 503 — those are the network having a bad second. A 400, a content
+ * filter, a context-length overflow: the same request will fail the same way
+ * forever, and paying for it three times is strictly worse than failing once.
+ */
+export function isRetryable(err: unknown): boolean {
+  // Our own control-flow errors are decisions, not failures.
+  if (err instanceof CircuitOpenError) return false;
+  if (err instanceof TokenBudgetExceededError) return false;
+  // A cancelled call must never come back: someone asked for it to stop.
+  if (isAbortError(err)) return false;
+
+  const status = statusOf(err);
+  if (status !== undefined) return RETRYABLE_STATUS.has(status);
+
+  // No status: a transport-level failure (DNS, reset socket, timeout). The AI
+  // SDK marks these on APICallError; absent that, a plain Error with no status
+  // is more likely a bug in our code than a provider blip, so don't retry.
+  const e = err as {isRetryable?: unknown; name?: unknown};
+  if (typeof e.isRetryable === 'boolean') return e.isRetryable;
+  return false;
+}
+
+/**
+ * Retry with exponential backoff and jitter.
+ *
+ * Jitter is not decoration: without it every instance in a fleet retries on the
+ * same schedule, and a brief provider throttle becomes a self-inflicted
+ * thundering herd that keeps the provider down. `Retry-After` wins when the
+ * provider states one.
+ */
+export function retryPolicy(opts: RetryOptions = {}): ModelMiddleware {
+  const attempts = opts.attempts ?? 3;
+  const baseDelayMs = opts.baseDelayMs ?? 500;
+  const maxDelayMs = opts.maxDelayMs ?? 30_000;
+  const sleep =
+    opts.sleep ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)));
+  const jitter = opts.jitter ?? (() => 0.5 + Math.random());
+
+  const run = async <T>(
+    call: () => PromiseLike<T>,
+    signal: AbortSignal | undefined,
+    label: string,
+  ): Promise<T> => {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      // Re-check between attempts: a caller who left during the backoff should
+      // not be charged for the next try.
+      if (signal?.aborted) throw signal.reason;
+      try {
+        return await call();
+      } catch (err) {
+        lastError = err;
+        if (!isRetryable(err) || attempt === attempts - 1) throw err;
+        const backoff = Math.min(baseDelayMs * 2 ** attempt, maxDelayMs);
+        const delay = retryAfterMs(err) ?? Math.round(backoff * jitter());
+        log.warn(
+          '%s attempt %d/%d failed (%s) — retrying in %dms',
+          label,
+          attempt + 1,
+          attempts,
+          (err as Error)?.message ?? err,
+          delay,
+        );
+        await sleep(delay);
+      }
+    }
+    throw lastError;
+  };
+
+  return {
+    wrapGenerate: ({doGenerate, params, model}) =>
+      run(doGenerate, params.abortSignal, `generate ${model.modelId ?? '?'}`),
+    wrapStream: ({doStream, params, model}) =>
+      run(doStream, params.abortSignal, `stream ${model.modelId ?? '?'}`),
+  };
+}
