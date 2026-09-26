@@ -305,6 +305,47 @@ enforce the equivalent here.
 **Depends on:** nothing technically. Gated on wanting multi-tenant / per-session
 plugin trees at all, which today nothing needs.
 
+### Honour backpressure on SSE / JSONL streams
+
+**What:** Make the stream pumps respect the transport's backpressure — the
+`res.write()` return value (await `'drain'`) on the Express path, and the
+controller's `desiredSize` on the Web path — for both `resumable:` and plain
+`streamOf` routes.
+
+**Why:** Today every item is written as soon as the producer yields it. A slow
+attached reader therefore buffers without limit in the socket or the Web
+stream's queue — memory the `resumable:` ring cap (`maxEvents`) never sees,
+because the ring only bounds what a _detached_ client missed.
+
+**Context:** Pre-existing on the plain streaming path; the resumable path
+inherited it. Start at `rest.server.ts` `responseSink` / the `sendStream`
+loop and `web/rest-handler.ts` `webSink` / `toStreamResponse`. Awaiting drain
+changes producer pacing: a resumable pump must stop writing to a slow sink
+without stalling the ring for a later resume.
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** PR #56 (resumable SSE) merged.
+
+### `app.stop()` hangs while a plain `streamOf` client is connected
+
+**What:** Stopping the server with a client connected to a non-resumable
+`streamOf` route never resolves: `httpServer.close()` waits on a socket nobody
+ends, and the generator keeps running.
+
+**Why:** A deploy restart or test teardown hangs until the client leaves.
+
+**Context:** Pre-existing, found while probing PR #56 (reproduced after it:
+`non-resumable stop(): HUNG >3s`). PR #56 fixed the resumable half —
+`stop()` disposes live resumable streams with `CANCELLED`, ends their
+connections, and re-sweeps idle keep-alive sockets. The plain path has no
+server-owned registry of live streams to do the same with; it needs one (or
+`stop()` needs a per-stream close hook) on both hosts.
+
+**Effort:** S
+**Priority:** P2
+**Depends on:** PR #56 (resumable SSE) merged.
+
 ### ~~Partial lifecycle notify resolves every observer~~ — CLOSED, narrowed, shipped
 
 **Done (2026-08-21).** `notifyGroups` takes a `partial` flag; the three subset

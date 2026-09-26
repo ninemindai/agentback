@@ -267,10 +267,14 @@ maxEvents?}}` puts an `id:` on every frame and keeps the producer alive for
   `Last-Event-ID` with **no client code**, and the handler is **not
   re-invoked** — the point is that a browser refresh does not throw away an
   in-flight agent turn. Consequences: `CoreBindings.ABORT_SIGNAL` follows the
-  stream (window expiry / completion), **not** the socket; a resume past the
-  ring's oldest frame is refused with a terminal error rather than a silent
-  gap; a resume by a different principal is refused; `resumable` + `jsonl`
-  and `resumable` without `streamOf` throw at decoration time. In-memory, so
+  stream (window expiry / server stop — never normal completion), **not** the
+  socket; a `Last-Event-ID` that cannot be honoured (unknown, expired, past
+  the ring, another route or principal) is an HTTP **409** — `EventSource`
+  stops, the handler is never re-run; on an anonymous route the stream id is
+  a bearer capability. Server-wide cap `rest.resumable.maxLiveStreams`
+  (default 1000): a _new_ stream past it gets 503 + `Retry-After`.
+  `resumable` + `jsonl`, `resumable` without `streamOf`, and a bad
+  `maxEvents`/`windowMs` throw at decoration time. In-memory, so
   single-process (use sticky sessions behind a LB).
 - **OpenAPI**: the item schema emits as `x-itemSchema` under the stream media
   type on the `200` response (promoted to `itemSchema` when emission moves to
