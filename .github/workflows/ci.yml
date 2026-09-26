@@ -60,6 +60,11 @@ jobs:
       - name: Check structural conventions
         run: pnpm konsistent
 
+      # console-chat commits a constant generated from SKILL.md; the build
+      # never regenerates it, so check it here instead.
+      - name: Check generated files
+        run: pnpm check:generated
+
       - name: Build
         run: pnpm build
 

@@ -48,5 +48,18 @@ const file = `// Copyright NineMind, Inc. 2026. All Rights Reserved.
 export const FRAMEWORK_GUIDE = ${JSON.stringify(body)};
 `;
 
-writeFileSync(outPath, file);
-console.log(`gen-framework-guide: wrote ${outPath} (${body.length} chars)`);
+if (process.argv.includes('--check')) {
+  // The root `pnpm build` never runs this script, so without a check the
+  // committed constant drifts silently behind SKILL.md.
+  if (readFileSync(outPath, 'utf8') !== file) {
+    console.error(
+      'gen-framework-guide: src/framework-guide.ts is stale. Run ' +
+        '`pnpm -F @agentback/console-chat gen:guide` and commit it.',
+    );
+    process.exit(1);
+  }
+  console.log('gen-framework-guide: framework-guide.ts is in sync with SKILL.md.');
+} else {
+  writeFileSync(outPath, file);
+  console.log(`gen-framework-guide: wrote ${outPath} (${body.length} chars)`);
+}
