@@ -80,8 +80,8 @@ async function main() {
 // Boot only when this module is the entry point, not when imported. This demo
 // deliberately depends on nothing but the browser-safe client + shared schemas,
 // so the guard is inlined here instead of pulling a helper from the framework.
-// Prefer the native `import.meta.main` flag (Node 24.2+); fall back to comparing
-// the module URL against argv on the project's Node 22.13 floor.
+// Prefer the native `import.meta.main` flag (Node 22.18+ / 24.2+); fall back to
+// comparing the module URL against argv on runtimes that lack it.
 const isEntry =
   typeof import.meta.main === 'boolean'
     ? import.meta.main

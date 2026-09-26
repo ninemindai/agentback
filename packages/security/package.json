@@ -24,7 +24,7 @@
     "tslib": "^2.8.1"
   },
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.18"
   },
   "devDependencies": {
     "@agentback/testlab": "workspace:~",

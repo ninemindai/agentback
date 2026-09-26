@@ -24,7 +24,7 @@
     "vitest": "~4.1.10"
   },
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.18"
   },
   "homepage": "https://agentback.dev",
   "bugs": "https://github.com/ninemindai/agentback/issues"

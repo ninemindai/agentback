@@ -23,7 +23,7 @@
     "zod": "^4.4.3"
   },
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.18"
   },
   "homepage": "https://agentback.dev",
   "bugs": "https://github.com/ninemindai/agentback/issues"

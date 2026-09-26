@@ -11,7 +11,7 @@
  * on runtimes without require-of-ESM support (e.g. Vercel serverless). Neutral
  * workspace deps (`@agentback/middleware`) must be STATICALLY imported instead.
  *
- * This couldn't be caught by a boot test: Node ≥22.13 (our dev floor) permits
+ * This couldn't be caught by a boot test: Node ≥22.18 (our dev floor) permits
  * require-of-ESM, so the crash only surfaced on Vercel. A source-graph assertion
  * catches re-introduction regardless of the local runtime.
  */

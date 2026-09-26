@@ -436,7 +436,7 @@ need `start`/`stop` can omit `init`.
        "tslib": "^2.8.1"
      },
      "devDependencies": {"vitest": "~4.1.8", "zod": "^4.4.3"},
-     "engines": {"node": ">=22.13"}
+     "engines": {"node": ">=22.18"}
    }
    ```
 

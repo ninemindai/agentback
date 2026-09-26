@@ -17,9 +17,9 @@ import {pathToFileURL} from 'node:url';
  * }
  * ```
  *
- * Prefers the native `import.meta.main` flag (Node 24.2+) and falls back to
- * comparing `import.meta.url` against `process.argv[1]` on older runtimes, so
- * the same guard works down to the project's Node 22.13 floor.
+ * Prefers the native `import.meta.main` flag (Node 22.18+ / 24.2+, so every
+ * supported Node) and falls back to comparing `import.meta.url` against
+ * `process.argv[1]` on runtimes that lack it.
  *
  * @param meta - The calling module's `import.meta`.
  */

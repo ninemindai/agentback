@@ -89,7 +89,7 @@ export function loadEnvFiles(): DotenvConfigOutput {
   // past the guard) must degrade to a no-op, never crash the importing module.
   try {
     // --- Runtime-resolve Node builtins ---------------------------------
-    // process.getBuiltinModule is available on Node ≥ 22.13 (our engine floor).
+    // process.getBuiltinModule is available at our Node ≥ 22.18 engine floor.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const _process = process as any;
     const fs = _process.getBuiltinModule('node:fs') as typeof import('node:fs');
