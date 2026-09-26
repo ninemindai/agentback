@@ -2,6 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import {getEventListeners} from 'node:events';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {AbortReasons, abortError} from '@agentback/common';
 import {CircuitOpenError} from '../../errors.js';
@@ -217,6 +218,23 @@ describe('retryPolicy', () => {
       new Promise(r => setTimeout(() => r('still sleeping'), 200)),
     ]);
     expect(outcome).toMatchObject({message: AbortReasons.CALLER_GONE});
+  });
+
+  it('leaves no listeners on the caller signal after sleeping', async () => {
+    // One request signal is shared by every model call of an agent turn; a
+    // leaked listener per backoff adds up to a MaxListenersExceededWarning.
+    const controller = new AbortController();
+    let calls = 0;
+    await drive(
+      retryPolicy({attempts: 3, baseDelayMs: 1, jitter: () => 1}),
+      async () => {
+        if (++calls < 3) throw httpError(503);
+        return {};
+      },
+      {abortSignal: controller.signal},
+    );
+    expect(calls).toBe(3);
+    expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
   });
 
   it('jitters the backoff — a fleet must not retry in lockstep', async () => {
