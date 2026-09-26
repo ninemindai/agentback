@@ -37,7 +37,7 @@
     "prettier": "^3.9.9",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "@typescript/native": "npm:typescript@~7.0.2",
-    "vitest": "~4.1.11"
+    "vitest": "~5.0.1"
   },
   "license": "MIT",
   "copyright.owner": "NineMind, Inc.",

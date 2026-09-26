@@ -38,7 +38,7 @@
   "devDependencies": {
     "@agentback/testlab": "workspace:~",
     "@modelcontextprotocol/client": "^2.1.0",
-    "vitest": "~4.1.11"
+    "vitest": "~5.0.1"
   },
   "license": "MIT",
   "repository": {

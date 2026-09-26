@@ -65,7 +65,7 @@
     "fastify": "^5.12.5",
     "multer": "^2.4.0",
     "supertest": "^7.3.0",
-    "vitest": "~4.1.11"
+    "vitest": "~5.0.1"
   },
   "engines": {
     "node": ">=22.18"

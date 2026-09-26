@@ -39,8 +39,8 @@ importers:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   examples/hello-actors:
     dependencies:
@@ -70,8 +70,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/testing
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   examples/hello-agent-console:
     dependencies:
@@ -276,8 +276,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/testing
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   examples/hello-hosts:
     dependencies:
@@ -365,8 +365,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/testing
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   examples/hello-mcp:
     dependencies:
@@ -552,8 +552,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/testing
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   examples/hello-x402:
     dependencies:
@@ -601,8 +601,8 @@ importers:
         version: 4.6.5
     devDependencies:
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/actors-do:
     dependencies:
@@ -620,8 +620,8 @@ importers:
         version: 2.8.1
     devDependencies:
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -645,8 +645,8 @@ importers:
         version: 2.8.1
     devDependencies:
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -688,8 +688,8 @@ importers:
         specifier: ~7.0.114
         version: 7.0.114(zod@4.6.5)
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/authentication:
     dependencies:
@@ -716,8 +716,8 @@ importers:
         specifier: workspace:~
         version: link:../testlab
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/authentication-jwt:
     dependencies:
@@ -759,8 +759,8 @@ importers:
         specifier: ^2.0.5
         version: 2.0.5
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/authentication-oauth2:
     dependencies:
@@ -799,8 +799,8 @@ importers:
         specifier: ^2.0.5
         version: 2.0.5
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/authorization:
     dependencies:
@@ -824,8 +824,8 @@ importers:
         specifier: workspace:~
         version: link:../testlab
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/chat:
     dependencies:
@@ -861,8 +861,8 @@ importers:
         specifier: workspace:~
         version: link:../testlab
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/cli:
     dependencies:
@@ -892,8 +892,8 @@ importers:
         specifier: ^7.8.0
         version: 7.8.0
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       wrangler:
         specifier: ^4.140.0
         version: 4.140.0(@types/node@22.18.13)
@@ -920,8 +920,8 @@ importers:
         version: 2.8.1
     devDependencies:
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -966,8 +966,8 @@ importers:
         specifier: ^4.1.1
         version: 4.1.1
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/common:
     dependencies:
@@ -1037,8 +1037,8 @@ importers:
         specifier: workspace:~
         version: link:../testlab
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/console:
     dependencies:
@@ -1113,8 +1113,8 @@ importers:
         specifier: ^7.3.0
         version: 7.3.0(supports-color@10.2.2)
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -1159,8 +1159,8 @@ importers:
         specifier: ~19.3.0
         version: 19.3.0
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/console-chat:
     dependencies:
@@ -1229,8 +1229,8 @@ importers:
         specifier: ~19.3.0
         version: 19.3.0(react@19.3.0)
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/console-theme:
     dependencies:
@@ -1266,8 +1266,8 @@ importers:
         specifier: ^11.0.0
         version: 11.0.0
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/context-explorer:
     dependencies:
@@ -1342,8 +1342,8 @@ importers:
         specifier: ^7.3.0
         version: 7.3.0(supports-color@10.2.2)
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/core:
     dependencies:
@@ -1367,8 +1367,8 @@ importers:
         specifier: workspace:~
         version: link:../testlab
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/create-agentback:
     dependencies:
@@ -1377,8 +1377,8 @@ importers:
         version: 1.8.1
     devDependencies:
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/drizzle:
     dependencies:
@@ -1402,8 +1402,8 @@ importers:
         specifier: ^0.8.3
         version: 0.8.3(drizzle-orm@0.45.3(@opentelemetry/api@1.9.1)(bun-types@1.4.2))(zod@4.6.5)
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -1481,8 +1481,8 @@ importers:
         specifier: ^2.0.7
         version: 2.0.7
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/extension-health:
     dependencies:
@@ -1518,8 +1518,8 @@ importers:
         specifier: ^7.3.0
         version: 7.3.0(supports-color@10.2.2)
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/extension-metrics:
     dependencies:
@@ -1558,8 +1558,8 @@ importers:
         specifier: ^7.3.0
         version: 7.3.0(supports-color@10.2.2)
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -1619,8 +1619,8 @@ importers:
         specifier: ^7.3.0
         version: 7.3.0(supports-color@10.2.2)
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -1647,8 +1647,8 @@ importers:
         version: 2.8.1
     devDependencies:
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/files:
     dependencies:
@@ -1660,8 +1660,8 @@ importers:
         version: 2.8.1
     devDependencies:
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/files-s3:
     dependencies:
@@ -1685,8 +1685,8 @@ importers:
         version: 2.8.1
     devDependencies:
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/files-sdk:
     dependencies:
@@ -1701,8 +1701,8 @@ importers:
         specifier: ^2.6.0
         version: 2.6.0(@anthropic-ai/claude-agent-sdk@0.3.280(@anthropic-ai/sdk@0.128.0(zod@4.6.5))(@modelcontextprotocol/sdk@1.30.1(supports-color@10.2.2)(zod@4.6.5))(zod@4.6.5))(@aws-sdk/client-s3@3.1140.0)(@aws-sdk/lib-storage@3.1140.0(@aws-sdk/client-s3@3.1140.0))(@aws-sdk/s3-presigned-post@3.1140.0)(@aws-sdk/s3-request-presigner@3.1140.0)(@opentelemetry/api@1.9.1)(ai@7.0.114(zod@4.6.5))(fastify@5.12.5)(hono@4.13.9)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(supports-color@10.2.2)(zod@4.6.5)
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/http-server:
     dependencies:
@@ -1729,8 +1729,8 @@ importers:
         specifier: ^1.1.3
         version: 1.1.3
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/introspection:
     dependencies:
@@ -1769,8 +1769,8 @@ importers:
         specifier: workspace:~
         version: link:../testing
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/mcp:
     dependencies:
@@ -1818,8 +1818,8 @@ importers:
         specifier: ^2.1.0
         version: 2.1.0
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/mcp-client:
     dependencies:
@@ -1849,8 +1849,8 @@ importers:
         specifier: ^2.1.0
         version: 2.1.0
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -1895,8 +1895,8 @@ importers:
         specifier: ^2.1.0
         version: 2.1.0
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -1932,8 +1932,8 @@ importers:
         specifier: workspace:~
         version: link:../testlab
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -1999,8 +1999,8 @@ importers:
         specifier: npm:@modelcontextprotocol/sdk@1.29.0
         version: '@modelcontextprotocol/sdk@1.29.0(supports-color@10.2.2)(zod@4.6.5)'
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -2069,8 +2069,8 @@ importers:
         specifier: ^7.3.0
         version: 7.3.0(supports-color@10.2.2)
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/messaging:
     dependencies:
@@ -2091,8 +2091,8 @@ importers:
         version: 4.6.5
     devDependencies:
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/messaging-bullmq:
     dependencies:
@@ -2122,8 +2122,8 @@ importers:
         version: 4.6.5
     devDependencies:
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/metadata:
     dependencies:
@@ -2153,8 +2153,8 @@ importers:
         specifier: ^4.17.12
         version: 4.17.12
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/metering:
     dependencies:
@@ -2196,8 +2196,8 @@ importers:
         specifier: workspace:~
         version: link:../testlab
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/middleware:
     dependencies:
@@ -2239,8 +2239,8 @@ importers:
         specifier: ^5.2.1
         version: 5.2.1(supports-color@10.2.2)
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/model-gateway:
     dependencies:
@@ -2267,8 +2267,8 @@ importers:
         specifier: ^7.0.114
         version: 7.0.114(zod@4.6.5)
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/openapi:
     dependencies:
@@ -2316,8 +2316,8 @@ importers:
         specifier: workspace:~
         version: link:../testlab
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/payments:
     dependencies:
@@ -2347,8 +2347,8 @@ importers:
         version: 2.8.1
     devDependencies:
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/plugin:
     dependencies:
@@ -2381,8 +2381,8 @@ importers:
         specifier: workspace:~
         version: link:../testlab
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/rest:
     dependencies:
@@ -2472,8 +2472,8 @@ importers:
         specifier: ^7.3.0
         version: 7.3.0(supports-color@10.2.2)
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/rest-explorer:
     dependencies:
@@ -2521,8 +2521,8 @@ importers:
         specifier: ^7.3.0
         version: 7.3.0(supports-color@10.2.2)
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -2597,8 +2597,8 @@ importers:
         specifier: ^7.3.0
         version: 7.3.0(supports-color@10.2.2)
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/security:
     dependencies:
@@ -2613,8 +2613,8 @@ importers:
         specifier: workspace:~
         version: link:../testlab
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/testing:
     dependencies:
@@ -2653,8 +2653,8 @@ importers:
         specifier: ^2.1.0
         version: 2.1.0
       vitest:
-        specifier: ~4.1.11
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -3542,6 +3542,9 @@ packages:
   '@jridgewell/sourcemap-codec@1.6.0':
     resolution: {integrity: sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==}
 
+  '@jridgewell/trace-mapping@0.3.31':
+    resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
 
@@ -4244,11 +4247,8 @@ packages:
     resolution: {integrity: sha512-UycprH3T6n3jH0k44NHMa7pnFHGu/N05MjojYr+Mc6I7obkoLIJujSWwin1pCvdy/eOxrI/l3uDLQsmcrOb4ug==}
     engines: {node: '>= 20'}
 
-  '@vitest/expect@4.1.11':
-    resolution: {integrity: sha512-VX2x5vNJXET47KAFzwERI+KRMtTTCSWTfSMKsW7JsUsXV4psq++e3DvZpuTDOpHcxytiDs6p2nhVb2tVDiiUYw==}
-
-  '@vitest/mocker@4.1.11':
-    resolution: {integrity: sha512-2XJVD55d1o5AZous5CCGKS74g/riOj9odEt2bQpCVZeblHyHdnMeFl4jl0XjU21stf4mbjUkew2eXQZt65g5CQ==}
+  '@vitest/mocker@5.0.1':
+    resolution: {integrity: sha512-6K1DoBNAPGvuOcSsGA4D6x+5zEEff/KmOOP3uetT2TrGpVfI+HRHRnJJfKi5ib/g1vx8IYHQD8s0pbJz8WQI7Q==}
     peerDependencies:
       msw: ^2.4.9
       vite: ^6.0.0 || ^7.0.0 || ^8.0.0
@@ -4258,20 +4258,8 @@ packages:
       vite:
         optional: true
 
-  '@vitest/pretty-format@4.1.11':
-    resolution: {integrity: sha512-yiZzPbGTS9Sr/JpFl8zHrcIkAofNbFV6k21vIgQN/cY/oxZeXhJv5sc/MBJ5jFKWmWs+oJHw0UXLZjmf931+Vw==}
-
-  '@vitest/runner@4.1.11':
-    resolution: {integrity: sha512-LztvUgdwMNJMIkj3hQnnxiC2Xy1zNxq928W/xhjCLaNCzqTZOudjwbQf6v9IntZGPw132i2Lq2rgTRZHD3JHNw==}
-
-  '@vitest/snapshot@4.1.11':
-    resolution: {integrity: sha512-pN7ikn1ON7h8ee4gIAp4AzyK+zBtJPzVbqOgu5LCEh4VaJVbPQcgYQYJIMGQPXVeJJq1fnfazis7a5pFNPahog==}
-
-  '@vitest/spy@4.1.11':
-    resolution: {integrity: sha512-apNa/prQy2qCeywhnixOHPRCgGNhvg7T4Dapfl1GahLp/R+uhBm5cPyFoNVyqsNd2h1nJxL6BqqdIjiABL60YA==}
-
-  '@vitest/utils@4.1.11':
-    resolution: {integrity: sha512-zTCVGpyFsGWBhllOyKlTw/vnr6D9qxsfSDyfbyZmTyjHw5N/VuvzHpHoQjm2ZJzn4RJgx5w4r7V0er69CmLgPQ==}
+  '@vitest/spy@5.0.1':
+    resolution: {integrity: sha512-rbto/mF/SGERxEgYOek7Xm6B9b+y+mVoo+f4b2LymYO8zM1b7uB5nHuhVMTP2hxdzgxvGiZYGxGIaMvL5y180Q==}
 
   '@workflow/serde@4.1.0':
     resolution: {integrity: sha512-pav4F2BoirECWR7Nf1TKt+2eETcBj7jj4cBefQ8VXQCA6NPkaKeLfj/zMgi+3zYV5ZIBT4GuUiphsj0/b9hPQQ==}
@@ -4517,9 +4505,6 @@ packages:
   content-type@2.1.0:
     resolution: {integrity: sha512-mj7UPXE0jaqaOsukNZRUEfEi2AcL7C/vwmwcHV0O97eO1E1pxBZuyjlZrx5seTaNBg1U6+o35wpa35Qfcc+7ag==}
     engines: {node: '>=18'}
-
-  convert-source-map@2.0.0:
-    resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
 
   cookie-signature@1.2.2:
     resolution: {integrity: sha512-D76uU73ulSXrD1UXF4KE2TMxVVwhsnCgfAyTg9k8P6KGZjlXKrOLe4dJQKI3Bxi5wjesZoFXJWElNWBjPZMbhg==}
@@ -5457,8 +5442,8 @@ packages:
     resolution: {integrity: sha512-vtEhXh/gNjI9Yg1u4jX/0YVPMvxzHuGgCm6tC5kZyb08yjGWGnqAjGJvcXbqQR2P3MyMEFnRbpcdFS6PBcLqew==}
     engines: {node: '>=12'}
 
-  magic-string@0.30.21:
-    resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
+  magic-string@1.4.2:
+    resolution: {integrity: sha512-vG+rjFRj1PqdIBozIxAGMjPlOhaVe+GXpbttY/iSK7rGcJRMlwNJO7dcUwmUqkymsFLJiNGI06t4D7Fr7yRC9g==}
 
   markdown-table@3.0.4:
     resolution: {integrity: sha512-wiYz4+JrLyb/DqW2hkFJxP7Vd7JuTDm77fvbM8VfEQdmSMqcImWeeRbHwZjBjIFki/VaMK2BhFi7oUUZeM5bqw==}
@@ -6118,20 +6103,17 @@ packages:
     resolution: {integrity: sha512-e2zZ96wSChazBsbENf/Pcm/4swHt2cEKQ92rhUjkL9GCKiTDJIaTBenjE/m9DXi0QBmTMDkFDdOomUy20A1tDQ==}
     engines: {node: '>=20'}
 
-  tinybench@2.9.0:
-    resolution: {integrity: sha512-0+DUvqWMValLmha6lr4kD8iAMK1HzV0/aKnCtWb9v9641TnP/MFb7Pc2bxoxQjTXAErryXVgUOfv2YqNllqGeg==}
+  tinybench@6.1.4:
+    resolution: {integrity: sha512-9APumHG7r4yOk4X4WlkmE71aZcv1gvin1czO3OQ1U9iJcFA5Ja/ygyb0vPOVHTthFozUYs8CLoLUlM8grb2lTQ==}
+    engines: {node: '>=20.0.0'}
 
-  tinyexec@1.3.1:
-    resolution: {integrity: sha512-GCvB3aoys96IuDFBMcTB46JOR6mdMtAToqwiW8JlWhsoh1mhHi/xn9ss/Dg7N555GiJyEt2qzoG/NHCwM6h1EA==}
+  tinyexec@1.3.0:
+    resolution: {integrity: sha512-QKAl9m8gWWGHV8jZcPeym6j+XULi6tOf1mT83WYJ4Lk2ytW/uwAWkrP0uFsdoYMdueVJ0qs26wZ+23xeB4ibNQ==}
     engines: {node: '>=18'}
 
   tinyglobby@0.2.17:
     resolution: {integrity: sha512-wXR/dYpcqKmfWpEdZjiKJOwCNFndD0DMnrW/cYjVGttEkBfVgcLFHoNrlj47mjOVic9yyNu65alsgF4NQyTa2g==}
     engines: {node: '>=12.0.0'}
-
-  tinyrainbow@3.1.1:
-    resolution: {integrity: sha512-yau8yJdTt989Mm0Bd/236QnzEiPf2xLLTqUZRUJOo/3CB078LSwzei343DgtJVmfJKJE3TMINY1u42SQsP6mXw==}
-    engines: {node: '>=14.0.0'}
 
   toad-cache@3.7.4:
     resolution: {integrity: sha512-m1TdR/rvT7kgGJZhspNtXdsdYk0fddFpJJFlG5s+UkPFo6lkLoZ3YLOaovPYjq1R75NP5JfeTlSHaOsE09peCg==}
@@ -6302,23 +6284,23 @@ packages:
       yaml:
         optional: true
 
-  vitest@4.1.11:
-    resolution: {integrity: sha512-fhACrNXUidIbGSBr5FlbuBkO7VWC1ZyLl0DO4CU2DrQoAPxX84Ysxs+HeGQpii5lZWV1Q4gBZTTu49mF+A6Edw==}
-    engines: {node: ^20.0.0 || ^22.0.0 || >=24.0.0}
+  vitest@5.0.1:
+    resolution: {integrity: sha512-iA95lQbKEkvrtTkdAgnWbXfbipWiiWe/hDl2P5tMi6WFwD76G0NxXAGp/M9EOcYupeGJRr6wppMc7CoA41TQjg==}
+    engines: {node: ^22.12.0 || ^24.0.0 || >=26.0.0}
     hasBin: true
     peerDependencies:
       '@edge-runtime/vm': '*'
       '@opentelemetry/api': ^1.9.0
-      '@types/node': ^20.0.0 || ^22.0.0 || >=24.0.0
-      '@vitest/browser-playwright': 4.1.11
-      '@vitest/browser-preview': 4.1.11
-      '@vitest/browser-webdriverio': 4.1.11
-      '@vitest/coverage-istanbul': 4.1.11
-      '@vitest/coverage-v8': 4.1.11
-      '@vitest/ui': 4.1.11
+      '@types/node': ^22.0.0 || >=24.0.0
+      '@vitest/browser-playwright': 5.0.1
+      '@vitest/browser-preview': 5.0.1
+      '@vitest/browser-webdriverio': ^5.0.0-beta.5 || >=5.0.0
+      '@vitest/coverage-istanbul': 5.0.1
+      '@vitest/coverage-v8': 5.0.1
+      '@vitest/ui': 5.0.1
       happy-dom: '*'
       jsdom: '*'
-      vite: ^6.0.0 || ^7.0.0 || ^8.0.0
+      vite: ^6.4.0 || ^7.0.0 || ^8.0.0
     peerDependenciesMeta:
       '@edge-runtime/vm':
         optional: true
@@ -7208,6 +7190,11 @@ snapshots:
 
   '@jridgewell/sourcemap-codec@1.6.0': {}
 
+  '@jridgewell/trace-mapping@0.3.31':
+    dependencies:
+      '@jridgewell/resolve-uri': 3.1.2
+      '@jridgewell/sourcemap-codec': 1.6.0
+
   '@jridgewell/trace-mapping@0.3.9':
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
@@ -7906,46 +7893,16 @@ snapshots:
 
   '@vercel/oidc@3.2.0': {}
 
-  '@vitest/expect@4.1.11':
+  '@vitest/mocker@5.0.1(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))':
     dependencies:
-      '@standard-schema/spec': 1.1.0
-      '@types/chai': 5.2.3
-      '@vitest/spy': 4.1.11
-      '@vitest/utils': 4.1.11
-      chai: 6.2.2
-      tinyrainbow: 3.1.1
-
-  '@vitest/mocker@4.1.11(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))':
-    dependencies:
-      '@vitest/spy': 4.1.11
+      '@jridgewell/trace-mapping': 0.3.31
+      '@vitest/spy': 5.0.1
       estree-walker: 3.0.3
-      magic-string: 0.30.21
+      magic-string: 1.4.2
     optionalDependencies:
       vite: 8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
 
-  '@vitest/pretty-format@4.1.11':
-    dependencies:
-      tinyrainbow: 3.1.1
-
-  '@vitest/runner@4.1.11':
-    dependencies:
-      '@vitest/utils': 4.1.11
-      pathe: 2.0.3
-
-  '@vitest/snapshot@4.1.11':
-    dependencies:
-      '@vitest/pretty-format': 4.1.11
-      '@vitest/utils': 4.1.11
-      magic-string: 0.30.21
-      pathe: 2.0.3
-
-  '@vitest/spy@4.1.11': {}
-
-  '@vitest/utils@4.1.11':
-    dependencies:
-      '@vitest/pretty-format': 4.1.11
-      convert-source-map: 2.0.0
-      tinyrainbow: 3.1.1
+  '@vitest/spy@5.0.1': {}
 
   '@workflow/serde@4.1.0': {}
 
@@ -8184,8 +8141,6 @@ snapshots:
   content-type@1.0.5: {}
 
   content-type@2.1.0: {}
-
-  convert-source-map@2.0.0: {}
 
   cookie-signature@1.2.2: {}
 
@@ -8960,7 +8915,7 @@ snapshots:
 
   luxon@3.7.2: {}
 
-  magic-string@0.30.21:
+  magic-string@1.4.2:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
 
@@ -9858,16 +9813,14 @@ snapshots:
     dependencies:
       real-require: 1.0.0
 
-  tinybench@2.9.0: {}
+  tinybench@6.1.4: {}
 
-  tinyexec@1.3.1: {}
+  tinyexec@1.3.0: {}
 
   tinyglobby@0.2.17:
     dependencies:
       fdir: 6.5.0(picomatch@4.0.7)
       picomatch: 4.0.7
-
-  tinyrainbow@3.1.1: {}
 
   toad-cache@3.7.4: {}
 
@@ -10017,26 +9970,20 @@ snapshots:
       jiti: 2.7.0
       yaml: 2.9.1
 
-  vitest@4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)):
+  vitest@5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)):
     dependencies:
-      '@vitest/expect': 4.1.11
-      '@vitest/mocker': 4.1.11(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
-      '@vitest/pretty-format': 4.1.11
-      '@vitest/runner': 4.1.11
-      '@vitest/snapshot': 4.1.11
-      '@vitest/spy': 4.1.11
-      '@vitest/utils': 4.1.11
+      '@types/chai': 5.2.3
+      '@vitest/mocker': 5.0.1(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+      chai: 6.2.2
       es-module-lexer: 2.3.2
       expect-type: 1.4.0
-      magic-string: 0.30.21
+      magic-string: 1.4.2
       obug: 2.2.1
-      pathe: 2.0.3
       picomatch: 4.0.7
       std-env: 4.2.0
-      tinybench: 2.9.0
-      tinyexec: 1.3.1
+      tinybench: 6.1.4
+      tinyexec: 1.3.0
       tinyglobby: 0.2.17
-      tinyrainbow: 3.1.1
       vite: 8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
       why-is-node-running: 2.3.0
     optionalDependencies:
