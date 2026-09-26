@@ -20,13 +20,13 @@
     "@agentback/rest": "{{version}}",
     "@agentback/rest-explorer": "{{version}}",
     "tslib": "^2.8.1",
-    "zod": "^4.4.3"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@agentback/testing": "{{version}}",
     "@types/node": "~22.18.13",
-    "typescript": "^5.9.0",
-    "vitest": "^4.1.0"
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
   },
   "engines": {
     "node": ">=22.18"
