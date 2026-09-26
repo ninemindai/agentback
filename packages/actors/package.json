@@ -1,6 +1,6 @@
 {
   "name": "@agentback/actors",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Zod-typed actor runtime port \u2014 @actor services, per-identity serialized turns, in-memory adapter",
   "type": "module",
   "main": "dist/index.js",

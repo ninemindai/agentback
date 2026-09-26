@@ -1,6 +1,6 @@
 {
   "name": "@agentback/actors-do",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Durable Objects ActorRuntime adapter \u2014 one object per identity, storage-backed state/dedup/journal, targeting Cloudflare DO and celld",
   "type": "module",
   "main": "dist/index.js",
