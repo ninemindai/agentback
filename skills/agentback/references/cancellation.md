@@ -54,8 +54,10 @@ no plumbing. Precedence is narrowest-wins: an explicit `{signal}` on `callTool`
 shadows the turn context, which shadows the request context.
 
 The reason is always a `DOMException` named `AbortError` carrying an
-`AbortReasons` message. Use `isAbortError(err)` from `@agentback/common` to
-tell "we stopped it" from "it failed" — that is the retry decision.
+`AbortReasons` message. `isAbortError(err)` from `@agentback/common` tells
+whether an error is abort-_shaped_ — it cannot tell who aborted, so never use
+it to decide retries. Job queues decide that by the identity of their own
+abort: a handler's own timed-out `fetch` still retries under `attempts`.
 
 ## Agent turns
 
@@ -99,6 +101,7 @@ shared conformance suite):
 - Do not add a global default `timeoutMs`; it would silently fail existing
   long-running handlers.
 - `AbortSignal.timeout()`'s reason is a `TimeoutError`, not one of ours;
-  `isAbortError()` accepts both.
+  `isAbortError()` accepts both — which is exactly why it cannot decide
+  whether work should be retried.
 
 Full rationale: [docs/concepts/cancellation.md](../../../docs/concepts/cancellation.md).

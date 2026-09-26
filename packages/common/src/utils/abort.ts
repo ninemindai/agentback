@@ -27,13 +27,14 @@ export function abortError(message: string): DOMException {
 }
 
 /**
- * Whether an error is (or wraps) an abort — i.e. the work stopped because we
- * stopped it, not because it failed.
+ * Whether an error is shaped like an abort — ours (`AbortError`), a platform
+ * timeout (`TimeoutError`, e.g. from `AbortSignal.timeout()`), or a legacy
+ * `ABORT_ERR` code. Use it to keep an expected stop out of error logs.
  *
- * This is the retry decision. An aborted run is deliberate and must NOT be
- * retried: redelivering it re-runs work someone asked to stop, and on a
- * deadline that means the same hang costs the same money on the next worker,
- * and the one after that.
+ * It is NOT the retry decision. The shape says nothing about WHO aborted: a
+ * handler's own `fetch(url, {signal: AbortSignal.timeout(n)})` timing out is
+ * an ordinary, retryable failure. Only the owner of the signal knows it
+ * stopped the work — a job queue asks its own deadline registry, by identity.
  */
 export function isAbortError(err: unknown): boolean {
   if (err == null || typeof err !== 'object') return false;

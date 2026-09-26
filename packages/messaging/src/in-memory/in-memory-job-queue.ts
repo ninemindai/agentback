@@ -2,7 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {isAbortError, loggers} from '@agentback/common';
+import {loggers} from '@agentback/common';
 import type {QueueDescriptor} from '../descriptors.js';
 import type {JobQueue} from '../ports.js';
 import type {
@@ -117,7 +117,7 @@ export class InMemoryJobQueue implements JobQueue {
           const max = job.opts.attempts ?? 1;
           // An abandoned attempt is terminal. Retrying it re-runs work someone
           // asked to stop, and on a deadline buys the same hang next time.
-          if (!isAbortError(err) && job.attempt < max) {
+          if (!this.deadlines.isAbandonment(err) && job.attempt < max) {
             job.availableAt =
               Date.now() + backoffDelay(job.opts.backoff, job.attempt);
             job.state = 'waiting';
