@@ -47,9 +47,9 @@
     "@agentback/mcp": "workspace:~",
     "@agentback/openapi": "workspace:~",
     "@agentback/security": "workspace:~",
-    "@modelcontextprotocol/client": "^2.0.0",
-    "vitest": "~4.1.10",
-    "zod": "^4.4.3"
+    "@modelcontextprotocol/client": "^2.1.0",
+    "vitest": "~4.1.11",
+    "zod": "^4.6.5"
   },
   "license": "MIT",
   "repository": {

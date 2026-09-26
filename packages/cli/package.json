@@ -21,16 +21,16 @@
   "dependencies": {
     "@agentback/openapi": "workspace:~",
     "create-agentback": "workspace:~",
-    "esbuild": "~0.28.1",
-    "semver": "^7.7.0",
-    "smol-toml": "^1.7.0",
+    "esbuild": "~0.28.2",
+    "semver": "^7.8.5",
+    "smol-toml": "^1.9.0",
     "ts-morph": "^28.0.0"
   },
   "devDependencies": {
     "@agentback/rest": "workspace:~",
-    "@types/semver": "^7.7.1",
-    "vitest": "~4.1.10",
-    "wrangler": "^4.109.0"
+    "@types/semver": "^7.8.0",
+    "vitest": "~4.1.11",
+    "wrangler": "^4.140.0"
   },
   "license": "MIT",
   "repository": {

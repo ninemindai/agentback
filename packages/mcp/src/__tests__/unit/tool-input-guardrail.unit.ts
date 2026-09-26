@@ -52,11 +52,26 @@ class DiscriminatedTool {
   }
 }
 
-// An intersection lowers to a root allOf.
+// An intersection Zod cannot merge into one object lowers to a root allOf.
 const IntersectionInput = z.intersection(
+  z.object({a: z.string()}),
+  z.record(z.string(), z.string()),
+);
+
+// Since Zod 4.6, an intersection of two plain objects lowers to one merged
+// object root, so it is a valid MCP inputSchema.
+const MergedIntersectionInput = z.intersection(
   z.object({a: z.string()}),
   z.object({b: z.number()}),
 );
+
+@mcpServer()
+class MergedIntersectionTool {
+  @tool('merged_weather', {input: MergedIntersectionInput})
+  weather(_input: z.infer<typeof MergedIntersectionInput>) {
+    return {ok: true};
+  }
+}
 
 @mcpServer()
 class IntersectionTool {
@@ -111,6 +126,11 @@ describe('MCP tool inputSchema must lower to an object root', () => {
     const server = await serverWith(IntersectionTool);
     expect(() => server.buildServer()).toThrow(/inter_weather/);
     expect(() => server.buildServer()).toThrow(/allOf/);
+  });
+
+  it('accepts an intersection of two objects (merged object root)', async () => {
+    const server = await serverWith(MergedIntersectionTool);
+    expect(() => server.buildServer()).not.toThrow();
   });
 
   it('rejects a bare primitive (scalar type root)', async () => {
