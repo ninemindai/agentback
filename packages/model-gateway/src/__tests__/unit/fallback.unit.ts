@@ -13,6 +13,13 @@ const PRIMARY = {modelId: 'primary', provider: 'p'} as LanguageModelLike;
 const httpError = (statusCode: number) =>
   Object.assign(new Error(`HTTP ${statusCode}`), {statusCode});
 
+/**
+ * A timeout the CALLER did not ask for — e.g. a provider `fetch` wrapper with
+ * its own `AbortSignal.timeout`. Abort-shaped, but a transport failure.
+ */
+const transportTimeout = () =>
+  new DOMException('The operation timed out.', 'TimeoutError');
+
 /** A stand-in secondary that records the call and answers with its name. */
 function givenSecondary(name: string, fails?: unknown) {
   const calls: unknown[] = [];
@@ -106,12 +113,48 @@ describe('fallbackPolicy', () => {
     const b = givenSecondary('backup');
     // The caller left. Asking a second provider is spending money on an
     // answer nobody is waiting for.
+    const caller = AbortSignal.abort(abortError(AbortReasons.CALLER_GONE));
     await expect(
-      drive([b.model], async () => {
-        throw abortError(AbortReasons.CALLER_GONE);
-      }),
+      drive(
+        [b.model],
+        async () => {
+          throw abortError(AbortReasons.CALLER_GONE);
+        },
+        {abortSignal: caller},
+      ),
     ).rejects.toMatchObject({name: 'AbortError'});
     expect(b.calls).toHaveLength(0);
+  });
+
+  it('does NOT fail over once the caller aborted, even on a custom predicate', async () => {
+    const b = givenSecondary('backup');
+    const caller = AbortSignal.abort(abortError(AbortReasons.CALLER_GONE));
+    await expect(
+      fallbackPolicy({models: [b.model], shouldFailover: () => true})
+        .wrapGenerate!({
+        doGenerate: async () => {
+          throw transportTimeout();
+        },
+        doStream: () => Promise.resolve({}),
+        params: {abortSignal: caller},
+        model: PRIMARY,
+      }),
+    ).rejects.toMatchObject({name: 'TimeoutError'});
+    expect(b.calls).toHaveLength(0);
+  });
+
+  it('fails over when the provider times out on its own', async () => {
+    const b = givenSecondary('backup');
+    // A hung primary is the case a secondary exists for.
+    await expect(
+      drive(
+        [b.model],
+        async () => {
+          throw transportTimeout();
+        },
+        {abortSignal: new AbortController().signal},
+      ),
+    ).resolves.toEqual({answeredBy: 'backup'});
   });
 
   it('rethrows the last failure when the whole chain is down', async () => {

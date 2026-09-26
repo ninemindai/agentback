@@ -2,7 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {isAbortError, loggers} from '@agentback/common';
+import {loggers} from '@agentback/common';
 import {CircuitOpenError} from './errors.js';
 import {isRetryable} from './retry.js';
 import {modelLabel, type ModelMiddleware} from './types.js';
@@ -125,12 +125,16 @@ export class CircuitBreaker {
  * Only a failure that says something about the PROVIDER's health should move
  * the breaker. A 400 or a content filter is the request being wrong and would
  * fail against a perfectly healthy provider; counting it would trip the
- * circuit on a caller's bad input and take down everyone else. An abort is our
- * own decision. So the breaker counts exactly what the retry policy retries.
+ * circuit on a caller's bad input and take down everyone else. A caller's
+ * cancel is their decision, not the provider's health — but a provider that
+ * times out on its own is exactly the outage this exists to catch. So the
+ * breaker counts exactly what the retry policy retries.
  */
-function countsAgainstHealth(err: unknown): boolean {
-  if (isAbortError(err)) return false;
-  return isRetryable(err);
+function countsAgainstHealth(
+  err: unknown,
+  callerSignal: AbortSignal | undefined,
+): boolean {
+  return isRetryable(err, callerSignal);
 }
 
 /**
@@ -146,6 +150,7 @@ export function breakerPolicy(breaker: CircuitBreaker): ModelMiddleware {
   const guard = async <T>(
     target: string,
     call: () => PromiseLike<T>,
+    callerSignal: AbortSignal | undefined,
   ): Promise<T> => {
     breaker.assertClosed(target);
     try {
@@ -153,14 +158,17 @@ export function breakerPolicy(breaker: CircuitBreaker): ModelMiddleware {
       breaker.recordSuccess(target);
       return result;
     } catch (err) {
-      if (countsAgainstHealth(err)) breaker.recordFailure(target);
-      else breaker.recordNeutral(target);
+      if (countsAgainstHealth(err, callerSignal)) {
+        breaker.recordFailure(target);
+      } else breaker.recordNeutral(target);
       throw err;
     }
   };
 
   return {
-    wrapGenerate: ({doGenerate, model}) => guard(modelLabel(model), doGenerate),
-    wrapStream: ({doStream, model}) => guard(modelLabel(model), doStream),
+    wrapGenerate: ({doGenerate, params, model}) =>
+      guard(modelLabel(model), doGenerate, params.abortSignal),
+    wrapStream: ({doStream, params, model}) =>
+      guard(modelLabel(model), doStream, params.abortSignal),
   };
 }

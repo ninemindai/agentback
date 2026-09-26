@@ -60,7 +60,12 @@ The refusals carry more weight than the actions.
 the network having a bad second. A 400, a content filter, a context-length
 overflow: the same request will fail the same way forever, and paying for it
 three times is strictly worse than failing once. A cancelled call is never
-retried either; someone asked for it to stop.
+retried either; someone asked for it to stop. "Cancelled" is read off the
+caller's `abortSignal` (which the AI SDK also aborts for its own `timeout`),
+never off the error's shape: a provider that times out _on its own_ — say a
+`fetch` wrapper with `AbortSignal.timeout` — throws the same `TimeoutError`,
+and that is the transport failing, so it is retried, fails over, and counts
+against the breaker. A hung provider is the outage this whole stack exists for.
 
 **Jitter is not decoration.** Without it every instance in a fleet retries on
 the same schedule, and a brief provider throttle becomes a self-inflicted

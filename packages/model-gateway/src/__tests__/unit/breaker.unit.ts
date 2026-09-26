@@ -13,6 +13,13 @@ const TARGET = 'p:m';
 const httpError = (statusCode: number) =>
   Object.assign(new Error(`HTTP ${statusCode}`), {statusCode});
 
+/**
+ * A timeout the CALLER did not ask for — e.g. a provider `fetch` wrapper with
+ * its own `AbortSignal.timeout`. Abort-shaped, but a transport failure.
+ */
+const transportTimeout = () =>
+  new DOMException('The operation timed out.', 'TimeoutError');
+
 function givenBreaker(nowRef: {t: number}, threshold = 3, resetAfterMs = 1000) {
   const breaker = new CircuitBreaker({
     threshold,
@@ -20,11 +27,14 @@ function givenBreaker(nowRef: {t: number}, threshold = 3, resetAfterMs = 1000) {
     now: () => nowRef.t,
   });
   const mw = breakerPolicy(breaker);
-  const call = async (doGenerate: () => PromiseLike<ModelGenerateResult>) =>
+  const call = async (
+    doGenerate: () => PromiseLike<ModelGenerateResult>,
+    params: Record<string, unknown> = {},
+  ) =>
     mw.wrapGenerate!({
       doGenerate,
       doStream: () => Promise.resolve({}),
-      params: {},
+      params,
       model: MODEL,
     });
   return {breaker, call};
@@ -127,6 +137,30 @@ describe('CircuitBreaker', () => {
     // Without releasing the slot the circuit would wedge shut forever.
     expect(breaker.state(TARGET)).toBe('half-open');
     await call(succeed);
+    expect(breaker.state(TARGET)).toBe('closed');
+  });
+
+  it('a provider timing out on its own counts against its health', async () => {
+    const now = {t: 0};
+    const {breaker, call} = givenBreaker(now);
+    // A hung provider is THE outage a breaker exists for.
+    const hang = async (): Promise<ModelGenerateResult> => {
+      throw transportTimeout();
+    };
+    for (let i = 0; i < 3; i++) await call(hang).catch(() => {});
+    expect(breaker.state(TARGET)).toBe('open');
+  });
+
+  it("a caller's cancel is neutral, however it is shaped", async () => {
+    const now = {t: 0};
+    const {breaker, call} = givenBreaker(now);
+    const caller = AbortSignal.abort();
+    const hang = async (): Promise<ModelGenerateResult> => {
+      throw transportTimeout();
+    };
+    for (let i = 0; i < 10; i++) {
+      await call(hang, {abortSignal: caller}).catch(() => {});
+    }
     expect(breaker.state(TARGET)).toBe('closed');
   });
 

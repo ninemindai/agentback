@@ -2,7 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {isAbortError, loggers} from '@agentback/common';
+import {loggers} from '@agentback/common';
 import {TokenBudgetExceededError} from './errors.js';
 import {
   modelLabel,
@@ -17,15 +17,16 @@ export interface FallbackOptions {
   models: LanguageModelLike[];
   /**
    * Whether a given failure should fail over. Default: anything that is not a
-   * cancellation, a budget refusal, or a 4xx that is not 408/409/429 — i.e.
-   * "the provider let us down", not "the request was wrong".
+   * budget refusal or a 4xx that is not 408/409/429 — i.e. "the provider let
+   * us down", not "the request was wrong". Never consulted once the caller has
+   * cancelled: that is checked on the call's own signal first.
    */
   shouldFailover?: (err: unknown) => boolean;
 }
 
 function defaultShouldFailover(err: unknown): boolean {
-  // Our own decisions are not provider failures.
-  if (isAbortError(err)) return false;
+  // Our own decisions are not provider failures. (A provider timing out on its
+  // own IS one, so an abort-shaped error with no status falls through.)
   if (err instanceof TokenBudgetExceededError) return false;
   const status =
     (err as {statusCode?: number; status?: number})?.statusCode ??
@@ -58,11 +59,16 @@ export function fallbackPolicy(opts: FallbackOptions): ModelMiddleware {
     primary: () => PromiseLike<T>,
     secondaries: Array<() => PromiseLike<T>>,
     primaryLabel: string,
+    callerSignal: AbortSignal | undefined,
   ): Promise<T> => {
+    // The caller left: asking another provider spends money on an answer
+    // nobody is waiting for. Read off the signal, not the error's shape.
+    const failover = (e: unknown) =>
+      !callerSignal?.aborted && shouldFailover(e);
     try {
       return await primary();
     } catch (err) {
-      if (!shouldFailover(err)) throw err;
+      if (!failover(err)) throw err;
       let lastError = err;
       for (let i = 0; i < secondaries.length; i++) {
         const label = modelLabel(opts.models[i]);
@@ -76,7 +82,7 @@ export function fallbackPolicy(opts: FallbackOptions): ModelMiddleware {
           return await secondaries[i]();
         } catch (nextErr) {
           lastError = nextErr;
-          if (!shouldFailover(nextErr)) throw nextErr;
+          if (!failover(nextErr)) throw nextErr;
         }
       }
       throw lastError;
@@ -96,6 +102,7 @@ export function fallbackPolicy(opts: FallbackOptions): ModelMiddleware {
             ).doGenerate(params),
         ),
         modelLabel(model),
+        params.abortSignal,
       ),
     wrapStream: ({doStream, params, model}) =>
       run(
@@ -109,6 +116,7 @@ export function fallbackPolicy(opts: FallbackOptions): ModelMiddleware {
             ).doStream(params),
         ),
         modelLabel(model),
+        params.abortSignal,
       ),
   };
 }
