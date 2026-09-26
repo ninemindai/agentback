@@ -14,7 +14,10 @@ export type CircuitState = 'closed' | 'open' | 'half-open';
 export interface BreakerOptions {
   /** Consecutive failures that trip the circuit. Default 5. */
   threshold?: number;
-  /** How long to stay open before probing. Default 30_000ms. */
+  /**
+   * How long to stay open before probing, and how long a half-open probe may
+   * run before it is presumed lost. Default 30_000ms.
+   */
   resetAfterMs?: number;
   /** Injectable clock, for deterministic tests. */
   now?: () => number;
@@ -40,7 +43,7 @@ export class CircuitBreaker {
   private readonly now: () => number;
   private readonly circuits = new Map<
     string,
-    {failures: number; openedAt?: number; probing?: boolean}
+    {failures: number; openedAt?: number; probeStartedAt?: number}
   >();
 
   constructor(opts: BreakerOptions = {}) {
@@ -74,8 +77,18 @@ export class CircuitBreaker {
     }
     // Half-open: let exactly ONE probe through. Releasing the whole backlog at
     // once is how a recovering provider gets knocked over a second time.
-    if (c.probing) throw new CircuitOpenError(target, this.resetAfterMs);
-    c.probing = true;
+    // The probe holds a lease, not a flag: a probe whose socket stalls never
+    // settles, and a flag would then wedge the circuit shut forever. One older
+    // than the cooldown is presumed lost, and the next caller probes instead.
+    const now = this.now();
+    if (c.probeStartedAt !== undefined) {
+      const held = now - c.probeStartedAt;
+      if (held < this.resetAfterMs) {
+        throw new CircuitOpenError(target, this.resetAfterMs - held);
+      }
+      log.warn('probe for %s never settled — admitting a new one', target);
+    }
+    c.probeStartedAt = now;
   }
 
   /** Record a successful call — closes the circuit. */
@@ -86,7 +99,7 @@ export class CircuitBreaker {
     }
     c.failures = 0;
     c.openedAt = undefined;
-    c.probing = false;
+    c.probeStartedAt = undefined;
   }
 
   /**
@@ -98,13 +111,13 @@ export class CircuitBreaker {
    * not wedge the circuit shut forever.
    */
   recordNeutral(target: string): void {
-    this.circuitFor(target).probing = false;
+    this.circuitFor(target).probeStartedAt = undefined;
   }
 
   /** Record a failed call; trips the circuit at the threshold. */
   recordFailure(target: string): void {
     const c = this.circuitFor(target);
-    c.probing = false;
+    c.probeStartedAt = undefined;
     c.failures++;
     if (c.failures >= this.threshold && c.openedAt === undefined) {
       c.openedAt = this.now();
