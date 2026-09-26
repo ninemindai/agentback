@@ -12,6 +12,14 @@ import {
 
 const log = loggers('agentback:model-gateway:fallback');
 
+/**
+ * Which secondary served a call, keyed by the result object the fallback
+ * policy returned. The accounting policy reads it so spend is attributed to
+ * the model that sent the bill, not the primary that failed. Absent means the
+ * primary served.
+ */
+export const servingModel = new WeakMap<object, string>();
+
 export interface FallbackOptions {
   /** Models to try, in order, after the primary fails. */
   models: LanguageModelLike[];
@@ -79,7 +87,11 @@ export function fallbackPolicy(opts: FallbackOptions): ModelMiddleware {
           (lastError as Error)?.message ?? lastError,
         );
         try {
-          return await secondaries[i]();
+          const result = await secondaries[i]();
+          if (typeof result === 'object' && result !== null) {
+            servingModel.set(result, label);
+          }
+          return result;
         } catch (nextErr) {
           lastError = nextErr;
           if (!failover(nextErr)) throw nextErr;
