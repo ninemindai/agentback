@@ -211,3 +211,70 @@ describe('OpenAPI 3.2 itemSchema promotion', () => {
     expect(media).not.toHaveProperty('x-itemSchema');
   });
 });
+
+describe('resumable routes', () => {
+  it('rejects resumable without streamOf at decoration time', () => {
+    expect(() => {
+      class C {
+        @get('/bad', {resumable: true})
+        async bad(): Promise<void> {}
+      }
+      void C;
+    }).toThrow(/'resumable' requires 'streamOf'/);
+  });
+
+  it('rejects resumable on the jsonl format at decoration time', () => {
+    expect(() => {
+      class C {
+        @get('/bad', {streamOf: Tick, format: 'jsonl', resumable: true})
+        async *bad(): AsyncGenerator<z.infer<typeof Tick>> {
+          yield {n: 1};
+        }
+      }
+      void C;
+    }).toThrow(/'resumable' requires the 'sse' format/);
+  });
+
+  it.each([0, -1, 1.5, Number.NaN])(
+    'rejects resumable.maxEvents = %s at decoration time',
+    maxEvents => {
+      expect(() => {
+        class C {
+          @get('/bad', {streamOf: Tick, resumable: {maxEvents}})
+          async *bad(): AsyncGenerator<z.infer<typeof Tick>> {
+            yield {n: 1};
+          }
+        }
+        void C;
+      }).toThrow(/'resumable.maxEvents' must be an integer >= 1/);
+    },
+  );
+
+  it.each([0, -5, Number.NaN, Number.POSITIVE_INFINITY])(
+    'rejects resumable.windowMs = %s at decoration time',
+    windowMs => {
+      expect(() => {
+        class C {
+          @get('/bad', {streamOf: Tick, resumable: {windowMs}})
+          async *bad(): AsyncGenerator<z.infer<typeof Tick>> {
+            yield {n: 1};
+          }
+        }
+        void C;
+      }).toThrow(/'resumable.windowMs' must be a finite number > 0/);
+    },
+  );
+
+  it('accepts valid resumable tuning', () => {
+    class C {
+      @get('/ok', {streamOf: Tick, resumable: {windowMs: 1, maxEvents: 1}})
+      async *ok(): AsyncGenerator<z.infer<typeof Tick>> {
+        yield {n: 1};
+      }
+    }
+    expect(lookupRouteSchemas(C.prototype, 'ok')?.resumable).toEqual({
+      windowMs: 1,
+      maxEvents: 1,
+    });
+  });
+});
