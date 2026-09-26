@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-ESM/Zod/MCP fork of LoopBack 4 — a slim modern subset of `@loopback/core` + REST for building HTTP and MCP services out of the same DI container. ESM-only, Node 22.18+, TypeScript 7.0, pnpm 11 workspaces. Alpha (v0.9.0 — all `@agentback/*` packages + the `create-agentback` scaffolder); API still settling. Scaffold a new app with `npm create agentback my-service [--template rest|mcp|hybrid]`.
+ESM/Zod/MCP fork of LoopBack 4 — a slim modern subset of `@loopback/core` + REST for building HTTP and MCP services out of the same DI container. ESM-only, Node 22.18+, TypeScript 7.0, pnpm 12 workspaces. Alpha (v0.9.0 — all `@agentback/*` packages + the `create-agentback` scaffolder); API still settling. Scaffold a new app with `npm create agentback my-service [--template rest|mcp|hybrid]`.
 
 For the framework's design thesis (boundary coherence between Zod, OpenAPI, MCP, and DI — and why that matters for AI-led development), see [docs/agent-ergonomics.md](docs/agent-ergonomics.md). Read it before adding a feature that might introduce a second source of truth alongside the Zod schemas.
 
@@ -212,11 +212,13 @@ Exceptions to "latest", and why:
 
 When `ncu` produces a result that won't build, prefer pinning back the offender (with a one-line reason in the commit message) over patching code, unless the upgrade was the goal.
 
-### pnpm 11 quirks worth knowing
+### pnpm 12 quirks worth knowing
 
-- **Supply-chain age policy**: pnpm 11 rejects lockfile entries published within a recent window (currently ~24h). If install fails with `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`, pin the offending dep one patch/minor older. When you deliberately want a just-published version, `pnpm add` appends it (and every optional platform binary it pulls in) to `minimumReleaseAgeExclude` in `pnpm-workspace.yaml` — commit those entries, or CI's `pnpm install --frozen-lockfile` will trip the same check. They become no-ops once the version ages past the window.
-- **`pnpm-workspace.yaml` `allowBuilds`**: pnpm 11 requires per-package opt-in for postinstall scripts. The first install on a fresh machine writes `allowBuilds: { '<pkg>': set this to true or false }` placeholders into `pnpm-workspace.yaml`; replace `set this to ...` with `true` or `false` and rerun. Don't commit placeholders.
-- **`verify-deps-before-run=false`** is set in `.npmrc` — pnpm 11 otherwise re-runs `pnpm install` before each `pnpm <script>`, which fails on the supply-chain check inside scripts that don't need re-resolution.
+- **Supply-chain age policy**: pnpm (11+) rejects lockfile entries published within a recent window (currently ~24h). If install fails with `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`, pin the offending dep one patch/minor older. When you deliberately want a just-published version, `pnpm add` appends it (and every optional platform binary it pulls in) to `minimumReleaseAgeExclude` in `pnpm-workspace.yaml` — commit those entries, or CI's `pnpm install --frozen-lockfile` will trip the same check. They become no-ops once the version ages past the window.
+- **`pnpm-workspace.yaml` `allowBuilds`**: pnpm (11+) requires per-package opt-in for postinstall scripts. The first install on a fresh machine writes `allowBuilds: { '<pkg>': set this to true or false }` placeholders into `pnpm-workspace.yaml`; replace `set this to ...` with `true` or `false` and rerun. Don't commit placeholders.
+- **pnpm does not read its settings from `.npmrc`.** The `verify-deps-before-run=false` and `minimum-release-age=0` lines there are inert (`pnpm config get verifyDepsBeforeRun` / `minimumReleaseAge` print `undefined`): scripts run without a pre-run install because that is pnpm's default, and the 24h age policy above **is** enforced. A pnpm setting belongs in `pnpm-workspace.yaml` — where, since pnpm 12, an unrecognized key fails the command (`ERR_PNPM_UNRECOGNIZED_WORKSPACE_SETTINGS`).
+- **The `console` ↔ `console-agents`/`console-chat` cycle is deliberate**, and since pnpm 11.27 a cycle is a hard `ERR_PNPM_TASK_CYCLE` for a sorted `pnpm -r run`. The root `build`/`typecheck:client` pass `--no-sort` (their bundles do not depend on order); keep it on any new recursive run over those packages rather than setting `ignoreWorkspaceCycles`, which would also hide an accidental cycle.
+- **pnpm 12 pins itself in the lockfile** (a leading `packageManagerDependencies` document with integrity hashes for `pnpm`/`@pnpm/exe`), so bumping `packageManager` changes `pnpm-lock.yaml` too.
 
 ## Documentation surfaces (keep in sync with features)
 
@@ -288,7 +290,7 @@ The project is MIT-licensed (root `LICENSE`, `Copyright (c) NineMind, Inc.`). Ev
 
 ## CI
 
-`.github/workflows/ci.yml` runs, on Node 22.18, 24 and 26 (the `engines` floor; pnpm 11 itself needs ≥ 22.13): `pnpm install --frozen-lockfile` → **`pnpm konsistent`** (structural conventions, fails in seconds) → `pnpm build` → **`pnpm typecheck:client`** → `pnpm test`, plus a separate **validate-templates** job (`pnpm build` → `node scripts/validate-templates.mjs`). The lockfile must be committed in sync with `package.json` changes or CI fails at install.
+`.github/workflows/ci.yml` runs, on Node 22.18, 24 and 26 (the `engines` floor; pnpm 12 itself needs ≥ 18): `pnpm install --frozen-lockfile` → **`pnpm konsistent`** (structural conventions, fails in seconds) → `pnpm build` → **`pnpm typecheck:client`** → `pnpm test`, plus a separate **validate-templates** job (`pnpm build` → `node scripts/validate-templates.mjs`). The lockfile must be committed in sync with `package.json` changes or CI fails at install.
 
 **Run `pnpm verify` before pushing — it mirrors CI** (konsistent + build + typecheck:client + test + validate-templates + build:site). `pnpm build`/`pnpm test` alone are **not** sufficient: esbuild bundles the client `.tsx` without type-checking and vitest runs only the server `dist/`, so neither catches client-bundle type errors. The CI-only `typecheck:client` step (`tsc -p tsconfig.client.json --noEmit` per UI package) is the one that does — e.g. a client file importing from `src/lib`/`src/model.ts` must be inside that package's `tsconfig.client.json` `include`.
 
