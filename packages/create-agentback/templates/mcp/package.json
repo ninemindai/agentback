@@ -19,12 +19,12 @@
   },
   "devDependencies": {
     "@agentback/testing": "{{version}}",
-    "@types/node": "^24.0.0",
+    "@types/node": "~22.18.13",
     "typescript": "^5.9.0",
     "vitest": "^4.1.0"
   },
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.18"
   },
   "homepage": "https://agentback.dev",
   "bugs": "https://github.com/ninemindai/agentback/issues"

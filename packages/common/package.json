@@ -33,7 +33,7 @@
     "esbuild": "~0.28.1"
   },
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.18"
   },
   "license": "MIT",
   "repository": {

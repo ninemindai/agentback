@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-ESM/Zod/MCP fork of LoopBack 4 — a slim modern subset of `@loopback/core` + REST for building HTTP and MCP services out of the same DI container. ESM-only, Node 22.13+, TypeScript 7.0, pnpm 11 workspaces. Alpha (v0.9.0 — all `@agentback/*` packages + the `create-agentback` scaffolder); API still settling. Scaffold a new app with `npm create agentback my-service [--template rest|mcp|hybrid]`.
+ESM/Zod/MCP fork of LoopBack 4 — a slim modern subset of `@loopback/core` + REST for building HTTP and MCP services out of the same DI container. ESM-only, Node 22.18+, TypeScript 7.0, pnpm 11 workspaces. Alpha (v0.9.0 — all `@agentback/*` packages + the `create-agentback` scaffolder); API still settling. Scaffold a new app with `npm create agentback my-service [--template rest|mcp|hybrid]`.
 
 For the framework's design thesis (boundary coherence between Zod, OpenAPI, MCP, and DI — and why that matters for AI-led development), see [docs/agent-ergonomics.md](docs/agent-ergonomics.md). Read it before adding a feature that might introduce a second source of truth alongside the Zod schemas.
 
@@ -183,7 +183,7 @@ MCP HTTP transport **is** implemented — `@agentback/mcp` runs stdio by default
 
 ## Deps and versioning
 
-Default policy: **bump everything to the latest** with `ncu -ws --root -u` (monorepo-aware), then `pnpm install` from a clean `pnpm-lock.yaml` and verify `pnpm build && pnpm test` pass.
+Default policy: **bump everything to the latest** with `ncu --workspaces --root -u --reject '@types/node,mcp-client-1-*'` (monorepo-aware), then `pnpm install` from a clean `pnpm-lock.yaml` and verify `pnpm build && pnpm test` pass.
 
 Exceptions to "latest", and why:
 
@@ -195,7 +195,9 @@ Exceptions to "latest", and why:
   - **Token verifiers must throw the v2 `OAuthError`** (`new OAuthError(OAuthErrorCode.InvalidToken, …)`). `requireBearerAuth` classifies by that class — a legacy error class or a plain `Error` falls through as unexpected and turns an invalid token into an HTTP **500** instead of a 401.
   - **v2 still speaks the 2025 protocol era by default.** Nothing here puts a `2026-07-28` byte on the wire; adopting that revision (stateless core, `createMcpHandler`, MRTR/`requestState`) is a separate, opt-in change.
   - `@modelcontextprotocol/ext-apps` (the MCP Apps widget bridge used by `examples/hello-mcp-apps`) still peer-deps **v1** `@modelcontextprotocol/sdk`, which pnpm auto-installs into that subtree. That is the one remaining v1 copy in the tree and it is isolated to the widget example.
-- **`@types/node`** — pinned to the latest **even** major (Node LTS line). `ncu` will pick odd majors like 25; reset to `^24.x` (or the next even after 24) by hand after running it.
+- **Spell out `--workspaces`; never write `-ws`.** Older ncu read `-ws` as `--workspaces`; ncu 23 parses it as `-w -s`, and `-s` is `--silent` — the command exits 0, prints nothing, and upgrades nothing, which looks exactly like "already up to date". A real run prints a `Checking …` line per workspace package.
+- **`@types/node`** — pinned with `~` to the **minimum Node version in `engines`** (`>=22.18` → `~22.18.x`), in the root `package.json` and the `create-agentback` templates. Types newer than the floor let code compile against APIs a supported Node lacks; a caret would float to later 22.x minors and reopen that gap. Excluded from `ncu` (`--reject`); move it only together with the `engines` floor.
+- **`mcp-client-1-11`/`-1-17`/`-1-29`** (`packages/mcp-http` devDeps) are aliases to exact **old** `@modelcontextprotocol/sdk` 1.x releases — the back-compat matrix for 2025-era clients. Never bump them; `ncu` would collapse all three onto the newest 1.x and silently delete the coverage.
 - **TypeScript is installed side-by-side: TS 7 for the `tsc` CLI, TS 6 as the `typescript` module.** TS 7 is the native Go compiler and **no longer ships the JS compiler API** — its `exports['.']` resolves to `lib/version.cjs`, so `require('typescript')` yields only `{version, versionMajorMinor}` (no `createProgram`, no `tsserver.js`). Tools that consume the API programmatically — `@typescript-eslint` (reads `ts.ModuleKind` at module load), editor language services — break against it, and every `@typescript-eslint` release through `8.63.0` still caps at `peer typescript: >=4.8.4 <6.1.0`. Per Microsoft's [side-by-side guidance](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/), the two `devDependencies` are:
   ```json
   "typescript": "npm:@typescript/typescript6@^6.0.2",   // the module tools import + its tsc6 bin
@@ -282,7 +284,7 @@ The project is MIT-licensed (root `LICENSE`, `Copyright (c) NineMind, Inc.`). Ev
 
 ## CI
 
-`.github/workflows/ci.yml` runs, on Node 22.13 and 24 (pnpm 11 requires Node ≥ 22.13): `pnpm install --frozen-lockfile` → **`pnpm konsistent`** (structural conventions, fails in seconds) → `pnpm build` → **`pnpm typecheck:client`** → `pnpm test`, plus a separate **validate-templates** job (`pnpm build` → `node scripts/validate-templates.mjs`). The lockfile must be committed in sync with `package.json` changes or CI fails at install.
+`.github/workflows/ci.yml` runs, on Node 22.18, 24 and 26 (the `engines` floor; pnpm 11 itself needs ≥ 22.13): `pnpm install --frozen-lockfile` → **`pnpm konsistent`** (structural conventions, fails in seconds) → `pnpm build` → **`pnpm typecheck:client`** → `pnpm test`, plus a separate **validate-templates** job (`pnpm build` → `node scripts/validate-templates.mjs`). The lockfile must be committed in sync with `package.json` changes or CI fails at install.
 
 **Run `pnpm verify` before pushing — it mirrors CI** (konsistent + build + typecheck:client + test + validate-templates + build:site). `pnpm build`/`pnpm test` alone are **not** sufficient: esbuild bundles the client `.tsx` without type-checking and vitest runs only the server `dist/`, so neither catches client-bundle type errors. The CI-only `typecheck:client` step (`tsc -p tsconfig.client.json --noEmit` per UI package) is the one that does — e.g. a client file importing from `src/lib`/`src/model.ts` must be inside that package's `tsconfig.client.json` `include`.
 

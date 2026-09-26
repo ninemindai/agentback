@@ -4,7 +4,7 @@ Tiny, schema-typed HTTP client for any AgentBack server. No codegen,
 no spec round-trip — server and client import the **same Zod schemas** and
 the schema _is_ the contract.
 
-- ESM-only, Node 22.13+
+- ESM-only, Node 22.18+
 - Zero runtime deps (peer-dep: `zod ^4`)
 - Native `fetch` (no axios, no node-fetch shim)
 - Browser-safe — no `@agentback/openapi` runtime, no decorators

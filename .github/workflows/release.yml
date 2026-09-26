@@ -49,7 +49,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: '22.13'
+          node-version: '22.18'
           cache: pnpm
           registry-url: https://registry.npmjs.org
 

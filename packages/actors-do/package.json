@@ -30,7 +30,7 @@
     "zod": "^4.4.3"
   },
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.18"
   },
   "license": "MIT",
   "repository": {

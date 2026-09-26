@@ -38,7 +38,7 @@
     }
   },
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.18"
   },
   "devDependencies": {
     "@agentback/authorization": "workspace:~",

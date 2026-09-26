@@ -5,7 +5,7 @@
   "description": "AI-native API/MCP framework for the agent era, built with agents, for agents",
   "type": "module",
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.18"
   },
   "packageManager": "pnpm@11.10.0",
   "scripts": {
@@ -28,7 +28,7 @@
     ]
   },
   "devDependencies": {
-    "@types/node": "^24.13.3",
+    "@types/node": "~22.18.13",
     "@typescript-eslint/eslint-plugin": "~8.63.0",
     "@typescript-eslint/parser": "~8.63.0",
     "eslint": "~10.6.0",

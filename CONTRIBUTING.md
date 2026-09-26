@@ -5,7 +5,7 @@ this document keeps contributions cheap to review and safe to land.
 
 ## Setup
 
-Requirements: **Node 22.13+** and **pnpm 11**.
+Requirements: **Node 22.18+** and **pnpm 11**.
 
 ```bash
 pnpm install          # workspace deps (pnpm 11 may ask you to approve postinstall builds)
@@ -101,6 +101,6 @@ in the commit) over patching code. Commit `pnpm-lock.yaml` together with any
 ## CI
 
 `.github/workflows/ci.yml` runs `pnpm install --frozen-lockfile && pnpm
-build && pnpm test` on Node 22.13 and 24. Green CI, lint-clean, and an
+build && pnpm test` on Node 22.18, 24 and 26. Green CI, lint-clean, and an
 updated example or guide (when behavior is user-visible) are the bar for
 merging.
