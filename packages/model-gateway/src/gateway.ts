@@ -9,6 +9,37 @@ import {fallbackPolicy, type FallbackOptions} from './fallback.js';
 import {retryPolicy, type RetryOptions} from './retry.js';
 import type {LanguageModelLike, ModelMiddleware} from './types.js';
 
+/**
+ * The gateway owns retrying. The AI SDK sits ABOVE a wrapped model and runs
+ * its own retry (`maxRetries`, default 2) on any error marked
+ * `isRetryable: true` — so without this, one outage runs the gateway's whole
+ * attempt budget once per SDK retry, on the SDK's un-jittered schedule, and
+ * bills each run. Whatever the gateway finally throws has already been
+ * retried (or deliberately not), so it is marked final. The error object is
+ * kept, not wrapped, so callers can still inspect it as the provider's own.
+ */
+function ownRetriesPolicy(): ModelMiddleware {
+  const final = async <T>(call: () => PromiseLike<T>): Promise<T> => {
+    try {
+      return await call();
+    } catch (err) {
+      if ((err as {isRetryable?: unknown} | null)?.isRetryable === true) {
+        Object.defineProperty(err, 'isRetryable', {
+          value: false,
+          writable: true,
+          configurable: true,
+          enumerable: true,
+        });
+      }
+      throw err;
+    }
+  };
+  return {
+    wrapGenerate: ({doGenerate}) => final(doGenerate),
+    wrapStream: ({doStream}) => final(doStream),
+  };
+}
+
 export interface GatewayOptions {
   /** Token accounting + budget enforcement. Pass a `Meter` to emit events. */
   accounting?: {meter?: Meter; operation?: string} | false;
@@ -37,6 +68,11 @@ export interface GatewayOptions {
  *         provider
  * ```
  *
+ * When retry is on, one more layer sits outside all of them and marks the
+ * final error non-retryable, so the AI SDK's own retry does not run the stack
+ * again (see {@link ownRetriesPolicy}). It is outermost so it also covers an
+ * error that surfaced from a fallback secondary.
+ *
  * `wrapLanguageModel` applies the first middleware as the outermost wrapper,
  * so this array is already in the right order for it.
  */
@@ -45,6 +81,7 @@ export function gatewayMiddleware(
 ): ModelMiddleware[] {
   const stack: ModelMiddleware[] = [];
 
+  if (opts.retry !== false) stack.push(ownRetriesPolicy());
   if (opts.accounting !== false) {
     stack.push(accountingPolicy(opts.accounting ?? {}));
   }
