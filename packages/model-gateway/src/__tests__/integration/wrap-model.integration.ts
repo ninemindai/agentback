@@ -9,7 +9,7 @@
 // no network.
 
 import {describe, expect, it} from 'vitest';
-import {generateText, streamText, ToolLoopAgent} from 'ai';
+import {APICallError, generateText, streamText, ToolLoopAgent} from 'ai';
 import {MockLanguageModelV4} from 'ai/test';
 import {InMemoryUsageSink, Meter} from '@agentback/metering';
 import {CircuitBreaker} from '../../breaker.js';
@@ -103,6 +103,38 @@ describe('wrapModel (real AI SDK)', () => {
     // Accounting sits OUTSIDE retry, so one logical call bills once.
     expect(sink.all()).toHaveLength(1);
     expect(sink.all()[0].units).toBe(50);
+  });
+
+  it('the AI SDK does not re-retry what the gateway already retried', async () => {
+    const sink = new InMemoryUsageSink();
+    let calls = 0;
+    const overloaded = new MockLanguageModelV4({
+      doGenerate: async () => {
+        calls++;
+        // The real shape: the SDK re-retries any APICallError marked
+        // retryable, which is exactly what a provider 503 is.
+        throw new APICallError({
+          message: 'Service Unavailable',
+          url: 'https://provider.test/v1',
+          requestBodyValues: {},
+          statusCode: 503,
+          isRetryable: true,
+        });
+      },
+    });
+    const model = await wrapModel(overloaded, {
+      accounting: {meter: new Meter(sink)},
+      retry: {sleep: async () => {}},
+    });
+    // Default `maxRetries`: the path every caller takes unless told otherwise.
+    const err = await generateText({model, prompt: 'hi'}).catch(e => e);
+    // Three attempts, not nine: a sick provider must not see the gateway's
+    // retries multiplied by the SDK's.
+    expect(calls).toBe(3);
+    expect(sink.all()).toHaveLength(1);
+    // Still the provider's own error, so callers can inspect it.
+    expect(APICallError.isInstance(err)).toBe(true);
+    expect(err.statusCode).toBe(503);
   });
 
   it('falls over to a second provider when the first is down', async () => {
