@@ -90,16 +90,8 @@ export function mapEnqueueOptions(opts: EnqueueOptions): JobsOptions {
   if (opts.removeOnFail !== undefined) {
     out.removeOnFail = mapKeep(opts.removeOnFail);
   }
-  if (opts.repeat) {
-    // Legacy BullMQ repeat. Prefer BullMQScheduler (job schedulers) for
-    // cron/interval work — it is keyed and upsertable.
-    out.repeat = {
-      pattern: opts.repeat.cron,
-      every: opts.repeat.everyMs,
-      limit: opts.repeat.limit,
-      key: opts.repeat.key,
-    };
-  }
+  // `opts.repeat` is not a JobsOptions field since BullMQ 6 removed legacy
+  // repeatable jobs; `enqueue` turns it into a job scheduler instead.
   return out;
 }
 
@@ -176,6 +168,24 @@ export class BullMQJobQueue implements JobQueue {
   ): Promise<JobRef> {
     // Producer-side validation: decode failures never reach Redis.
     const parsed = q.schema.parse(data);
+    if (opts.repeat) {
+      // BullMQ 6 removed legacy repeatable jobs: a repeat becomes a job
+      // scheduler, keyed so re-enqueueing the same key updates it in place.
+      const {cron, everyMs, limit, key} = opts.repeat;
+      const schedulerId = key ?? opts.jobId ?? `${q.name}:${cron ?? everyMs}`;
+      const {jobId: _jobId, delay, ...template} = mapEnqueueOptions(opts);
+      const job = await this.queueFor(q.name).upsertJobScheduler(
+        schedulerId,
+        {
+          pattern: cron,
+          every: everyMs,
+          limit,
+          startDate: delay !== undefined ? Date.now() + delay : undefined,
+        },
+        {name: q.name, data: wrapJobData(parsed, opts.meta), opts: template},
+      );
+      return {id: job?.id ?? `scheduler:${schedulerId}`, queue: q.name};
+    }
     const job = await this.queueFor(q.name).add(
       q.name,
       wrapJobData(parsed, opts.meta),

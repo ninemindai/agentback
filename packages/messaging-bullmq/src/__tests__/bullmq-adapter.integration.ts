@@ -185,6 +185,31 @@ describe.skipIf(!REDIS_URL)('BullMQ adapter specifics (Redis)', () => {
     await sub.close();
   });
 
+  it('enqueue with repeat recurs via a job scheduler, upserted by key', async () => {
+    const q = makeQueue();
+    const Q = defineQueue('repeat.jobs', z.object({tag: z.string()}));
+    const seen: Array<{tag: string; trace?: string}> = [];
+    const sub = q.process(Q, async job => {
+      seen.push({tag: job.data.tag, trace: job.meta.traceparent});
+    });
+
+    await q.enqueue(
+      Q,
+      {tag: 'a'},
+      {repeat: {everyMs: 200, key: 'rk'}, meta: {traceparent: 't1'}},
+    );
+    await waitFor(() => expect(seen.length).toBeGreaterThanOrEqual(2));
+    expect(seen[0]).toEqual({tag: 'a', trace: 't1'});
+
+    // Same key: updated in place, not a second recurring series.
+    await q.enqueue(Q, {tag: 'b'}, {repeat: {everyMs: 200, key: 'rk'}});
+    await waitFor(() => expect(seen.map(s => s.tag)).toContain('b'));
+    expect(await q.queueFor(Q.name).getJobSchedulers()).toHaveLength(1);
+
+    expect(await q.queueFor(Q.name).removeJobScheduler('rk')).toBe(true);
+    await sub.close();
+  });
+
   it('admin: stats reflect waiting/delayed; pause/resume gate work', async () => {
     const q = makeQueue();
     const admin = new BullMQQueueAdmin(q);
