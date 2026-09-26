@@ -33,14 +33,14 @@ that unit's context. Because DI resolution walks the context chain, anything
 nested inside — a service, a projected tool, an agent turn — reaches the same
 signal with no plumbing.
 
-| Unit of work                  | Bound by                     | Fires when                                             |
-| ----------------------------- | ---------------------------- | ------------------------------------------------------ |
-| REST request (Express)        | `RestServer.invokeRoute`     | the client hangs up                                    |
-| REST request (fetch/edge/web) | `RestHandler.run`            | the host aborts `Request.signal`                       |
-| MCP tool call                 | `MCPServer.requestContextFor`| `notifications/cancelled`, or the connection drops      |
-| Programmatic `callTool`       | the `{signal}` call option   | whatever the caller decides                            |
-| Queue job attempt             | `JobContext.signal`          | `timeoutMs` elapses, or `cancel()` reaches this process |
-| Agent turn                    | `AgentTurnOptions.abortSignal` | the ambient signal above, or an explicit one         |
+| Unit of work                  | Bound by                       | Fires when                                              |
+| ----------------------------- | ------------------------------ | ------------------------------------------------------- |
+| REST request (Express)        | `RestServer.invokeRoute`       | the client hangs up                                     |
+| REST request (fetch/edge/web) | `RestHandler.run`              | the host aborts `Request.signal`                        |
+| MCP tool call                 | `MCPServer.requestContextFor`  | `notifications/cancelled`, or the connection drops      |
+| Programmatic `callTool`       | the `{signal}` call option     | whatever the caller decides                             |
+| Queue job attempt             | `JobContext.signal`            | `timeoutMs` elapses, or `cancel()` reaches this process |
+| Agent turn                    | `AgentTurnOptions.abortSignal` | the ambient signal above, or an explicit one            |
 
 The reason is always a `DOMException` named `AbortError` carrying one of
 `AbortReasons` (`@agentback/common`), so `fetch` and the AI SDK rethrow it
@@ -78,7 +78,7 @@ queue.process(
 );
 ```
 
-An agent job has no natural end. A retry cap counts *attempts*, and a run
+An agent job has no natural end. A retry cap counts _attempts_, and a run
 stalled **inside** an attempt — a provider holding a socket, a tool waiting on
 a connection — stops counting while it keeps billing. `timeoutMs` is the
 backstop, and it has three deliberate properties:
@@ -93,7 +93,7 @@ backstop, and it has three deliberate properties:
   `attempts: 3`. Redelivering it re-runs work someone asked to stop, and on a
   deadline it buys the same hang on the next worker, and the one after that.
   On BullMQ this is enforced with `UnrecoverableError`, because with late acks a
-  plain throw *is* redelivered.
+  plain throw _is_ redelivered.
 - **Opt-in.** There is no default. An unbounded handler keeps working exactly
   as before; set a budget on any queue whose handler calls a model or a
   third-party API.

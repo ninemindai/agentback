@@ -42,7 +42,7 @@ Read top-to-bottom the first time; jump around afterwards.
 | [Dependency injection](concepts/dependency-injection.md)                    | `Context`, `Binding`, scopes, `@inject`, providers, tag-based discovery — the foundation everything sits on.                                     |
 | [Schema-first decorators](concepts/schema-first-decorators.md)              | How one Zod schema on a decorator becomes validator + type + OpenAPI + MCP contract; the slot-0 input bundle; runtime + compile-time guarantees. |
 | [The error contract](concepts/errors.md)                                    | One machine-actionable envelope (`code`/`issues`/`schema`/`retryable`/`hint`) on REST, MCP, streams, and the CLI; `AgentError` vs 500 redaction. |
-| [Cancellation and deadlines](concepts/cancellation.md)                      | One `CoreBindings.ABORT_SIGNAL` seam across REST, MCP, jobs and agent turns; job `timeoutMs`; why an abandoned attempt is never retried.          |
+| [Cancellation and deadlines](concepts/cancellation.md)                      | One `CoreBindings.ABORT_SIGNAL` seam across REST, MCP, jobs and agent turns; job `timeoutMs`; why an abandoned attempt is never retried.         |
 | [Components, servers & lifecycle](concepts/components-servers-lifecycle.md) | How a `Component` packages bindings, how a `Server` is discovered and started, and the start/stop lifecycle.                                     |
 
 ### Guides — _build something_
