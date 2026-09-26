@@ -142,6 +142,16 @@ export interface RestServerConfig {
      */
     pingMs?: number;
   };
+  /** `resumable:` stream routes (see `RouteOptions.resumable`). */
+  resumable?: {
+    /**
+     * Server-wide cap on live resumable streams — each one a producer that
+     * may keep running for its window after the client leaves. Past it, a
+     * NEW stream is refused with 503 + `Retry-After` before the handler runs;
+     * a resume of a live stream is never refused by the cap. Default 1000.
+     */
+    maxLiveStreams?: number;
+  };
 }
 
 export const DEFAULT_REST_CONFIG: Required<
@@ -150,6 +160,7 @@ export const DEFAULT_REST_CONFIG: Required<
     | 'openApiSpec'
     | 'cors'
     | 'sse'
+    | 'resumable'
     | 'ax'
     | 'bodyParser'
     | 'dispatch'
@@ -159,6 +170,7 @@ export const DEFAULT_REST_CONFIG: Required<
   openApiSpec: NonNullable<RestServerConfig['openApiSpec']>;
   cors: RestServerConfig['cors'];
   sse?: RestServerConfig['sse'];
+  resumable?: RestServerConfig['resumable'];
   ax?: RestServerConfig['ax'];
   bodyParser?: RestServerConfig['bodyParser'];
 } = {

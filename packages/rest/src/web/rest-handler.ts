@@ -69,8 +69,13 @@ import {
 } from '../stream-framers.js';
 import {
   ResumableStreamRegistry,
-  parseEventId,
+  Resumption,
+  STREAMS_FULL_RETRY_AFTER_S,
+  resumableOptions,
+  resumeRefused,
+  streamsFull,
   type ResumableOptions,
+  type StreamScope,
   type StreamSink,
 } from '../resumable-streams.js';
 
@@ -78,8 +83,11 @@ const STREAM_ENCODER = new TextEncoder();
 
 const log = loggers('agentback:rest:web-handler');
 
-/** Returned by `invoke` when the request re-attached to a running stream. */
-const RESUMED = Symbol('agentback.resumedStream');
+/**
+ * Live-stream slots claimed at the resume gate, released when the request
+ * settles — by which point the stream exists or the request failed.
+ */
+const slotReleases = new WeakMap<Request, () => void>();
 
 /** Adapt a Web stream controller to the transport-neutral sink. */
 function webSink(
@@ -96,13 +104,6 @@ function webSink(
       controller.close();
     },
   };
-}
-
-/** Normalize the `resumable:` option to its tuning record. */
-function resumableOptions(
-  value: boolean | ResumableOptions | undefined,
-): ResumableOptions {
-  return typeof value === 'object' ? value : {};
 }
 
 /**
@@ -168,6 +169,8 @@ export class RestHandler {
       return await this.run(match, req);
     } catch (err) {
       return this.toErrorResponse(err);
+    } finally {
+      slotReleases.get(req)?.();
     }
   };
 
@@ -217,10 +220,8 @@ export class RestHandler {
     // Web Request and a shared `responseHeaders` collector, so a hook bound
     // under REST_DISPATCH_HOOK_TAG fires identically on both surfaces.
     const responseHeaders = new Headers();
-    /** Set by the resume gate inside `invoke`; consumed after the hook chain. */
-    let resumedResponse: Response | undefined;
-    /** Principal that owns a freshly created stream (set once auth has run). */
-    let resumeOwner: string | undefined;
+    /** Route + principal that own a freshly created stream (set after auth). */
+    let resumeScope: StreamScope | undefined;
     const hooks = await this.resolveDispatchHooks();
     const info: RestDispatchInfo = {
       request: req,
@@ -250,9 +251,22 @@ export class RestHandler {
       // principal is known, and before the handler runs, because re-invoking
       // it is the duplicate agent turn `resumable:` exists to prevent.
       if (schemas.streamOf && schemas.resumable) {
-        resumeOwner = auth.user?.[securityId];
-        resumedResponse = this.tryResumeStream(req, auth.user);
-        if (resumedResponse) return RESUMED;
+        resumeScope = {ctor, methodName, owner: auth.user?.[securityId]};
+        const resumption = this.resumableStreams.resume(
+          req.headers.get('last-event-id'),
+          resumeScope,
+        );
+        if (resumption) return resumption;
+        // Only a NEW stream counts against the cap; a resume never does.
+        const release = this.resumableStreams.reserve();
+        if (!release) {
+          responseHeaders.set(
+            'retry-after',
+            String(STREAMS_FULL_RETRY_AFTER_S),
+          );
+          throw streamsFull();
+        }
+        slotReleases.set(req, release);
       }
 
       // Read the Web body ONCE up front when the route declares a body schema
@@ -350,10 +364,11 @@ export class RestHandler {
       return mergeHeaders(this.toErrorResponse(err), responseHeaders);
     }
 
-    // A resumed stream re-attached to an already-running producer; the
-    // handler was deliberately not invoked and the Response is already built.
-    if (result === RESUMED && resumedResponse) {
-      return mergeHeaders(resumedResponse, responseHeaders);
+    // The request rejoins an already-running producer; the handler was
+    // deliberately not invoked. Attached only now, after the hook chain, so a
+    // hook that throws cannot orphan an attached sink.
+    if (result instanceof Resumption) {
+      return mergeHeaders(this.toResumedResponse(req, result), responseHeaders);
     }
 
     if (schemas.streamOf) {
@@ -372,8 +387,9 @@ export class RestHandler {
           schemas.resumable
             ? {
                 options: resumableOptions(schemas.resumable),
-                owner: resumeOwner,
+                scope: resumeScope!,
                 abort: resumableAbort,
+                connection: req.signal,
               }
             : undefined,
         ),
@@ -522,42 +538,26 @@ export class RestHandler {
    * keep-alive, not content parity.
    */
   /**
-   * Re-attach to an already-running `resumable:` stream named by the request's
-   * `Last-Event-ID`, replaying what was missed. The Web mirror of
-   * {@link RestServer.tryResumeStream}; returns undefined when there is
-   * nothing to resume, so the caller starts a fresh stream.
+   * Re-attach to the already-running `resumable:` stream the request's
+   * `Last-Event-ID` named, replaying what was missed. The Web mirror of
+   * {@link RestServer.sendResumedStream}: satisfiability is re-checked here
+   * because the ring kept trimming while the hooks finished, and a position
+   * that is gone gets the gate's 409 rather than a silent restart.
    */
-  private tryResumeStream(
+  private toResumedResponse(
     req: Request,
-    user: UserProfile | undefined,
-  ): Response | undefined {
-    const parsed = parseEventId(req.headers.get('last-event-id') ?? undefined);
-    if (!parsed) return undefined;
-    const stream = this.resumableStreams.resume(
-      parsed.streamId,
-      user?.[securityId],
-    );
-    if (!stream) return undefined;
-
+    {stream, afterSeq}: Resumption,
+  ): Response {
+    if (!stream.canResume(afterSeq)) {
+      return this.toErrorResponse(resumeRefused());
+    }
+    let sink: StreamSink;
     const body = new ReadableStream<Uint8Array>({
       start: controller => {
-        const sink = webSink(controller);
-        if (!stream.attach(sink, parsed.seq)) {
-          // An unsatisfiable resume is reported, never papered over with a
-          // silent restart that would leave a hole in the client's stream.
-          sink.write(
-            SSE_FRAMER.error({
-              statusCode: 409,
-              code: ErrorCodes.INTERNAL_ERROR,
-              message:
-                'Cannot resume: the requested position has been discarded. ' +
-                'Start a new stream.',
-            }),
-          );
-          sink.close();
-        }
+        sink = webSink(controller);
+        stream.attach(sink, req.signal, afterSeq);
       },
-      cancel: () => stream.detach(),
+      cancel: () => stream.detach(sink),
     });
     return new Response(body, {status: 200, headers: SSE_FRAMER.headers});
   }
@@ -570,8 +570,10 @@ export class RestHandler {
     format: 'sse' | 'jsonl',
     resumable?: {
       options: ResumableOptions;
-      owner: string | undefined;
+      scope: StreamScope;
       abort: AbortController | undefined;
+      /** The request's liveness — when the stream's window starts. */
+      connection: AbortSignal;
     },
   ): Response {
     const framer: StreamFramer = format === 'jsonl' ? JSONL_FRAMER : SSE_FRAMER;
@@ -582,17 +584,21 @@ export class RestHandler {
         iterator,
         itemSchema,
         framer,
-        resumable.owner,
+        resumable.scope,
         resumable.abort,
         resumable.options,
       );
+      let sink: StreamSink;
       const body = new ReadableStream<Uint8Array>({
         start: controller => {
-          stream.attach(webSink(controller));
+          sink = webSink(controller);
+          // The request signal covers a client that left before the first
+          // item: the host never reads this body, so `cancel` never fires.
+          stream.attach(sink, resumable.connection);
           // Not awaited: the producer outlives this response by design.
           void stream.pump(first);
         },
-        cancel: () => stream.detach(),
+        cancel: () => stream.detach(sink),
       });
       return new Response(body, {status, headers: framer.headers});
     }
