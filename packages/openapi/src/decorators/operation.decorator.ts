@@ -182,6 +182,28 @@ function makeVerbDecorator(verb: string) {
               `'resumable' requires the 'sse' format — jsonl has no frame id.`,
           );
         }
+        // A bad ring size or window would otherwise surface as a crash inside
+        // the detached pump, or as a window that closes after ~1ms.
+        const {maxEvents, windowMs} =
+          typeof opts.resumable === 'object' ? opts.resumable : {};
+        if (
+          maxEvents !== undefined &&
+          !(Number.isInteger(maxEvents) && maxEvents >= 1)
+        ) {
+          throw new Error(
+            `@${verb}('${path}') on ${className}.${String(methodName)}: ` +
+              `'resumable.maxEvents' must be an integer >= 1.`,
+          );
+        }
+        if (
+          windowMs !== undefined &&
+          !(Number.isFinite(windowMs) && windowMs > 0)
+        ) {
+          throw new Error(
+            `@${verb}('${path}') on ${className}.${String(methodName)}: ` +
+              `'resumable.windowMs' must be a finite number > 0.`,
+          );
+        }
       }
 
       // A stream route has exactly one success shape: the item schema.
