@@ -11,7 +11,6 @@
     {"path": "../common"},
     {"path": "../context"},
     {"path": "../core"},
-    {"path": "../security"},
     {"path": "../metering"},
     {"path": "../testlab"}
   ]

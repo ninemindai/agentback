@@ -2256,9 +2256,6 @@ importers:
       '@agentback/metering':
         specifier: workspace:~
         version: link:../metering
-      '@agentback/security':
-        specifier: workspace:~
-        version: link:../security
       tslib:
         specifier: ^2.8.1
         version: 2.8.1

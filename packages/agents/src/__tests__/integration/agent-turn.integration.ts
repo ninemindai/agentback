@@ -6,7 +6,7 @@
 // calls the app's own @tool classes through the projection — proving
 // per-turn identity, metering correlation, quota preflight, and lifecycle.
 
-import {describe, expect, it} from 'vitest';
+import {describe, expect, it, vi} from 'vitest';
 import {z} from 'zod';
 import {ToolLoopAgent} from 'ai';
 import {MockLanguageModelV4} from 'ai/test';
@@ -443,5 +443,85 @@ describe('agent turn — model accounting scope', () => {
     await expect(
       wrapped.generate({prompt: 'go', tokenBudget: 1}),
     ).rejects.toThrow(/[Tt]oken budget exceeded/);
+  });
+
+  it('fails a streamed turn the budget refused — metered failure, no quota charge', async () => {
+    const {app} = await givenApp();
+    app.component(MeteringComponent);
+    const sink = new InMemoryUsageSink();
+    app.bind(MeteringBindings.SINK.key).to(sink);
+    const quota = new InMemoryQuotaService({limits: {'admin-1': 1}});
+    app.bind(MeteringBindings.QUOTA.key).to(quota);
+
+    // Step 1 calls a tool and spends 30 tokens; step 2 is refused (budget 1).
+    let call = 0;
+    const streaming = new MockLanguageModelV4({
+      doStream: async () => {
+        const first = call++ === 0;
+        return {
+          stream: new ReadableStream({
+            start(controller) {
+              if (first) {
+                controller.enqueue({
+                  type: 'tool-call',
+                  toolCallId: 'call-1',
+                  toolName: 'forecast',
+                  input: JSON.stringify({city: 'Tokyo'}),
+                });
+              }
+              controller.enqueue({
+                type: 'finish',
+                finishReason: first
+                  ? {unified: 'tool-calls', raw: undefined}
+                  : {unified: 'stop', raw: undefined},
+                usage,
+              });
+              controller.close();
+            },
+          }),
+        } as never;
+      },
+    });
+    const agent = new ToolLoopAgent({
+      model: await wrapModel(streaming, {retry: false}),
+      tools: await toHostTools(app, {include: ['forecast']}),
+    });
+    installAgent(app, {agent});
+
+    const reqCtx = new Context(app, 'request');
+    reqCtx.bind(SecurityBindings.USER).to(admin);
+    const wrapped = await reqCtx.get<AgentPort>(AgentBindings.AGENT.key);
+    const result = (await wrapped.stream!({prompt: 'go', tokenBudget: 1})) as {
+      fullStream: AsyncIterable<{type: string}>;
+    };
+    const parts: string[] = [];
+    for await (const part of result.fullStream) parts.push(part.type);
+    // The refusal reaches a streamed caller only as an in-stream error part.
+    expect(parts).toContain('error');
+    expect(call).toBe(1);
+
+    const turnEvent = () => sink.all().find(e => e.operation === 'agent.turn');
+    await vi.waitFor(() => expect(turnEvent()).toBeDefined());
+    expect(turnEvent()!.status).toBe('error');
+    // The refused turn is not charged against the principal's quota.
+    expect(quota.check('admin-1').allowed).toBe(true);
+  });
+
+  it('does not pass tokenBudget on to the agent', async () => {
+    const {app} = await givenApp();
+    let received: object | undefined;
+    const agent: AgentPort = {
+      tools: {},
+      async generate(options) {
+        received = options;
+        return {text: 'ok'};
+      },
+    };
+    installAgent(app, {agent});
+    const wrapped = await app.get<AgentPort>(AgentBindings.AGENT.key);
+    await wrapped.generate({prompt: 'hi', tokenBudget: 100});
+    // The budget is the gateway's business; the SDK has no such option.
+    expect(received).toBeDefined();
+    expect('tokenBudget' in received!).toBe(false);
   });
 });
