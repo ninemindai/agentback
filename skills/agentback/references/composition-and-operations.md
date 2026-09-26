@@ -300,6 +300,26 @@ Callers that ignore the return value are unaffected. When writing a NEW
 `runInstallConformance(...)` test (`@agentback/testing`) — see
 `docs/proposals/revertible-installs.md`.
 
+Write a new async helper's body with **`installSteps`** (`@agentback/common`)
+instead of hand-written `try/catch → teardown.run() → throw`: the body is an
+async generator that performs a step, then `yield`s that step's inverse. A
+throw part-way rolls back exactly the steps that landed, LIFO, and a failed
+rollback rides on the thrown error (`rollbackFailure`) rather than vanishing.
+Yield each inverse **before** running anything that can throw on what the step
+produced:
+
+```ts
+import {installSteps} from '@agentback/common';
+
+const {value, teardown} = await installSteps(async function* () {
+  const gate = installGate();
+  yield () => gate.off(); // inverse handed over before the mount
+  server.expressApp.use(base, gate.wrap(handler));
+  return {base};
+});
+return {...value, uninstall: () => teardown.run()};
+```
+
 Both ultimately call `server.expressApp.use(...)` — the paths (`/health`,
 `/ready`, `/metrics`) mount on the same Express app but are **not** registered
 in the OpenAPI spec.
