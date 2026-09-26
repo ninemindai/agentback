@@ -3,6 +3,11 @@ packages:
   - 'examples/*'
   - 'packages/cli/fixtures/*'
 
+# Don't `pnpm install` before every `pnpm <script>`: a pre-run install
+# re-checks the supply-chain age policy inside scripts that never needed
+# re-resolution. (pnpm reads this here, not from .npmrc.)
+verifyDepsBeforeRun: false
+
 # Security override: force the patched hono (transitive via
 # @modelcontextprotocol/sdk → @hono/node-server) — fixes GHSA-f577-qrjj-4474,
 # GHSA-2gcr-mfcq-wcc3, GHSA-xrhx-7g5j-rcj5, GHSA-3hrh-pfw6-9m5x.
