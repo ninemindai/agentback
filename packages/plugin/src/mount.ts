@@ -275,7 +275,13 @@ async function withMountLock<T>(
   });
   // Chain BEFORE awaiting, so a mount that starts while this one is pending
   // queues behind it rather than racing it.
-  mountLocks.set(app, prev.then(() => held, () => held));
+  mountLocks.set(
+    app,
+    prev.then(
+      () => held,
+      () => held,
+    ),
+  );
   // A previous mount's rejection is its caller's problem, not a reason to
   // refuse this one — but we still wait for it to finish unwinding.
   await prev.catch(() => undefined);

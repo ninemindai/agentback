@@ -150,7 +150,7 @@ Two limits worth stating rather than discovering:
   mount → uninstall → routes 404 → re-mount → routes live.
 - **Override restore**, by instance identity: B overrides A's key under
   `allowOverride`; after `uninstall()`, A's original `Binding` object is back
-   — not merely _a_ binding at that key.
+  — not merely _a_ binding at that key.
 - Ordering: a fixture set whose discovery order is deliberately wrong and
   whose declared graph is right.
 - Unsatisfiable graph and cycle: collected into `report.errors` under

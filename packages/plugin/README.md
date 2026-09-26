@@ -76,7 +76,7 @@ Three things happen that do not happen before `start()`:
   plugin receives.
 - **Served surfaces.** Routes and MCP capabilities are derived, not stored, so
   the entry point asks every bound server to re-derive once per call
-  (`refreshSurfaces`, `@agentback/core`). Once per *call*, not per mount — a
+  (`refreshSurfaces`, `@agentback/core`). Once per _call_, not per mount — a
   refresh is a global reconcile, so `loadPlugins` does it once for the batch.
 - **Rollback covers all three.** A failing observer `start()` is transactional
   at the registry: anything that did start is stopped before the mount's
@@ -87,7 +87,7 @@ Two properties worth knowing:
 
 - **Servers validate before they commit.** `RestServer.refreshSurface()` on the
   native host builds the candidate route table and runs the same checks
-  `start()` does (duplicate routes, Express-coupled routes) *before* touching
+  `start()` does (duplicate routes, Express-coupled routes) _before_ touching
   anything served, so a bad route fails its own mount instead of the next
   request. On Express there is no dry run — layers cannot be unmounted — but a
   partially-mounted route is harmless because the rollback unbinds the

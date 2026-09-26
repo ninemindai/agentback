@@ -29,7 +29,9 @@ describe('argvToBundle — typed coercion off JSON Schema', () => {
   });
 
   it('rejects a non-numeric value for a number flag with an AgentError', () => {
-    expect(() => argvToBundle(['--n', 'abc'], numberSchema)).toThrow(AgentError);
+    expect(() => argvToBundle(['--n', 'abc'], numberSchema)).toThrow(
+      AgentError,
+    );
   });
 
   it('passes a string flag through unchanged', () => {
@@ -46,7 +48,9 @@ describe('argvToBundle — boolean flags (the --no-flag landmine)', () => {
   });
 
   it('--no-<flag> sets it false (never string-coerced to true)', () => {
-    expect(argvToBundle(['--no-verbose'], boolSchema)).toEqual({verbose: false});
+    expect(argvToBundle(['--no-verbose'], boolSchema)).toEqual({
+      verbose: false,
+    });
   });
 
   it('absent boolean flag is omitted, so a Zod default/optional applies', () => {
@@ -93,7 +97,10 @@ describe('argvToBundle — positional fields (.meta({positional:true}))', () => 
   });
 
   it('coerces a positional by its declared type', () => {
-    const s = {type: 'object', properties: {n: {type: 'number', positional: true}}};
+    const s = {
+      type: 'object',
+      properties: {n: {type: 'number', positional: true}},
+    };
     expect(argvToBundle(['42'], s)).toEqual({n: 42});
   });
 

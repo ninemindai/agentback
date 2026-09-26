@@ -69,13 +69,13 @@ same artifact, not a parallel definition):
 
 ## What goke and incur teach (and where AgentBack already differs)
 
-|                     | goke                                   | incur                                     | AgentBack today                                          |
-| ------------------- | -------------------------------------- | ----------------------------------------- | -------------------------------------------------------- |
-| Author a command    | `.command().option(zod).action(ctx)`   | `Cli.create().command({args,options,run})`| **already authored** as `@tool` (no new builder)         |
-| Agent detection     | `isAgent()` / `detectAgent()`          | `isAgent`, next-step CTAs                 | — (new; trivial: env sniff)                              |
-| Discovery for agents| expose as MCP server + JustBash        | `mcp add`, `skills add`, `--llms` manifest| MCP already shipped; OKF bundle + `generateSkill` (P1-5) |
-| Token thrift        | prefer structured output               | **TOON output (~60% vs JSON)**, `--token-limit`/`--token-offset` pagination | — (new; the one feature worth borrowing wholesale) |
-| Testability         | injected `{fs, console, process}`      | mount Hono/Elysia; fetch handler          | `createTestApp` + DI already give this                   |
+|                      | goke                                 | incur                                                                       | AgentBack today                                          |
+| -------------------- | ------------------------------------ | --------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Author a command     | `.command().option(zod).action(ctx)` | `Cli.create().command({args,options,run})`                                  | **already authored** as `@tool` (no new builder)         |
+| Agent detection      | `isAgent()` / `detectAgent()`        | `isAgent`, next-step CTAs                                                   | — (new; trivial: env sniff)                              |
+| Discovery for agents | expose as MCP server + JustBash      | `mcp add`, `skills add`, `--llms` manifest                                  | MCP already shipped; OKF bundle + `generateSkill` (P1-5) |
+| Token thrift         | prefer structured output             | **TOON output (~60% vs JSON)**, `--token-limit`/`--token-offset` pagination | — (new; the one feature worth borrowing wholesale)       |
+| Testability          | injected `{fs, console, process}`    | mount Hono/Elysia; fetch handler                                            | `createTestApp` + DI already give this                   |
 
 The honest read: goke/incur give you **CLI + MCP** from a bespoke command DSL.
 AgentBack gives you **six surfaces** from the `@tool` you already wrote — so a
@@ -115,14 +115,14 @@ export async function buildCli(app: Context, opts: CliOptions = {}) {
   // must not churn the just-shipped agents package's behavior (a922ea8).
   const tools = filterCommandTools(mcp.listTools(), opts);
   return async (argv: string[]) => {
-    const {name, rest} = splitCommand(argv);           // "forecast" + flags
+    const {name, rest} = splitCommand(argv); // "forecast" + flags
     const tool = tools.find(t => t.meta.name === name) ?? die(usage(tools));
-    const input = argvToBundle(rest, tool.meta.input);  // ← the ONE new part
+    const input = argvToBundle(rest, tool.meta.input); // ← the ONE new part
     const result = await mcp.callTool(name, input, {
-      principal: cliPrincipal(app),                     // see identity below
-      binding: tool,                                    // skip the by-name scan
+      principal: cliPrincipal(app), // see identity below
+      binding: tool, // skip the by-name scan
     });
-    process.stdout.write(serialize(result, detectFormat()));  // json | toon | text
+    process.stdout.write(serialize(result, detectFormat())); // json | toon | text
   };
 }
 ```
@@ -168,7 +168,7 @@ HTTP body uses. For MCP a tool's `input:` **must** lower to a `z.object` root
 (CLAUDE.md rule), which is exactly what a flag parser needs:
 
 - **Each top-level key of `input:` → a `--flag`.** `ForecastIn = z.object({city,
-  units})` → `--city <str> --units <enum>`. Types, defaults, enum choices, and
+units})` → `--city <str> --units <enum>`. Types, defaults, enum choices, and
   `--help` text derive from the Zod schema — no duplication, the goke/incur core
   promise, but from a schema the app _already has_.
 - **The typed-vs-string impedance is the real work (eng review ★★★ + outside
@@ -214,7 +214,7 @@ agent-driven shell:
    `CI=true` is set in **every** pipeline — including the app's own test suite —
    so sniffing it would silently flip output format exactly where deterministic
    output matters most. So the format is an **explicit flag**: `--format
-   text|json|toon`, default chosen by a **non-TTY stdout** check only
+text|json|toon`, default chosen by a **non-TTY stdout** check only
    (`text` when attached to a terminal, `json` when piped). No brittle
    product-name sniffing on the value path. **Success output is the tool's bare,
    output-validated result — the same body the REST route returns** (eng review
@@ -269,21 +269,21 @@ Consumer wiring — one file, next to their existing entrypoint:
 
 ```ts
 #!/usr/bin/env node
-import {createApp} from './app.js';          // their existing AgentBack app factory
+import {createApp} from './app.js'; // their existing AgentBack app factory
 import {buildCli} from '@agentback/command';
 
 const app = await createApp();
-await app.start();                            // REQUIRED (eng review T2): DB pools,
-                                              // config, messaging, actors init in
-                                              // LifeCycleObserver.start(). Skipping it
-                                              // leaves stateful tools half-bound, and
-                                              // app.stop() without start() is a no-op
-                                              // (application.ts:400).
-const run = await buildCli(app, {include: ['forecast', 'geocode']});  // least privilege
+await app.start(); // REQUIRED (eng review T2): DB pools,
+// config, messaging, actors init in
+// LifeCycleObserver.start(). Skipping it
+// leaves stateful tools half-bound, and
+// app.stop() without start() is a no-op
+// (application.ts:400).
+const run = await buildCli(app, {include: ['forecast', 'geocode']}); // least privilege
 try {
   await run(process.argv.slice(2));
 } finally {
-  await app.stop();                           // now meaningful: drains pools, runs onStop
+  await app.stop(); // now meaningful: drains pools, runs onStop
 }
 ```
 
@@ -369,12 +369,12 @@ _and_ a hand-runnable command.
 
 ## Boundary recap
 
-| This package provides                          | You provide                              |
-| ---------------------------------------------- | ---------------------------------------- |
-| tool → CLI projection (`buildCli`)             | which tools (`include`) + the `bin` file |
+| This package provides                                     | You provide                              |
+| --------------------------------------------------------- | ---------------------------------------- |
+| tool → CLI projection (`buildCli`)                        | which tools (`include`) + the `bin` file |
 | argv→Zod parse + coercion + bare-result/`--format` output | the `@tool` classes (already written)    |
-| `--format`/`--llms`/`--skill` scripting surface | `app.start()`/`stop()` in the `bin`      |
-| the same `callTool` pipeline (auth, metering)  | the local-principal policy decision      |
+| `--format`/`--llms`/`--skill` scripting surface           | `app.start()`/`stop()` in the `bin`      |
+| the same `callTool` pipeline (auth, metering)             | the local-principal policy decision      |
 
 ## Implementation Tasks
 
@@ -411,13 +411,13 @@ finding above. Run with Claude Code or Codex; checkbox as you ship.
 
 ## GSTACK REVIEW REPORT
 
-| Review | Trigger | Why | Runs | Status | Findings |
-|--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
-| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | — |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR (PLAN) | 9 findings (2 critical), all folded via doc amendments; 5 decisions locked |
-| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+| Review        | Trigger               | Why                             | Runs | Status       | Findings                                                                   |
+| ------------- | --------------------- | ------------------------------- | ---- | ------------ | -------------------------------------------------------------------------- |
+| CEO Review    | `/plan-ceo-review`    | Scope & strategy                | 0    | —            | —                                                                          |
+| Codex Review  | `/codex review`       | Independent 2nd opinion         | 0    | —            | —                                                                          |
+| Eng Review    | `/plan-eng-review`    | Architecture & tests (required) | 1    | CLEAR (PLAN) | 9 findings (2 critical), all folded via doc amendments; 5 decisions locked |
+| Design Review | `/plan-design-review` | UI/UX gaps                      | 0    | —            | —                                                                          |
+| DX Review     | `/plan-devex-review`  | Developer experience gaps       | 0    | —            | —                                                                          |
 
 **Decisions locked (2026-07-06):** A1 stdlib `parseArgs` + Zod coercion (no bespoke parser); A2 tools-only v1 (not REST routes); C1 bare result on stdout, errors→stderr envelope; confirm tools excluded (E-3 parity); T1 audience reframed **operator-first** (agents already have lossless stdio MCP); T2 always `app.start()`/`stop()`; scope kept **own package, full v1** (user override of the outside voice's trim). Correctness fixes absorbed: schema-walk coercion + boolean landmine (findings 1–2), thin filter predicate not wholesale hoist (finding 5), explicit `--format` not `CI`-sniff (finding 8), buffered-streaming documented (finding 9).
 

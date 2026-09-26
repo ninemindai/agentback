@@ -294,7 +294,10 @@ export class LifeCycleObserverRegistry implements LifeCycleObserver {
   private async resolveObserverPairs(
     bindings: readonly Readonly<Binding<LifeCycleObserver>>[],
   ): Promise<
-    {observer: LifeCycleObserver; binding: Readonly<Binding<LifeCycleObserver>>}[]
+    {
+      observer: LifeCycleObserver;
+      binding: Readonly<Binding<LifeCycleObserver>>;
+    }[]
   > {
     const pairs: {
       observer: LifeCycleObserver;

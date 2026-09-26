@@ -12,7 +12,10 @@ function bind(
   extra: Partial<ToolBinding['meta']> = {},
 ): ToolBinding {
   class C {}
-  return {ctor: C, meta: {name, methodName: name, ...extra}} as unknown as ToolBinding;
+  return {
+    ctor: C,
+    meta: {name, methodName: name, ...extra},
+  } as unknown as ToolBinding;
 }
 
 describe('toolHelp', () => {
@@ -56,7 +59,10 @@ describe('toolHelp', () => {
 
 describe('usage', () => {
   it('lists one line per command with its description', () => {
-    const u = usage([bind('forecast', {description: 'Weather.'}), bind('geocode')]);
+    const u = usage([
+      bind('forecast', {description: 'Weather.'}),
+      bind('geocode'),
+    ]);
     expect(u).toMatch(/forecast — Weather\./);
     expect(u).toMatch(/geocode/);
   });

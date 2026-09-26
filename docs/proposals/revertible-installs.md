@@ -170,7 +170,7 @@ mid-install failure at step N:  td.run() replays inverses 1..N-1, then rethrows
 ### Addendum: `installSteps` makes the mid-install rule structural
 
 The paragraph above — "a failure mid-install calls `td.run()` before rethrowing"
-— is a rule the helper author has to remember, at *every* early exit. In
+— is a rule the helper author has to remember, at _every_ early exit. In
 practice they didn't, uniformly. `installConsole` carried two byte-identical
 `catch (err) { await td.run().catch(() => {}); throw err; }` blocks, and the
 region before the first `try` (the auth gate and its `expressApp.use` loop) was
@@ -178,7 +178,7 @@ covered by neither: a throw there leaked the gate.
 
 `installSteps` (`@agentback/common`) moves the rule into the calling
 convention. The helper is an async generator that performs a step and then
-`yield`s the inverse for *that* step; the runner collects each disposer
+`yield`s the inverse for _that_ step; the runner collects each disposer
 **before** resuming the body, so an inverse exists for every step that has
 landed, at every suspension point:
 
@@ -195,12 +195,12 @@ export async function installStepsAs<R extends object>(
 
 This is the shape Cordis uses for the same reason (`ctx.effect` takes a
 generator, not a function returning a disposer): a function can only hand over
-its cleanup *after* succeeding, so a setup that fails at step 3 of 4 has
+its cleanup _after_ succeeding, so a setup that fails at step 3 of 4 has
 nothing to offer for steps 1 and 2. A generator hands over each inverse as it
 earns it.
 
 Yield placement is the reviewable artifact, and ordering is deliberate — hand
-over a step's inverse *before* anything that can throw on what it produced.
+over a step's inverse _before_ anything that can throw on what it produced.
 DSH's `SessionStore` is the canonical example: `yield this.enter(session)` runs
 before `this.announce(session)`, so a throwing `session/created` listener rolls
 the store entry back instead of leaking an entry with live hooks.
@@ -210,7 +210,7 @@ Two deliberate choices:
 - **The install's error stays the thrown value.** A rollback that also fails
   must not replace the caller's diagnosis with an `AggregateError` at the worst
   possible moment. The failing disposer is logged under
-  `agentback:common:install-steps` instead — which *is* a behaviour change from
+  `agentback:common:install-steps` instead — which _is_ a behaviour change from
   the `.catch(() => {})` it replaces, where a failed rollback was silent.
 - **Async only, for now.** Sync helpers (`mountConsole`) keep `composeTeardown`
   directly. Branching on `Symbol.iterator` vs `Symbol.asyncIterator` — what
@@ -218,7 +218,7 @@ Two deliberate choices:
   rollback worth covering.
 
 `installSteps` is additive: `composeTeardown` is unchanged and every existing
-caller keeps working. `@agentback/plugin`'s `tryMount` deliberately does *not*
+caller keeps working. `@agentback/plugin`'s `tryMount` deliberately does _not_
 adopt it — it reverts a binding snapshot diff, because `app.component()` runs
 its side effects before a collision is detectable and there are no per-step
 inverses to yield. Different failure shape, different mechanism.
@@ -226,7 +226,7 @@ inverses to yield. Different failure shape, different mechanism.
 ### Addendum: the additive half
 
 The contract above is about retraction, and it made retraction work on a
-*running* app. Addition had no counterpart: a plugin mounted after `app.start()`
+_running_ app. Addition had no counterpart: a plugin mounted after `app.start()`
 had its observers bound and **never notified**, and its routes and tools
 collected into surfaces that were built once and never re-derived. It mounted
 inert — bound, discoverable, silently doing nothing.
@@ -239,12 +239,12 @@ three.**
 counterparts of `stopObservers`. Two design notes:
 
 - **Two passes, not one.** `notifyGroups(['init', 'start'])` iterates events
-  *inside* each group, yielding `g1.init, g1.start, g2.init, g2.start` — whereas
+  _inside_ each group, yielding `g1.init, g1.start, g2.init, g2.start` — whereas
   `Application` runs `init()` across every group and only then `start()`.
 - **Phase decides what is owed.** From `initialized`, `Application.start()` is
   `if (!this._initialized) await this.init()`, so `init` never runs again while
   the pending `registry.start()` still notifies everything. Owing `init` only
-  there is what stops the mount *time* from changing the lifecycle a plugin
+  there is what stops the mount _time_ from changing the lifecycle a plugin
   receives.
 - **`startObservers` is transactional.** `notifyObservers` is a serial `await`
   loop (and `Promise.all` in parallel mode), so a throw leaves the EARLIER

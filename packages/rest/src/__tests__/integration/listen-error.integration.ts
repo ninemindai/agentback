@@ -29,9 +29,14 @@ class PingController {
 }
 
 /** Hold an ephemeral port so the app under test is guaranteed a bind conflict. */
-async function holdPort(): Promise<{port: number; release: () => Promise<void>}> {
+async function holdPort(): Promise<{
+  port: number;
+  release: () => Promise<void>;
+}> {
   const holder = http.createServer();
-  await new Promise<void>(resolve => holder.listen(0, '127.0.0.1', () => resolve()));
+  await new Promise<void>(resolve =>
+    holder.listen(0, '127.0.0.1', () => resolve()),
+  );
   const {port} = holder.address() as AddressInfo;
   return {
     port,
@@ -49,7 +54,9 @@ describe('RestServer — bind failure surfaces as a rejected start()', () => {
   it('rejects (Express host) when the port is already in use', async () => {
     const held = await holdPort();
     release = held.release;
-    const app = new RestApplication({rest: {port: held.port, host: '127.0.0.1'}});
+    const app = new RestApplication({
+      rest: {port: held.port, host: '127.0.0.1'},
+    });
     app.restController(PingController);
     await expect(app.start()).rejects.toThrow(/EADDRINUSE/);
     // And the app must not report a live listener after a failed bind.
@@ -57,7 +64,7 @@ describe('RestServer — bind failure surfaces as a rejected start()', () => {
     expect(server.listening).toBe(false);
   });
 
-  it("rejects (native host) when the port is already in use", async () => {
+  it('rejects (native host) when the port is already in use', async () => {
     const held = await holdPort();
     release = held.release;
     const app = new RestApplication({

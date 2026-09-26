@@ -23,7 +23,7 @@ import {buildCli} from '@agentback/command';
 import {createApp} from './app.js';
 
 const app = await createApp();
-await app.start();                 // REQUIRED before invoking (lifecycle-started deps)
+await app.start(); // REQUIRED before invoking (lifecycle-started deps)
 const run = await buildCli(app, {include: ['forecast', 'geocode']}); // least privilege
 try {
   process.exitCode = await run(process.argv.slice(2));
@@ -56,7 +56,7 @@ identity the CLI runs as (`@authorize` tools authorize under it).
 - **Streaming (`streamOf`/async-generator) tools** emit **NDJSON**, one item per
   line, incrementally (via the `callTool` PROGRESS seam) — not one buffered
   array.
-- **Discovery:** `my-svc --llms` (manifest of the *selected* tools),
+- **Discovery:** `my-svc --llms` (manifest of the _selected_ tools),
   `my-svc <command> --help` (flags from the schema).
 - **Lifecycle:** discovery works pre-`start()`; **invocation needs
   `app.start()`** (and `app.stop()` is a no-op without it). The `bin` owns both.

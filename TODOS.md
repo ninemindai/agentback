@@ -260,7 +260,7 @@ mount work.
 `inject` on the plugin marker are **advisory**: `packages/plugin/README.md`
 states "the container stays the authority, so under-declaring costs ordering,
 not correctness". That is right for mount ordering and fatal for a reload
-scheduler, which must reload *exactly* the dependent set — under-declaring means
+scheduler, which must reload _exactly_ the dependent set — under-declaring means
 reloading too few and leaving stale captures, a silent correctness bug rather
 than a missed ordering. Cordis can do this because its `inject` is load-bearing:
 a plugin physically cannot start before its declared services exist, so the
@@ -292,7 +292,7 @@ running different tool/prompt sets, which is how DSH ships its four CLI modes as
 four YAML preset directories with zero TypeScript branching.
 
 **Context:** AgentBack already has child contexts, used per request. What is
-missing is a private *resolution namespace* for a mounted subtree, so a
+missing is a private _resolution namespace_ for a mounted subtree, so a
 `provide`-style exclusive key resolves within the group rather than globally.
 Note DSH's own footgun here, which any implementation should design against: a
 preset author who forgets to wrap per-session services in an `isolate` group

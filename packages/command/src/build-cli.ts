@@ -143,7 +143,10 @@ export async function buildCli(
       const schema = tool.meta.input
         ? schemaToOpenApiSchema(tool.meta.input)
         : undefined;
-      const input = argvToBundle(top.rest, schema as Parameters<typeof argvToBundle>[1]);
+      const input = argvToBundle(
+        top.rest,
+        schema as Parameters<typeof argvToBundle>[1],
+      );
 
       if (log.debug.enabled)
         log.debug('command %s input %o', top.command, input);

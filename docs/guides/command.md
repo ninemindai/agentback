@@ -9,7 +9,7 @@ Zod validation, `@authorize` voters, metering, output validation.
 
 > **Who it's for.** A human operator or a shell script — not agents. An agent is
 > already better served by the app's stdio MCP surface (typed JSON in,
-> boot-once). The CLI's value is *reach*: the same tool, runnable by hand.
+> boot-once). The CLI's value is _reach_: the same tool, runnable by hand.
 
 ## 1. You already have the tool
 
@@ -26,8 +26,11 @@ const ForecastIn = z.object({
 
 @mcpServer()
 export class WeatherTools {
-  @tool('forecast', {description: 'Weather forecast.', input: ForecastIn,
-    output: z.object({city: z.string(), days: z.number(), tempC: z.number()})})
+  @tool('forecast', {
+    description: 'Weather forecast.',
+    input: ForecastIn,
+    output: z.object({city: z.string(), days: z.number(), tempC: z.number()}),
+  })
   forecast(input: z.infer<typeof ForecastIn>) {
     return {city: input.city, days: input.days, tempC: 18 + input.days};
   }
@@ -47,8 +50,8 @@ const app = new Application();
 app.component(MCPComponent);
 app.service(WeatherTools);
 
-await app.start();  // REQUIRED — see Lifecycle
-const run = await buildCli(app, {include: ['forecast']});  // least privilege
+await app.start(); // REQUIRED — see Lifecycle
+const run = await buildCli(app, {include: ['forecast']}); // least privilege
 try {
   process.exitCode = await run(process.argv.slice(2));
 } finally {
@@ -88,13 +91,13 @@ CLI-aware schemas.
 
 ## 4. The ergonomics
 
-| You write | On the command line |
-| --- | --- |
-| `z.number()` field | `--days 3` (coerced to `3`) |
-| `z.boolean()` field | `--verbose` (true) / `--no-verbose` (false) |
-| `z.array(...)` field | `--tag a --tag b` → `['a','b']` |
-| `z.string().meta({positional: true})` | a bare arg: `geocode "Mt Fuji"` |
-| omitted field with `.default()` | the default applies |
+| You write                             | On the command line                         |
+| ------------------------------------- | ------------------------------------------- |
+| `z.number()` field                    | `--days 3` (coerced to `3`)                 |
+| `z.boolean()` field                   | `--verbose` (true) / `--no-verbose` (false) |
+| `z.array(...)` field                  | `--tag a --tag b` → `['a','b']`             |
+| `z.string().meta({positional: true})` | a bare arg: `geocode "Mt Fuji"`             |
+| omitted field with `.default()`       | the default applies                         |
 
 - **`--format text\|json\|toon`** — default `text` at a terminal, `json` when
   piped (never sniffs `CI`). `toon` is [Token-Oriented Object

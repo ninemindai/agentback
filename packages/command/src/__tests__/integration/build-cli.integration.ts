@@ -63,7 +63,10 @@ function capture() {
   const out: string[] = [];
   const err: string[] = [];
   return {
-    io: {stdout: (s: string) => out.push(s), stderr: (s: string) => err.push(s)},
+    io: {
+      stdout: (s: string) => out.push(s),
+      stderr: (s: string) => err.push(s),
+    },
     stdout: () => out.join(''),
     stderr: () => err.join(''),
   };
@@ -76,11 +79,18 @@ describe('buildCli — cross-surface identity (eng review T4)', () => {
     const run = await buildCli(app, {include: ['forecast']});
     const cap = capture();
 
-    const code = await run(['forecast', '--city', 'Tokyo', '--days', '3'], cap.io);
+    const code = await run(
+      ['forecast', '--city', 'Tokyo', '--days', '3'],
+      cap.io,
+    );
 
     expect(code).toBe(0);
     const cliResult = JSON.parse(cap.stdout());
-    const mcpResult = await mcp.callTool('forecast', {city: 'Tokyo', days: 3}, {});
+    const mcpResult = await mcp.callTool(
+      'forecast',
+      {city: 'Tokyo', days: 3},
+      {},
+    );
     expect(cliResult).toEqual(mcpResult);
     await app.stop();
   });
@@ -89,7 +99,10 @@ describe('buildCli — cross-surface identity (eng review T4)', () => {
     const app = await givenStartedApp();
     const run = await buildCli(app, {include: ['forecast']});
     const cap = capture();
-    const code = await run(['forecast', '--city', 'Osaka', '--days', '5'], cap.io);
+    const code = await run(
+      ['forecast', '--city', 'Osaka', '--days', '5'],
+      cap.io,
+    );
     expect(code).toBe(0);
     expect(JSON.parse(cap.stdout())).toMatchObject({city: 'Osaka', days: 5});
     await app.stop();
@@ -115,7 +128,10 @@ describe('buildCli — cross-surface identity (eng review T4)', () => {
     const app = await givenStartedApp();
     const run = await buildCli(app, {include: ['forecast']});
     const cap = capture();
-    const code = await run(['forecast', '--city', 'Tokyo', '--bogus', 'x'], cap.io);
+    const code = await run(
+      ['forecast', '--city', 'Tokyo', '--bogus', 'x'],
+      cap.io,
+    );
     expect(code).toBe(1);
     expect(cap.stdout()).toBe(''); // success stream stays empty on failure
     expect(JSON.parse(cap.stderr())).toMatchObject({code: expect.any(String)});

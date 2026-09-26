@@ -95,7 +95,11 @@ export async function refreshSurfaces(
     try {
       await server.refreshSurface();
     } catch (err) {
-      log.error('server %s failed to refresh its surface: %O', binding.key, err);
+      log.error(
+        'server %s failed to refresh its surface: %O',
+        binding.key,
+        err,
+      );
       failures.push({key: binding.key, error: err});
     }
   }
@@ -107,6 +111,9 @@ export function describeSurfaceFailures(
   failures: readonly SurfaceRefreshFailure[],
 ): string {
   return failures
-    .map(f => `${f.key}: ${f.error instanceof Error ? f.error.message : String(f.error)}`)
+    .map(
+      f =>
+        `${f.key}: ${f.error instanceof Error ? f.error.message : String(f.error)}`,
+    )
     .join('; ');
 }

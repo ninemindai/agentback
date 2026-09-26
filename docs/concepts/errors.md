@@ -27,28 +27,28 @@ graph LR
 The envelope's fields are designed for a caller that wants to **fix the
 request, not read a stack trace**:
 
-| Field               | Meaning                                                                                                 |
-| ------------------- | ------------------------------------------------------------------------------------------------------- |
-| `code`              | Stable machine-readable identifier (`invalid_body`, `unauthorized`, …). Parse this, never `message`.     |
-| `message`           | Human-readable text (redacted for unintentional 5xx — see below).                                        |
-| `issues`            | Per-field validation failures (`path` + expected/received). REST also mirrors it as `details`.           |
+| Field               | Meaning                                                                                                     |
+| ------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `code`              | Stable machine-readable identifier (`invalid_body`, `unauthorized`, …). Parse this, never `message`.        |
+| `message`           | Human-readable text (redacted for unintentional 5xx — see below).                                           |
+| `issues`            | Per-field validation failures (`path` + expected/received). REST also mirrors it as `details`.              |
 | `schema`            | JSON Schema of the violated input section, so the caller can re-shape without a `/openapi.json` round-trip. |
-| `retryable`         | Whether retrying the *same operation* with corrected input/credentials can succeed.                      |
-| `hint`              | One-line remediation instruction written for an agent (defaulted per `code`).                            |
-| `confirmationToken` | Rides on `confirmation_required` errors — the token for the `confirm:` retry.                            |
-| `challenge`         | Rides on `payment_required` errors — how to pay (x402 requirements, MPP session).                         |
+| `retryable`         | Whether retrying the _same operation_ with corrected input/credentials can succeed.                         |
+| `hint`              | One-line remediation instruction written for an agent (defaulted per `code`).                               |
+| `confirmationToken` | Rides on `confirmation_required` errors — the token for the `confirm:` retry.                               |
+| `challenge`         | Rides on `payment_required` errors — how to pay (x402 requirements, MPP session).                           |
 
 How each surface carries it:
 
 - **REST** — HTTP status + `{"error": {code, message, issues?, details?,
-  schema?, retryable, hint?, …}}`.
+schema?, retryable, hint?, …}}`.
 - **MCP** — tool failures are `isError: true` results (not protocol errors),
   with the envelope JSON as the content text; `statusCode` is dropped (HTTP
   semantics don't apply).
 - **Streams** — once headers are flushed a status change is impossible, so a
   mid-stream failure becomes a terminal error frame (SSE `event: error` /
   a JSONL `{"error":{…}}` line) carrying the same envelope. Errors thrown
-  *before* the first item still get a real HTTP status — see the
+  _before_ the first item still get a real HTTP status — see the
   [streaming guide](../guides/streaming.md).
 - **Operator CLI** — the envelope prints to stderr and the exit code goes
   non-zero; stdout stays reserved for the tool's result.
@@ -61,7 +61,7 @@ on every surface. Its message may contain connection strings, file paths, or
 library internals, so it never reaches the caller (it is still logged
 server-side).
 
-`AgentError` is the opt-in for messages that *should* reach the caller:
+`AgentError` is the opt-in for messages that _should_ reach the caller:
 
 ```ts
 import {AgentError, ErrorCodes} from '@agentback/openapi';
@@ -91,23 +91,23 @@ without a `publicMessage`.
 `ErrorCodes` enumerates the stable codes the framework itself emits; user code
 extends the set freely (any string is a valid `code`).
 
-| Code                       | Default status | Retryable | Emitted by                                        |
-| -------------------------- | -------------- | --------- | ------------------------------------------------- |
-| `invalid_parameter`        | 400            | yes       | path/query/header validation                      |
-| `invalid_body`             | 422            | yes       | body validation                                   |
-| `invalid_input`            | 400            | yes       | MCP tool input validation, domain `AgentError`s   |
-| `invalid_output`           | 500            | no        | MCP tool output validation                        |
-| `unauthorized`             | 401            | no        | authentication strategies                         |
-| `forbidden`                | 403            | no        | `@authorize` voters                               |
-| `not_found`                | 404            | no        | route/tool lookup, domain code                    |
-| `conflict`                 | 409            | no        | domain code                                       |
+| Code                       | Default status | Retryable | Emitted by                                          |
+| -------------------------- | -------------- | --------- | --------------------------------------------------- |
+| `invalid_parameter`        | 400            | yes       | path/query/header validation                        |
+| `invalid_body`             | 422            | yes       | body validation                                     |
+| `invalid_input`            | 400            | yes       | MCP tool input validation, domain `AgentError`s     |
+| `invalid_output`           | 500            | no        | MCP tool output validation                          |
+| `unauthorized`             | 401            | no        | authentication strategies                           |
+| `forbidden`                | 403            | no        | `@authorize` voters                                 |
+| `not_found`                | 404            | no        | route/tool lookup, domain code                      |
+| `conflict`                 | 409            | no        | domain code                                         |
 | `confirmation_required`    | 409            | yes       | `confirm:` first call (carries `confirmationToken`) |
-| `confirmation_invalid`     | 409            | yes       | `confirm:` bad/expired/mismatched token           |
-| `payment_required`         | 402            | yes       | `@agentback/payments` (carries `challenge`)       |
-| `idempotency_key_required` | 400            | yes       | `idempotency: {required: true}` without a key     |
-| `rate_limited`             | 429            | yes       | `@agentback/extension-rate-limit`                 |
-| `service_unavailable`      | 503            | yes       | resumable SSE past `maxLiveStreams`               |
-| `internal_error`           | 500            | no        | anything redacted                                 |
+| `confirmation_invalid`     | 409            | yes       | `confirm:` bad/expired/mismatched token             |
+| `payment_required`         | 402            | yes       | `@agentback/payments` (carries `challenge`)         |
+| `idempotency_key_required` | 400            | yes       | `idempotency: {required: true}` without a key       |
+| `rate_limited`             | 429            | yes       | `@agentback/extension-rate-limit`                   |
+| `service_unavailable`      | 503            | yes       | resumable SSE past `maxLiveStreams`                 |
+| `internal_error`           | 500            | no        | anything redacted                                   |
 
 "Retryable" follows one principle: **can retrying the same operation succeed
 if the caller corrects what the error names?** Validation failures are
