@@ -255,7 +255,9 @@ describe.skipIf(!REDIS_URL)('BullMQ adapter specifics (Redis)', () => {
       lockDurationMs: 500,
       lockRenewMs: 60_000,
     });
-    await q.enqueue(Q, {n: 1});
+    // Retries left: a discard that failed to suppress BullMQ's retry path
+    // would send the job back to waiting instead of failed.
+    await q.enqueue(Q, {n: 1}, {attempts: 3});
     await waitFor(async () => {
       expect((await admin.stats(Q)).active).toBe(1);
     });
