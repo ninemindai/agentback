@@ -24,11 +24,11 @@
     "@agentback/core": "workspace:~",
     "@agentback/rest": "workspace:~",
     "@types/express": "^5.0.6",
-    "rate-limiter-flexible": "~11.2.0",
+    "rate-limiter-flexible": "~11.2.1",
     "tslib": "^2.8.1"
   },
   "devDependencies": {
-    "vitest": "~4.1.10"
+    "vitest": "~4.1.11"
   },
   "engines": {
     "node": ">=22.18"

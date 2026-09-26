@@ -115,7 +115,7 @@ Rules to keep in mind when editing route/tool code:
 - **`status:` on REST route options** overrides the default 200. Status 204 returns an empty body.
 - **URL placeholders must match the `path:` schema's keys.** Checked at `app.start()`; mismatches throw with the controller+method named.
 - **REST header schemas use lowercase keys.** Incoming headers are normalized before validation so `headers: z.object({'x-trace': z.string()})` finds the value regardless of how the client sent it.
-- **MCP `@tool` `input:` must lower to an object root.** MCP `inputSchema` needs named properties at the root, so the schema must be a `z.object(...)` (a top-level `z.union`/`z.discriminatedUnion`/`z.intersection`/primitive is rejected at registration with the tool named). Express cross-field invariants with `.refine()` on the object — but note `.refine()` is validated at runtime only and is **not** reflected in the emitted `inputSchema` (`z.toJSONSchema` silently drops it), so document the rule in the field descriptions too.
+- **MCP `@tool` `input:` must lower to an object root.** MCP `inputSchema` needs named properties at the root, so the schema must be a `z.object(...)` (a top-level `z.union`/`z.discriminatedUnion`/primitive, or a `z.intersection` Zod cannot merge into one object, is rejected at registration with the tool named — the check runs on the **emitted** schema, so since Zod 4.6 an intersection of two plain objects is accepted). Express cross-field invariants with `.refine()` on the object — but note `.refine()` is validated at runtime only and is **not** reflected in the emitted `inputSchema` (`z.toJSONSchema` silently drops it), so document the rule in the field descriptions too.
 
 Where the registrations live:
 
@@ -183,7 +183,11 @@ MCP HTTP transport **is** implemented — `@agentback/mcp` runs stdio by default
 
 ## Deps and versioning
 
-Default policy: **bump everything to the latest** with `ncu --workspaces --root -u --reject '@types/node,mcp-client-1-*'` (monorepo-aware), then `pnpm install` from a clean `pnpm-lock.yaml` and verify `pnpm build && pnpm test` pass.
+Default policy: **bump everything to the latest** with `ncu --workspaces --root -u --cooldown 1d --dep prod,dev,optional,packageManager --reject '@types/node,mcp-client-1-*'` (monorepo-aware), then `pnpm install` from a clean `pnpm-lock.yaml` and run `pnpm verify`.
+
+- **`--cooldown 1d` matches pnpm's supply-chain age window** (see pnpm quirks below). Without it ncu picks versions hours old; pnpm then either fails the install or silently appends them to `minimumReleaseAgeExclude`, bypassing the policy nobody chose to bypass.
+- **`--dep` omits `peer`**: ncu 23 rewrites peer ranges by default (`>=0.45.2 <1` → `^0.45.3`), which upgrades nothing for us and narrows what consumers may install. Moving a peer floor is a compatibility decision — make it by hand.
+- **A clean lockfile means clean `node_modules` too.** pnpm reuses resolutions from `node_modules/.pnpm/lock.yaml` when `pnpm-lock.yaml` is missing, so deleting only the lockfile can resurrect versions from an earlier, abandoned install.
 
 Exceptions to "latest", and why:
 

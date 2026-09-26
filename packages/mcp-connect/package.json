@@ -35,9 +35,9 @@
     "@agentback/mcp-http": "workspace:~",
     "@agentback/testing": "workspace:~",
     "@agentback/testlab": "workspace:~",
-    "@modelcontextprotocol/server": "^2.0.0",
-    "vitest": "~4.1.10",
-    "zod": "^4.4.3"
+    "@modelcontextprotocol/server": "^2.1.0",
+    "vitest": "~4.1.11",
+    "zod": "^4.6.5"
   },
   "license": "MIT",
   "repository": {

@@ -7,12 +7,12 @@
   "engines": {
     "node": ">=22.18"
   },
-  "packageManager": "pnpm@11.10.0",
+  "packageManager": "pnpm@11.27.1",
   "scripts": {
-    "build": "tsc -b && pnpm -r run build:client",
+    "build": "tsc -b && pnpm -r --no-sort run build:client",
     "build:watch": "tsc -b --watch",
     "clean": "tsc -b --clean && pnpm -r exec rm -rf dist",
-    "typecheck:client": "pnpm -r --if-present run typecheck:client",
+    "typecheck:client": "pnpm -r --no-sort --if-present run typecheck:client",
     "verify": "pnpm konsistent && pnpm build && pnpm typecheck:client && pnpm test && node scripts/validate-templates.mjs && pnpm build:site",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -29,15 +29,15 @@
   },
   "devDependencies": {
     "@types/node": "~22.18.13",
-    "@typescript-eslint/eslint-plugin": "~8.63.0",
-    "@typescript-eslint/parser": "~8.63.0",
-    "eslint": "~10.6.0",
-    "konsistent": "1.0.0-beta.3",
-    "marked": "^18.0.5",
-    "prettier": "^3.9.5",
+    "@typescript-eslint/eslint-plugin": "~8.70.1",
+    "@typescript-eslint/parser": "~8.70.1",
+    "eslint": "~10.11.0",
+    "konsistent": "1.0.0-beta.10",
+    "marked": "^18.0.14",
+    "prettier": "^3.9.9",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "@typescript/native": "npm:typescript@~7.0.2",
-    "vitest": "~4.1.10"
+    "vitest": "~4.1.11"
   },
   "license": "MIT",
   "copyright.owner": "NineMind, Inc.",
