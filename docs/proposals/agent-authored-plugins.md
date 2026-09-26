@@ -193,6 +193,37 @@ feature. Narrowing what a plugin resolves, by binding a restricted port
 implementation into a child context, stays available and stays a way to limit
 mistakes rather than a security control.
 
+**Sighting (2026-09-01) — the condition arrived by a different route.** Rivet
+shipped `@rivet-dev/dynamic-apps`: a library that hosts an AI-generated backend
+per end-user, inside your own process's request path rather than as a SaaS. The
+generated unit is a Web fetch handler (`export default {fetch(request)}`); each
+immutable release runs in its own bounded VM with read-only artifact mounts and
+filesystem, process, environment and network permission boundaries; the
+load-bearing sentence in its README is that uploaded app code never enters the
+host process. A generated app may also mount its own actor registry, which the
+host reaches through a typed client.
+
+That is this section's own conclusion — the boundary for code you do not trust
+is a process or a container — built as a product. It does not reopen per-plugin
+capability restriction and it does not soften "plugins are trusted code": it
+confirms both, by putting the untrusted code somewhere a DI container is not.
+`mountComponent` stays what it is, and still takes a constructor.
+
+What it does change is the shape of the condition to watch. This proposal
+predicted the expiry would arrive as a third-party plugin ecosystem — many
+plugins installed on reputation, whose source nobody read. The route that
+actually appeared is tenant apps: code authored at runtime, per end-user, by an
+agent, where nobody read the source because nobody wrote it. Same trust
+problem, opposite provenance, and the plugin-ecosystem trigger would never have
+fired on it. Watch both.
+
+Hosting that is a new package, not this one. What already exists is the fetch
+handler as a deployable unit, the `Installed` teardown contract, no-codegen
+typed clients, and the Cloudflare and Vercel deploy paths; the gap is an
+isolate boundary and release activation, for which Workers for Platforms
+dispatch namespaces and `@vercel/sandbox` are the adapters to price first.
+Recorded 2026-09-02.
+
 ## What this unlocks that Harness does not have
 
 An agent-authored `@tool` in AgentBack projects to REST, MCP, the operator CLI,
