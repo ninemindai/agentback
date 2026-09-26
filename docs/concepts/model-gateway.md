@@ -67,6 +67,22 @@ never off the error's shape: a provider that times out _on its own_ — say a
 and that is the transport failing, so it is retried, fails over, and counts
 against the breaker. A hung provider is the outage this whole stack exists for.
 
+**The gateway owns retrying.** The AI SDK has its own retry above the
+model (`maxRetries`, default 2) for any error marked `isRetryable: true`.
+Left alone, it would run the gateway's whole attempt budget again per SDK
+retry: three gateway attempts times three SDK attempts is nine calls to a
+provider that is already struggling, on the SDK's un-jittered schedule, and
+three bills. So with the gateway's retry on, the error it finally throws is
+marked `isRetryable: false`. It stays the provider's own error object, so
+callers can still inspect it.
+
+**`Retry-After` is an instruction, not a hint.** It is read as delta-seconds
+or an HTTP-date, and a time already past means now. When the provider asks
+for longer than `maxDelayMs`, the call fails at once rather than parking the
+caller: retrying before the provider allows just earns another 429, and a
+fast failure is one the fallback policy can act on. A backoff ends the moment
+the caller's `abortSignal` aborts.
+
 **Jitter is not decoration.** Without it every instance in a fleet retries on
 the same schedule, and a brief provider throttle becomes a self-inflicted
 thundering herd that keeps the provider down.
@@ -78,11 +94,21 @@ failure, not a success, but it does release a half-open probe slot — otherwise
 a probe answered with a 400 wedges the circuit shut forever.
 
 **Half-open admits exactly one probe.** Releasing the whole backlog at once is
-how a recovering provider gets knocked over a second time.
+how a recovering provider gets knocked over a second time. The probe holds a
+lease rather than a flag: a probe whose socket stalls never settles, and a
+flag would keep the circuit shut forever. After `resetAfterMs` the probe is
+presumed lost and one new probe goes through.
 
 **Fallback is not free.** Keep prompts and tools to the intersection of what
 both providers support, and eval on both. A fallback you have never exercised
 is decoration, not resilience.
+
+**Secondaries are called raw.** The fallback policy calls each secondary's
+`doGenerate`/`doStream` directly, with no retry and no breaker of its own, so
+one 429 from the secondary ends the call. To give a secondary its own
+resilience, wrap it first with `wrapModel(m, {accounting: false})`. Never
+turn accounting on for a secondary: the primary's accounting already bills
+the call to the model that served it, so it would be billed twice.
 
 ## Accounting: tokens, not calls
 
@@ -94,6 +120,12 @@ The gateway emits one usage event per model call with `units` = total tokens,
 plus per-call input/output/cached counts in `meta`. Streams are tapped for
 their `finish` part rather than skipped, because streaming is the common case
 for an agent and metering that ignored it would miss most of the bill.
+
+The event names the model that **served** the call: after a failover that is
+the secondary, not the primary that failed. A stream settles `ok` only when it
+reached its `finish` part without an `error` part; a consumer cancel, a
+missing `finish`, or a `doStream()` that throws is recorded as `error`, billed
+for whatever usage was seen.
 
 ### The scope, and why it has to be ambient
 
@@ -110,10 +142,20 @@ agent on a singleton model still produces per-principal, per-turn token events,
 and `generate({tokenBudget})` caps a single turn. Outside a scope, calls bill
 anonymously rather than failing.
 
-The budget is checked _before_ each call and the spend added after, so the last
-call of a scope can overshoot by one response. The provider decides how many
-tokens it emits; a bounded overshoot is honest, and pretending we can predict
-the number would not be.
+The budget is checked _before_ each call and the spend added after, so each
+call can overshoot by one response. Calls running in parallel within one scope
+each pass the check before any of them has reported, so each of them can
+overshoot by one response. The provider decides how many tokens it emits; a
+bounded overshoot is honest, and pretending we can predict the number would
+not be.
+
+The scope is captured when a call starts, because a stream is usually
+consumed, and cancelled, outside the scope that opened it. Scopes nest: an
+inner scope adds its spend to every enclosing one, and a call is refused when
+any enclosing budget is spent. The inner scope keeps its own principal and
+correlation id, since a nested turn is its own turn. A refusal is also kept on
+the scope, which is how a streamed agent turn (where the refusal is only an
+in-stream error part) learns to fail rather than succeed.
 
 ## Deliberately absent
 
