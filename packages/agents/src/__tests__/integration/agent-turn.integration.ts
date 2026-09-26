@@ -417,7 +417,9 @@ describe('agent turn — model accounting scope', () => {
 
     // Same correlation id as the turn's own 'agent' event, so a sink can
     // group a turn's model spend with the turn that caused it.
-    const [agentEvent] = sink.all().filter(e => e.surface === 'agent' && e.operation === 'agent.turn');
+    const [agentEvent] = sink
+      .all()
+      .filter(e => e.surface === 'agent' && e.operation === 'agent.turn');
     expect(modelEvents[0].meta?.correlationId).toBe(
       agentEvent.meta?.correlationId,
     );
