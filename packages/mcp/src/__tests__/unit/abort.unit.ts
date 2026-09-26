@@ -101,3 +101,38 @@ describe('tool abort signal', () => {
     ).toMatchObject({present: true, aborted: false});
   });
 });
+
+describe('SDK request signal', () => {
+  // The SDK aborts `extra.mcpReq.signal` with `notifications/cancelled`'s
+  // `reason` — a client-supplied string, or undefined — not one of ours.
+  function boundSignal(server: MCPServer, sdkSignal: AbortSignal) {
+    const ctx = (
+      server as unknown as {requestContextFor(extra: unknown): Context}
+    ).requestContextFor({mcpReq: {signal: sdkSignal}});
+    return ctx.getSync(CoreBindings.ABORT_SIGNAL);
+  }
+
+  it('is re-expressed as one of ours when the client cancels', async () => {
+    const {server} = await givenServer();
+    const sdk = new AbortController();
+    const signal = boundSignal(server, sdk.signal);
+    expect(signal.aborted).toBe(false);
+    sdk.abort('user pressed stop');
+    expect(signal.aborted).toBe(true);
+    expect(signal.reason).toBeInstanceOf(DOMException);
+    expect(signal.reason).toMatchObject({
+      name: 'AbortError',
+      message: AbortReasons.CANCELLED,
+    });
+  });
+
+  it('is re-expressed when the SDK signal is already aborted', async () => {
+    const {server} = await givenServer();
+    const signal = boundSignal(server, AbortSignal.abort());
+    expect(signal.aborted).toBe(true);
+    expect(signal.reason).toMatchObject({
+      name: 'AbortError',
+      message: AbortReasons.CANCELLED,
+    });
+  });
+});

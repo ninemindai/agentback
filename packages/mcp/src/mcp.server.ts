@@ -47,7 +47,9 @@ import {
   type SchemaLike,
 } from '@agentback/openapi';
 import {
+  AbortReasons,
   InMemoryConfirmationStore,
+  abortError,
   loggers,
   stableStringify,
   type ConfirmationStore,
@@ -1103,7 +1105,7 @@ export class MCPServer implements Server {
     // The SDK aborts this when the client sends notifications/cancelled or the
     // connection drops. Republished under the neutral key so a tool body reads
     // the same seam a REST handler does, with no MCP import.
-    ctx.bind(CoreBindings.ABORT_SIGNAL).to(extra.mcpReq.signal);
+    ctx.bind(CoreBindings.ABORT_SIGNAL).to(ourAbortSignal(extra.mcpReq.signal));
     return ctx;
   }
 
@@ -1467,6 +1469,27 @@ export function progressFnFor(
       params: {progressToken, ...p},
     });
   };
+}
+
+/**
+ * Re-express the SDK's request signal as one of ours. The SDK aborts it with
+ * `notifications/cancelled`'s `reason` — a client-supplied string, or
+ * undefined — so a tool could not rely on the documented `AbortError` shape.
+ * The signal cannot tell a cancel from a dropped connection, so both read as
+ * {@link AbortReasons.CANCELLED}. Mirrors `linkedAbortSignal` in
+ * `@agentback/rest`, which `mcp` cannot import.
+ */
+function ourAbortSignal(source: AbortSignal): AbortSignal {
+  if (source.aborted) {
+    return AbortSignal.abort(abortError(AbortReasons.CANCELLED));
+  }
+  const controller = new AbortController();
+  source.addEventListener(
+    'abort',
+    () => controller.abort(abortError(AbortReasons.CANCELLED)),
+    {once: true},
+  );
+  return controller.signal;
 }
 
 /** Describe a non-object JSON Schema root for the inputSchema guardrail. */
