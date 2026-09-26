@@ -58,8 +58,9 @@ export namespace CoreBindings {
    * Binding key for the in-flight unit of work's {@link AbortSignal} — the
    * neutral "stop doing this now" seam. Bound into the per-invocation context
    * by every entry point that owns a cancellable unit of work (a REST request,
-   * an MCP tool call, a queue job), and aborted when the caller goes away or a
-   * deadline elapses.
+   * an MCP tool call, an agent turn), and aborted when the caller goes away or
+   * a deadline elapses. A queue job is the exception: its signal is the
+   * `JobContext.signal` field, not a binding.
    *
    * Inject it (always optionally — a plain service call has no ambient unit of
    * work) and hand it to whatever actually spends time or money:

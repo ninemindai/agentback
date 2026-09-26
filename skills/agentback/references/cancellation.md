@@ -53,6 +53,11 @@ DI resolution walks the context chain, so anything nested inside a unit of work
 no plumbing. Precedence is narrowest-wins: an explicit `{signal}` on `callTool`
 shadows the turn context, which shadows the request context.
 
+**A queue job is the exception.** `@jobProcessor` methods are called with the
+`JobContext` alone — there is no per-job DI context — so nothing is bound under
+`ABORT_SIGNAL` for a job and nested services do not inherit it. The signal is
+the `job.signal` field: hand it to whatever you call.
+
 The reason is always a `DOMException` named `AbortError` carrying an
 `AbortReasons` message. `isAbortError(err)` from `@agentback/common` tells
 whether an error is abort-_shaped_ — it cannot tell who aborted, so never use
