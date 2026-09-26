@@ -5,10 +5,10 @@ this document keeps contributions cheap to review and safe to land.
 
 ## Setup
 
-Requirements: **Node 22.18+** and **pnpm 11**.
+Requirements: **Node 22.18+** and **pnpm 12**.
 
 ```bash
-pnpm install          # workspace deps (pnpm 11 may ask you to approve postinstall builds)
+pnpm install          # workspace deps (pnpm may ask you to approve postinstall builds)
 pnpm build            # tsc -b across the workspace (project references)
 pnpm test             # vitest — REQUIRES a prior `pnpm build`
 pnpm lint             # eslint + prettier --check
