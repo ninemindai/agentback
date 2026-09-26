@@ -69,9 +69,12 @@ jobs:
       - name: Test
         run: pnpm test
 
+      # --no-sort: the console <-> panel workspace cycle is deliberate, and a
+      # sorted `-r exec` refuses it (ERR_PNPM_TASK_CYCLE, pnpm >= 11.27).
+      # Setting a version does not depend on order.
       - name: Set workspace version
         run: |
-          pnpm -r --filter './packages/*' exec npm version "$VERSION" --no-git-tag-version --allow-same-version
+          pnpm -r --no-sort --filter './packages/*' exec npm version "$VERSION" --no-git-tag-version --allow-same-version
 
       - name: Publish
         env:
