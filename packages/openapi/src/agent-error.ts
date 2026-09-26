@@ -59,6 +59,7 @@ export const ErrorCodes = {
   PAYMENT_REQUIRED: 'payment_required',
   IDEMPOTENCY_KEY_REQUIRED: 'idempotency_key_required',
   RATE_LIMITED: 'rate_limited',
+  SERVICE_UNAVAILABLE: 'service_unavailable',
   INTERNAL_ERROR: 'internal_error',
 } as const;
 

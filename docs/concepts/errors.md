@@ -106,6 +106,7 @@ extends the set freely (any string is a valid `code`).
 | `payment_required`         | 402            | yes       | `@agentback/payments` (carries `challenge`)       |
 | `idempotency_key_required` | 400            | yes       | `idempotency: {required: true}` without a key     |
 | `rate_limited`             | 429            | yes       | `@agentback/extension-rate-limit`                 |
+| `service_unavailable`      | 503            | yes       | resumable SSE past `maxLiveStreams`               |
 | `internal_error`           | 500            | no        | anything redacted                                 |
 
 "Retryable" follows one principle: **can retrying the same operation succeed
