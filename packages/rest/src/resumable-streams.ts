@@ -3,7 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 import {AbortReasons, abortError, loggers} from '@agentback/common';
-import {ErrorCodes, buildErrorEnvelope} from '@agentback/openapi';
+import {AgentError, ErrorCodes, buildErrorEnvelope} from '@agentback/openapi';
 import type {SchemaLike} from '@agentback/openapi';
 import {standardParse} from '@agentback/openapi';
 import type {StreamFramer} from './stream-framers.js';
@@ -29,11 +29,68 @@ export interface ResumableOptions {
 
 const DEFAULT_WINDOW_MS = 30_000;
 const DEFAULT_MAX_EVENTS = 1024;
+const DEFAULT_MAX_LIVE_STREAMS = 1000;
+
+/** Seconds a caller refused by the live-stream cap is told to wait. */
+export const STREAMS_FULL_RETRY_AFTER_S = 5;
+
+/** Normalize the `resumable:` route option to its tuning record. */
+export function resumableOptions(
+  value: boolean | ResumableOptions | undefined,
+): ResumableOptions {
+  return typeof value === 'object' ? value : {};
+}
+
+/**
+ * The one answer to a `Last-Event-ID` that cannot be honoured — unknown,
+ * expired, trimmed out of the ring, or opened on another route or by another
+ * principal. One shape for every cause, so a probe learns nothing; a non-200,
+ * so `EventSource` stops instead of reconnecting; and never a fresh run, which
+ * would be the duplicate agent turn `resumable:` exists to prevent.
+ */
+export function resumeRefused(): AgentError {
+  return new AgentError(
+    'Cannot resume: the stream is gone or the requested position has been ' +
+      'discarded. Start a new stream without Last-Event-ID.',
+    {status: 409},
+  );
+}
+
+/** A new resumable stream refused because the server-wide cap is reached. */
+export function streamsFull(): AgentError {
+  return new AgentError(
+    'Too many live resumable streams. Retry after the Retry-After interval.',
+    {status: 503, code: 'service_unavailable'},
+  );
+}
 
 /** Where framed bytes go: the Express response, or a Web stream controller. */
 export interface StreamSink {
   write(chunk: string): void;
   close(): void;
+}
+
+/**
+ * Who may rejoin a stream: the route that opened it, and the principal that
+ * opened it (undefined on an unauthenticated route). On an anonymous route the
+ * stream id itself is the only credential — a bearer capability.
+ */
+export interface StreamScope {
+  ctor: Function;
+  methodName: string;
+  owner: string | undefined;
+}
+
+/**
+ * A request that rejoins a live stream instead of invoking its handler —
+ * returned by the resume gate and turned into a response only after the
+ * dispatch hooks have run, so their headers land before anything is flushed.
+ */
+export class Resumption {
+  constructor(
+    readonly stream: ResumableStream,
+    readonly afterSeq: number,
+  ) {}
 }
 
 /** One already-framed frame, retained so a reconnect can replay it verbatim. */
@@ -85,16 +142,16 @@ export class ResumableStream {
     private readonly itemSchema: SchemaLike,
     private readonly framer: StreamFramer,
     /**
-     * The principal that opened the stream, or undefined when the route is
-     * unauthenticated. A resume must present the same one: the stream id is
+     * A resume must present the same route and principal: the stream id is
      * unguessable, but an id that leaks must not hand someone else's agent
      * turn to the finder.
      */
-    readonly owner: string | undefined,
+    readonly scope: StreamScope,
     private readonly onDispose: (stream: ResumableStream) => void,
     /**
-     * Aborted when the stream is disposed — window expiry, completion, or
-     * server stop. This is the `resumable:` rewiring of
+     * Aborted when an unfinished stream is disposed — window expiry
+     * (`RESUME_WINDOW_CLOSED`) or server stop (`CANCELLED`); never on normal
+     * completion. This is the `resumable:` rewiring of
      * `CoreBindings.ABORT_SIGNAL`: the handler still gets a "stop now" signal,
      * it is just no longer the socket that decides when.
      */
@@ -170,21 +227,27 @@ export class ResumableStream {
       this.done = true;
       // A stream that finishes while nobody is watching keeps its tail for the
       // grace window: the client that reconnects still gets the ending.
-      if (this.sink) {
-        this.sink.close();
-        this.dispose();
-      }
+      if (this.sink) this.dispose();
     }
   }
 
   /**
-   * Attach a connection. `afterSeq` replays everything the client missed;
-   * `undefined` is a fresh connection. Returns false when the requested
-   * position has already been trimmed out of the ring — an unsatisfiable
-   * resume, which the caller must report rather than paper over.
+   * Whether a client that last saw `afterSeq` can rejoin: the stream is still
+   * live and that position has not been trimmed out of the ring. False is an
+   * unsatisfiable resume, which the caller must refuse rather than paper over.
    */
-  attach(sink: StreamSink, afterSeq?: number): boolean {
-    if (afterSeq !== undefined && afterSeq + 1 < this.oldestSeq) return false;
+  canResume(afterSeq: number): boolean {
+    return !this.disposed && afterSeq + 1 >= this.oldestSeq;
+  }
+
+  /**
+   * Attach a connection for as long as `connection` stays live. `afterSeq`
+   * replays everything the client missed (check {@link canResume} first);
+   * `undefined` is a fresh connection. A connection that is already gone —
+   * the client left while the handler was still producing its first item —
+   * is detached at once, so the window starts instead of never starting.
+   */
+  attach(sink: StreamSink, connection: AbortSignal, afterSeq?: number): void {
     if (this.graceTimer) {
       clearTimeout(this.graceTimer);
       this.graceTimer = undefined;
@@ -194,36 +257,48 @@ export class ResumableStream {
       for (const f of this.frames) if (f.seq > afterSeq) sink.write(f.text);
     }
     if (this.done) {
-      sink.close();
       this.dispose();
+      return;
     }
-    return true;
+    if (connection.aborted) this.detach(sink);
+    else
+      connection.addEventListener('abort', () => this.detach(sink), {
+        once: true,
+      });
   }
 
   /**
-   * The client went away. The producer keeps running — that is the bargain of
-   * `resumable:` — but only until the window closes.
+   * The client on `sink` went away. The producer keeps running — that is the
+   * bargain of `resumable:` — but only until the window closes. A no-op for a
+   * sink that is no longer the attached one: a replaced connection's late
+   * close must not detach the client that replaced it.
    */
-  detach(): void {
+  detach(sink: StreamSink): void {
+    if (sink !== this.sink) return;
     this.sink = undefined;
     if (this.disposed) return;
+    if (this.graceTimer) clearTimeout(this.graceTimer);
     this.graceTimer = setTimeout(() => this.dispose(), this.windowMs);
     this.graceTimer.unref?.();
   }
 
-  /** Stop the producer and evict. Idempotent. */
-  dispose(): void {
+  /**
+   * Stop the producer, end the attached connection, and evict. Idempotent.
+   * `reason` reaches the handler's signal only if the producer is unfinished:
+   * a stream that completed normally is not an aborted one.
+   */
+  dispose(reason: string = AbortReasons.RESUME_WINDOW_CLOSED): void {
     if (this.disposed) return;
     this.disposed = true;
     if (this.graceTimer) clearTimeout(this.graceTimer);
     this.graceTimer = undefined;
+    const sink = this.sink;
     this.sink = undefined;
-    this.abort?.abort(
-      abortError(
-        this.done ? AbortReasons.CANCELLED : AbortReasons.RESUME_WINDOW_CLOSED,
-      ),
-    );
-    void this.iterator.return?.();
+    sink?.close();
+    if (!this.done) this.abort?.abort(abortError(reason));
+    void this.iterator.return?.()?.catch(err => {
+      log.debug('stream iterator return() threw: %s', (err as Error).message);
+    });
     this.onDispose(this);
   }
 }
@@ -238,12 +313,42 @@ export class ResumableStream {
  */
 export class ResumableStreamRegistry {
   private readonly streams = new Map<string, ResumableStream>();
+  /** Slots claimed by requests whose handler has not produced a stream yet. */
+  private reserved = 0;
+
+  /**
+   * @param maxLiveStreams - server-wide cap on live streams. Not keyed on
+   * anything a caller controls, so no caller can dodge it.
+   */
+  constructor(
+    private readonly maxLiveStreams: number = DEFAULT_MAX_LIVE_STREAMS,
+  ) {}
+
+  /**
+   * Claim a slot for a new stream before its handler runs, or undefined when
+   * the registry is full. The slot counts against the cap until the returned
+   * release runs (idempotent) — so concurrent requests still waiting on their
+   * first item cannot all slip past it. Release once the stream is created or
+   * the request fails.
+   */
+  reserve(): (() => void) | undefined {
+    if (this.streams.size + this.reserved >= this.maxLiveStreams) {
+      return undefined;
+    }
+    this.reserved++;
+    let held = true;
+    return () => {
+      if (!held) return;
+      held = false;
+      this.reserved--;
+    };
+  }
 
   create(
     iterator: AsyncIterator<unknown>,
     itemSchema: SchemaLike,
     framer: StreamFramer,
-    owner: string | undefined,
+    scope: StreamScope,
     abort?: AbortController,
     options?: ResumableOptions,
   ): ResumableStream {
@@ -251,7 +356,7 @@ export class ResumableStreamRegistry {
       iterator,
       itemSchema,
       framer,
-      owner,
+      scope,
       s => this.streams.delete(s.id),
       abort,
       options,
@@ -261,25 +366,38 @@ export class ResumableStreamRegistry {
   }
 
   /**
-   * Look up a stream for a resume. A principal mismatch answers `undefined` —
-   * indistinguishable from an expired stream, so a probe learns nothing.
+   * The resume gate. Undefined when the request carries no well-formed
+   * `Last-Event-ID` (a fresh stream). Otherwise the stream to rejoin — or, for
+   * an unknown/expired id, another route's or principal's stream, or a
+   * position trimmed out of the ring, a thrown {@link resumeRefused}: the
+   * same 409 for every cause, so a probe learns nothing.
    */
   resume(
-    streamId: string,
-    owner: string | undefined,
-  ): ResumableStream | undefined {
-    const stream = this.streams.get(streamId);
-    if (!stream) return undefined;
-    if (stream.owner !== owner) {
-      log.warn('resume of stream %s refused: principal mismatch', streamId);
-      return undefined;
+    lastEventId: string | null | undefined,
+    scope: StreamScope,
+  ): Resumption | undefined {
+    const parsed = parseEventId(lastEventId ?? undefined);
+    if (!parsed) return undefined;
+    const stream = this.streams.get(parsed.streamId);
+    if (!stream || !stream.canResume(parsed.seq)) throw resumeRefused();
+    const {ctor, methodName, owner} = stream.scope;
+    if (
+      ctor !== scope.ctor ||
+      methodName !== scope.methodName ||
+      owner !== scope.owner
+    ) {
+      // Never log the id: it is a live credential for the stream.
+      log.warn('resume refused: stream belongs to another route or principal');
+      throw resumeRefused();
     }
-    return stream;
+    return new Resumption(stream, parsed.seq);
   }
 
   /** Stop every live stream. Called on server stop so nothing outlives it. */
   disposeAll(): void {
-    for (const stream of [...this.streams.values()]) stream.dispose();
+    for (const stream of [...this.streams.values()]) {
+      stream.dispose(AbortReasons.CANCELLED);
+    }
   }
 
   /** Live stream count — for tests and diagnostics. */
