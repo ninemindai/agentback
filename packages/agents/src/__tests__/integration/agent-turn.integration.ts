@@ -372,12 +372,12 @@ describe('agent turn cancellation', () => {
       result as unknown as {steps: Array<{toolResults?: unknown[]}>}
     ).steps.flatMap(step => step.toolResults ?? []);
     expect(toolResults[0]).toMatchObject({output: {seen: true}});
-    // The AI SDK hands `execute` its own per-call signal, which `callTool`
-    // binds on the child context — so the tool sees a signal that fires when
-    // EITHER the turn or the request is aborted.
+    // The request signal rides the turn into the AI SDK, which hands it to
+    // `execute`; `callTool` binds that on the tool's child context. So
+    // aborting the request reaches the tool.
     expect(toolSawSignal).toBeDefined();
     expect(toolSawSignal!.aborted).toBe(false);
     controller.abort();
-    expect(controller.signal.aborted).toBe(true);
+    expect(toolSawSignal!.aborted).toBe(true);
   });
 });
