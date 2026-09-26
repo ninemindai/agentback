@@ -258,6 +258,13 @@ Rules and runtime behaviors:
   unchanged: a plain `Error` is redacted to 500 `internal_error`.
 - **Client disconnect** calls the iterator's `return()`, so upstream cleanup
   belongs in a `finally` block — _unless_ the route is `resumable:` (below).
+- **Backpressure** — the next item is pulled only when the transport can take
+  more, so a reader that stops reading pauses the generator at its next
+  `yield` (every host; attached `resumable:` readers too). A producer that must
+  keep pace with an external source has to buffer or drop on its own side.
+- **`app.stop()` ends open streams** cleanly (EOF) and aborts the handler's
+  `ABORT_SIGNAL` with `AbortReasons.CANCELLED` (a hangup is `CALLER_GONE`);
+  ordinary requests still drain gracefully.
 - **Heartbeat** (SSE only): `{rest: {sse: {pingMs: 15_000}}}` writes `: ping`
   comment lines to defeat idle proxies. Off by default; ignored for JSONL.
 - **Resumable (`resumable:`, SSE only)** — `{streamOf, resumable: {windowMs?,

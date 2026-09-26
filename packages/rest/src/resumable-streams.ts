@@ -66,7 +66,10 @@ export function streamsFull(): AgentError {
 
 /** Where framed bytes go: the Express response, or a Web stream controller. */
 export interface StreamSink {
-  write(chunk: string): void;
+  /** False when the transport is full: wait for {@link drain} before more. */
+  write(chunk: string): boolean;
+  /** Resolves once the transport can take more, or the sink has closed. */
+  drain(): Promise<void>;
   close(): void;
 }
 
@@ -131,6 +134,10 @@ export class ResumableStream {
   /** Sequence of the oldest frame still buffered; grows as the ring trims. */
   private oldestSeq = 1;
   private sink?: StreamSink;
+  /** The attached sink reported full; the pump waits before producing more. */
+  private sinkFull = false;
+  /** Ends the pump's wait for a full sink — on drain, or when it detaches. */
+  private releaseWait?: () => void;
   private graceTimer?: ReturnType<typeof setTimeout>;
   private done = false;
   private disposed = false;
@@ -176,7 +183,25 @@ export class ResumableStream {
       this.frames.shift();
       this.oldestSeq = this.frames[0]!.seq;
     }
-    this.sink?.write(frame.text);
+    if (this.sink && !this.sink.write(frame.text)) this.sinkFull = true;
+  }
+
+  /**
+   * Backpressure: while an attached reader is not keeping up, stop pulling
+   * from the producer instead of buffering without limit in the transport.
+   * Only an ATTACHED sink paces the pump. A detach (or a new attach, or
+   * dispose) ends the wait, so a stream nobody is reading keeps filling its
+   * ring for a later resume — the ring, not the socket, bounds that memory.
+   */
+  private async whileSinkFull(): Promise<void> {
+    if (!this.sinkFull || !this.sink) return;
+    this.sinkFull = false;
+    const sink = this.sink;
+    await new Promise<void>(resolve => {
+      this.releaseWait = resolve;
+      void sink.drain().then(resolve);
+    });
+    this.releaseWait = undefined;
   }
 
   /** Validate and emit one item. Returns false when the stream must stop. */
@@ -209,6 +234,8 @@ export class ResumableStream {
     try {
       if (!first.done && !this.emit(first.value)) return;
       while (!this.disposed) {
+        await this.whileSinkFull();
+        if (this.disposed) break;
         const {value, done} = await this.iterator.next();
         if (done) break;
         if (!this.emit(value)) break;
@@ -253,8 +280,14 @@ export class ResumableStream {
       this.graceTimer = undefined;
     }
     this.sink = sink;
+    this.sinkFull = false;
+    this.releaseWait?.();
     if (afterSeq !== undefined) {
-      for (const f of this.frames) if (f.seq > afterSeq) sink.write(f.text);
+      // The replay is bounded by the ring, so it is written in one go; a full
+      // sink afterwards still pauses the pump.
+      for (const f of this.frames) {
+        if (f.seq > afterSeq && !sink.write(f.text)) this.sinkFull = true;
+      }
     }
     if (this.done) {
       this.dispose();
@@ -276,6 +309,8 @@ export class ResumableStream {
   detach(sink: StreamSink): void {
     if (sink !== this.sink) return;
     this.sink = undefined;
+    this.sinkFull = false;
+    this.releaseWait?.();
     if (this.disposed) return;
     if (this.graceTimer) clearTimeout(this.graceTimer);
     this.graceTimer = setTimeout(() => this.dispose(), this.windowMs);
@@ -294,6 +329,7 @@ export class ResumableStream {
     this.graceTimer = undefined;
     const sink = this.sink;
     this.sink = undefined;
+    this.releaseWait?.();
     sink?.close();
     if (!this.done) this.abort?.abort(abortError(reason));
     void this.iterator.return?.()?.catch(err => {

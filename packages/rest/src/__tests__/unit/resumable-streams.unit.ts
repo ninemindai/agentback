@@ -38,7 +38,10 @@ describe('ResumableStream', () => {
       SSE_FRAMER,
       scope,
     );
-    stream.attach({write() {}, close() {}}, new AbortController().signal);
+    stream.attach(
+      {write: () => true, drain: async () => {}, close() {}},
+      new AbortController().signal,
+    );
     void stream.pump(await iterator.next());
 
     stream.dispose();

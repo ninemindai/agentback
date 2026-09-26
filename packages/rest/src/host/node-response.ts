@@ -55,7 +55,20 @@ export async function writeWebResponseToNode(
     for (;;) {
       const {done, value} = await reader.read();
       if (done) break;
-      if (value && !aborted) res.write(Buffer.from(value));
+      if (value && !aborted && !res.write(Buffer.from(value))) {
+        // Backpressure: stop reading the Web stream until the socket drains,
+        // so a slow client pauses the producer behind it instead of the
+        // whole response piling up in memory here.
+        await new Promise<void>(resolve => {
+          const done = () => {
+            res.off('drain', done);
+            res.off('close', done);
+            resolve();
+          };
+          res.on('drain', done);
+          res.on('close', done);
+        });
+      }
     }
     if (!aborted) res.end();
   } catch {
