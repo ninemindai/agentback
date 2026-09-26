@@ -45,6 +45,10 @@ policies with no other change — which is why this is middleware and not a
   (each attempt votes on health; once open the rest fail fast).
 - **Retry is for the transport.** 408/409/429/5xx only. Never a 4xx, a
   cancelled call, or an open circuit.
+- **"Cancelled" means the caller's `abortSignal` aborted — not an abort-shaped
+  error.** A provider timing out on its own (`TimeoutError` from a `fetch`
+  wrapper) is retried, fails over, and trips the breaker. Pass the signal when
+  calling `isRetryable(err, signal)` yourself.
 - **A 4xx never trips the breaker.** It is recorded neutral — it would fail
   against a healthy provider, and counting it would let one caller's bad input
   take the provider away from everyone.

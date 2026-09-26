@@ -2,7 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {isAbortError, loggers} from '@agentback/common';
+import {loggers} from '@agentback/common';
 import {CircuitOpenError, TokenBudgetExceededError} from './errors.js';
 import type {ModelMiddleware} from './types.js';
 
@@ -50,13 +50,22 @@ function retryAfterMs(err: unknown): number | undefined {
  * socket, a 503 — those are the network having a bad second. A 400, a content
  * filter, a context-length overflow: the same request will fail the same way
  * forever, and paying for it three times is strictly worse than failing once.
+ *
+ * Pass the caller's `abortSignal`: a call the caller cancelled is never
+ * retried, whatever it threw. Cancellation is read off the SIGNAL, not the
+ * error — an abort-shaped error (`AbortError`, `TimeoutError`) says nothing
+ * about who aborted, and one the caller did not ask for, such as a provider
+ * `fetch` wrapper's own `AbortSignal.timeout`, is the transport failing.
  */
-export function isRetryable(err: unknown): boolean {
+export function isRetryable(err: unknown, callerSignal?: AbortSignal): boolean {
+  // A cancelled call must never come back: someone asked for it to stop. The
+  // AI SDK folds its own `timeout` into this signal, so that counts too.
+  if (callerSignal?.aborted) return false;
   // Our own control-flow errors are decisions, not failures.
   if (err instanceof CircuitOpenError) return false;
   if (err instanceof TokenBudgetExceededError) return false;
-  // A cancelled call must never come back: someone asked for it to stop.
-  if (isAbortError(err)) return false;
+  // An abort nobody here asked for is the transport giving up on us.
+  if (isAbortShaped(err)) return true;
 
   const status = statusOf(err);
   if (status !== undefined) return RETRYABLE_STATUS.has(status);
@@ -67,6 +76,11 @@ export function isRetryable(err: unknown): boolean {
   const e = err as {isRetryable?: unknown; name?: unknown};
   if (typeof e.isRetryable === 'boolean') return e.isRetryable;
   return false;
+}
+
+function isAbortShaped(err: unknown): boolean {
+  const name = (err as {name?: unknown} | null)?.name;
+  return name === 'AbortError' || name === 'TimeoutError';
 }
 
 /**
@@ -99,7 +113,7 @@ export function retryPolicy(opts: RetryOptions = {}): ModelMiddleware {
         return await call();
       } catch (err) {
         lastError = err;
-        if (!isRetryable(err) || attempt === attempts - 1) throw err;
+        if (!isRetryable(err, signal) || attempt === attempts - 1) throw err;
         const backoff = Math.min(baseDelayMs * 2 ** attempt, maxDelayMs);
         const delay = retryAfterMs(err) ?? Math.round(backoff * jitter());
         log.warn(
