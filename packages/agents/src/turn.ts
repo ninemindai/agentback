@@ -14,7 +14,11 @@ import {
   type QuotaService,
   type UsageDescriptor,
 } from '@agentback/metering';
-import {withModelScope} from '@agentback/model-gateway';
+import {
+  currentModelScope,
+  withModelScope,
+  type ModelScope,
+} from '@agentback/model-gateway';
 import {isProjectedTool} from './host-tools.js';
 import type {AgentPort, AgentToolContext, AgentTurnOptions} from './port.js';
 import type {AgentSessionRegistry} from './session-registry.js';
@@ -32,6 +36,8 @@ interface PreparedTurn {
   descriptor: () => UsageDescriptor;
   /** Run `fn` inside this turn's model-accounting scope. */
   scoped: <T>(fn: () => T) => T;
+  /** The budget refusal recorded on this turn's scope, if a call was refused. */
+  refused: () => Error | undefined;
   /** Post-turn quota charge (success only — metering records failures). */
   succeed: () => Promise<void>;
 }
@@ -84,8 +90,13 @@ export function wrapAgent(
       // Detached finalization: the stream's usage is only knowable at
       // completion or cancellation. `finishReason` settles on both (an abort
       // rejects it), so metering records the turn and quota charges exactly
-      // once, whichever way the stream ends.
-      const settled = Promise.resolve(result?.finishReason);
+      // once, whichever way the stream ends. A budget refusal does not reject
+      // it: on a stream it is only an in-stream error part, so the turn's
+      // scope is asked, and a refused turn fails instead of succeeding.
+      const settled = Promise.resolve(result?.finishReason).then(() => {
+        const refused = turn.refused();
+        if (refused) throw refused;
+      });
       const finalize = turn.meter
         ? turn.meter.observe(turn.descriptor, () => settled)
         : settled;
@@ -162,10 +173,13 @@ async function prepareTurn(
     optional: true,
   })) as Meter | undefined;
 
-  const turnOptions: AgentTurnOptions = {...options};
+  // `tokenBudget` is enforced by the scope below; the agent has no such option.
+  const {tokenBudget, ...forwarded} = options;
+  const turnOptions: AgentTurnOptions = {...forwarded};
   if (Object.keys(toolsContext).length) turnOptions.toolsContext = toolsContext;
   if (abortSignal) turnOptions.abortSignal = abortSignal;
 
+  let scope: ModelScope | undefined;
   return {
     options: turnOptions,
     scoped: fn =>
@@ -173,12 +187,14 @@ async function prepareTurn(
         {
           principal,
           correlationId: turnId,
-          ...(options.tokenBudget !== undefined
-            ? {tokenBudget: options.tokenBudget}
-            : {}),
+          ...(tokenBudget !== undefined ? {tokenBudget} : {}),
         },
-        fn,
+        () => {
+          scope = currentModelScope();
+          return fn();
+        },
       ),
+    refused: () => scope?.refused,
     meter,
     descriptor: () => ({
       surface: 'agent' as const,

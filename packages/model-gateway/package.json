@@ -24,7 +24,6 @@
     "@agentback/context": "workspace:~",
     "@agentback/core": "workspace:~",
     "@agentback/metering": "workspace:~",
-    "@agentback/security": "workspace:~",
     "tslib": "^2.8.1"
   },
   "peerDependencies": {
