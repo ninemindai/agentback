@@ -13,7 +13,7 @@
     "build:watch": "tsc -b --watch",
     "clean": "tsc -b --clean && pnpm -r --no-sort exec rm -rf dist",
     "typecheck:client": "pnpm -r --no-sort --if-present run typecheck:client",
-    "verify": "pnpm konsistent && pnpm check:generated && pnpm build && pnpm typecheck:client && pnpm test && node scripts/validate-templates.mjs && pnpm build:site",
+    "verify": "pnpm konsistent && pnpm check:generated && pnpm lint && pnpm build && pnpm typecheck:client && pnpm test && node scripts/validate-templates.mjs && pnpm build:site",
     "test": "vitest run",
     "test:watch": "vitest",
     "konsistent": "konsistent",
