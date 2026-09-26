@@ -207,6 +207,31 @@ export function runJobQueueConformance(
       await sub.close();
     });
 
+    it("retries a handler's own abort — only an attempt we abandoned is terminal", async () => {
+      const q = makeQueue();
+      const starts: Record<number, number> = {};
+      const sub = q.process(Q, async job => {
+        starts[job.data.n] = (starts[job.data.n] ?? 0) + 1;
+        // The handler's own `fetch(url, {signal: AbortSignal.timeout(n)})`
+        // timing out, or an SDK call it aborted itself: an ordinary failure
+        // that happens to be shaped like an abort. No timeoutMs is set.
+        if (job.attempt === 0) {
+          throw new DOMException(
+            'fetch timed out',
+            job.data.n === 1 ? 'TimeoutError' : 'AbortError',
+          );
+        }
+      });
+      const timedOut = await q.enqueue(Q, {n: 1}, {attempts: 2});
+      const aborted = await q.enqueue(Q, {n: 2}, {attempts: 2});
+      await waitFor(async () => {
+        expect((await q.get(Q, timedOut.id))?.state).toBe('completed');
+        expect((await q.get(Q, aborted.id))?.state).toBe('completed');
+      });
+      expect(starts).toEqual({1: 2, 2: 2});
+      await sub.close();
+    });
+
     it('cancel aborts a job that already started in this process', async () => {
       const q = makeQueue();
       let started = false;

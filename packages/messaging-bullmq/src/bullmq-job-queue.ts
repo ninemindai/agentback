@@ -2,7 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {isAbortError, loggers} from '@agentback/common';
+import {loggers} from '@agentback/common';
 import {JobDeadlines} from '@agentback/messaging';
 import type {
   EnqueueOptions,
@@ -243,7 +243,7 @@ export class BullMQJobQueue implements JobQueue {
           // acks a plain throw is redelivered, so a job that hangs would hang
           // again on the next worker, and the one after that, billing each
           // time. `UnrecoverableError` fails it once.
-          if (isAbortError(err)) {
+          if (this.deadlines.isAbandonment(err)) {
             logError('job %s on %s abandoned: %O', job.id, q.name, err);
             throw new UnrecoverableError(
               `Job ${job.id} on "${q.name}" was abandoned: ${

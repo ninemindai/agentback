@@ -25,14 +25,21 @@ const log = loggers('agentback:messaging:deadline');
  */
 export class JobDeadlines {
   private readonly live = new Map<string, AbortController>();
+  /**
+   * Every abort reason this registry issued. Terminality is decided by
+   * identity against this set, never by the error's name: a handler's own
+   * `AbortSignal.timeout()` fetch throws a `TimeoutError` too, and that is an
+   * ordinary failure the job's `attempts` should retry.
+   */
+  private readonly issued = new WeakSet<object>();
 
   /**
    * Run one attempt of `job` under `timeoutMs`, with a signal that also fires
    * if {@link abort} names this job first.
    *
    * Rejects with a `DOMException` named `AbortError` when the attempt is
-   * abandoned — `isAbortError()` recognizes it, and an adapter must treat it
-   * as terminal. Redelivering an abandoned attempt re-runs work someone asked
+   * abandoned — {@link isAbandonment} recognizes it, and an adapter must treat
+   * it as terminal. Redelivering an abandoned attempt re-runs work someone asked
    * to stop, and on a deadline it means the same hang costs the same money on
    * the next worker, and the one after that.
    */
@@ -52,7 +59,7 @@ export class JobDeadlines {
               id,
               timeoutMs,
             );
-            controller.abort(abortError(AbortReasons.DEADLINE));
+            this.abandon(controller, AbortReasons.DEADLINE);
           }, timeoutMs);
     // Unref so a pending deadline never holds the process open on shutdown.
     timer?.unref?.();
@@ -88,8 +95,23 @@ export class JobDeadlines {
   abort(id: string, reason: string = AbortReasons.CANCELLED): boolean {
     const controller = this.live.get(id);
     if (!controller) return false;
-    controller.abort(abortError(reason));
+    this.abandon(controller, reason);
     return true;
+  }
+
+  /**
+   * Whether `err` is an abandonment this registry issued — the retry decision.
+   * An abandoned attempt must not be retried; any other error, however it is
+   * shaped, is the handler failing and follows the job's `attempts`.
+   */
+  isAbandonment(err: unknown): boolean {
+    return typeof err === 'object' && err !== null && this.issued.has(err);
+  }
+
+  private abandon(controller: AbortController, reason: string): void {
+    const error = abortError(reason);
+    this.issued.add(error);
+    controller.abort(error);
   }
 
   /** Whether an attempt for `id` is running in this process. */

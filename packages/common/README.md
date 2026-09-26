@@ -20,7 +20,7 @@ alike.
 - **`promiseTimeout(ms, promise)`** — race a promise against a timeout.
 - **`getServerUrl(req)`** — derive a canonical server URL from an Express request.
 - **`Fetch`** — type alias for `typeof globalThis.fetch`, the framework's injectable HTTP seam. Services that call an external API inject it (bound under `CoreBindings.FETCH`) instead of the global `fetch`, so tests can supply canned responses with no network. The type lives here (DI-free leaf); the binding key lives in `@agentback/core`.
-- **`AbortReasons`** / **`abortError(message)`** / **`isAbortError(err)`** — the cancellation vocabulary shared by every surface. `abortError` builds the web-standard reason (a `DOMException` named `AbortError`, which `fetch` and the AI SDK rethrow verbatim); `isAbortError` is the retry decision — an aborted run stopped because we stopped it, so redelivering it re-runs work someone asked to stop. The signal itself is bound under `CoreBindings.ABORT_SIGNAL` (`@agentback/core`); see [docs/concepts/cancellation.md](../../docs/concepts/cancellation.md).
+- **`AbortReasons`** / **`abortError(message)`** / **`isAbortError(err)`** — the cancellation vocabulary shared by every surface. `abortError` builds the web-standard reason (a `DOMException` named `AbortError`, which `fetch` and the AI SDK rethrow verbatim); `isAbortError` recognizes an abort-shaped error (ours, or a platform `TimeoutError`) — it is not a retry decision, since the shape cannot say who aborted; a job queue decides terminality by the identity of its own abort. The signal itself is bound under `CoreBindings.ABORT_SIGNAL` (`@agentback/core`); see [docs/concepts/cancellation.md](../../docs/concepts/cancellation.md).
 
 ## Usage
 
