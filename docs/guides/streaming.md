@@ -259,26 +259,45 @@ What changes on the server:
   missed.
 - **`CoreBindings.ABORT_SIGNAL` follows the stream, not the socket.** This is
   the deliberate inversion of the usual [cancellation](../concepts/cancellation.md)
-  rule: a `resumable:` route's signal fires when the window closes or the
-  stream completes, never merely because the client blinked. Otherwise the
-  feature would defeat itself.
+  rule: a `resumable:` route's signal fires when the window closes (reason
+  `RESUME_WINDOW_CLOSED`) or the server stops (`CANCELLED`), never merely
+  because the client blinked — otherwise the feature would defeat itself. A
+  stream that completes normally does not abort it.
 - **You pay for the window.** Between the disconnect and the window closing
   you are running work nobody is reading — that is the whole cost of the
   feature, and why it is opt-in and bounded on both time and memory.
-- **An unsatisfiable resume is an error, not a silent gap.** A client away long
-  enough for the ring to discard its position gets a terminal `event: error`
-  telling it to start a new stream, rather than a stream with a hole in it.
-- **Resuming requires the same principal.** The stream id is an unguessable
-  UUID, but an id that leaks must not hand someone else's turn to the finder;
-  a principal mismatch is indistinguishable from an expired stream.
+- **A resume that cannot be honoured is a 409, never a fresh run.** An
+  unknown or expired stream id, a position the ring has already discarded,
+  or an id from another route or principal all get the same HTTP 409
+  (`code: 'conflict'`) error envelope — a probe cannot tell them apart.
+  `EventSource` fails the connection on a non-200 and stops reconnecting, and
+  the handler is not re-run: a request carrying a well-formed
+  `Last-Event-ID` never starts a new stream. (An unparseable one is ignored
+  and starts fresh.) To start over, open a new stream without the header.
+- **A stream is bound to its route and principal.** The resume must arrive on
+  the route that opened the stream, as the same principal. On an
+  **unauthenticated** route there is no principal, so the stream id — an
+  unguessable UUID, echoed on every frame — is a **bearer capability**: anyone
+  holding it can read the rest of the stream. Authenticate the route if that
+  is not acceptable.
+- **Live streams are capped server-wide.** At most
+  `rest.resumable.maxLiveStreams` (default 1000) streams are live at once.
+  Past the cap a **new** stream is refused with HTTP 503 + `Retry-After`
+  before the handler runs; resuming a live stream is never refused by the
+  cap.
+
+  ```ts
+  new RestApplication({rest: {resumable: {maxLiveStreams: 200}}});
+  ```
 
 Two constraints worth knowing:
 
 - **SSE only.** `format: 'jsonl'` has no frame-id convention, so the
   combination is refused at decoration time.
 - **Single process.** The buffer is in memory, so a client that reconnects to
-  a different instance starts fresh — the same trade `InMemoryEventStore`
-  makes in `@agentback/mcp-http`. Behind a load balancer, use sticky sessions.
+  a different instance gets the unknown-stream 409 — the same trade
+  `InMemoryEventStore` makes in `@agentback/mcp-http`. Behind a load
+  balancer, use sticky sessions.
 
 ## Out of scope (today)
 
