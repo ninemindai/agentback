@@ -43,7 +43,7 @@
     "mcp-client-1-11": "npm:@modelcontextprotocol/sdk@1.11.0",
     "mcp-client-1-17": "npm:@modelcontextprotocol/sdk@1.17.0",
     "mcp-client-1-29": "npm:@modelcontextprotocol/sdk@1.29.0",
-    "vitest": "~4.1.11",
+    "vitest": "~5.0.1",
     "zod": "^4.6.5"
   },
   "license": "MIT",

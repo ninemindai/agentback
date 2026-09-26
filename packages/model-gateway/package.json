@@ -37,7 +37,7 @@
   "devDependencies": {
     "@agentback/testlab": "workspace:~",
     "ai": "^7.0.114",
-    "vitest": "~4.1.11"
+    "vitest": "~5.0.1"
   },
   "engines": {
     "node": ">=22.18"

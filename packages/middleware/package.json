@@ -35,7 +35,7 @@
     "@agentback/testlab": "workspace:~",
     "@types/debug": "^4.1.13",
     "express": "^5.2.1",
-    "vitest": "~4.1.11"
+    "vitest": "~5.0.1"
   },
   "engines": {
     "node": ">=22.18"
