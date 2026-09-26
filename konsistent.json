@@ -71,7 +71,7 @@
     },
     {
       "name": "test-files-import-vitest",
-      "description": "Test files import from vitest directly (the excluded messaging runners delegate to the shared conformance suite, which imports vitest itself)",
+      "description": "Test files import from vitest directly (the excluded messaging runners and any file that calls runInstallConformance delegate to a shared suite, which imports vitest itself)",
       "severity": "warning",
       "paths": "packages/*/src/__tests__/**/*.{unit,integration,acceptance}.ts",
       "excludeFiles": [
@@ -79,9 +79,19 @@
         "packages/messaging/src/__tests__/unit/in-memory-job-queue.unit.ts",
         "packages/messaging/src/__tests__/unit/in-memory-queue-admin.unit.ts"
       ],
-      "must": {
-        "importFrom": "vitest"
-      }
+      "must": [
+        {
+          "ifNot": {
+            "hasValueImport": {
+              "name": "runInstallConformance",
+              "from": "@agentback/testing"
+            }
+          },
+          "must": {
+            "importValuesFrom": "vitest"
+          }
+        }
+      ]
     },
     {
       "name": "no-direct-debug-import",
@@ -93,7 +103,8 @@
         "packages/common/src/utils/debug-pino.ts"
       ],
       "mustNot": {
-        "importFrom": "debug"
+        "importValuesFrom": "debug",
+        "importTypesFrom": "debug"
       }
     },
     {
@@ -101,7 +112,8 @@
       "description": "ESM-only workspace: import lodash-es, never lodash",
       "paths": "packages/*/src/**/*.ts",
       "mustNot": {
-        "importFrom": "lodash"
+        "importValuesFrom": "lodash",
+        "importTypesFrom": "lodash"
       }
     },
     {
@@ -109,7 +121,8 @@
       "description": "CLAUDE.md: mcp-http exists so @agentback/mcp stays Express-free — the mcp package must never import express",
       "paths": "packages/mcp/src/**/*.ts",
       "mustNot": {
-        "importFrom": "express"
+        "importValuesFrom": "express",
+        "importTypesFrom": "express"
       }
     },
     {
@@ -118,7 +131,8 @@
       "paths": "packages/client/src/**/*.ts",
       "excludeFiles": ["packages/client/src/__tests__/**"],
       "mustNot": {
-        "importFrom": "@agentback/openapi"
+        "importValuesFrom": "@agentback/openapi",
+        "importTypesFrom": "@agentback/openapi"
       }
     },
     {
