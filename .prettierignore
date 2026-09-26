@@ -1,0 +1,3 @@
+# Generated verbatim by packages/console-chat/scripts/gen-framework-guide.mjs;
+# `pnpm check:generated` compares it byte-for-byte against that output.
+packages/console-chat/src/framework-guide.ts
