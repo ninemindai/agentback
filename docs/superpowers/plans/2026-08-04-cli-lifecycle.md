@@ -36,43 +36,45 @@
 
 **Created:**
 
-| Path | Responsibility |
-| --- | --- |
-| `packages/cli/src/new.ts` | `agentback new` — arg parsing delegated to `args.ts`, calls `scaffold()`, prints next steps |
-| `packages/cli/src/update/versions.ts` | Pure functions: scan `@agentback/*` ranges, resolve `from`, rewrite to a target caret |
-| `packages/cli/src/update/package-manager.ts` | Lockfile-based package-manager detection + install command |
-| `packages/cli/src/update/migration.ts` | `Migration`, `Finding`, `MigrationContext` types + `selectMigrations` window |
-| `packages/cli/src/update/project.ts` | Lazy ts-morph `Project` factory over the app's tsconfig |
-| `packages/cli/src/update/migrations/helpers.ts` | Shared ts-morph queries (`installMcpHttpCalls`, `rel`) — owned by no single migration |
-| `packages/cli/src/update/migrations/index.ts` | The registry array |
-| `packages/cli/src/update/migrations/mcp-stateless-default.ts` | 0.9.0 advisory |
-| `packages/cli/src/update/migrations/mcp-stateless-scope-holes.ts` | 0.9.0 advisory |
-| `packages/cli/src/update/migrations/mcp-origin-validation.ts` | 0.9.0 advisory |
-| `packages/cli/src/update/run-update.ts` | Orchestration: git guard, three phases, report |
-| `skills/agentback/references/cli.md` | Agent-facing reference for all three subcommands |
+| Path                                                              | Responsibility                                                                              |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `packages/cli/src/new.ts`                                         | `agentback new` — arg parsing delegated to `args.ts`, calls `scaffold()`, prints next steps |
+| `packages/cli/src/update/versions.ts`                             | Pure functions: scan `@agentback/*` ranges, resolve `from`, rewrite to a target caret       |
+| `packages/cli/src/update/package-manager.ts`                      | Lockfile-based package-manager detection + install command                                  |
+| `packages/cli/src/update/migration.ts`                            | `Migration`, `Finding`, `MigrationContext` types + `selectMigrations` window                |
+| `packages/cli/src/update/project.ts`                              | Lazy ts-morph `Project` factory over the app's tsconfig                                     |
+| `packages/cli/src/update/migrations/helpers.ts`                   | Shared ts-morph queries (`installMcpHttpCalls`, `rel`) — owned by no single migration       |
+| `packages/cli/src/update/migrations/index.ts`                     | The registry array                                                                          |
+| `packages/cli/src/update/migrations/mcp-stateless-default.ts`     | 0.9.0 advisory                                                                              |
+| `packages/cli/src/update/migrations/mcp-stateless-scope-holes.ts` | 0.9.0 advisory                                                                              |
+| `packages/cli/src/update/migrations/mcp-origin-validation.ts`     | 0.9.0 advisory                                                                              |
+| `packages/cli/src/update/run-update.ts`                           | Orchestration: git guard, three phases, report                                              |
+| `skills/agentback/references/cli.md`                              | Agent-facing reference for all three subcommands                                            |
 
 **Modified:**
 
-| Path | Change |
-| --- | --- |
-| `packages/cli/src/cli.ts:38` | `if (cmd !== 'deploy')` → subcommand switch; extend `USAGE` |
-| `packages/cli/src/args.ts` | Add `parseNewArgs`, `parseUpdateArgs` following `parseDeployArgs`'s shape |
-| `packages/cli/package.json` | Add `create-agentback`, `ts-morph`, `semver` to `dependencies`; **move `@agentback/openapi` out of `devDependencies`** |
-| `packages/create-agentback/templates/*/{package.json,README.md}` | Add an `update` script + "Upgrading" section — otherwise `update` is undiscoverable |
-| `packages/cli/tsconfig.json` | Add `{"path": "../create-agentback"}` to `references` |
-| `skills/agentback/SKILL.md` | Fix stale scaffolder section; add routing-table row |
-| `docs/packages.md`, `CLAUDE.md`, `packages/cli/README.md` | Lifecycle scope |
+| Path                                                             | Change                                                                                                                 |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `packages/cli/src/cli.ts:38`                                     | `if (cmd !== 'deploy')` → subcommand switch; extend `USAGE`                                                            |
+| `packages/cli/src/args.ts`                                       | Add `parseNewArgs`, `parseUpdateArgs` following `parseDeployArgs`'s shape                                              |
+| `packages/cli/package.json`                                      | Add `create-agentback`, `ts-morph`, `semver` to `dependencies`; **move `@agentback/openapi` out of `devDependencies`** |
+| `packages/create-agentback/templates/*/{package.json,README.md}` | Add an `update` script + "Upgrading" section — otherwise `update` is undiscoverable                                    |
+| `packages/cli/tsconfig.json`                                     | Add `{"path": "../create-agentback"}` to `references`                                                                  |
+| `skills/agentback/SKILL.md`                                      | Fix stale scaffolder section; add routing-table row                                                                    |
+| `docs/packages.md`, `CLAUDE.md`, `packages/cli/README.md`        | Lifecycle scope                                                                                                        |
 
 ---
 
 ### Task 1: Subcommand router and `agentback new`
 
 **Files:**
+
 - Create: `packages/cli/src/new.ts`
 - Modify: `packages/cli/src/args.ts` (append), `packages/cli/src/cli.ts:16-40`, `packages/cli/package.json:21-24`, `packages/cli/tsconfig.json`
 - Test: `packages/cli/src/__tests__/unit/args.unit.ts` (append), `packages/cli/src/__tests__/unit/new.unit.ts`
 
 **Interfaces:**
+
 - Consumes: `scaffold`, `ScaffoldOptions`, `TEMPLATES`, `TemplateName` from `create-agentback`; `AgentError`, `ErrorCodes` from `@agentback/openapi`.
 - Produces: `parseNewArgs(argv: string[]): NewArgs`; `runNew(args: NewArgs, deps: {cwd: string}): string` (returns the created directory).
 
@@ -95,7 +97,7 @@ In `packages/cli/package.json`, add to `dependencies` (keep keys sorted) — and
 > today (`package.json:26`) while `args.ts:5` and `cli.ts` import `AgentError`
 > from it **at runtime**. `npx` installs `dependencies` only — so
 > `npx @agentback/cli@latest update`, which lockstep versioning makes the
-> *primary* invocation for this whole feature, would crash on import. Deploy has
+> _primary_ invocation for this whole feature, would crash on import. Deploy has
 > the same latent bug today; this change fixes both.
 >
 > `ts-morph` and `semver` land here too (not in Task 5) so every task boundary
@@ -213,13 +215,16 @@ export function parseNewArgs(argv: string[]): NewArgs {
       if (v === undefined || v === '') bad(`new: ${flag} needs a value`);
       if (flag === '--template' || flag === '-t') {
         if (!(TEMPLATES as readonly string[]).includes(v))
-          bad(`new: unknown template '${v}' (supported: ${TEMPLATES.join(', ')})`);
+          bad(
+            `new: unknown template '${v}' (supported: ${TEMPLATES.join(', ')})`,
+          );
         out.template = v as TemplateName;
       } else if (flag === '--with') {
         for (const c of v.split(',').filter(Boolean)) caps.add(c);
       } else if (flag === '--port') {
         const n = Number(v);
-        if (!Number.isInteger(n)) bad(`new: --port must be an integer, got '${v}'`);
+        if (!Number.isInteger(n))
+          bad(`new: --port must be an integer, got '${v}'`);
         host.port = n;
       } else if (flag === '--host') {
         host.host = v;
@@ -239,7 +244,9 @@ export function parseNewArgs(argv: string[]): NewArgs {
   // flag that carried it, naming the valid set — not deep inside a copy step.
   for (const c of caps) {
     if (!capabilityNames().includes(c))
-      bad(`new: unknown capability '${c}' (supported: ${capabilityNames().join(', ')})`);
+      bad(
+        `new: unknown capability '${c}' (supported: ${capabilityNames().join(', ')})`,
+      );
   }
   out.capabilities = [...caps]; // a Set, so `--with drizzle --drizzle` is one
 
@@ -312,7 +319,12 @@ describe('runNew', () => {
 
   it('passes capabilities through to scaffold', () => {
     const dir = runNew(
-      {name: 'db-svc', template: 'rest', capabilities: ['drizzle'], help: false},
+      {
+        name: 'db-svc',
+        template: 'rest',
+        capabilities: ['drizzle'],
+        help: false,
+      },
       {cwd},
     );
     const pkg = JSON.parse(
@@ -447,10 +459,12 @@ git commit -m "feat(cli): subcommand router and \`agentback new\` delegating to 
 ### Task 2: Version resolution and range bumping
 
 **Files:**
+
 - Create: `packages/cli/src/update/versions.ts`
 - Test: `packages/cli/src/__tests__/unit/update-versions.unit.ts`
 
 **Interfaces:**
+
 - Produces:
   - `type PackageJson = {dependencies?: Record<string,string>; devDependencies?: Record<string,string>; peerDependencies?: Record<string,string>; [k: string]: unknown}`
   - `scanAgentbackRanges(pkg: PackageJson): Map<string, string>`
@@ -776,13 +790,15 @@ git commit -m "feat(cli): version resolution and lockstep range bumping for upda
 ### Task 3: Lockfile-based package-manager detection
 
 **Files:**
+
 - Create: `packages/cli/src/update/package-manager.ts`
 - Test: `packages/cli/src/__tests__/unit/update-package-manager.unit.ts`
 
 **Interfaces:**
+
 - Produces: `type PackageManager = 'pnpm' | 'yarn' | 'bun' | 'npm'`; `detectAppPackageManager(root: string): PackageManager`; `installCommand(pm: PackageManager): {cmd: string; args: string[]}`
 
-> **Why not reuse `create-agentback`'s `detectPackageManager()`:** it reads `npm_config_user_agent` (`scaffold.ts:259`) — the *invoking* manager. `agentback update` is normally run via `npx`, which always reports npm, so a pnpm user would be told to run `npm install`. Detection must come from the app's lockfile instead.
+> **Why not reuse `create-agentback`'s `detectPackageManager()`:** it reads `npm_config_user_agent` (`scaffold.ts:259`) — the _invoking_ manager. `agentback update` is normally run via `npx`, which always reports npm, so a pnpm user would be told to run `npm install`. Detection must come from the app's lockfile instead.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -934,9 +950,11 @@ function readPackageManagerField(root: string): PackageManager | undefined {
   if (!existsSync(pkgPath)) return undefined;
   let field: unknown;
   try {
-    field = (JSON.parse(readFileSync(pkgPath, 'utf8')) as {
-      packageManager?: unknown;
-    }).packageManager;
+    field = (
+      JSON.parse(readFileSync(pkgPath, 'utf8')) as {
+        packageManager?: unknown;
+      }
+    ).packageManager;
   } catch {
     return undefined; // malformed package.json is phase 1's problem, not ours
   }
@@ -979,10 +997,12 @@ git commit -m "feat(cli): lockfile-based package-manager detection for update"
 ### Task 4: Migration types and the selection window
 
 **Files:**
+
 - Create: `packages/cli/src/update/migration.ts`
 - Test: `packages/cli/src/__tests__/unit/update-migration.unit.ts`
 
 **Interfaces:**
+
 - Consumes: `compareVersions` from `./versions.js`.
 - Produces: `Finding`, `MigrationContext`, `Migration`, `selectMigrations(all: readonly Migration[], from: string, to: string): Migration[]`
 
@@ -1027,9 +1047,9 @@ describe('selectMigrations', () => {
 
   it('orders by version ascending regardless of registry order', () => {
     const shuffled = [ALL[2], ALL[0], ALL[1]];
-    expect(selectMigrations(shuffled, '0.7.0', '0.10.0').map(x => x.id)).toEqual(
-      ['a', 'b', 'c'],
-    );
+    expect(
+      selectMigrations(shuffled, '0.7.0', '0.10.0').map(x => x.id),
+    ).toEqual(['a', 'b', 'c']);
   });
 });
 ```
@@ -1139,11 +1159,13 @@ git commit -m "feat(cli): migration registry types and (from, to] selection wind
 ### Task 5: The ts-morph seam and its formatting-fidelity guard
 
 **Files:**
+
 - Create: `packages/cli/src/update/project.ts`
 - Modify: `packages/cli/package.json` (add `ts-morph`)
 - Test: `packages/cli/src/__tests__/integration/update-project.integration.ts`
 
 **Interfaces:**
+
 - Produces: `createLazyProject(root: string): () => Project`
 
 > This task is why the plan ships an `apply` seam with zero real codemods. Scaffolded apps carry **no prettier** (`templates/hybrid/package.json` has no formatter), so a reflowed file is permanent, user-visible damage with nothing to normalize it. The fidelity assertion must exist before the first real transform in 0.10, not alongside it.
@@ -1225,7 +1247,9 @@ describe('createLazyProject', () => {
       JSON.stringify({extends: '@tsconfig/node22/tsconfig.json'}),
     );
     const files = createLazyProject(root)().getSourceFiles();
-    expect(files.map(f => path.basename(f.getFilePath()))).toContain('greet.ts');
+    expect(files.map(f => path.basename(f.getFilePath()))).toContain(
+      'greet.ts',
+    );
   });
 
   it('leaves untouched regions byte-identical after a transform', () => {
@@ -1234,9 +1258,10 @@ describe('createLazyProject', () => {
 
     // Synthetic transform standing in for a future real codemod: rename one
     // method. Everything else in the file must survive unchanged.
-    file.getClassOrThrow('GreetController').getMethodOrThrow('unused').rename(
-      'renamed',
-    );
+    file
+      .getClassOrThrow('GreetController')
+      .getMethodOrThrow('unused')
+      .rename('renamed');
     file.saveSync();
 
     const after = readFileSync(path.join(root, 'src', 'greet.ts'), 'utf8');
@@ -1323,10 +1348,12 @@ git commit -m "feat(cli): lazy ts-morph project seam with a formatting-fidelity 
 ### Task 6: The three seed advisories
 
 **Files:**
+
 - Create: `packages/cli/src/update/migrations/mcp-stateless-default.ts`, `mcp-stateless-scope-holes.ts`, `mcp-origin-validation.ts`, `index.ts`
 - Test: `packages/cli/src/__tests__/unit/update-advisories.unit.ts`
 
 **Interfaces:**
+
 - Consumes: `Migration`, `Finding`, `MigrationContext` from `../migration.js`; `createLazyProject` from `../project.js`.
 - Produces: `MIGRATIONS: readonly Migration[]` from `packages/cli/src/update/migrations/index.js`.
 
@@ -1507,7 +1534,9 @@ export function installMcpHttpCalls(
         ? literal
             .asKindOrThrow(SyntaxKind.ObjectLiteralExpression)
             .getProperties()
-            .map(p => p.getSymbol()?.getName() ?? p.getText().split(':')[0].trim())
+            .map(
+              p => p.getSymbol()?.getName() ?? p.getText().split(':')[0].trim(),
+            )
         : [];
       out.push({file, call, options});
     }
@@ -1614,7 +1643,8 @@ export const mcpStatelessScopeHoles: Migration = {
     const bindsStore = /CONFIRMATION_STORE/.test(all);
     if (usesConfirm && !bindsStore) {
       findings.push({
-        message: 'App declares `confirm:` tools but binds no confirmation store.',
+        message:
+          'App declares `confirm:` tools but binds no confirmation store.',
         action:
           'A confirm: round trip spans two requests. Bind ' +
           'MCPBindings.CONFIRMATION_STORE explicitly (Redis for multi-instance) ' +
@@ -1713,11 +1743,13 @@ git commit -m "feat(cli): three 0.9.0 seed advisories with positive and negative
 ### Task 7: `runUpdate` orchestration and CLI wiring
 
 **Files:**
+
 - Create: `packages/cli/src/update/run-update.ts`
 - Modify: `packages/cli/src/args.ts` (add `parseUpdateArgs`), `packages/cli/src/cli.ts` (route `update`)
 - Test: `packages/cli/src/__tests__/unit/update-run.unit.ts`, `packages/cli/src/__tests__/unit/args.unit.ts` (append)
 
 **Interfaces:**
+
 - Consumes: everything from Tasks 2–6, plus `Exec` from `../exec.js`.
 - Produces:
   - `parseUpdateArgs(argv: string[]): UpdateArgs` where `UpdateArgs = {to?: string; dryRun: boolean; force: boolean; help: boolean}`
@@ -1877,7 +1909,9 @@ describe('runUpdate', () => {
       {dryRun: false, force: false, help: false, to: '0.10.0'},
       {exec, cwd, selfVersion: '0.10.0'},
     );
-    expect(r.warnings.join(' ')).toMatch(/Could not verify the git working tree/);
+    expect(r.warnings.join(' ')).toMatch(
+      /Could not verify the git working tree/,
+    );
   });
 });
 
@@ -1892,7 +1926,11 @@ describe('runUpdate phase 2 (migrations)', () => {
     writeFileSync(path.join(cwd, 'src', 'app.ts'), 'export class A {}\n');
     writeFileSync(
       path.join(cwd, 'package.json'),
-      JSON.stringify({...PKG, dependencies: {'@agentback/core': '^0.8.0'}}, null, 2) + '\n',
+      JSON.stringify(
+        {...PKG, dependencies: {'@agentback/core': '^0.8.0'}},
+        null,
+        2,
+      ) + '\n',
     );
   });
   afterEach(() => rmSync(cwd, {recursive: true, force: true}));
@@ -1925,14 +1963,26 @@ describe('runUpdate phase 2 (migrations)', () => {
     const {exec} = stubExec();
     const opts = {force: false, help: false, to: '0.10.0'};
 
-    await runUpdate({...opts, dryRun: true}, {
-      exec, cwd, selfVersion: '0.10.0', migrations: [codemod],
-    });
+    await runUpdate(
+      {...opts, dryRun: true},
+      {
+        exec,
+        cwd,
+        selfVersion: '0.10.0',
+        migrations: [codemod],
+      },
+    );
     expect(applied).toEqual([]);
 
-    await runUpdate({...opts, dryRun: false}, {
-      exec, cwd, selfVersion: '0.10.0', migrations: [codemod],
-    });
+    await runUpdate(
+      {...opts, dryRun: false},
+      {
+        exec,
+        cwd,
+        selfVersion: '0.10.0',
+        migrations: [codemod],
+      },
+    );
     expect(applied).toEqual(['ran']);
   });
 
@@ -1946,9 +1996,15 @@ describe('runUpdate phase 2 (migrations)', () => {
     };
     const {exec} = stubExec();
     await expect(
-      runUpdate({dryRun: false, force: false, help: false, to: '0.10.0'}, {
-        exec, cwd, selfVersion: '0.10.0', migrations: [exploding],
-      }),
+      runUpdate(
+        {dryRun: false, force: false, help: false, to: '0.10.0'},
+        {
+          exec,
+          cwd,
+          selfVersion: '0.10.0',
+          migrations: [exploding],
+        },
+      ),
     ).rejects.toThrow(/transform failed/);
 
     // The whole point of migrating before bumping: a failed run must not move
@@ -1962,9 +2018,16 @@ describe('runUpdate phase 2 (migrations)', () => {
 
 describe('printUpdateReport', () => {
   const base = {
-    from: '0.9.0', to: '0.10.0', changed: ['@agentback/core'], skipped: [],
-    unparsed: [], disagreement: [], warnings: [], findings: [],
-    installed: true, dryRun: false,
+    from: '0.9.0',
+    to: '0.10.0',
+    changed: ['@agentback/core'],
+    skipped: [],
+    unparsed: [],
+    disagreement: [],
+    warnings: [],
+    findings: [],
+    installed: true,
+    dryRun: false,
   };
 
   it('renders the version transition and the bump count', () => {
@@ -1977,9 +2040,18 @@ describe('printUpdateReport', () => {
   it('renders each finding with its migration id and action', () => {
     const lines: string[] = [];
     printUpdateReport(
-      {...base, findings: [
-        {migration: 'm1', file: 'src/a.ts', line: 7, message: 'msg', action: 'fix it'},
-      ]},
+      {
+        ...base,
+        findings: [
+          {
+            migration: 'm1',
+            file: 'src/a.ts',
+            line: 7,
+            message: 'msg',
+            action: 'fix it',
+          },
+        ],
+      },
       s => lines.push(s),
     );
     const text = lines.join('\n');
@@ -1989,9 +2061,8 @@ describe('printUpdateReport', () => {
 
   it('surfaces skipped ranges so they are not silently left behind', () => {
     const lines: string[] = [];
-    printUpdateReport(
-      {...base, skipped: ['dependencies:@agentback/rest']},
-      s => lines.push(s),
+    printUpdateReport({...base, skipped: ['dependencies:@agentback/rest']}, s =>
+      lines.push(s),
     );
     expect(lines.join('\n')).toContain('dependencies:@agentback/rest');
   });
@@ -2011,12 +2082,14 @@ describe('parseUpdateArgs', () => {
   });
 
   it('parses --to, --dry-run and --force', () => {
-    expect(parseUpdateArgs(['--to', '0.10.0', '--dry-run', '--force'])).toEqual({
-      to: '0.10.0',
-      dryRun: true,
-      force: true,
-      help: false,
-    });
+    expect(parseUpdateArgs(['--to', '0.10.0', '--dry-run', '--force'])).toEqual(
+      {
+        to: '0.10.0',
+        dryRun: true,
+        force: true,
+        help: false,
+      },
+    );
   });
 
   it('rejects a non-exact --to', () => {
@@ -2183,9 +2256,11 @@ export async function runUpdate(
   const pkgPath = path.join(cwd, 'package.json');
   const source = readFileSync(pkgPath, 'utf8');
   const pkg = JSON.parse(source) as PackageJson;
-  const {version: from, disagreement, unparsed} = resolveFromVersion(
-    scanAgentbackRanges(pkg),
-  );
+  const {
+    version: from,
+    disagreement,
+    unparsed,
+  } = resolveFromVersion(scanAgentbackRanges(pkg));
 
   // A command named `update` must not quietly walk an app backwards. Migration
   // direction is undefined going down, and `(from, to]` selects nothing — so a
@@ -2226,7 +2301,10 @@ export async function runUpdate(
     // Preserve the file's own indentation. Task 5 guards source formatting on
     // the grounds that scaffolded apps ship no prettier; a manifest rewritten
     // from 4-space to 2-space is the same damage from the same cause.
-    writeFileSync(pkgPath, JSON.stringify(bumped, null, detectIndent(source)) + '\n');
+    writeFileSync(
+      pkgPath,
+      JSON.stringify(bumped, null, detectIndent(source)) + '\n',
+    );
     const {cmd, args: iargs} = installCommand(detectAppPackageManager(cwd));
     const r = await exec(cmd, iargs);
     if (r.code !== 0)
@@ -2316,19 +2394,19 @@ Expected: PASS across every unit file.
 Add to `main`'s switch, before the fallthrough:
 
 ```ts
-    if (cmd === 'update') {
-      const args = parseUpdateArgs(rest);
-      if (args.help) {
-        console.log(UPDATE_USAGE);
-        return 0;
-      }
-      const report = await runUpdate(args, {
-        exec: nodeExec,
-        cwd: process.cwd(),
-        selfVersion: selfVersion(),
-      });
-      return printUpdateReport(report);
-    }
+if (cmd === 'update') {
+  const args = parseUpdateArgs(rest);
+  if (args.help) {
+    console.log(UPDATE_USAGE);
+    return 0;
+  }
+  const report = await runUpdate(args, {
+    exec: nodeExec,
+    cwd: process.cwd(),
+    selfVersion: selfVersion(),
+  });
+  return printUpdateReport(report);
+}
 ```
 
 Define `UPDATE_USAGE` next to `USAGE`:
@@ -2374,6 +2452,7 @@ git commit -m "feat(cli): agentback update — resolve, bump, migrate, report"
 ### Task 8: Documentation surfaces
 
 **Files:**
+
 - Create: `skills/agentback/references/cli.md`
 - Modify: `packages/cli/README.md`, `skills/agentback/SKILL.md`, `docs/packages.md`, `CLAUDE.md`, `docs/proposals/cli-lifecycle.md` (status)
 
@@ -2411,7 +2490,7 @@ In `packages/create-agentback/templates/{hybrid,rest,mcp}/package.json`, add:
     "update": "npx @agentback/cli@latest update"
 ```
 
-`npx @agentback/cli@latest`, not a local dep — lockstep versioning means the installed CLI can never contain the migrations for the version it is upgrading *to*.
+`npx @agentback/cli@latest`, not a local dep — lockstep versioning means the installed CLI can never contain the migrations for the version it is upgrading _to_.
 
 In each template README, add a short "Upgrading" section after the build/start steps:
 
@@ -2484,26 +2563,26 @@ git commit -m "docs(cli): lifecycle CLI reference and the stale create-agentback
 
 Considered during review and explicitly deferred:
 
-| Deferred | Why |
-|---|---|
-| `agentback add <capability>` | Its own spec. The hard part (anchor durability in an edited `application.ts`) is unrelated to `update`. |
-| `agentback generate` | Declined, not deferred — a second source of truth for boilerplate whose only consumer is the coding agent. |
-| Workspace/monorepo apps | `update` operates on `cwd` only. Run it from the app's directory. Documented, not solved. |
-| Retroactive codemods | No published version ever shipped the old APIs (verified: both source-mechanical commits are not ancestors of `main`). |
-| `CHANGELOG.md` | The migration registry is the machine-readable equivalent; prose can be generated from it later. |
-| `update` running `pnpm build` afterward | Couples a fast command to a working toolchain. Revisit when a real codemod exists. |
-| An `update` e2e over `packages/cli/fixtures/cf-app` | Unit + integration cover the logic; a second fixture app is maintenance weight for an untested payoff. |
+| Deferred                                            | Why                                                                                                                    |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `agentback add <capability>`                        | Its own spec. The hard part (anchor durability in an edited `application.ts`) is unrelated to `update`.                |
+| `agentback generate`                                | Declined, not deferred — a second source of truth for boilerplate whose only consumer is the coding agent.             |
+| Workspace/monorepo apps                             | `update` operates on `cwd` only. Run it from the app's directory. Documented, not solved.                              |
+| Retroactive codemods                                | No published version ever shipped the old APIs (verified: both source-mechanical commits are not ancestors of `main`). |
+| `CHANGELOG.md`                                      | The migration registry is the machine-readable equivalent; prose can be generated from it later.                       |
+| `update` running `pnpm build` afterward             | Couples a fast command to a working toolchain. Revisit when a real codemod exists.                                     |
+| An `update` e2e over `packages/cli/fixtures/cf-app` | Unit + integration cover the logic; a second fixture app is maintenance weight for an untested payoff.                 |
 
 ## Failure modes
 
-| Codepath | Realistic production failure | Test? | Handled? | Silent? |
-|---|---|---|---|---|
-| Phase 3 install | Registry 404s the just-published version (propagation lag) | ✅ non-zero exit asserted | ✅ `AgentError` naming the retry | No |
-| Phase 3 install fails after bump | Migration window skipped on re-run | ✅ `leaves package.json un-bumped` | ✅ order fixed | No |
-| `npx` invocation | `@agentback/openapi` missing → crash on import | — build-level | ✅ promoted to `dependencies` | **was silent** |
-| Codemod `apply` throws mid-file | Partially transformed source | ✅ throw propagates, bump skipped | ✅ git is the undo | No |
-| `createLazyProject` on uninstalled tree | tsconfig `extends` unresolvable | ✅ glob-fallback test | ✅ falls back | No |
-| Git guard unavailable | No undo checkpoint | ✅ warning asserted | ✅ warns | **was silent** |
+| Codepath                                | Realistic production failure                               | Test?                              | Handled?                         | Silent?        |
+| --------------------------------------- | ---------------------------------------------------------- | ---------------------------------- | -------------------------------- | -------------- |
+| Phase 3 install                         | Registry 404s the just-published version (propagation lag) | ✅ non-zero exit asserted          | ✅ `AgentError` naming the retry | No             |
+| Phase 3 install fails after bump        | Migration window skipped on re-run                         | ✅ `leaves package.json un-bumped` | ✅ order fixed                   | No             |
+| `npx` invocation                        | `@agentback/openapi` missing → crash on import             | — build-level                      | ✅ promoted to `dependencies`    | **was silent** |
+| Codemod `apply` throws mid-file         | Partially transformed source                               | ✅ throw propagates, bump skipped  | ✅ git is the undo               | No             |
+| `createLazyProject` on uninstalled tree | tsconfig `extends` unresolvable                            | ✅ glob-fallback test              | ✅ falls back                    | No             |
+| Git guard unavailable                   | No undo checkpoint                                         | ✅ warning asserted                | ✅ warns                         | **was silent** |
 
 **Zero critical gaps remain.** Two were silent-failure-with-no-handling before this review (rows 3 and 6); both now warn or are structurally fixed.
 
@@ -2521,14 +2600,14 @@ Plan complete and saved to `docs/superpowers/plans/2026-08-04-cli-lifecycle.md`.
 
 ## GSTACK REVIEW REPORT
 
-| Review | Trigger | Why | Runs | Status | Findings |
-|--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
-| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | — |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR (PLAN) | 25 issues, 0 critical gaps |
-| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 1 | CLEAR | score: 6/10 → 8/10, TTHW: 1 min (Champion) |
-| Outside Voice | `/plan-eng-review` | Cross-model plan challenge | 1 | ISSUES_FOUND (codex) | 22 raised, 19 real, 3 rejected with evidence |
+| Review        | Trigger               | Why                             | Runs | Status               | Findings                                     |
+| ------------- | --------------------- | ------------------------------- | ---- | -------------------- | -------------------------------------------- |
+| CEO Review    | `/plan-ceo-review`    | Scope & strategy                | 0    | —                    | —                                            |
+| Codex Review  | `/codex review`       | Independent 2nd opinion         | 0    | —                    | —                                            |
+| Eng Review    | `/plan-eng-review`    | Architecture & tests (required) | 1    | CLEAR (PLAN)         | 25 issues, 0 critical gaps                   |
+| Design Review | `/plan-design-review` | UI/UX gaps                      | 0    | —                    | —                                            |
+| DX Review     | `/plan-devex-review`  | Developer experience gaps       | 1    | CLEAR                | score: 6/10 → 8/10, TTHW: 1 min (Champion)   |
+| Outside Voice | `/plan-eng-review`    | Cross-model plan challenge      | 1    | ISSUES_FOUND (codex) | 22 raised, 19 real, 3 rejected with evidence |
 
 - **CODEX:** 19 of 22 findings accepted and folded. Three rejected against source: `agentback vercel` aliases do not exist (`cli.ts:38`); `scaffold()` is synchronous and returns `{dir}` (`scaffold.ts:148`, `:54`); `skills/agentback/*` is a required repo doc surface per `CLAUDE.md`, not agent-system coupling.
 - **CROSS-MODEL:** Independent agreement on two findings — `package.json` reformatting and unguarded downgrades — both raised separately by the review and the outside voice, both fixed. One tension surfaced (ts-morph premature with zero codemods) and resolved by the user in favour of keeping it with the testability gap closed.

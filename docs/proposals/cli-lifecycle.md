@@ -39,11 +39,11 @@ high-frequency and mechanically trivial — the best possible automation target.
 **2. Released breaking changes are config-shaped, not source-shaped.** Every
 breaking change in a tagged release landed in **v0.9.0**:
 
-| Commit     | Change                                                   | Shape           |
-| ---------- | -------------------------------------------------------- | --------------- |
-| `9308a3cd` | serve the 2026-07-28 revision by default (S7a)           | config/behavior |
-| `f746061b` | close two stateless-default holes (scope, confirmation)  | behavior        |
-| `1b6290be` | validate `Origin` by default; stop debiting doomed reqs  | config/behavior |
+| Commit     | Change                                                  | Shape           |
+| ---------- | ------------------------------------------------------- | --------------- |
+| `9308a3cd` | serve the 2026-07-28 revision by default (S7a)          | config/behavior |
+| `f746061b` | close two stateless-default holes (scope, confirmation) | behavior        |
+| `1b6290be` | validate `Origin` by default; stop debiting doomed reqs | config/behavior |
 
 The two genuinely source-mechanical API changes in project history —
 `3c68d465` (`@arg` → object-style tool input) and `24ead7cc` (method-level Zod
@@ -108,12 +108,12 @@ workspace.
 
 Four existing seams carry this design. No parallel machinery is introduced.
 
-| Need                     | Existing seam                                                    |
-| ------------------------ | ---------------------------------------------------------------- |
-| Arg parsing              | `args.ts`'s `parseDeployArgs` shape → `parseNewArgs`, `parseUpdateArgs` |
-| Subprocess (install)     | `exec.ts`'s `nodeExec`, already injected for testability          |
-| User-facing failure      | `AgentError` — `cli.ts` already catches it, prints the bare message, exits 1 |
-| Package-manager detection| `detectPackageManager` from `create-agentback/scaffold.js`        |
+| Need                      | Existing seam                                                                |
+| ------------------------- | ---------------------------------------------------------------------------- |
+| Arg parsing               | `args.ts`'s `parseDeployArgs` shape → `parseNewArgs`, `parseUpdateArgs`      |
+| Subprocess (install)      | `exec.ts`'s `nodeExec`, already injected for testability                     |
+| User-facing failure       | `AgentError` — `cli.ts` already catches it, prints the bare message, exits 1 |
+| Package-manager detection | `detectPackageManager` from `create-agentback/scaffold.js`                   |
 
 The `exec` injection seam is load-bearing: `runDeploy` already takes
 `{exec, fetchFn, cwd}` rather than reaching for globals, so `update`'s install
@@ -132,7 +132,7 @@ own version.
 **The CLI must refuse when it is older than the target**, printing the
 `npx @agentback/cli@latest update` invocation. This is not an edge case:
 `@agentback/cli` is lockstep-versioned, so the binary installed in a `0.9` app
-*cannot* contain the `0.9 → 0.10` migration — that entry only exists in the
+_cannot_ contain the `0.9 → 0.10` migration — that entry only exists in the
 `0.10` release. The npx path is the normal path, and the error message is where
 users learn it. (Same model as `@next/codemod`.)
 
@@ -215,11 +215,11 @@ deployed bundle.
 Three advisories, all at `0.9.0`. Zero codemods ship — the `apply` path is
 exercised by tests only (see Testing), until a real transform exists.
 
-| `id`                          | Source     | Detects                                                                 |
-| ----------------------------- | ---------- | ----------------------------------------------------------------------- |
-| `mcp-stateless-default`       | `9308a3cd` | `installMcpHttp`/`MCPServer` config relying on session behaviour — `eventStore` set without a `protocol`, or code reading `Mcp-Session-Id`. Action: pin `protocol: 'legacy'` or migrate. |
-| `mcp-stateless-scope-holes`   | `f746061b` | `@tool({scope})` combined with `strategyAuth: {required: false}`, and multi-instance deploys with no explicit `MCPBindings.CONFIRMATION_STORE` binding. |
-| `mcp-origin-validation`       | `1b6290be` | `installMcpHttp` without `allowedOrigins` where `rest.cors` is a callback or true wildcard — the case that warns and leaves validation off. |
+| `id`                        | Source     | Detects                                                                                                                                                                                  |
+| --------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mcp-stateless-default`     | `9308a3cd` | `installMcpHttp`/`MCPServer` config relying on session behaviour — `eventStore` set without a `protocol`, or code reading `Mcp-Session-Id`. Action: pin `protocol: 'legacy'` or migrate. |
+| `mcp-stateless-scope-holes` | `f746061b` | `@tool({scope})` combined with `strategyAuth: {required: false}`, and multi-instance deploys with no explicit `MCPBindings.CONFIRMATION_STORE` binding.                                  |
+| `mcp-origin-validation`     | `1b6290be` | `installMcpHttp` without `allowedOrigins` where `rest.cors` is a callback or true wildcard — the case that warns and leaves validation off.                                              |
 
 Each entry's `action` text is the user-facing migration note, which is what
 makes the registry a substitute for the missing changelog rather than an
@@ -233,13 +233,13 @@ code with `mkdtempSync` + `writeFileSync` (`detect.unit.ts:14`,
 consistency — vitest globs `packages/*/dist/__tests__/**`, so a fixture tree of
 `.ts` files under `src/` would be swept into `tsc -b`.
 
-| Layer       | Coverage                                                                 |
-| ----------- | ------------------------------------------------------------------------ |
-| unit        | `parseUpdateArgs`, `parseNewArgs`                                        |
-| unit        | Version resolution, including the disagreeing-ranges finding and the CLI-older-than-target refusal |
-| unit        | Range rewriting across `dependencies`, `devDependencies`, `peerDependencies` |
-| unit        | Each advisory's `detect()` against a tree that **has** the pattern and one that **does not** |
-| unit        | Bump phase with a stub `exec`, asserting the install command without spawning a package manager |
+| Layer       | Coverage                                                                                                    |
+| ----------- | ----------------------------------------------------------------------------------------------------------- |
+| unit        | `parseUpdateArgs`, `parseNewArgs`                                                                           |
+| unit        | Version resolution, including the disagreeing-ranges finding and the CLI-older-than-target refusal          |
+| unit        | Range rewriting across `dependencies`, `devDependencies`, `peerDependencies`                                |
+| unit        | Each advisory's `detect()` against a tree that **has** the pattern and one that **does not**                |
+| unit        | Bump phase with a stub `exec`, asserting the install command without spawning a package manager             |
 | integration | The `apply` seam against a synthetic ts-morph transform, asserting **untouched regions are byte-identical** |
 
 Two of these carry most of the weight:
@@ -290,14 +290,14 @@ skill was never updated.
 Locked during brainstorming (2026-08-04). Recorded so a later reader can see
 what was rejected and why.
 
-| Decision                                            | Rejected alternatives                                                     |
-| --------------------------------------------------- | ------------------------------------------------------------------------- |
-| Spec covers topology + `update`; `add` deferred      | All three in one spec (neither subsystem gets specified precisely enough)  |
-| Registry holds codemods **and** advisories           | Codemods only (covers none of the released breaks); advisories only        |
-| Forward-only; no retroactive codemods                | Backfill both, or backfill `@arg` only — no released version shipped them  |
-| ts-morph                                             | jscodeshift/recast (better formatting fidelity, no type info); TS compiler API directly |
-| ts-morph a real dep of `@agentback/cli`              | Split `@agentback/codemod`; optional peer (breaks the npx path)            |
-| `new` delegates via `scaffold()`                     | Pointer that prints the canonical command; subprocess `npx`; no `new`      |
+| Decision                                        | Rejected alternatives                                                                   |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Spec covers topology + `update`; `add` deferred | All three in one spec (neither subsystem gets specified precisely enough)               |
+| Registry holds codemods **and** advisories      | Codemods only (covers none of the released breaks); advisories only                     |
+| Forward-only; no retroactive codemods           | Backfill both, or backfill `@arg` only — no released version shipped them               |
+| ts-morph                                        | jscodeshift/recast (better formatting fidelity, no type info); TS compiler API directly |
+| ts-morph a real dep of `@agentback/cli`         | Split `@agentback/codemod`; optional peer (breaks the npx path)                         |
+| `new` delegates via `scaffold()`                | Pointer that prints the canonical command; subprocess `npx`; no `new`                   |
 
 ## Open questions
 

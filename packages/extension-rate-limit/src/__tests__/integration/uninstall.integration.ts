@@ -21,7 +21,10 @@ describe('installRateLimit uninstall', () => {
   it('stops limiting after uninstall', async () => {
     app = new RestApplication({});
     app.configure('servers.RestServer').to({port: 0, host: '127.0.0.1'});
-    const installed = await installRateLimit(app, {points: 1, durationSecs: 60});
+    const installed = await installRateLimit(app, {
+      points: 1,
+      durationSecs: 60,
+    });
     await app.start();
     const server = await app.restServer;
     const url = `${server.url}/openapi.json`;

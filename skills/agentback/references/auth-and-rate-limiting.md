@@ -397,7 +397,7 @@ middleware is exported as `toolRateLimitMiddleware(options)`.
 - **A request the transport rejects costs no quota.** Predicted where possible
   (the SDK's exported inbound classifier: bad JSON-RPC shape, a batch carrying
   `2026-07-28` elements, an `Mcp-Method` / `MCP-Protocol-Version` mismatch →
-  `-32020`), and **refunded** where it is not (a *missing* standard header is
+  `-32020`), and **refunded** where it is not (a _missing_ standard header is
   validated in an un-exported SDK function, so it is handed back on a 4xx). A
   tool that runs and throws answers 200 and stays debited — that work happened.
 - **Store failures always fail open** in both rate limiters.

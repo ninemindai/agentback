@@ -23,14 +23,14 @@ What is actually missing is the AgentBack layer on top:
    content; `ChatActionEvent` omits the fields a button callback needs
    (`value`, `messageId`, `openModal`).
 2. **An agent-emittable authoring path** — a Zod-defined message IR, so a
-   model (via `@tool` output or AI SDK structured output) can *return a card
-   as validated JSON*. `channels-ui` requires a human writing TSX; a Zod IR is
+   model (via `@tool` output or AI SDK structured output) can _return a card
+   as validated JSON_. `channels-ui` requires a human writing TSX; a Zod IR is
    the projection-native equivalent and the one piece with no upstream
    analogue.
 3. **Typed action routing** — `@onAction()` today receives every click;
    rich UI wants per-button dispatch with a validated payload.
 4. **The HITL bridge** — a `confirm:` tool rendered as an in-thread
-   Approve/Reject card: a third *presentation* of the existing confirmation
+   Approve/Reject card: a third _presentation_ of the existing confirmation
    mechanism, not a new one.
 
 One sentence of positioning: **the Zod schema stays the single source of
@@ -51,12 +51,12 @@ as OpenAPI/MCP/CLI/OKF, pointed at Block Kit.
 - **No content-stable handler binding.** `channels-ui`'s cleverest machinery —
   persisting `{component, props, path}` snapshots and re-rendering to
   re-derive an `onClick` closure after a restart — exists because their
-  handlers are *closures inside JSX*. Ours are **decorated methods on DI
+  handlers are _closures inside JSX_. Ours are **decorated methods on DI
   services**: named code, resolved through the container, durable across
   restarts by construction. The entire tier-1/tier-2/tier-3 durability scheme
   dissolves; only oversized action payloads need indirection (Phase 3).
 - **No dependency on `chat`.** The runtime dep policy from E-1 holds: the IR
-  compiler emits plain objects that *structurally satisfy* `ChatElement`; a
+  compiler emits plain objects that _structurally satisfy_ `ChatElement`; a
   **devDependency** conformance test pins the fit (see Risks).
 
 ## Shape
@@ -153,17 +153,17 @@ export const chatMessage = z.union([z.string(), chatCard]);
 export function toChatElement(ir: z.infer<typeof chatMessage>): unknown;
 ```
 
-Why a *second* vocabulary when the SDK has one? Three consumers the SDK's
+Why a _second_ vocabulary when the SDK has one? Three consumers the SDK's
 TypeScript-only types cannot serve:
 
 1. **Models.** `@tool({output: TriageCard})` where `TriageCard` embeds
-   `chatCard` — the agent *returns UI as data*, output-validated by the
+   `chatCard` — the agent _returns UI as data_, output-validated by the
    existing pipeline, and the chat handler just
    `thread.post(toChatElement(result.card))`. This is the "agent draws its
    own reply" story `channels-ui` cannot tell without a human-authored
    component, and no schema-first competitor has it.
 2. **The boundary.** A card assembled from model output or user input is
-   validated *before* it hits a platform API, with Zod issues instead of an
+   validated _before_ it hits a platform API, with Zod issues instead of an
    opaque platform 400.
 3. **The graph.** Registered via `bindSchema`, the IR joins schema-explorer /
    OKF — chat UI becomes a visible projection of the schema graph like every
@@ -171,7 +171,7 @@ TypeScript-only types cannot serve:
 
 It also preserves the E-1 port discipline: handlers can author rich messages
 without importing `chat` types. `port.ts` is already a hand-written subset of
-the SDK's *runtime* surface; the IR extends the same discipline to *content*.
+the SDK's _runtime_ surface; the IR extends the same discipline to _content_.
 
 Example upgrade: `hello-chat` gains a `@tool` whose output embeds a card and
 a bot that posts it — one schema, answered as JSON on MCP and as Block Kit in
@@ -203,7 +203,7 @@ confirmation as a card — Approve/Reject buttons whose `value` carries the
 already-issued confirmation token — and an `@onAction` route that completes
 the round trip through the **existing** `ConfirmationStore` authority. Era
 note from the MCP side applies verbatim: the button proves a round trip
-happened *and* which button was pressed; the store still enforces single-use,
+happened _and_ which button was pressed; the store still enforces single-use,
 TTL, and input fingerprint. This makes chat the third presentation of one
 confirmation mechanism (native elicitation, token dance, in-thread card) —
 no new trust machinery.
@@ -216,7 +216,7 @@ no new trust machinery.
   against the SDK's `ChatElement`, plus posts through a stub adapter. Drift
   breaks CI here, in one file — the same containment argument as `port.ts`.
 - **Two vocabularies risk a second source of truth.** The IR is pinned as a
-  *subset*: anything expressible in IR must compile losslessly to
+  _subset_: anything expressible in IR must compile losslessly to
   `ChatElement`; anything the SDK adds is adopted deliberately or stays
   reachable via the documented escape hatch (`thread.post` accepts raw SDK
   elements today and always will — the IR is additive, never a gate).
@@ -236,7 +236,7 @@ no new trust machinery.
 Phases are independently shippable and strictly ordered by value:
 
 1. **Phase 1 is nearly free** (port fields + docs + example) and closes the
-   *perceived* gap — worth shipping immediately.
+   _perceived_ gap — worth shipping immediately.
 2. **Phase 2 is the differentiator** and the only net-new design surface;
    it needs the conformance-test harness set up first.
 3. **Phase 3 waits for a real consumer** (the confirm bridge is the likely
@@ -260,7 +260,7 @@ Phases are independently shippable and strictly ordered by value:
 - **Chat-platform miniapps (cross-repo, exploratory).** Several platforms can
   embed a full web surface behind a card button — Telegram Mini Apps, Discord
   Activities, Teams task modules — which would let a sealed single-file HTML
-  miniapp (AgentGem's `game` Gem kind) ship *into* a chat thread with the IR
+  miniapp (AgentGem's `game` Gem kind) ship _into_ a chat thread with the IR
   card as its launcher, result, and approval surface; Slack and Google Chat
   have no such surface, so there the card is the entire projection. Two
   consequences to hold now, at zero cost: (1) the IR stays **data-shaped and

@@ -70,33 +70,29 @@ export function createMeteringMcpHook(appCtx: Context): McpDispatchHook {
       info.tool.ctor.prototype,
       info.tool.meta.methodName,
     );
-    return meter.observe(
-      () => {
-        // Turn correlation: an agent turn binds its id into the turn-scoped
-        // parent context; the chain walk finds it from the request child.
-        const correlationId = info.ctx.getSync(
-          MeteringBindings.CORRELATION_ID,
-          {optional: true},
-        );
-        return {
-          surface: 'mcp' as const,
-          operation: info.tool.meta.name,
-          // Transport auth wins; otherwise read the request context after the
-          // wrapped pipeline ran (bindRequestPrincipals binds USER inside it,
-          // including an explicit callTool {principal}).
-          principal: auth
-            ? principalFromAuthInfo(auth)
-            : principalFromContext(info.ctx),
-          ...(correlationId ? {meta: {correlationId}} : {}),
-          ...(priceSpec
-            ? {
-                units: priceSpec.units ?? 1,
-                cost: {amount: priceSpec.amount, currency: priceSpec.currency},
-              }
-            : {}),
-        };
-      },
-      next,
-    );
+    return meter.observe(() => {
+      // Turn correlation: an agent turn binds its id into the turn-scoped
+      // parent context; the chain walk finds it from the request child.
+      const correlationId = info.ctx.getSync(MeteringBindings.CORRELATION_ID, {
+        optional: true,
+      });
+      return {
+        surface: 'mcp' as const,
+        operation: info.tool.meta.name,
+        // Transport auth wins; otherwise read the request context after the
+        // wrapped pipeline ran (bindRequestPrincipals binds USER inside it,
+        // including an explicit callTool {principal}).
+        principal: auth
+          ? principalFromAuthInfo(auth)
+          : principalFromContext(info.ctx),
+        ...(correlationId ? {meta: {correlationId}} : {}),
+        ...(priceSpec
+          ? {
+              units: priceSpec.units ?? 1,
+              cost: {amount: priceSpec.amount, currency: priceSpec.currency},
+            }
+          : {}),
+      };
+    }, next);
   };
 }

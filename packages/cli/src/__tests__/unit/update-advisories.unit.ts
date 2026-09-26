@@ -156,7 +156,7 @@ describe('seed advisories', () => {
     it('stays silent when the Date is projected to JSON', () => {
       src(
         "@actor('t', {state: S})\nclass T {}\n" +
-          "const turn = {events: [{at: new Date().toISOString()}]};",
+          'const turn = {events: [{at: new Date().toISOString()}]};',
       );
       expect(byId('actors-event-json').detect(ctx())).toEqual([]);
     });

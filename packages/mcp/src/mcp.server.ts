@@ -1379,7 +1379,11 @@ export class MCPServer implements Server {
         r.ctor,
         r.meta.methodName as string,
       );
-      if (scopes && required.length && !required.every(s => scopes.includes(s))) {
+      if (
+        scopes &&
+        required.length &&
+        !required.every(s => scopes.includes(s))
+      ) {
         log.debug(
           'skipping resource %s (requires scopes %j)',
           r.meta.name,
@@ -1400,7 +1404,11 @@ export class MCPServer implements Server {
         p.ctor,
         p.meta.methodName as string,
       );
-      if (scopes && required.length && !required.every(s => scopes.includes(s))) {
+      if (
+        scopes &&
+        required.length &&
+        !required.every(s => scopes.includes(s))
+      ) {
         log.debug(
           'skipping prompt %s (requires scopes %j)',
           p.meta.name,

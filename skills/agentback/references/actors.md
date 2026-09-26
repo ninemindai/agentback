@@ -226,12 +226,12 @@ caller it is an ordinary thrown turn that rolls back. One incident, one marker.
 
 ## Runtimes (the `ActorRuntime` port)
 
-| Component                                          | Adapter               | Use                                                                                                              |
-| -------------------------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `InMemoryActorsComponent`                          | in-memory             | tests, dev, single-instance                                                                                      |
-| `EventSourcedActorsComponent`                      | in-memory + event log | the above **plus** a per-identity event log, delivered to subscribers                                            |
-| `RedisActorsComponent` (`@agentback/actors-redis`) | Redis                 | cross-process serialization + durable state **and** a durable event log, delivered by tailing it (at-least-once) |
-| `installDurableObjectActors` (`@agentback/actors-do`) | Durable Objects    | one object per identity on Cloudflare DO / celld; durable state + journal **read half** (`events()` works, `subscribe()` does not) |
+| Component                                             | Adapter               | Use                                                                                                                                |
+| ----------------------------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `InMemoryActorsComponent`                             | in-memory             | tests, dev, single-instance                                                                                                        |
+| `EventSourcedActorsComponent`                         | in-memory + event log | the above **plus** a per-identity event log, delivered to subscribers                                                              |
+| `RedisActorsComponent` (`@agentback/actors-redis`)    | Redis                 | cross-process serialization + durable state **and** a durable event log, delivered by tailing it (at-least-once)                   |
+| `installDurableObjectActors` (`@agentback/actors-do`) | Durable Objects       | one object per identity on Cloudflare DO / celld; durable state + journal **read half** (`events()` works, `subscribe()` does not) |
 
 `installRedisActors(app, {connection: {url: process.env.REDIS_URL}})` swaps in
 the Redis runtime; the actor and controller don't change. Every adapter passes
