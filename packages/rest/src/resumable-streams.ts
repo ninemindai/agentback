@@ -60,7 +60,7 @@ export function resumeRefused(): AgentError {
 export function streamsFull(): AgentError {
   return new AgentError(
     'Too many live resumable streams. Retry after the Retry-After interval.',
-    {status: 503, code: 'service_unavailable'},
+    {status: 503, code: ErrorCodes.SERVICE_UNAVAILABLE},
   );
 }
 
