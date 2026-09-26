@@ -43,8 +43,10 @@ import {
   type SchemaLike,
 } from '@agentback/openapi';
 import {
+  AbortReasons,
   InMemoryConfirmationStore,
   InMemoryIdempotencyStore,
+  abortError,
   loggers,
   type ConfirmationStore,
   type IdempotencyStore,
@@ -151,6 +153,32 @@ const resumableAborts = new WeakMap<
     release?: () => void;
   }
 >();
+
+/**
+ * Per-request stop for a plain (non-resumable) `streamOf` route: aborted by
+ * `stop()`, so the handler learns the server is going away and not only that
+ * its response ended. Set in `invokeRoute`, used in `sendStream`.
+ */
+const plainStreamStops = new WeakMap<Request, AbortController>();
+
+/**
+ * Resolves once `res` can take more writes, or once it closes — a closed
+ * response never drains, and nothing may wait on it forever.
+ */
+function untilDrained(res: Response): Promise<void> {
+  if (!res.writableNeedDrain || res.writableEnded || res.destroyed) {
+    return Promise.resolve();
+  }
+  return new Promise(resolve => {
+    const done = () => {
+      res.off('drain', done);
+      res.off('close', done);
+      resolve();
+    };
+    res.on('drain', done);
+    res.on('close', done);
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Lazy Node loaders — never called from fetchHandler()/the Web path.
@@ -260,6 +288,11 @@ export class RestServer implements Server {
   protected readonly dispatchMode: 'express' | 'web';
   /** Live `resumable:` streams whose producer outlives their connection. */
   protected readonly resumableStreams: ResumableStreamRegistry;
+  /**
+   * Stoppers for the plain streams open on this server, on either host. A
+   * stream has no natural end, so `stop()` ends them rather than waiting.
+   */
+  protected readonly liveStreams = new Set<() => void>();
 
   /** Selected HTTP listener; see {@link RestServerConfig.listener}. */
   protected readonly listenerMode: 'express' | 'native';
@@ -640,6 +673,7 @@ export class RestServer implements Server {
     return (this._restHandler ??= new RestHandler(
       this.context,
       this.resumableStreams,
+      this.liveStreams,
     ));
   }
 
@@ -786,6 +820,14 @@ export class RestServer implements Server {
       // it only tells the stream when to start its resume window.
       resumableAborts.set(req, {controller, connection: nodeAbortSignal(res)});
       reqCtx.bind(CoreBindings.ABORT_SIGNAL).to(controller.signal);
+    } else if (schemas.streamOf) {
+      // A plain stream stops on a hangup (CALLER_GONE) or on server stop
+      // (CANCELLED), whichever comes first.
+      const stop = new AbortController();
+      plainStreamStops.set(req, stop);
+      reqCtx
+        .bind(CoreBindings.ABORT_SIGNAL)
+        .to(AbortSignal.any([nodeAbortSignal(res), stop.signal]));
     } else {
       reqCtx.bind(CoreBindings.ABORT_SIGNAL).to(nodeAbortSignal(res));
     }
@@ -1080,9 +1122,9 @@ export class RestServer implements Server {
   private responseSink(res: Response): StreamSink {
     let closed = false;
     return {
-      write: chunk => {
-        if (!closed) res.write(chunk);
-      },
+      // A closed sink reports room, so nothing ever waits on it.
+      write: chunk => closed || res.write(chunk),
+      drain: () => untilDrained(res),
       close: () => {
         if (closed) return;
         closed = true;
@@ -1166,6 +1208,14 @@ export class RestServer implements Server {
       for (const fn of cleanup) fn();
       void iterator.return?.();
     });
+    // A stream has no natural end, so a graceful stop() would wait on it
+    // forever: stop() ends it instead, and tells the producer why.
+    const stopper = () => {
+      plainStreamStops.get(_req)?.abort(abortError(AbortReasons.CANCELLED));
+      finish();
+    };
+    this.liveStreams.add(stopper);
+    cleanup.push(() => this.liveStreams.delete(stopper));
 
     // SSE-only heartbeat: JSONL has no comment-line convention.
     const pingMs = this.config.sse?.pingMs;
@@ -1205,6 +1255,10 @@ export class RestServer implements Server {
         if (!writeItem(first.value)) return finish();
       }
       while (!closed) {
+        // Backpressure: a reader that is not keeping up pauses the producer
+        // rather than letting every item pile up in the socket's buffer.
+        if (res.writableNeedDrain) await untilDrained(res);
+        if (closed) break;
         const {value, done} = await iterator.next();
         if (done) break;
         if (!writeItem(value)) break;
@@ -1596,8 +1650,10 @@ export class RestServer implements Server {
 
   async stop(): Promise<void> {
     // A resumable stream is a producer with no reader; none may outlive the
-    // server that owns it.
+    // server that owns it. A plain stream has no natural end, so waiting for
+    // it to drain would wait forever: end it and cancel its producer.
     this.resumableStreams.disposeAll();
+    for (const stop of [...this.liveStreams]) stop();
     if (!this.httpServer) return;
     const server = this.httpServer;
     await new Promise<void>((resolve, reject) => {
@@ -1799,7 +1855,11 @@ export class RestServer implements Server {
 
       const core = createFetchHost({
         router,
-        dispatch: new RestHandler(this.context, this.resumableStreams).dispatch,
+        dispatch: new RestHandler(
+          this.context,
+          this.resumableStreams,
+          this.liveStreams,
+        ).dispatch,
         notFound,
       });
 

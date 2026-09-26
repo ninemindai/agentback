@@ -35,8 +35,10 @@ import {
 } from '@agentback/security';
 import createError from 'http-errors';
 import {
+  AbortReasons,
   InMemoryConfirmationStore,
   InMemoryIdempotencyStore,
+  abortError,
   loggers,
   type ConfirmationStore,
   type IdempotencyStore,
@@ -89,20 +91,43 @@ const log = loggers('agentback:rest:web-handler');
  */
 const slotReleases = new WeakMap<Request, () => void>();
 
-/** Adapt a Web stream controller to the transport-neutral sink. */
-function webSink(
-  controller: ReadableStreamDefaultController<Uint8Array>,
-): StreamSink {
+/**
+ * Adapt a Web stream controller to the transport-neutral sink. The stream's
+ * own queue is the backpressure: `write` reports full once the reader is
+ * behind, and `drain` waits for the next `pull` — so wire the stream's `pull`
+ * to the returned `pulled`.
+ */
+function webSink(controller: ReadableStreamDefaultController<Uint8Array>): {
+  sink: StreamSink;
+  pulled: () => void;
+} {
   let closed = false;
+  let waiting: (() => void) | undefined;
+  const wake = () => {
+    const resolve = waiting;
+    waiting = undefined;
+    resolve?.();
+  };
   return {
-    write: chunk => {
-      if (!closed) controller.enqueue(STREAM_ENCODER.encode(chunk));
+    sink: {
+      write: chunk => {
+        // A closed sink reports room, so nothing ever waits on it.
+        if (closed) return true;
+        controller.enqueue(STREAM_ENCODER.encode(chunk));
+        return (controller.desiredSize ?? 1) > 0;
+      },
+      drain: () =>
+        closed || (controller.desiredSize ?? 1) > 0
+          ? Promise.resolve()
+          : new Promise(resolve => (waiting = resolve)),
+      close: () => {
+        if (closed) return;
+        closed = true;
+        controller.close();
+        wake();
+      },
     },
-    close: () => {
-      if (closed) return;
-      closed = true;
-      controller.close();
-    },
+    pulled: wake,
   };
 }
 
@@ -144,6 +169,11 @@ export class RestHandler {
      * reachable from either dispatch path and `stop()` reaps all of them.
      */
     private readonly resumableStreams = new ResumableStreamRegistry(),
+    /**
+     * Stoppers for the plain streams this handler has open, shared with the
+     * owning {@link RestServer} so its `stop()` ends them on this path too.
+     */
+    private readonly liveStreams = new Set<() => void>(),
   ) {}
 
   // Controller binding keys, memoized per constructor: contains(key) is O(1)
@@ -207,9 +237,21 @@ export class RestHandler {
     // inversion in RestServer.invokeRoute.
     const resumableAbort =
       schemas.streamOf && schemas.resumable ? new AbortController() : undefined;
+    // A plain stream also stops when the server does (CANCELLED), since it
+    // has no natural end for a graceful stop() to wait for.
+    const plainStop =
+      schemas.streamOf && !schemas.resumable
+        ? new AbortController()
+        : undefined;
+    const connection = linkedAbortSignal(req.signal);
     reqCtx
       .bind(CoreBindings.ABORT_SIGNAL)
-      .to(resumableAbort?.signal ?? linkedAbortSignal(req.signal));
+      .to(
+        resumableAbort?.signal ??
+          (plainStop
+            ? AbortSignal.any([connection, plainStop.signal])
+            : connection),
+      );
 
     // Dispatch hooks wrap the WHOLE per-request pipeline (auth → authz →
     // validation → controller method), exactly as the Express
@@ -392,6 +434,7 @@ export class RestHandler {
                 connection: req.signal,
               }
             : undefined,
+          plainStop,
         ),
         responseHeaders,
       );
@@ -551,13 +594,14 @@ export class RestHandler {
     if (!stream.canResume(afterSeq)) {
       return this.toErrorResponse(resumeRefused());
     }
-    let sink: StreamSink;
+    let web: ReturnType<typeof webSink>;
     const body = new ReadableStream<Uint8Array>({
       start: controller => {
-        sink = webSink(controller);
-        stream.attach(sink, req.signal, afterSeq);
+        web = webSink(controller);
+        stream.attach(web.sink, req.signal, afterSeq);
       },
-      cancel: () => stream.detach(sink),
+      pull: () => web.pulled(),
+      cancel: () => stream.detach(web.sink),
     });
     return new Response(body, {status: 200, headers: SSE_FRAMER.headers});
   }
@@ -575,6 +619,8 @@ export class RestHandler {
       /** The request's liveness — when the stream's window starts. */
       connection: AbortSignal;
     },
+    /** A plain stream's stop, aborted when the server stops. */
+    plainStop?: AbortController,
   ): Response {
     const framer: StreamFramer = format === 'jsonl' ? JSONL_FRAMER : SSE_FRAMER;
 
@@ -588,25 +634,31 @@ export class RestHandler {
         resumable.abort,
         resumable.options,
       );
-      let sink: StreamSink;
+      let web: ReturnType<typeof webSink>;
       const body = new ReadableStream<Uint8Array>({
         start: controller => {
-          sink = webSink(controller);
+          web = webSink(controller);
           // The request signal covers a client that left before the first
           // item: the host never reads this body, so `cancel` never fires.
-          stream.attach(sink, resumable.connection);
+          stream.attach(web.sink, resumable.connection);
           // Not awaited: the producer outlives this response by design.
           void stream.pump(first);
         },
-        cancel: () => stream.detach(sink),
+        pull: () => web.pulled(),
+        cancel: () => stream.detach(web.sink),
       });
       return new Response(body, {status, headers: framer.headers});
     }
 
+    // Set once the body is closed — by the stream ending, the client leaving,
+    // or stop() — after which nothing may touch the controller again.
+    let closed = false;
     const enqueue = (
       controller: ReadableStreamDefaultController<Uint8Array>,
       text: string,
-    ) => controller.enqueue(STREAM_ENCODER.encode(text));
+    ) => {
+      if (!closed) controller.enqueue(STREAM_ENCODER.encode(text));
+    };
 
     // Returns true if the item passed validation and was written; on failure it
     // writes a terminal error frame and returns false (caller stops iterating).
@@ -632,20 +684,38 @@ export class RestHandler {
       return true;
     };
 
+    let stopper: (() => void) | undefined;
+    const end = (controller: ReadableStreamDefaultController<Uint8Array>) => {
+      if (closed) return;
+      closed = true;
+      if (stopper) this.liveStreams.delete(stopper);
+      controller.close();
+    };
+    let pending: IteratorResult<unknown> | undefined = first;
+
+    // Pull, not push: the stream asks for the next item only when its reader
+    // has room, so a slow reader pauses the producer instead of every item
+    // piling up in the queue (backpressure).
     const stream = new ReadableStream<Uint8Array>({
-      async start(controller) {
+      start: controller => {
+        // A stream has no natural end, so a graceful stop() would wait on it
+        // forever: stop() ends it instead, and tells the producer why.
+        stopper = () => {
+          plainStop?.abort(abortError(AbortReasons.CANCELLED));
+          end(controller);
+          void iterator.return?.();
+        };
+        this.liveStreams.add(stopper);
+      },
+      pull: async controller => {
         // Post-flush discipline: nothing here throws out — the response is
         // already committed, so a mid-stream failure becomes a terminal error
         // frame, mirroring sendStream's catch.
         try {
-          if (!first.done) {
-            if (!writeItem(controller, first.value)) return;
-          }
-          while (true) {
-            const {value, done} = await iterator.next();
-            if (done) break;
-            if (!writeItem(controller, value)) break;
-          }
+          const next = pending ?? (await iterator.next());
+          pending = undefined;
+          if (closed) return;
+          if (next.done || !writeItem(controller, next.value)) end(controller);
         } catch (err) {
           const e = err as Error;
           log.debug('stream handler threw mid-stream: %s', e.message);
@@ -658,13 +728,14 @@ export class RestHandler {
               ...(issues ? {issues, details: issues} : {}),
             }),
           );
-        } finally {
-          controller.close();
+          end(controller);
         }
       },
       // Client disconnect: stop iterating and let the generator's `finally`
       // blocks release upstream resources.
-      cancel() {
+      cancel: () => {
+        closed = true;
+        if (stopper) this.liveStreams.delete(stopper);
         void iterator.return?.();
       },
     });

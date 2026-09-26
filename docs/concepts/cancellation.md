@@ -37,6 +37,7 @@ signal with no plumbing.
 | ----------------------------- | ------------------------------ | ------------------------------------------------------- |
 | REST request (Express)        | `RestServer.invokeRoute`       | the client hangs up                                     |
 | REST request (fetch/edge/web) | `RestHandler.run`              | the host aborts `Request.signal`                        |
+| REST stream (`streamOf`)      | either of the two above        | the client hangs up, or the server stops (`CANCELLED`)  |
 | MCP tool call                 | `MCPServer.requestContextFor`  | `notifications/cancelled`, or the connection drops      |
 | Programmatic `callTool`       | the `{signal}` call option     | whatever the caller decides                             |
 | Queue job attempt             | `JobContext.signal` (a field)  | `timeoutMs` elapses, or `cancel()` reaches this process |

@@ -43,6 +43,7 @@ Rules:
 | Unit of work                      | Fires when                                              |
 | --------------------------------- | ------------------------------------------------------- |
 | REST request (Express or Web)     | the client hangs up                                     |
+| REST stream (`streamOf`)          | the client hangs up, or `app.stop()` (`CANCELLED`)      |
 | MCP tool call                     | `notifications/cancelled`, or the connection drops      |
 | `callTool(name, input, {signal})` | whatever the caller decides                             |
 | Queue job attempt (`job.signal`)  | `timeoutMs` elapses, or `cancel()` reaches this process |

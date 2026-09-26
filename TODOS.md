@@ -305,7 +305,16 @@ enforce the equivalent here.
 **Depends on:** nothing technically. Gated on wanting multi-tenant / per-session
 plugin trees at all, which today nothing needs.
 
-### Honour backpressure on SSE / JSONL streams
+### ~~Honour backpressure on SSE / JSONL streams~~ — CLOSED, shipped
+
+**Shipped (2026-09-26).** The next item is pulled only when the transport can
+take more, on every host: the Express loop waits for `drain`, the Web path is a
+pull-based `ReadableStream`, `writeWebResponseToNode` (web dispatch) waits for
+`drain` too, and `@hono/node-server` (native listener) already did. The
+resumable pump paces itself to an ATTACHED sink only; a detach releases the
+wait, so a stream nobody is reading keeps filling its ring. Measured: a
+paused reader stops a 200-chunk producer at 6 chunks on all three hosts
+(`stream-lifecycle.integration.ts`). The original entry follows.
 
 **What:** Make the stream pumps respect the transport's backpressure — the
 `res.write()` return value (await `'drain'`) on the Express path, and the
@@ -327,7 +336,15 @@ without stalling the ring for a later resume.
 **Priority:** P3
 **Depends on:** PR #56 (resumable SSE) merged.
 
-### `app.stop()` hangs while a plain `streamOf` client is connected
+### ~~`app.stop()` hangs while a plain `streamOf` client is connected~~ — CLOSED, shipped
+
+**Shipped (2026-09-26).** The server keeps a set of live plain streams on both
+hosts; `stop()` ends each cleanly (EOF) and aborts the handler's signal with
+`CANCELLED` via a per-stream stop merged into `ABORT_SIGNAL` with
+`AbortSignal.any` (a hangup still reads `CALLER_GONE`). Ordinary requests keep
+draining gracefully. Known limit: a client that has stopped reading can still
+hold its socket after `stop()` ends the response; forcing that would mean
+destroying active connections. The original entry follows.
 
 **What:** Stopping the server with a client connected to a non-resumable
 `streamOf` route never resolves: `httpServer.close()` waits on a socket nobody

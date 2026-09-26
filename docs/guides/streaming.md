@@ -110,6 +110,22 @@ async *events(input: {path: z.infer<typeof OrderPath>}) {
 Note the exception: on a `resumable:` route the disconnect does **not** call
 `return()` — see [§7](#7-resumable-streams-sse).
 
+**A slow reader pauses the producer.** The next item is pulled only when the
+transport can take more: the Express loop waits for the socket's `drain`, and
+the Web path is a pull-based `ReadableStream`, so a client that stops reading
+stops your generator at its next `yield` instead of every item piling up in
+server memory. The same holds on every host (Express, web dispatch, the native
+listener) and for an attached `resumable:` reader. Nothing to configure — but
+it means a producer that must keep pace with an external source should buffer
+or drop on its own side.
+
+**`app.stop()` ends open streams.** A stream has no natural end, so a graceful
+stop would wait on it forever. Instead `stop()` ends every connected stream
+cleanly (the client sees EOF) and aborts the handler's
+`CoreBindings.ABORT_SIGNAL` with `AbortReasons.CANCELLED` — distinct from
+`CALLER_GONE`, which a hangup produces. Ordinary requests still drain
+gracefully.
+
 **Heartbeats defeat idle proxies (SSE only).** Configure
 `{rest: {sse: {pingMs: 15_000}}}` to write `: ping` comment lines on an
 interval. Off by default; JSONL has no comment-line convention, so the
