@@ -65,6 +65,13 @@ export interface ToolOptionsNoInput {
   ui?: ToolUiMeta;
 }
 
+export interface ToolOptionsNoInputWithOutput<
+  O extends SchemaLike,
+> extends ToolOptionsNoInput {
+  /** Structured output schema (see `ToolOptionsWithOutput.output`). */
+  output: O;
+}
+
 /**
  * Declare a method as an MCP tool.
  *
@@ -74,7 +81,8 @@ export interface ToolOptionsNoInput {
  * - With `output`: the return type is also constrained at compile time
  *   and validated at runtime.
  * - Without `input`: the tool takes no validated input and the method's
- *   signature is fully `@inject`-driven.
+ *   signature is fully `@inject`-driven. `output` still constrains the
+ *   return type.
  *
  * Streaming tools: a method that returns an async iterable (an async
  * generator, e.g. one also exposed as a `@get(..., {streamOf: X})` SSE route)
@@ -124,7 +132,18 @@ export function tool<S extends SchemaLike>(
   >,
 ) => void;
 
-// Overload 3: no input → all slots are free (typically all `@inject`).
+// Overload 3: output only → constrain the return type; all slots are free.
+export function tool<O extends SchemaLike>(
+  name: string,
+  options: ToolOptionsNoInputWithOutput<O>,
+): <R extends InferSchema<O> | Promise<InferSchema<O>>>(
+  target: object,
+  methodName: string | symbol,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  desc: TypedPropertyDescriptor<(...args: any[]) => R>,
+) => void;
+
+// Overload 4: no input → all slots are free (typically all `@inject`).
 export function tool(
   name: string,
   options?: ToolOptionsNoInput,

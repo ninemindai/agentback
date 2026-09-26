@@ -197,6 +197,7 @@ describe('MCPServer @inject weaving', () => {
   }
 
   const StampInput = z.object({label: z.string().min(1)});
+  const NowOutput = z.object({at: z.string()});
 
   @mcpServer()
   class StampedTools {
@@ -211,6 +212,22 @@ describe('MCPServer @inject weaving', () => {
     @tool('whoami')
     whoami(@inject('services.clock') clock: Clock) {
       return {at: clock.iso};
+    }
+
+    // No input, but a typed output: slot 0 stays free for @inject.
+    @tool('now', {output: NowOutput})
+    now(@inject('services.clock') clock: Clock) {
+      return {at: clock.iso};
+    }
+  }
+
+  // Never registered — pins that `output:` constrains the return type even
+  // when no `input:` is declared.
+  class _MistypedNow {
+    // @ts-expect-error return type does not satisfy NowOutput
+    @tool('now', {output: NowOutput})
+    now() {
+      return {at: 42};
     }
   }
 
@@ -239,6 +256,14 @@ describe('MCPServer @inject weaving', () => {
 
   it('allows @inject at slot 0 when no input schema is declared', async () => {
     const result = await server.callTool('whoami', {});
+    expect(result).toEqual({at: '2026-05-18T00:00:00.000Z'});
+  });
+
+  it('accepts an output schema without an input schema', async () => {
+    const now = server.listTools().find(t => t.meta.name === 'now')!;
+    expect(now.meta.input).toBeUndefined();
+    expect(now.meta.output).toBe(NowOutput);
+    const result = await server.callTool('now', {});
     expect(result).toEqual({at: '2026-05-18T00:00:00.000Z'});
   });
 });
