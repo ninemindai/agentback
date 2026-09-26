@@ -8,6 +8,7 @@ import type {
   QueueDescriptor,
   QueueStats,
 } from '@agentback/messaging';
+import {UnrecoverableError} from 'bullmq';
 import type {BullMQJobQueue} from './bullmq-job-queue.js';
 
 const {warn} = loggers('messaging:bullmq:queue-admin');
@@ -24,7 +25,6 @@ export class BullMQQueueAdmin implements QueueAdmin {
       .queueFor(q.name)
       .getJobCounts(
         'waiting',
-        'paused',
         'prioritized',
         'active',
         'delayed',
@@ -32,12 +32,9 @@ export class BullMQQueueAdmin implements QueueAdmin {
         'failed',
       );
     return {
-      // BullMQ reports paused/prioritized jobs separately; for the port they
-      // are all "waiting to run".
-      waiting:
-        (counts.waiting ?? 0) +
-        (counts.paused ?? 0) +
-        (counts.prioritized ?? 0),
+      // BullMQ reports prioritized jobs separately (and, since v6, a paused
+      // queue's jobs as waiting); for the port they are all "waiting to run".
+      waiting: (counts.waiting ?? 0) + (counts.prioritized ?? 0),
       active: counts.active ?? 0,
       delayed: counts.delayed ?? 0,
       completed: counts.completed ?? 0,
@@ -85,11 +82,11 @@ export class BullMQQueueAdmin implements QueueAdmin {
       discarded++;
       if (opts.dryRun) continue;
       try {
-        // discard() suppresses BullMQ's retry path; token '0' skips the lock
-        // check in moveToFinished — safe because we verified the lock is gone.
-        job.discard();
+        // UnrecoverableError suppresses BullMQ's retry path (v6 removed
+        // Job#discard()); token '0' skips the lock check in moveToFinished —
+        // safe because we verified the lock is gone.
         await job.moveToFailed(
-          new Error(
+          new UnrecoverableError(
             `Discarded as stalled by QueueAdmin.discardStalled ` +
               `(active longer than ${olderThanSecs}s with an expired lock)`,
           ),
