@@ -65,6 +65,11 @@ jobs:
       - name: Check generated files
         run: pnpm check:generated
 
+      # eslint (warnings allowed) + prettier --check. Needs no build; before
+      # this step existed, formatting drifted on main unnoticed.
+      - name: Lint
+        run: pnpm lint
+
       - name: Build
         run: pnpm build
 
