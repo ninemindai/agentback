@@ -963,8 +963,8 @@ importers:
         specifier: workspace:~
         version: link:../testing
       '@toon-format/toon':
-        specifier: ^2.3.1
-        version: 2.3.1
+        specifier: ^4.1.1
+        version: 4.1.1
       vitest:
         specifier: ~4.1.11
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
@@ -3896,8 +3896,8 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
-  '@toon-format/toon@2.3.1':
-    resolution: {integrity: sha512-sWqEMeAJGMda9qRrfPKrX3C4c33CO9SJuvJzzrcBEn5sbDB+k6pSLkDsfN0rVnLQwR97MV3sDgVbcxQNsq8xVw==}
+  '@toon-format/toon@4.1.1':
+    resolution: {integrity: sha512-SGCkS7IjVpwRmGPgnY8ENKpAf0EdAnZDOQkvFW0d2cgOpdn9FEFl7sTgryESyypXrWr0YajHGpwsAUX4zw9ZvA==}
 
   '@ts-morph/common@0.29.0':
     resolution: {integrity: sha512-35oUmphHbJvQ/+UTwFNme/t2p3FoKiGJ5auTjjpNTop2dyREspirjMy82PLSC1pnDJ8ah1GU98hwpVt64YXQsg==}
@@ -7561,7 +7561,7 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@toon-format/toon@2.3.1': {}
+  '@toon-format/toon@4.1.1': {}
 
   '@ts-morph/common@0.29.0':
     dependencies:
