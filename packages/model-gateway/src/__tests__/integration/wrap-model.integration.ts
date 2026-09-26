@@ -151,6 +151,47 @@ describe('wrapModel (real AI SDK)', () => {
     expect(result.text).toBe('from the backup');
   });
 
+  it('bills a failed-over call to the model that actually served it', async () => {
+    const sink = new InMemoryUsageSink();
+    const dead = new MockLanguageModelV4({
+      doGenerate: async () => {
+        throw httpError(503);
+      },
+      doStream: async () => {
+        throw httpError(503);
+      },
+    });
+    const backup = new MockLanguageModelV4({
+      provider: 'backup-provider',
+      modelId: 'backup-model',
+      doGenerate: okModel('from the backup').doGenerate,
+      doStream: async () =>
+        ({
+          stream: new ReadableStream({
+            start(controller) {
+              controller.enqueue({type: 'text-start', id: '1'});
+              controller.enqueue({type: 'text-delta', id: '1', delta: 'b'});
+              controller.enqueue({type: 'text-end', id: '1'});
+              controller.enqueue({type: 'finish', finishReason: 'stop', usage});
+              controller.close();
+            },
+          }),
+        }) as never,
+    });
+    const model = await wrapModel(dead, {
+      accounting: {meter: new Meter(sink)},
+      fallback: {models: [backup]},
+      retry: {attempts: 1},
+    });
+    await generateText({model, prompt: 'hi'});
+    expect(await streamText({model, prompt: 'hi'}).text).toBe('b');
+    // Spend belongs to whoever sent the bill, not to the model that failed.
+    expect(sink.all().map(e => e.meta?.model)).toEqual([
+      'backup-provider:backup-model',
+      'backup-provider:backup-model',
+    ]);
+  });
+
   it('trips the breaker, then fails over immediately without calling', async () => {
     let primaryCalls = 0;
     const dead = new MockLanguageModelV4({

@@ -4,6 +4,7 @@
 
 import {AsyncLocalStorage} from 'node:async_hooks';
 import type {PrincipalRef} from '@agentback/metering';
+import type {TokenBudgetExceededError} from './errors.js';
 
 /**
  * Per-unit-of-work accounting state for the model calls made inside it.
@@ -24,23 +25,42 @@ export interface ModelScope {
   tokenBudget?: number;
   /** Running total, mutated by the metering policy as calls complete. */
   tokensSpent: number;
+  /**
+   * The scope that was ambient when this one was entered. Spend adds up the
+   * chain and every ancestor's `tokenBudget` is enforced, so a nested unit of
+   * work cannot spend its way past the budget of the work it runs inside.
+   */
+  readonly parent?: ModelScope;
+  /**
+   * Set when a call made in this scope was refused for its budget. A
+   * streamed caller sees the refusal only as an in-stream `error` part, so
+   * this is how it learns the unit of work failed.
+   */
+  refused?: TokenBudgetExceededError;
 }
 
 const storage = new AsyncLocalStorage<ModelScope>();
 
 /**
  * Run `fn` with an ambient {@link ModelScope}. Every model call made inside —
- * at any depth, across awaits — bills to it.
+ * at any depth, across awaits — bills to it, and to every scope it is nested
+ * in. A nested scope keeps its own principal and correlation id: a nested
+ * turn is its own turn.
  *
  * `@agentback/agents` enters one per turn, so the common path (a singleton
  * agent behind a per-request DI wrapper) gets per-principal token accounting
  * without the model having to know which request it is serving.
  */
 export function withModelScope<T>(
-  scope: Omit<ModelScope, 'tokensSpent'> & {tokensSpent?: number},
+  scope: Omit<ModelScope, 'tokensSpent' | 'parent' | 'refused'> & {
+    tokensSpent?: number;
+  },
   fn: () => T,
 ): T {
-  return storage.run({tokensSpent: 0, ...scope}, fn);
+  return storage.run(
+    {tokensSpent: 0, ...scope, parent: storage.getStore()},
+    fn,
+  );
 }
 
 /** The ambient scope, or `undefined` outside one. */

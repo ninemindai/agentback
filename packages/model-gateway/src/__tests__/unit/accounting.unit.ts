@@ -10,6 +10,7 @@ import {currentModelScope, withModelScope} from '../../scope.js';
 import type {
   LanguageModelLike,
   ModelGenerateResult,
+  ModelStreamResult,
   ModelUsage,
 } from '../../types.js';
 
@@ -110,6 +111,69 @@ describe('token accounting', () => {
     expect(calls).toBe(2); // the second threw before reaching the provider
   });
 
+  it('counts a nested scope against every enclosing budget', async () => {
+    const {sink, generate} = givenPolicy();
+    let calls = 0;
+    const outer = await withModelScope({tokenBudget: 60}, async () => {
+      // A nested turn: its own principal and correlation id, no budget of its
+      // own. Its spend must not escape the budget of the work it runs inside.
+      await withModelScope(
+        {principal: {kind: 'user', id: 'inner'}, correlationId: 'turn-inner'},
+        async () => {
+          const count = async () => {
+            calls++;
+            return generate(usageOf(40, 10));
+          };
+          await count(); // 50 of 60
+          await count(); // 100: admitted at 50, the one-response overshoot
+          await expect(count()).rejects.toBeInstanceOf(
+            TokenBudgetExceededError,
+          );
+        },
+      );
+      return currentModelScope()!;
+    });
+    expect(calls).toBe(3);
+    expect(outer.tokensSpent).toBe(100);
+    // A nested turn is still its own turn.
+    expect(sink.all()[0].principal).toEqual({kind: 'user', id: 'inner'});
+    expect(sink.all()[0].meta?.correlationId).toBe('turn-inner');
+  });
+
+  it('each concurrent call may overshoot by one response, then the scope refuses', async () => {
+    const mw = accountingPolicy({});
+    let calls = 0;
+    await withModelScope({tokenBudget: 1}, async () => {
+      const count = () =>
+        mw.wrapGenerate!({
+          doGenerate: async () => {
+            calls++;
+            await new Promise(r => setTimeout(r, 5));
+            return {usage: usageOf(90, 10)};
+          },
+          doStream: () => Promise.resolve({}),
+          params: {},
+          model: MODEL,
+        });
+      // Calls in flight together all pass the pre-call check before any of
+      // them has reported spend. That is the bound: one response per call.
+      await Promise.all(Array.from({length: 5}, count));
+      expect(currentModelScope()!.tokensSpent).toBe(500);
+      await expect(count()).rejects.toBeInstanceOf(TokenBudgetExceededError);
+    });
+    expect(calls).toBe(5); // the sixth never reached the provider
+  });
+
+  it('records a budget refusal on the scope, for callers that only see a stream', async () => {
+    const {generate} = givenPolicy();
+    const scope = await withModelScope({tokenBudget: 1}, async () => {
+      await generate(usageOf(1, 0));
+      await generate(usageOf(1, 0)).catch(() => {});
+      return currentModelScope()!;
+    });
+    expect(scope.refused).toBeInstanceOf(TokenBudgetExceededError);
+  });
+
   it('records a failed call without inventing token counts', async () => {
     const sink = new InMemoryUsageSink();
     const mw = accountingPolicy({meter: new Meter(sink)});
@@ -158,5 +222,94 @@ describe('token accounting', () => {
     }
     expect(seen).toEqual(parts); // the tap is transparent
     expect(sink.all()[0].units).toBe(100);
+  });
+
+  describe('streams', () => {
+    const U1 = {kind: 'user' as const, id: 'u-1'};
+
+    function givenStream(doStream: () => PromiseLike<ModelStreamResult>) {
+      const sink = new InMemoryUsageSink();
+      const mw = accountingPolicy({meter: new Meter(sink)});
+      const open = () =>
+        mw.wrapStream!({
+          doGenerate: () => Promise.resolve({}),
+          doStream,
+          params: {},
+          model: MODEL,
+        }) as Promise<{stream: ReadableStream<unknown>}>;
+      return {sink, open};
+    }
+
+    const drain = async (stream: ReadableStream<unknown>) => {
+      for await (const _part of stream as unknown as AsyncIterable<unknown>);
+    };
+    const tick = () => new Promise(r => setTimeout(r, 10));
+
+    it('records a stream that could not be opened', async () => {
+      const {sink, open} = givenStream(async () => {
+        throw Object.assign(new Error('HTTP 503'), {statusCode: 503});
+      });
+      await expect(withModelScope({principal: U1}, open)).rejects.toThrow(
+        'HTTP 503',
+      );
+      await tick();
+      expect(sink.all()).toHaveLength(1);
+      expect(sink.all()[0]).toMatchObject({
+        status: 'error',
+        units: 0,
+        principal: U1,
+      });
+    });
+
+    it('bills a consumer cancel to the scope the call was made in', async () => {
+      const {sink, open} = givenStream(async () => {
+        let sent = 0;
+        return {
+          stream: new ReadableStream({
+            pull(controller) {
+              controller.enqueue(
+                sent++ === 0
+                  ? {type: 'finish', usage: usageOf(90, 10)}
+                  : {type: 'text-delta', delta: 'x'},
+              );
+            },
+          }),
+        };
+      });
+      let scope: ReturnType<typeof currentModelScope>;
+      const result = await withModelScope({principal: U1}, () => {
+        scope = currentModelScope();
+        return open();
+      });
+      // The consumer reads, then walks away OUTSIDE the scope, which is where
+      // a streamed response is usually consumed.
+      const reader = result.stream.getReader();
+      await reader.read();
+      await reader.cancel('bye');
+      await tick();
+      expect(sink.all()[0]).toMatchObject({
+        status: 'error',
+        units: 100,
+        principal: U1,
+      });
+      expect(scope!.tokensSpent).toBe(100);
+    });
+
+    it.each([
+      ['carried an error part', [{type: 'error', error: 'overloaded'}]],
+      ['ended without a finish part', [{type: 'text-delta', delta: 'hi'}]],
+    ])('a stream that %s is not recorded as ok', async (_why, parts) => {
+      const {sink, open} = givenStream(async () => ({
+        stream: new ReadableStream({
+          start(controller) {
+            for (const p of parts) controller.enqueue(p);
+            controller.close();
+          },
+        }),
+      }));
+      await drain((await open()).stream);
+      await tick();
+      expect(sink.all()[0].status).toBe('error');
+    });
   });
 });
