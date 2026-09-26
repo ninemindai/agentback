@@ -80,22 +80,23 @@ shorthand aliases (`get`, `post`, `put`, `patch`, `del`) cover the common cases.
 
 All accept a `RouteOptions` object as their second argument:
 
-| Option        | Type                                      | Description                                                           |
-| ------------- | ----------------------------------------- | --------------------------------------------------------------------- |
-| `body`        | `ZodType`                                 | Request body; validated body exposed as `input.body`                  |
-| `path`        | `ZodObject`                               | URL placeholder values; exposed as `input.path`                       |
-| `query`       | `ZodObject`                               | Query string values; exposed as `input.query`                         |
-| `headers`     | `ZodObject`                               | Request headers (lowercase keys); exposed as `input.headers`          |
-| `response`    | `ZodType`                                 | Success response schema; constrains return type; validated at runtime |
-| `streamOf`    | `ZodType`                                 | Per-item schema for a streaming route; handler returns `AsyncIterable`; mutually exclusive with `response` |
-| `format`      | `'sse' \| 'jsonl'`                        | Wire format for a `streamOf` route (default `'sse'`)                  |
-| `responses`   | `Record<number, {schema?, description?}>` | Additional documented status codes                                    |
-| `status`      | `number`                                  | Success status code (default `200`; `204` returns empty body)         |
+| Option        | Type                                      | Description                                                                                                    |
+| ------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `body`        | `ZodType`                                 | Request body; validated body exposed as `input.body`                                                           |
+| `path`        | `ZodObject`                               | URL placeholder values; exposed as `input.path`                                                                |
+| `query`       | `ZodObject`                               | Query string values; exposed as `input.query`                                                                  |
+| `headers`     | `ZodObject`                               | Request headers (lowercase keys); exposed as `input.headers`                                                   |
+| `response`    | `ZodType`                                 | Success response schema; constrains return type; validated at runtime                                          |
+| `streamOf`    | `ZodType`                                 | Per-item schema for a streaming route; handler returns `AsyncIterable`; mutually exclusive with `response`     |
+| `format`      | `'sse' \| 'jsonl'`                        | Wire format for a `streamOf` route (default `'sse'`)                                                           |
+| `resumable`   | `boolean \| {windowMs?, maxEvents?}`      | Keep the producer alive across a disconnect; `Last-Event-ID` replay (SSE only)                                 |
+| `responses`   | `Record<number, {schema?, description?}>` | Additional documented status codes                                                                             |
+| `status`      | `number`                                  | Success status code (default `200`; `204` returns empty body)                                                  |
 | `confirm`     | `boolean \| {ttlMs?}`                     | Dangerous operation: first call → 409 + single-use token; identical retry with `x-confirmation-token` executes |
-| `idempotency` | `boolean \| {required?, ttlMs?}`          | Honor the `idempotency-key` header: replaying a key returns the original result without re-executing |
-| `description` | `string`                                  | OpenAPI operation description                                         |
-| `summary`     | `string`                                  | OpenAPI operation summary                                             |
-| `tags`        | `string[]`                                | OpenAPI operation tags                                                |
+| `idempotency` | `boolean \| {required?, ttlMs?}`          | Honor the `idempotency-key` header: replaying a key returns the original result without re-executing           |
+| `description` | `string`                                  | OpenAPI operation description                                                                                  |
+| `summary`     | `string`                                  | OpenAPI operation summary                                                                                      |
+| `tags`        | `string[]`                                | OpenAPI operation tags                                                                                         |
 
 Only the keys you declare are present in the input bundle at runtime.
 
@@ -256,9 +257,21 @@ Rules and runtime behaviors:
   (`{statusCode, code, message, details?}`). `AgentError` semantics apply
   unchanged: a plain `Error` is redacted to 500 `internal_error`.
 - **Client disconnect** calls the iterator's `return()`, so upstream cleanup
-  belongs in a `finally` block.
+  belongs in a `finally` block — _unless_ the route is `resumable:` (below).
 - **Heartbeat** (SSE only): `{rest: {sse: {pingMs: 15_000}}}` writes `: ping`
   comment lines to defeat idle proxies. Off by default; ignored for JSONL.
+- **Resumable (`resumable:`, SSE only)** — `{streamOf, resumable: {windowMs?,
+maxEvents?}}` puts an `id:` on every frame and keeps the producer alive for
+  `windowMs` (default 30s) after a disconnect, buffering `maxEvents` (default
+  1024). A reconnecting `EventSource` resumes automatically via
+  `Last-Event-ID` with **no client code**, and the handler is **not
+  re-invoked** — the point is that a browser refresh does not throw away an
+  in-flight agent turn. Consequences: `CoreBindings.ABORT_SIGNAL` follows the
+  stream (window expiry / completion), **not** the socket; a resume past the
+  ring's oldest frame is refused with a terminal error rather than a silent
+  gap; a resume by a different principal is refused; `resumable` + `jsonl`
+  and `resumable` without `streamOf` throw at decoration time. In-memory, so
+  single-process (use sticky sessions behind a LB).
 - **OpenAPI**: the item schema emits as `x-itemSchema` under the stream media
   type on the `200` response (promoted to `itemSchema` when emission moves to
   OpenAPI 3.2).
@@ -300,7 +313,9 @@ returns the original result without re-executing the handler (the response
 carries `idempotency-replayed: true`). Errors are **not** cached — a failed
 call may be retried with the same key. `{required: true}` rejects keyless
 requests with 400 `idempotency_key_required`; `{ttlMs}` overrides the 24-hour
-replay window. Mutually exclusive with `streamOf` (a stream cannot replay).
+replay window. Mutually exclusive with `streamOf`: a stream has no single
+cached result to hand back. (Unrelated to `resumable:`, which replays a live
+stream's missed frames, not a finished call's result.)
 
 ```ts
 @post('/orders', {body: NewOrder, response: Order, idempotency: {required: true}})

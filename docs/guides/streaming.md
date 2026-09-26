@@ -59,10 +59,10 @@ handler, the schema, and the error contract are identical.
 @get('/{id}/events.jsonl', {path: OrderPath, streamOf: OrderEvent, format: 'jsonl'})
 ```
 
-| Format             | Content-Type        | Item frame            | Terminal error frame                 |
-| ------------------ | ------------------- | --------------------- | ------------------------------------ |
-| `'sse'` (default)  | `text/event-stream` | `data: <JSON>\n\n`    | `event: error` + `data: {"error":…}` |
-| `'jsonl'`          | `application/jsonl` | one JSON object per line | a `{"error":{…}}` line            |
+| Format            | Content-Type        | Item frame               | Terminal error frame                 |
+| ----------------- | ------------------- | ------------------------ | ------------------------------------ |
+| `'sse'` (default) | `text/event-stream` | `data: <JSON>\n\n`       | `event: error` + `data: {"error":…}` |
+| `'jsonl'`         | `application/jsonl` | one JSON object per line | a `{"error":{…}}` line               |
 
 Both formats carry the same error payload
 (`{statusCode, code, message, details?}`), so clients share one error
@@ -106,6 +106,9 @@ async *events(input: {path: z.infer<typeof OrderPath>}) {
   }
 }
 ```
+
+Note the exception: on a `resumable:` route the disconnect does **not** call
+`return()` — see [§7](#7-resumable-streams-sse).
 
 **Heartbeats defeat idle proxies (SSE only).** Configure
 `{rest: {sse: {pingMs: 15_000}}}` to write `: ping` comment lines on an
@@ -221,10 +224,65 @@ domain failures to `AgentError` if the message should reach the caller), and
 client disconnect propagates as the iterator's `return()` — Effect and RxJS
 both translate that into their own cancellation/unsubscription.
 
+## 7. Resumable streams (SSE)
+
+By default a dropped connection ends the work: the server calls `return()` on
+your generator and the client that comes back starts from nothing. For a cheap
+stream that is the right trade. For an expensive one — an agent turn a user
+is paying for — a browser refresh should not cost the generation.
+
+Opt in per route:
+
+```ts
+@get('/turns/{id}/events', {
+  path: TurnPath,
+  streamOf: TurnEvent,
+  resumable: {windowMs: 30_000, maxEvents: 1024},
+})
+async *events(input: {path: z.infer<typeof TurnPath>}) { … }
+```
+
+Every frame now carries an `id:`. A browser needs no client code at all —
+`EventSource` remembers the last id it saw and replays it as `Last-Event-ID`
+on reconnect:
+
+```ts
+new EventSource('/turns/abc/events'); // resumes by itself after a drop
+```
+
+What changes on the server:
+
+- **The producer survives the disconnect.** Your generator keeps running for
+  `windowMs` (default 30s), buffering into a ring of `maxEvents` (default
+  1024). The handler is **not** re-invoked on reconnect — the client
+  re-attaches to the same in-flight generator and is replayed only what it
+  missed.
+- **`CoreBindings.ABORT_SIGNAL` follows the stream, not the socket.** This is
+  the deliberate inversion of the usual [cancellation](../concepts/cancellation.md)
+  rule: a `resumable:` route's signal fires when the window closes or the
+  stream completes, never merely because the client blinked. Otherwise the
+  feature would defeat itself.
+- **You pay for the window.** Between the disconnect and the window closing
+  you are running work nobody is reading — that is the whole cost of the
+  feature, and why it is opt-in and bounded on both time and memory.
+- **An unsatisfiable resume is an error, not a silent gap.** A client away long
+  enough for the ring to discard its position gets a terminal `event: error`
+  telling it to start a new stream, rather than a stream with a hole in it.
+- **Resuming requires the same principal.** The stream id is an unguessable
+  UUID, but an id that leaks must not hand someone else's turn to the finder;
+  a principal mismatch is indistinguishable from an expired stream.
+
+Two constraints worth knowing:
+
+- **SSE only.** `format: 'jsonl'` has no frame-id convention, so the
+  combination is refused at decoration time.
+- **Single process.** The buffer is in memory, so a client that reconnects to
+  a different instance starts fresh — the same trade `InMemoryEventStore`
+  makes in `@agentback/mcp-http`. Behind a load balancer, use sticky sessions.
+
 ## Out of scope (today)
 
 - **WebSockets** — SSE/JSONL covers the dominant request→stream case;
   bidirectional transport is a separate proposal.
-- **Resumable streams** — there is no `Last-Event-ID` replay; a dropped
-  client reconnects to a fresh stream. Design item schemas so a reconnect can
-  re-establish state (e.g. lead with a snapshot item).
+- **Durable / cross-instance resumption** — `resumable:` is per-process
+  (see §7). A shared-store implementation is a separate change.

@@ -21,8 +21,11 @@ export interface StreamErrorPayload extends Omit<
  */
 export interface StreamFramer {
   headers: Record<string, string>;
-  /** Serialize one validated item to its wire representation. */
-  item(data: unknown): string;
+  /**
+   * Serialize one validated item to its wire representation. `id` is set only
+   * on a `resumable:` route; a format with no id convention ignores it.
+   */
+  item(data: unknown, id?: string): string;
   /** Serialize a terminal error record to its wire representation. */
   error(payload: StreamErrorPayload): string;
 }
@@ -35,8 +38,13 @@ export const SSE_FRAMER: StreamFramer = {
     Connection: 'keep-alive',
     'X-Accel-Buffering': 'no',
   },
-  item(data) {
-    return `data: ${JSON.stringify(data)}\n\n`;
+  item(data, id) {
+    // `id:` is what makes a stream resumable: EventSource remembers the last
+    // one it saw and replays it as `Last-Event-ID` on reconnect, with no
+    // client code. Omitted entirely when the route is not `resumable:`, so a
+    // plain stream's bytes are unchanged.
+    const frame = `data: ${JSON.stringify(data)}\n\n`;
+    return id === undefined ? frame : `id: ${id}\n${frame}`;
   },
   error(payload) {
     return `event: error\ndata: ${JSON.stringify({error: payload})}\n\n`;
@@ -59,6 +67,9 @@ export const JSONL_FRAMER: StreamFramer = {
     'X-Accel-Buffering': 'no',
   },
   item(data) {
+    // No id: NDJSON has no out-of-band frame metadata, and smuggling one into
+    // the object would corrupt the item schema. `resumable:` is refused on a
+    // jsonl route at decoration time for exactly this reason.
     return JSON.stringify(data) + '\n';
   },
   error(payload) {

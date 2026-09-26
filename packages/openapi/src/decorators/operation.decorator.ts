@@ -48,6 +48,17 @@ export interface RouteOptions {
    * for non-streaming routes.
    */
   format?: 'sse' | 'jsonl';
+  /**
+   * Keep the producer alive across a dropped connection. Each SSE frame gets
+   * an `id:`, so a reconnecting `EventSource` resumes automatically via
+   * `Last-Event-ID` — no client code. The handler is NOT re-run and its
+   * generator is NOT closed for `{windowMs}` (default 30s), so a browser
+   * refresh no longer throws away an in-flight agent turn. The cost is the
+   * mirror image: for that window you keep paying for work nobody is reading,
+   * and the client-disconnect `AbortSignal` is deliberately withheld.
+   * Requires `streamOf` with the default `'sse'` format.
+   */
+  resumable?: boolean | {windowMs?: number; maxEvents?: number};
   /** Additional documented responses keyed by status code. */
   responses?: Record<number, {schema?: SchemaLike; description?: string}>;
   /** Success status code. Default 200. */
@@ -66,7 +77,9 @@ export interface RouteOptions {
    * original result without re-executing the handler (errors are not
    * cached). `{required: true}` rejects requests without a key (400
    * `idempotency_key_required`); `{ttlMs}` overrides the 24-hour replay
-   * window. Mutually exclusive with `streamOf` (a stream cannot replay).
+   * window. Mutually exclusive with `streamOf`: a stream has no single cached
+   * result to hand back. (This is unrelated to `resumable:`, which replays a
+   * live stream's missed frames rather than a finished call's result.)
    */
   idempotency?: boolean | {required?: boolean; ttlMs?: number};
   description?: string;
@@ -150,6 +163,27 @@ function makeVerbDecorator(verb: string) {
         );
       }
 
+      // `resumable` is meaningless without a stream, and unrepresentable on a
+      // format with no frame-id convention. Both are config mistakes, so they
+      // fail at decoration time rather than at the first dropped connection.
+      if (opts.resumable) {
+        const className =
+          (target as {constructor?: {name: string}}).constructor?.name ??
+          'anonymous';
+        if (!opts.streamOf) {
+          throw new Error(
+            `@${verb}('${path}') on ${className}.${String(methodName)}: ` +
+              `'resumable' requires 'streamOf'.`,
+          );
+        }
+        if (opts.format === 'jsonl') {
+          throw new Error(
+            `@${verb}('${path}') on ${className}.${String(methodName)}: ` +
+              `'resumable' requires the 'sse' format — jsonl has no frame id.`,
+          );
+        }
+      }
+
       // A stream route has exactly one success shape: the item schema.
       if (opts.streamOf && opts.response) {
         const className =
@@ -188,6 +222,7 @@ function makeVerbDecorator(verb: string) {
         response: opts.response,
         streamOf: opts.streamOf,
         format: opts.format,
+        resumable: opts.resumable,
         responses: opts.responses
           ? Object.fromEntries(
               Object.entries(opts.responses)

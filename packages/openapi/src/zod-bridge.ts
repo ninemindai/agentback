@@ -240,6 +240,8 @@ export interface RouteSchemas {
   streamOf?: SchemaLike;
   /** Wire format for a `streamOf` route: `'sse'` (default) or `'jsonl'`. */
   format?: 'sse' | 'jsonl';
+  /** Keep the producer alive across a dropped connection (`sse` only). */
+  resumable?: boolean | {windowMs?: number; maxEvents?: number};
   /** Additional status-code → schema map for documentation. */
   responses?: Record<number, SchemaLike>;
   /** Dangerous operation: require a confirmation-token round-trip. */

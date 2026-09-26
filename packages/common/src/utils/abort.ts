@@ -14,6 +14,8 @@ export const AbortReasons = {
   DEADLINE: 'The deadline elapsed before the work finished.',
   /** An explicit cancel — an operator, or the caller asking to stop. */
   CANCELLED: 'The work was cancelled.',
+  RESUME_WINDOW_CLOSED:
+    'The client did not reconnect before the resume window closed.',
 } as const;
 
 /**

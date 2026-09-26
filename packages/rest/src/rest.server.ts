@@ -22,7 +22,7 @@ import {
   getAuthorizationMetadata,
   runAuthorization,
 } from '@agentback/authorization';
-import {SecurityBindings, UserProfile} from '@agentback/security';
+import {SecurityBindings, UserProfile, securityId} from '@agentback/security';
 import createError from 'http-errors';
 import {CoreBindings, CoreTags, Server} from '@agentback/core';
 // TYPE-ONLY imports — erased at compile time; safe to bundle for any runtime.
@@ -88,6 +88,12 @@ import {
 import {lookupSuccessStatus} from './route-meta.js';
 import {nodeAbortSignal} from './abort.js';
 import {SSE_FRAMER, JSONL_FRAMER} from './stream-framers.js';
+import {
+  ResumableStreamRegistry,
+  parseEventId,
+  type ResumableOptions,
+  type StreamSink,
+} from './resumable-streams.js';
 import {collectRoutes} from './web/collect-routes.js';
 import {assertPathSchemaMatch} from './route-path-validation.js';
 // From the neutral @agentback/middleware package (Express-free, so a static
@@ -122,6 +128,30 @@ import {
 } from './controller-resolver.js';
 
 const log = loggers('agentback:rest:server');
+
+/**
+ * Returned by `invokeRoute` when the request re-attached to an already-running
+ * `resumable:` stream. The handler was deliberately NOT invoked, so there is
+ * no result and nothing left for the response path to send.
+ */
+const RESUMED = Symbol('agentback.resumedStream');
+
+/**
+ * Per-request abort controllers for `resumable:` routes. Keyed weakly by the
+ * request, because the controller is created in `invokeRoute` (before the
+ * handler runs) but handed to the stream in `sendStream` (after it returns).
+ */
+const resumableAborts = new WeakMap<
+  Request,
+  {controller: AbortController; owner?: string}
+>();
+
+/** Normalize the `resumable:` option to its tuning record. */
+function resumableOptions(
+  value: boolean | ResumableOptions | undefined,
+): ResumableOptions {
+  return typeof value === 'object' ? value : {};
+}
 
 // ---------------------------------------------------------------------------
 // Lazy Node loaders — never called from fetchHandler()/the Web path.
@@ -227,6 +257,8 @@ export class RestServer implements Server {
 
   /** Selected per-route dispatch pipeline; see {@link RestServerConfig.dispatch}. */
   protected readonly dispatchMode: 'express' | 'web';
+  /** Live `resumable:` streams whose producer outlives their connection. */
+  protected readonly resumableStreams = new ResumableStreamRegistry();
 
   /** Selected HTTP listener; see {@link RestServerConfig.listener}. */
   protected readonly listenerMode: 'express' | 'native';
@@ -539,6 +571,9 @@ export class RestServer implements Server {
     return async (req: Request, res: Response, next: NextFunction) => {
       try {
         const result = await this.dispatch(req, res, ctor, methodName, schemas);
+        // A resumed stream re-attached to an already-running producer inside
+        // invokeRoute; there is no new result to send.
+        if (result === RESUMED) return;
         if (schemas.streamOf) {
           await this.sendStream(
             req,
@@ -547,6 +582,7 @@ export class RestServer implements Server {
             schemas.streamOf,
             successStatus,
             schemas.format ?? 'sse',
+            schemas.resumable ? resumableOptions(schemas.resumable) : undefined,
           );
         } else {
           this.sendResult(res, result, successStatus);
@@ -589,7 +625,10 @@ export class RestServer implements Server {
    */
   private _restHandler?: RestHandler;
   protected get restHandler(): RestHandler {
-    return (this._restHandler ??= new RestHandler(this.context));
+    return (this._restHandler ??= new RestHandler(
+      this.context,
+      this.resumableStreams,
+    ));
   }
 
   /**
@@ -723,16 +762,38 @@ export class RestServer implements Server {
     // The neutral "stop now" seam: a handler injects it and hands it to
     // whatever spends time or money, so a caller who hangs up stops the bill
     // instead of merely stopping the reading.
-    reqCtx.bind(CoreBindings.ABORT_SIGNAL).to(nodeAbortSignal(res));
+    // A `resumable:` route inverts this deliberately: its producer is meant to
+    // survive a dropped connection, so the signal is tied to the STREAM's
+    // lifetime (window expiry or completion) rather than to the socket. Wiring
+    // `nodeAbortSignal(res)` here instead would abort the generation the
+    // instant the client blinked, silently defeating the whole feature.
+    if (schemas.streamOf && schemas.resumable) {
+      const controller = new AbortController();
+      resumableAborts.set(req, {controller});
+      reqCtx.bind(CoreBindings.ABORT_SIGNAL).to(controller.signal);
+    } else {
+      reqCtx.bind(CoreBindings.ABORT_SIGNAL).to(nodeAbortSignal(res));
+    }
 
     const auth = await this.authenticate(req, ctor, methodName);
     if (auth.user) reqCtx.bind(SecurityBindings.USER).to(auth.user);
+    const resumableState = resumableAborts.get(req);
+    if (resumableState) resumableState.owner = auth.user?.[securityId];
     if (auth.clientApplication) {
       reqCtx
         .bind(SecurityBindings.CLIENT_APPLICATION)
         .to(auth.clientApplication);
     }
     await this.authorize(auth.user, ctor, methodName, reqCtx);
+
+    // Resume gate: same placement rationale as the confirmation gate below —
+    // after auth/authz so the principal is known and a stranger learns
+    // nothing, and before the handler runs, because re-invoking it is exactly
+    // the duplicate agent turn `resumable:` exists to prevent.
+    if (schemas.streamOf && schemas.resumable) {
+      const resumed = this.tryResumeStream(req, res, auth.user);
+      if (resumed) return RESUMED;
+    }
 
     // Safety gate AFTER auth/authz (an unauthorized caller learns nothing,
     // not even that confirmation exists) and BEFORE input validation (the
@@ -961,6 +1022,69 @@ export class RestServer implements Server {
    * stream ends. `protected` so subclasses can change the framing or add
    * formats.
    */
+  /**
+   * Re-attach this request to an already-running `resumable:` stream named by
+   * its `Last-Event-ID` header, replaying whatever it missed. Returns false
+   * when there is nothing to resume (no header, unknown/expired stream, or a
+   * different principal) — the caller then starts a fresh stream.
+   *
+   * An unsatisfiable resume — the client's position has already been trimmed
+   * out of the ring buffer — is NOT treated as a fresh start. Silently
+   * restarting would hand the client a stream with a hole in it; it gets an
+   * explicit terminal error instead.
+   */
+  protected tryResumeStream(
+    req: Request,
+    res: Response,
+    user: UserProfile | undefined,
+  ): boolean {
+    const parsed = parseEventId(req.header('last-event-id'));
+    if (!parsed) return false;
+    const stream = this.resumableStreams.resume(
+      parsed.streamId,
+      user?.[securityId],
+    );
+    if (!stream) return false;
+
+    res.status(200);
+    for (const [name, value] of Object.entries(SSE_FRAMER.headers)) {
+      res.setHeader(name, value);
+    }
+    res.flushHeaders();
+
+    const sink = this.responseSink(res);
+    if (!stream.attach(sink, parsed.seq)) {
+      res.write(
+        SSE_FRAMER.error({
+          statusCode: 409,
+          code: ErrorCodes.INTERNAL_ERROR,
+          message:
+            'Cannot resume: the requested position has been discarded. ' +
+            'Start a new stream.',
+        }),
+      );
+      res.end();
+      return true;
+    }
+    res.on('close', () => stream.detach());
+    return true;
+  }
+
+  /** Adapt an Express response to the transport-neutral sink. */
+  private responseSink(res: Response): StreamSink {
+    let closed = false;
+    return {
+      write: chunk => {
+        if (!closed) res.write(chunk);
+      },
+      close: () => {
+        if (closed) return;
+        closed = true;
+        res.end();
+      },
+    };
+  }
+
   protected async sendStream(
     _req: Request,
     res: Response,
@@ -968,6 +1092,7 @@ export class RestServer implements Server {
     itemSchema: SchemaLike,
     successStatus = 200,
     format: 'sse' | 'jsonl' = 'sse',
+    resumable?: ResumableOptions,
   ): Promise<void> {
     const iterable = result as AsyncIterable<unknown> | null;
     if (!iterable || typeof iterable !== 'object') {
@@ -997,6 +1122,27 @@ export class RestServer implements Server {
       res.setHeader(name, value);
     }
     res.flushHeaders();
+
+    // `resumable:` hands the iterator to a stream that outlives this response:
+    // the pump below belongs to the stream, not the socket, so a disconnect
+    // detaches instead of ending it.
+    if (resumable) {
+      const state = resumableAborts.get(_req);
+      const stream = this.resumableStreams.create(
+        iterator,
+        itemSchema,
+        framer,
+        state?.owner,
+        state?.controller,
+        resumable,
+      );
+      stream.attach(this.responseSink(res));
+      res.on('close', () => stream.detach());
+      // Not awaited: the producer is meant to outlive this request, and a
+      // handler that never returns from `next()` must not pin the route.
+      void stream.pump(first);
+      return;
+    }
 
     let closed = false;
     const cleanup: (() => void)[] = [];
@@ -1442,6 +1588,9 @@ export class RestServer implements Server {
   }
 
   async stop(): Promise<void> {
+    // A resumable stream is a producer with no reader; none may outlive the
+    // server that owns it.
+    this.resumableStreams.disposeAll();
     if (!this.httpServer) return;
     await new Promise<void>((resolve, reject) => {
       this.httpServer!.close(err => (err ? reject(err) : resolve()));
@@ -1637,7 +1786,7 @@ export class RestServer implements Server {
 
       const core = createFetchHost({
         router,
-        dispatch: new RestHandler(this.context).dispatch,
+        dispatch: new RestHandler(this.context, this.resumableStreams).dispatch,
         notFound,
       });
 

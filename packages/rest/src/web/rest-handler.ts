@@ -28,7 +28,11 @@ import {
   getAuthorizationMetadata,
   runAuthorization,
 } from '@agentback/authorization';
-import {SecurityBindings, type UserProfile} from '@agentback/security';
+import {
+  SecurityBindings,
+  securityId,
+  type UserProfile,
+} from '@agentback/security';
 import createError from 'http-errors';
 import {
   InMemoryConfirmationStore,
@@ -63,10 +67,43 @@ import {
   JSONL_FRAMER,
   type StreamFramer,
 } from '../stream-framers.js';
+import {
+  ResumableStreamRegistry,
+  parseEventId,
+  type ResumableOptions,
+  type StreamSink,
+} from '../resumable-streams.js';
 
 const STREAM_ENCODER = new TextEncoder();
 
 const log = loggers('agentback:rest:web-handler');
+
+/** Returned by `invoke` when the request re-attached to a running stream. */
+const RESUMED = Symbol('agentback.resumedStream');
+
+/** Adapt a Web stream controller to the transport-neutral sink. */
+function webSink(
+  controller: ReadableStreamDefaultController<Uint8Array>,
+): StreamSink {
+  let closed = false;
+  return {
+    write: chunk => {
+      if (!closed) controller.enqueue(STREAM_ENCODER.encode(chunk));
+    },
+    close: () => {
+      if (closed) return;
+      closed = true;
+      controller.close();
+    },
+  };
+}
+
+/** Normalize the `resumable:` option to its tuning record. */
+function resumableOptions(
+  value: boolean | ResumableOptions | undefined,
+): ResumableOptions {
+  return typeof value === 'object' ? value : {};
+}
 
 /**
  * Fold the neutral {@link RestDispatchInfo.responseHeaders} collector onto an
@@ -99,7 +136,14 @@ function queryObject(url: URL): Record<string, unknown> {
  * helpers, same envelopes); uploads are deferred.
  */
 export class RestHandler {
-  constructor(private readonly context: Context) {}
+  constructor(
+    private readonly context: Context,
+    /**
+     * Shared with the owning {@link RestServer} so a `resumable:` stream is
+     * reachable from either dispatch path and `stop()` reaps all of them.
+     */
+    private readonly resumableStreams = new ResumableStreamRegistry(),
+  ) {}
 
   // Controller binding keys, memoized per constructor: contains(key) is O(1)
   // per request; the tag scan reruns only on first sight or after an unbind.
@@ -154,7 +198,15 @@ export class RestHandler {
     // Same neutral seam the Express path binds. `req.signal` already aborts on
     // a disconnect on every fetch host; `linkedAbortSignal` only normalizes the
     // reason so a route reads the same on workerd, Bun, Deno and node-server.
-    reqCtx.bind(CoreBindings.ABORT_SIGNAL).to(linkedAbortSignal(req.signal));
+    // A `resumable:` route deliberately decouples its producer from the
+    // socket, so its stop-signal follows the STREAM (window expiry or
+    // completion) rather than the connection — the Web mirror of the same
+    // inversion in RestServer.invokeRoute.
+    const resumableAbort =
+      schemas.streamOf && schemas.resumable ? new AbortController() : undefined;
+    reqCtx
+      .bind(CoreBindings.ABORT_SIGNAL)
+      .to(resumableAbort?.signal ?? linkedAbortSignal(req.signal));
 
     // Dispatch hooks wrap the WHOLE per-request pipeline (auth → authz →
     // validation → controller method), exactly as the Express
@@ -165,6 +217,10 @@ export class RestHandler {
     // Web Request and a shared `responseHeaders` collector, so a hook bound
     // under REST_DISPATCH_HOOK_TAG fires identically on both surfaces.
     const responseHeaders = new Headers();
+    /** Set by the resume gate inside `invoke`; consumed after the hook chain. */
+    let resumedResponse: Response | undefined;
+    /** Principal that owns a freshly created stream (set once auth has run). */
+    let resumeOwner: string | undefined;
     const hooks = await this.resolveDispatchHooks();
     const info: RestDispatchInfo = {
       request: req,
@@ -189,6 +245,15 @@ export class RestHandler {
           .to(auth.clientApplication);
       }
       await this.authorize(auth.user, ctor, methodName, reqCtx);
+
+      // Resume gate: mirrors RestServer.invokeRoute — after auth/authz so the
+      // principal is known, and before the handler runs, because re-invoking
+      // it is the duplicate agent turn `resumable:` exists to prevent.
+      if (schemas.streamOf && schemas.resumable) {
+        resumeOwner = auth.user?.[securityId];
+        resumedResponse = this.tryResumeStream(req, auth.user);
+        if (resumedResponse) return RESUMED;
+      }
 
       // Read the Web body ONCE up front when the route declares a body schema
       // or a confirmation gate: reading the stream consumes it, and BOTH the
@@ -285,6 +350,12 @@ export class RestHandler {
       return mergeHeaders(this.toErrorResponse(err), responseHeaders);
     }
 
+    // A resumed stream re-attached to an already-running producer; the
+    // handler was deliberately not invoked and the Response is already built.
+    if (result === RESUMED && resumedResponse) {
+      return mergeHeaders(resumedResponse, responseHeaders);
+    }
+
     if (schemas.streamOf) {
       const iterator = this.toAsyncIterator(result);
       // Pull the first item BEFORE committing to the stream so an immediate
@@ -298,6 +369,13 @@ export class RestHandler {
           schemas.streamOf,
           successStatus,
           schemas.format ?? 'sse',
+          schemas.resumable
+            ? {
+                options: resumableOptions(schemas.resumable),
+                owner: resumeOwner,
+                abort: resumableAbort,
+              }
+            : undefined,
         ),
         responseHeaders,
       );
@@ -443,14 +521,82 @@ export class RestHandler {
    * is deferred here — {@link RestHandler} has no config seam, and the ping is a
    * keep-alive, not content parity.
    */
+  /**
+   * Re-attach to an already-running `resumable:` stream named by the request's
+   * `Last-Event-ID`, replaying what was missed. The Web mirror of
+   * {@link RestServer.tryResumeStream}; returns undefined when there is
+   * nothing to resume, so the caller starts a fresh stream.
+   */
+  private tryResumeStream(
+    req: Request,
+    user: UserProfile | undefined,
+  ): Response | undefined {
+    const parsed = parseEventId(req.headers.get('last-event-id') ?? undefined);
+    if (!parsed) return undefined;
+    const stream = this.resumableStreams.resume(
+      parsed.streamId,
+      user?.[securityId],
+    );
+    if (!stream) return undefined;
+
+    const body = new ReadableStream<Uint8Array>({
+      start: controller => {
+        const sink = webSink(controller);
+        if (!stream.attach(sink, parsed.seq)) {
+          // An unsatisfiable resume is reported, never papered over with a
+          // silent restart that would leave a hole in the client's stream.
+          sink.write(
+            SSE_FRAMER.error({
+              statusCode: 409,
+              code: ErrorCodes.INTERNAL_ERROR,
+              message:
+                'Cannot resume: the requested position has been discarded. ' +
+                'Start a new stream.',
+            }),
+          );
+          sink.close();
+        }
+      },
+      cancel: () => stream.detach(),
+    });
+    return new Response(body, {status: 200, headers: SSE_FRAMER.headers});
+  }
+
   private toStreamResponse(
     iterator: AsyncIterator<unknown>,
     first: IteratorResult<unknown>,
     itemSchema: SchemaLike,
     status: number,
     format: 'sse' | 'jsonl',
+    resumable?: {
+      options: ResumableOptions;
+      owner: string | undefined;
+      abort: AbortController | undefined;
+    },
   ): Response {
     const framer: StreamFramer = format === 'jsonl' ? JSONL_FRAMER : SSE_FRAMER;
+
+    // `resumable:` hands the iterator to a stream that outlives this response.
+    if (resumable) {
+      const stream = this.resumableStreams.create(
+        iterator,
+        itemSchema,
+        framer,
+        resumable.owner,
+        resumable.abort,
+        resumable.options,
+      );
+      const body = new ReadableStream<Uint8Array>({
+        start: controller => {
+          stream.attach(webSink(controller));
+          // Not awaited: the producer outlives this response by design.
+          void stream.pump(first);
+        },
+        cancel: () => stream.detach(),
+      });
+      return new Response(body, {status, headers: framer.headers});
+    }
+
     const enqueue = (
       controller: ReadableStreamDefaultController<Uint8Array>,
       text: string,

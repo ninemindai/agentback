@@ -61,6 +61,18 @@ died. AgentBack separates them with `writableEnded`: only the second aborts.
 Without that guard every successful request would abort its own signal on the
 way out, killing any background work the handler had handed it to.
 
+### A `resumable:` stream inverts the rule on purpose
+
+One route option deliberately breaks the "disconnect means stop" default. A
+`@get(..., {streamOf, resumable})` route keeps its producer alive across a
+dropped connection so a reconnecting client can resume it, which means its
+`ABORT_SIGNAL` cannot be the socket's — it follows the **stream**, firing when
+the resume window closes or the stream completes. Wiring the socket's signal
+there would abort the generation the instant the client blinked and defeat the
+feature. The cost is explicit: for the length of the window you are running
+work nobody is reading. See
+[the streaming guide](../guides/streaming.md#7-resumable-streams-sse).
+
 ## Agent turns
 
 `AgentBindings.AGENT` reads the ambient signal off the resolution context and
