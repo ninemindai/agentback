@@ -151,6 +151,48 @@ describe('wrapModel (real AI SDK)', () => {
     expect(result.text).toBe('from the backup');
   });
 
+  it('a secondary is called raw, so give it its own retry by wrapping it', async () => {
+    const dead = new MockLanguageModelV4({
+      doGenerate: async () => {
+        throw httpError(503);
+      },
+    });
+    /** A backup that is throttled once, then answers. */
+    const throttledOnce = () => {
+      let calls = 0;
+      return new MockLanguageModelV4({
+        modelId: 'backup',
+        doGenerate: async options => {
+          if (++calls === 1) throw httpError(429);
+          return okModel('from the backup').doGenerate(options);
+        },
+      });
+    };
+    const primary = {retry: {attempts: 1}} as const;
+
+    // Raw: the fallback policy calls it once, and one 429 ends the call.
+    const bare = await wrapModel(dead, {
+      ...primary,
+      fallback: {models: [throttledOnce()]},
+    });
+    await expect(generateText({model: bare, prompt: 'hi'})).rejects.toThrow(
+      'HTTP 429',
+    );
+
+    // Wrapped with `accounting: false` (the primary already bills it), the
+    // secondary retries its own throttle and answers.
+    const backup = await wrapModel(throttledOnce(), {
+      accounting: false,
+      retry: {sleep: async () => {}},
+    });
+    const model = await wrapModel(dead, {
+      ...primary,
+      fallback: {models: [backup]},
+    });
+    const result = await generateText({model, prompt: 'hi'});
+    expect(result.text).toBe('from the backup');
+  });
+
   it('bills a failed-over call to the model that actually served it', async () => {
     const sink = new InMemoryUsageSink();
     const dead = new MockLanguageModelV4({

@@ -52,6 +52,16 @@ policies with no other change — which is why this is middleware and not a
 - **A 4xx never trips the breaker.** It is recorded neutral — it would fail
   against a healthy provider, and counting it would let one caller's bad input
   take the provider away from everyone.
+- **The gateway owns retrying.** With `retry` on, the final error is marked
+  `isRetryable: false` so the AI SDK's own `maxRetries` does not run the stack
+  again. It is still the provider's error object.
+- **A `Retry-After` longer than `maxDelayMs` fails the call at once.** It is
+  read as seconds or an HTTP-date; retrying early earns another 429, and
+  fallback can act on a fast failure.
+- **Fallback secondaries are called raw** (no retry, no breaker). Wrap one
+  with `wrapModel(m, {accounting: false})` to give it its own retry. Never
+  with accounting: the primary already bills the call, to the model that
+  served it.
 
 ## Token accounting needs a scope
 
@@ -77,11 +87,17 @@ Outside a scope, calls bill anonymously rather than failing.
 
 - `units` on a model usage event is **tokens**, not calls — a quota built on
   the old per-call unit caps the wrong thing.
-- The budget is checked _before_ each call, so the last call of a scope may
-  overshoot by one response. The provider decides how many tokens it emits.
+- The budget is checked _before_ each call, so each call may overshoot by one
+  response, including every call running in parallel in one scope. The
+  provider decides how many tokens it emits.
+- Scopes nest: an inner scope's spend counts against every enclosing budget,
+  but keeps its own principal and correlation id.
 - Streams bill when they **drain**, not when they start (the usage is in the
   `finish` part). A consumer that abandons a stream mid-body is still billed
-  for what arrived.
+  for what arrived, to the scope the call started in, with status `error`. So
+  is a stream with an `error` part or no `finish`.
+- A streamed agent turn refused by its `tokenBudget` fails the turn (metered
+  failure, no quota charge), even though the stream itself ended normally.
 - The breaker's `doStream` guard sees failures to _obtain_ a stream, not a
   stream that dies mid-body.
 - There is **no response cache and no tier routing** — see

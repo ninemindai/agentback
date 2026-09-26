@@ -67,6 +67,44 @@ accounting  → budget refuses before spending; sees the whole logical call,
 | **fallback**   | Fails over on 5xx, 429 and an open circuit. **Not** on a 400 (a second provider buys the same rejection twice) and **not** on a cancelled call (nobody is waiting for the answer).                                                                                                                                  |
 | **accounting** | Bills in **tokens**. One request can be 500 tokens or 500,000, so a per-call counter describes traffic and says nothing about spend. Taps streams for the `finish` part, because streaming is the common case and metering that skipped it would miss most of the bill.                                             |
 
+A few more rules, each there because the naive version failed:
+
+- **The gateway owns retrying.** The AI SDK retries above a wrapped model
+  (`maxRetries`, default 2) on any error marked `isRetryable: true`. With the
+  gateway's retry on, its final error is marked `isRetryable: false`, so the
+  SDK does not run the whole stack again. It is still the provider's own
+  error object.
+- **`Retry-After` can end a retry.** It is read as delta-seconds or an
+  HTTP-date. When the provider asks for longer than `maxDelayMs`, the call
+  fails at once instead of waiting: retrying early earns another 429, and a
+  fast failure is one fallback can act on. A backoff ends the moment the
+  caller's `abortSignal` aborts.
+- **A half-open probe holds a lease.** A probe that never settles (a stalled
+  socket) is presumed lost after `resetAfterMs`, and one new probe is let
+  through.
+- **Usage is billed to the model that served.** After a failover the event's
+  `meta.model` names the secondary, not the primary that failed.
+- **A stream settles `ok` only if it reached `finish`.** An `error` part, a
+  missing `finish`, a consumer cancel, or a `doStream()` that throws records
+  `error`, billed to the scope the call started in.
+
+## Fallback secondaries are called raw
+
+The fallback policy calls each secondary's `doGenerate`/`doStream` directly:
+no retry and no breaker of its own. For a secondary that should ride out its
+own 429s, wrap it first, **without accounting**:
+
+```ts
+const backup = await wrapModel(openai('gpt-5'), {accounting: false});
+const model = await wrapModel(anthropic('claude-sonnet-5'), {
+  accounting: {meter},
+  fallback: {models: [backup]},
+});
+```
+
+The primary's accounting already bills the call to whichever model served
+it, so accounting on the secondary would bill it twice.
+
 ## Token accounting needs an ambient scope
 
 A model is built once at boot; it cannot know which request it is serving. So
@@ -86,6 +124,13 @@ carrying the turn's principal and correlation id, so a singleton agent on a
 singleton model still produces per-principal, per-turn token events. Pass
 `generate({tokenBudget})` to cap one turn.
 
+The budget is checked before each call and the spend added after, so each
+call may overshoot by one response; calls running in parallel in one scope
+each pass the check before any has reported, so each of them may. Scopes
+nest: a scope opened inside another adds its spend to the outer one too, and
+a call is refused if any enclosing budget is spent. The inner scope keeps its
+own principal and correlation id.
+
 Implemented with `AsyncLocalStorage` (`node:async_hooks`) — available on Node,
 and on workerd/Bun/Deno with Node compatibility enabled. Outside a scope,
 calls bill anonymously rather than failing.
@@ -104,5 +149,5 @@ calls bill anonymously rather than failing.
 
 ## Layering
 
-Depends on `@agentback/common`, `context`, `core`, `metering`, `security`.
+Depends on `@agentback/common`, `context`, `core`, `metering`.
 Optional peer: `ai`. See [docs/concepts/model-gateway.md](../../docs/concepts/model-gateway.md).
