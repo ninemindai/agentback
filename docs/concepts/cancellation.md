@@ -39,8 +39,13 @@ signal with no plumbing.
 | REST request (fetch/edge/web) | `RestHandler.run`              | the host aborts `Request.signal`                        |
 | MCP tool call                 | `MCPServer.requestContextFor`  | `notifications/cancelled`, or the connection drops      |
 | Programmatic `callTool`       | the `{signal}` call option     | whatever the caller decides                             |
-| Queue job attempt             | `JobContext.signal`            | `timeoutMs` elapses, or `cancel()` reaches this process |
+| Queue job attempt             | `JobContext.signal` (a field)  | `timeoutMs` elapses, or `cancel()` reaches this process |
 | Agent turn                    | `AgentTurnOptions.abortSignal` | the ambient signal above, or an explicit one            |
+
+**A queue job is the exception.** `@jobProcessor` methods are called with the
+`JobContext` alone — there is no per-job DI context — so nothing is bound under
+`ABORT_SIGNAL` for a job and nested services do not inherit it. The signal is
+the `job.signal` field: hand it to whatever you call.
 
 The reason is always a `DOMException` named `AbortError` carrying one of
 `AbortReasons` (`@agentback/common`), so `fetch` and the AI SDK rethrow it
