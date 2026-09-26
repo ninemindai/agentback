@@ -105,6 +105,31 @@ describe('CircuitBreaker', () => {
     expect(breaker.state(TARGET)).toBe('closed');
   });
 
+  it('a probe that never settles does not wedge the circuit shut', async () => {
+    const now = {t: 0};
+    const {breaker, call} = givenBreaker(now);
+    for (let i = 0; i < 3; i++) await call(fail()).catch(() => {});
+    now.t = 1000;
+    // The probe's socket stalls: it neither succeeds nor fails, ever.
+    void call(() => new Promise<ModelGenerateResult>(() => {}));
+    now.t = 1500;
+    await expect(call(succeed)).rejects.toBeInstanceOf(CircuitOpenError);
+
+    // A probe older than the cooldown is presumed lost, so ONE new probe goes.
+    now.t = 2000;
+    let reached = false;
+    void Promise.resolve(
+      call(async () => {
+        reached = true;
+        return new Promise<ModelGenerateResult>(() => {});
+      }),
+    ).catch(() => {});
+    expect(reached).toBe(true);
+    // Still one at a time.
+    await expect(call(succeed)).rejects.toBeInstanceOf(CircuitOpenError);
+    expect(breaker.state(TARGET)).toBe('half-open');
+  });
+
   it('a failed probe restarts the cooldown instead of probing in a loop', async () => {
     const now = {t: 0};
     const {breaker, call} = givenBreaker(now);

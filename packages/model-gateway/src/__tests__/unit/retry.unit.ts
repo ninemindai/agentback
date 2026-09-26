@@ -2,7 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {describe, expect, it} from 'vitest';
+import {afterEach, describe, expect, it, vi} from 'vitest';
 import {AbortReasons, abortError} from '@agentback/common';
 import {CircuitOpenError} from '../../errors.js';
 import {retryPolicy, isRetryable} from '../../retry.js';
@@ -141,6 +141,82 @@ describe('retryPolicy', () => {
       return {};
     });
     expect(slept).toEqual([7000]);
+  });
+
+  describe('Retry-After', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    /** Drive one throttled attempt and report what the policy slept. */
+    async function sleptFor(retryAfter: string, maxDelayMs?: number) {
+      const slept: number[] = [];
+      let calls = 0;
+      const mw = retryPolicy({
+        attempts: 2,
+        maxDelayMs,
+        sleep: async ms => void slept.push(ms),
+        jitter: () => 1,
+      });
+      const outcome = await Promise.resolve(
+        drive(mw, async () => {
+          if (++calls === 1) {
+            throw httpError(429, {
+              responseHeaders: {'retry-after': retryAfter},
+            });
+          }
+          return {};
+        }),
+      ).catch(e => e);
+      return {slept, calls, outcome};
+    }
+
+    it('reads an HTTP-date as the time left until it', async () => {
+      vi.useFakeTimers({toFake: ['Date']});
+      vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+      const at = new Date(Date.now() + 5000).toUTCString();
+      const {slept} = await sleptFor(at);
+      expect(slept).toEqual([5000]);
+    });
+
+    it('treats a Retry-After in the past as "now"', async () => {
+      const {slept} = await sleptFor('-5');
+      expect(slept).toEqual([0]);
+    });
+
+    it('gives up at once when the provider asks for longer than maxDelayMs', async () => {
+      // Retrying before the provider allows just earns another 429, and a
+      // caller parked for an hour is worse than a fast failure a fallback
+      // can act on.
+      const {slept, calls, outcome} = await sleptFor('3600', 30_000);
+      expect(calls).toBe(1);
+      expect(slept).toEqual([]);
+      expect(outcome).toMatchObject({statusCode: 429});
+    });
+  });
+
+  it('a caller who leaves during the backoff is released at once', async () => {
+    const controller = new AbortController();
+    const mw = retryPolicy({
+      attempts: 3,
+      // A sleep that never ends on its own: only the abort can end the wait.
+      sleep: () => new Promise<void>(() => {}),
+    });
+    const call = Promise.resolve(
+      drive(
+        mw,
+        async () => {
+          throw httpError(503);
+        },
+        {abortSignal: controller.signal},
+      ),
+    ).catch(e => e);
+    setTimeout(() => controller.abort(abortError(AbortReasons.CALLER_GONE)));
+    const outcome = await Promise.race([
+      call,
+      new Promise(r => setTimeout(() => r('still sleeping'), 200)),
+    ]);
+    expect(outcome).toMatchObject({message: AbortReasons.CALLER_GONE});
   });
 
   it('jitters the backoff — a fleet must not retry in lockstep', async () => {

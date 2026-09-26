@@ -16,7 +16,10 @@ export interface RetryOptions {
   attempts?: number;
   /** First backoff step in ms; doubles per attempt. Default 500. */
   baseDelayMs?: number;
-  /** Ceiling for one backoff, before jitter. Default 30_000. */
+  /**
+   * Ceiling for one backoff, before jitter. Default 30_000. A provider
+   * `Retry-After` longer than this is not waited out: the call fails at once.
+   */
   maxDelayMs?: number;
   /** Injectable sleep, for deterministic tests. */
   sleep?: (ms: number) => Promise<void>;
@@ -32,7 +35,10 @@ function statusOf(err: unknown): number | undefined {
   return typeof raw === 'number' ? raw : undefined;
 }
 
-/** `Retry-After` in ms when the provider told us how long to wait. */
+/**
+ * `Retry-After` in ms when the provider told us how long to wait: either
+ * delta-seconds or an HTTP-date. A moment already past means "now".
+ */
 function retryAfterMs(err: unknown): number | undefined {
   if (err == null || typeof err !== 'object') return undefined;
   const headers = (err as {responseHeaders?: Record<string, string>})
@@ -40,7 +46,30 @@ function retryAfterMs(err: unknown): number | undefined {
   const raw = headers?.['retry-after'] ?? headers?.['Retry-After'];
   if (!raw) return undefined;
   const seconds = Number(raw);
-  return Number.isFinite(seconds) ? seconds * 1000 : undefined;
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const at = Date.parse(raw);
+  return Number.isNaN(at) ? undefined : Math.max(0, at - Date.now());
+}
+
+/**
+ * Sleep, but end the wait the moment the caller aborts: someone who hung up
+ * during a 30s backoff should not hold the call open for the rest of it.
+ * Raced here rather than trusted to `sleep`, so an injected sleep that ignores
+ * the signal still cannot delay an abort.
+ */
+function pause(
+  sleep: (ms: number, signal?: AbortSignal) => Promise<void>,
+  ms: number,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  if (!signal) return sleep(ms);
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, {once: true});
+    sleep(ms, signal)
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener('abort', onAbort));
+  });
 }
 
 /**
@@ -89,14 +118,24 @@ function isAbortShaped(err: unknown): boolean {
  * Jitter is not decoration: without it every instance in a fleet retries on the
  * same schedule, and a brief provider throttle becomes a self-inflicted
  * thundering herd that keeps the provider down. `Retry-After` wins when the
- * provider states one.
+ * provider states one, unless it exceeds `maxDelayMs`: retrying before the
+ * provider allows just earns another 429, so the call fails now and a
+ * fallback can act on it.
  */
 export function retryPolicy(opts: RetryOptions = {}): ModelMiddleware {
   const attempts = opts.attempts ?? 3;
   const baseDelayMs = opts.baseDelayMs ?? 500;
   const maxDelayMs = opts.maxDelayMs ?? 30_000;
-  const sleep =
-    opts.sleep ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)));
+  const sleep: (ms: number, signal?: AbortSignal) => Promise<void> =
+    opts.sleep ??
+    ((ms, signal) =>
+      new Promise<void>(resolve => {
+        const timer = setTimeout(resolve, ms);
+        // An abandoned backoff must not keep a timer (and the process) alive.
+        signal?.addEventListener('abort', () => clearTimeout(timer), {
+          once: true,
+        });
+      }));
   const jitter = opts.jitter ?? (() => 0.5 + Math.random());
 
   const run = async <T>(
@@ -114,8 +153,18 @@ export function retryPolicy(opts: RetryOptions = {}): ModelMiddleware {
       } catch (err) {
         lastError = err;
         if (!isRetryable(err, signal) || attempt === attempts - 1) throw err;
+        const after = retryAfterMs(err);
+        if (after !== undefined && after > maxDelayMs) {
+          log.warn(
+            '%s asked to wait %dms, over maxDelayMs %dms — not retrying',
+            label,
+            after,
+            maxDelayMs,
+          );
+          throw err;
+        }
         const backoff = Math.min(baseDelayMs * 2 ** attempt, maxDelayMs);
-        const delay = retryAfterMs(err) ?? Math.round(backoff * jitter());
+        const delay = after ?? Math.round(backoff * jitter());
         log.warn(
           '%s attempt %d/%d failed (%s) — retrying in %dms',
           label,
@@ -124,7 +173,7 @@ export function retryPolicy(opts: RetryOptions = {}): ModelMiddleware {
           (err as Error)?.message ?? err,
           delay,
         );
-        await sleep(delay);
+        await pause(sleep, delay, signal);
       }
     }
     throw lastError;
