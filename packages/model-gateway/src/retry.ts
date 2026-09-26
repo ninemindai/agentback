@@ -130,11 +130,14 @@ export function retryPolicy(opts: RetryOptions = {}): ModelMiddleware {
     opts.sleep ??
     ((ms, signal) =>
       new Promise<void>(resolve => {
-        const timer = setTimeout(resolve, ms);
-        // An abandoned backoff must not keep a timer (and the process) alive.
-        signal?.addEventListener('abort', () => clearTimeout(timer), {
-          once: true,
-        });
+        // An abandoned backoff must not keep a timer (and the process) alive,
+        // and a finished one must not leave its listener on the signal.
+        const stop = () => clearTimeout(timer);
+        const timer = setTimeout(() => {
+          signal?.removeEventListener('abort', stop);
+          resolve();
+        }, ms);
+        signal?.addEventListener('abort', stop, {once: true});
       }));
   const jitter = opts.jitter ?? (() => 0.5 + Math.random());
 
