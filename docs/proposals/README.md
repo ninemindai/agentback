@@ -48,6 +48,7 @@ tracked in the doc headers.
 | E-4 | [CLI projection](cli-projection.md)   | `@agentback/command` — project `@tool` classes as an operator CLI (argv→callTool); sixth surface — **eng-reviewed, operator-first**                 |
 | E-5 | [CLI lifecycle](cli-lifecycle.md)     | `agentback new`/`deploy`/`update` — one ops binary; `update` bumps lockstep ranges + runs a codemod-or-advisory migration registry — **design**     |
 | E-6 | [Chat message IR](chat-message-ir.md) | Rich cards for `@agentback/chat`: Zod message IR → Chat SDK elements (agent-emittable UI), typed `@onAction` routing, confirm-card HITL — **draft** |
+| E-7 | [MCP Events](mcp-events.md)           | `@event` + webhook delivery (MCP Events extension, OpenAI's webhook-only subset): Zod input/payload schemas, IP-pinned signed delivery — **draft**  |
 
 ## Sequencing constraints (from eng review)
 
