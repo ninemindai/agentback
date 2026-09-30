@@ -21,6 +21,7 @@ customization lives on decorator options; cross-cutting concerns go in Express m
 - Controllers are discovered by the core `controller` tag (`CoreTags.CONTROLLER` from `@agentback/core`); `app.restController()` is a thin, REST-flavored alias for `app.controller()` and adds no separate tag
 - Per-request cancellation: `CoreBindings.ABORT_SIGNAL` is bound into every request context on both the Express and Web pipelines, aborting when the client hangs up. Inject it optionally and hand it to whatever spends time or money — see [docs/concepts/cancellation.md](../../docs/concepts/cancellation.md)
 - Resumable SSE: `@get(..., {streamOf, resumable})` keeps the producer alive across a dropped connection and replays the gap to a reconnecting `EventSource` via `Last-Event-ID` — the handler is not re-invoked, so a browser refresh no longer costs an in-flight agent turn. Bounded by `windowMs` + `maxEvents` and a server-wide `rest.resumable.maxLiveStreams` cap (default 1000; a new stream past it gets 503 + `Retry-After`). A `Last-Event-ID` that cannot be honoured — unknown, expired, past the ring, or from another route or principal — gets HTTP 409, so `EventSource` stops and the handler never re-runs; on an anonymous route the stream id is a bearer capability. Normal completion does not abort the handler's signal. SSE-only and single-process. See [docs/guides/streaming.md](../../docs/guides/streaming.md#7-resumable-streams-sse)
+- HTTP upgrade (WebSocket) on the app's own port: `server.upgrade(path, handler, {close?})` — see [WebSocket endpoints](#websocket-endpoints-http-upgrade) below
 - Error helpers: `invalidParameter(field, message)`, `invalidRequestBody(details)`, `zodIssuesToDetails(issues)` — produce HTTP 400/422 error shapes from Zod validation failures
 
 ## Request pipeline
@@ -104,6 +105,49 @@ class MyServer extends RestServer {
 }
 // app.server(MyServer);
 ```
+
+### WebSocket endpoints (HTTP upgrade)
+
+Node never routes an `Upgrade` request through the request handler — it emits
+`'upgrade'` on the server with the raw socket. `RestServer.upgrade()` is the
+supported way to put a WebSocket endpoint on the same port and origin as the
+REST routes, on both the Express and native listeners:
+
+```ts
+import {WebSocketServer} from 'ws';
+
+const server = await app.restServer;
+const wss = new WebSocketServer({noServer: true});
+wss.on('connection', ws => ws.on('message', m => ws.send(m)));
+
+server.upgrade(
+  '/ws',
+  (req, socket, head) => {
+    // Authenticate here: no REST middleware, auth or rate limiting runs.
+    wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws, req));
+  },
+  {
+    close: () => {
+      for (const ws of wss.clients) ws.close(1001, 'server stopping');
+      wss.close();
+    },
+  },
+);
+await app.start();
+```
+
+- `path` matches the request pathname **exactly** (query ignored, `basePath`
+  not applied). Register before `start()` — afterwards it throws. It returns a
+  remover.
+- Once any path is registered, an upgrade on another path gets `404` and a
+  malformed request-target `400`. With none registered nothing changes: upgrade
+  requests still reach the REST routes as plain requests.
+- A handler that throws or rejects has its socket destroyed; the process stays up.
+- `stop()` awaits each `close` hook, then destroys every accepted socket still
+  open. An upgraded socket is not an HTTP connection, so without that sweep
+  `server.close()` would wait on it forever.
+- Node listener only: nothing is accepted under `listen: false` or on a fetch
+  host (`fetchHandler()`, Workers, Bun).
 
 **Config reference:**
 

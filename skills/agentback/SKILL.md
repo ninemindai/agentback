@@ -48,7 +48,8 @@ ESM-only, Node 22.18+, TypeScript 7, pnpm workspaces. **Relative imports use
    Schema sharing & client ([schema-sharing-and-client.md](references/schema-sharing-and-client.md))
 5. **Authentication, authorization, scopes, rate limiting (REST or MCP/HTTP)?**
    → Auth & rate limiting ([auth-and-rate-limiting.md](references/auth-and-rate-limiting.md))
-6. **Health/metrics, middleware, subclassing the dispatcher, packaging?** →
+6. **Health/metrics, middleware, subclassing the dispatcher, a WebSocket
+   (HTTP upgrade) endpoint on the app's port, packaging?** →
    Composition & operations ([composition-and-operations.md](references/composition-and-operations.md))
 7. **Stateful entity behind a stable address — one writer at a time (cart,
    conversation, counter, room)?** → Actors ([actors.md](references/actors.md))

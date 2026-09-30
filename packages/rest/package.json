@@ -60,12 +60,14 @@
     "@types/http-errors": "^2.0.5",
     "@types/multer": "^2.2.0",
     "@types/supertest": "^7.2.1",
+    "@types/ws": "^8.18.1",
     "cors": "~2.8.6",
     "express": "^5.2.1",
     "fastify": "^5.12.5",
     "multer": "^2.4.0",
     "supertest": "^7.3.0",
-    "vitest": "~5.0.1"
+    "vitest": "~5.0.1",
+    "ws": "^8.21.3"
   },
   "engines": {
     "node": ">=22.18"

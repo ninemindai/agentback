@@ -8,6 +8,7 @@
 - [CORS](#cors)
 - [Body parsing](#body-parsing)
 - [Subclassing the Dispatcher](#subclassing-the-dispatcher)
+- [WebSocket / HTTP upgrade](#websocket--http-upgrade)
 - [Operational Extensions](#operational-extensions)
 - [Lifecycle Observers](#lifecycle-observers)
 - [Adding a New Workspace Package](#adding-a-new-workspace-package)
@@ -281,6 +282,37 @@ Override `dispatch` to add audit logging, distributed tracing, or transaction
 boundaries around the auth → authz → validation → handler → response-validation
 pipeline. Override `makeHandler` only to replace the entire per-route Express
 handler factory.
+
+## WebSocket / HTTP upgrade
+
+Node emits `Upgrade` requests as a separate `'upgrade'` server event, never
+through the request handler, so a `ws` endpoint cannot be a route.
+`RestServer.upgrade(path, handler, {close?})` puts one on the app's own port
+(Express and native listeners). **Do not read the private server field** to
+attach your own listener.
+
+```ts
+import {WebSocketServer} from 'ws';
+
+const server = await app.restServer;
+const wss = new WebSocketServer({noServer: true});
+server.upgrade(
+  '/ws',
+  (req, socket, head) =>
+    // authenticate first — no REST middleware/auth/rate limit runs here
+    wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws, req)),
+  {close: () => wss.clients.forEach(ws => ws.close(1001))},
+);
+await app.start(); // register BEFORE start(); after, upgrade() throws
+```
+
+- Exact pathname match (query ignored, `basePath` not applied); returns a remover.
+- With a path registered, other upgrade paths get `404`, a malformed target `400`;
+  with none registered, behaviour is unchanged (upgrades reach REST as plain requests).
+- A throwing/rejecting handler destroys its socket; the process survives.
+- `stop()` awaits `close` hooks, then destroys every accepted socket still open
+  (otherwise `server.close()` would hang on it).
+- Node listener only — nothing under `listen: false` or on a fetch host.
 
 ## Operational Extensions
 

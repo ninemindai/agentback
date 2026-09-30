@@ -59,8 +59,8 @@ import type {
   RequestHandler,
   Response,
 } from 'express';
-import type {Server as HttpServer} from 'http';
-import {Readable} from 'node:stream';
+import type {IncomingMessage, Server as HttpServer} from 'http';
+import {Readable, type Duplex} from 'node:stream';
 import {
   RestBindings,
   RestMiddlewareGroups,
@@ -76,6 +76,8 @@ import {
   DEFAULT_REST_CONFIG,
   type BodyParserConfig,
   type RestServerConfig,
+  type UpgradeHandler,
+  type UpgradeOptions,
 } from './types.js';
 import {invalidRequestBody} from './errors.js';
 import {parseSection} from './validate-sections.js';
@@ -254,6 +256,24 @@ function webRequestFromExpress(req: Request): globalThis.Request {
     else headers.set(name, value);
   }
   return new globalThis.Request(url, {method: req.method, headers});
+}
+
+/**
+ * Refuse an upgrade with a bare status line and close. Once Node emits
+ * `'upgrade'` the request can no longer fall through to the request handler,
+ * so this is the only way to tell the client why (a `ws` client reports
+ * "Unexpected server response: 404" rather than a bare hang-up).
+ */
+function refuseUpgrade(socket: Duplex, status: string): void {
+  if (!socket.writable) {
+    socket.destroy();
+    return;
+  }
+  // Destroy once flushed, so a peer that never closes its side cannot hold it.
+  socket.once('finish', () => socket.destroy());
+  socket.end(
+    `HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`,
+  );
 }
 
 export class RestServer implements Server {
@@ -1535,6 +1555,7 @@ export class RestServer implements Server {
       this.config.port,
       this.config.host,
     );
+    this.attachUpgradeListener(this.httpServer);
     await this.awaitBind(this.httpServer);
   }
 
@@ -1588,6 +1609,7 @@ export class RestServer implements Server {
       this.config.port,
       this.config.host,
     );
+    this.attachUpgradeListener(this.httpServer);
     await this.awaitBind(this.httpServer);
   }
 
@@ -1648,6 +1670,115 @@ export class RestServer implements Server {
     return undefined;
   }
 
+  /** Upgrade handlers by exact pathname; see {@link upgrade}. */
+  private readonly _upgrades = new Map<
+    string,
+    {handler: UpgradeHandler; close?: UpgradeOptions['close']}
+  >();
+  /** Sockets handed to an upgrade handler that have not closed yet. */
+  private readonly _upgradedSockets = new Set<Duplex>();
+  /** Set when `start()` creates the server; {@link upgrade} refuses after. */
+  private _upgradesFrozen = false;
+
+  /**
+   * Accept HTTP `Upgrade` requests (WebSocket) for `path` on this server's own
+   * port. Node never routes an upgrade through the request handler, so this is
+   * how a `ws` endpoint shares the port and origin of the REST routes:
+   *
+   * ```ts
+   * const wss = new WebSocketServer({noServer: true});
+   * server.upgrade('/ws', (req, socket, head) =>
+   *   wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws, req)),
+   * );
+   * ```
+   *
+   * - `path` is matched **exactly** against the request pathname (query string
+   *   ignored, `basePath` not applied) — the same rule as {@link addFetchHandler}.
+   * - **Register before `start()`**; afterwards this throws. The one `'upgrade'`
+   *   listener is installed when `start()` creates the server (Express or native
+   *   listener), so no upgrade can arrive before its handler.
+   * - **Handlers are not middleware.** Nothing in the REST chain runs:
+   *   authentication, rate limiting and origin checks are the handler's job.
+   * - Once any handler is registered, an upgrade for an unregistered path is
+   *   answered `404` and closed, and a malformed request-target `400`. With none
+   *   registered no listener is installed, so upgrade requests keep reaching the
+   *   request handler as plain requests.
+   * - A handler that throws or rejects gets its socket destroyed; the error is
+   *   logged, never thrown out of the `'upgrade'` event.
+   * - `stop()` awaits each `close` hook, then destroys every socket this path
+   *   accepted that is still open — an upgraded socket is no longer an HTTP
+   *   connection, and would otherwise hold `server.close()` open forever.
+   * - Node listener only: nothing is accepted under `listen: false` or on a
+   *   fetch host (`fetchHandler()`, Workers, Bun).
+   *
+   * Returns a remover; after it runs, `path` answers `404`.
+   */
+  upgrade(
+    path: string,
+    handler: UpgradeHandler,
+    options: UpgradeOptions = {},
+  ): () => void {
+    if (this._upgradesFrozen) {
+      throw new Error(
+        `@agentback/rest: upgrade('${path}') must be registered before start()`,
+      );
+    }
+    if (this._upgrades.has(path)) {
+      throw new Error(
+        `@agentback/rest: an upgrade handler is already registered for '${path}'`,
+      );
+    }
+    const entry = {handler, close: options.close};
+    this._upgrades.set(path, entry);
+    return () => {
+      if (this._upgrades.get(path) === entry) this._upgrades.delete(path);
+    };
+  }
+
+  /**
+   * Install the one `'upgrade'` listener on the server `start()` just created.
+   * Called synchronously after `listen()`, before the bind completes, so no
+   * connection can precede it. Installs nothing when no path is registered:
+   * Node then downgrades an upgrade to a plain request, today's behaviour.
+   */
+  private attachUpgradeListener(server: HttpServer): void {
+    this._upgradesFrozen = true;
+    if (this._upgrades.size === 0) return;
+    server.on('upgrade', (req: IncomingMessage, socket: Duplex, head) => {
+      // Anything that escapes an 'upgrade' listener is an uncaught exception
+      // that takes the process down, before the handler could authenticate.
+      let pathname: string;
+      try {
+        pathname = new URL(req.url ?? '', 'http://localhost').pathname;
+      } catch {
+        refuseUpgrade(socket, '400 Bad Request');
+        return;
+      }
+      // Read at dispatch time, so a remover called after start() still takes.
+      const entry = this._upgrades.get(pathname);
+      if (!entry) {
+        refuseUpgrade(socket, '404 Not Found');
+        return;
+      }
+      this._upgradedSockets.add(socket);
+      socket.once('close', () => this._upgradedSockets.delete(socket));
+      const fail = (err: unknown) => {
+        log.error('Upgrade handler for %s failed: %s', pathname, err);
+        socket.destroy();
+      };
+      try {
+        // Called synchronously: `head` holds bytes already read off the socket,
+        // and deferring the call could lose data before the handler attaches.
+        const result = entry.handler(req, socket, head);
+        if (result && typeof result.then === 'function') {
+          result.then(undefined, fail);
+        }
+      } catch (err) {
+        fail(err);
+      }
+    });
+  }
+
   async stop(): Promise<void> {
     // A resumable stream is a producer with no reader; none may outlive the
     // server that owns it. A plain stream has no natural end, so waiting for
@@ -1656,6 +1787,18 @@ export class RestServer implements Server {
     for (const stop of [...this.liveStreams]) stop();
     if (!this.httpServer) return;
     const server = this.httpServer;
+    this._upgradesFrozen = false;
+    // Graceful work first (close frames), then end whatever is left: `close()`
+    // never ends an upgraded socket and would wait on it forever. A failing
+    // hook is logged, not thrown — shutdown must still reach `close()`.
+    const hooks = [...this._upgrades].filter(([, e]) => e.close);
+    const settled = await Promise.allSettled(hooks.map(([, e]) => e.close!()));
+    settled.forEach((r, i) => {
+      if (r.status === 'rejected') {
+        log.warn('Upgrade close hook for %s failed: %s', hooks[i][0], r.reason);
+      }
+    });
+    for (const socket of [...this._upgradedSockets]) socket.destroy();
     await new Promise<void>((resolve, reject) => {
       server.close(err => (err ? reject(err) : resolve()));
       // `close()` sweeps idle keep-alive sockets once, synchronously. A Web
