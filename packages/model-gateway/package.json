@@ -1,6 +1,6 @@
 {
   "name": "@agentback/model-gateway",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "The model-call seam: retries with classification, a circuit breaker, provider fallback, and token-granular metering — as AI SDK language-model middleware",
   "type": "module",
   "main": "dist/index.js",
