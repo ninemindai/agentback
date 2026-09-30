@@ -31,6 +31,30 @@ export interface BodyParserConfig {
   raw?: boolean | RawOptions;
 }
 
+/**
+ * Takes over an HTTP `Upgrade` request that {@link RestServer.upgrade} matched —
+ * the arguments of Node's `'upgrade'` event, e.g. `wss.handleUpgrade` from `ws`.
+ * It owns the socket from here: authenticate, then complete or refuse the
+ * handshake. A throw (or a rejected promise) destroys the socket.
+ */
+export type UpgradeHandler = (
+  req: import('node:http').IncomingMessage,
+  socket: import('node:stream').Duplex,
+  head: Buffer,
+) => void | Promise<void>;
+
+/** Options for {@link RestServer.upgrade}. */
+export interface UpgradeOptions {
+  /**
+   * Called by `stop()` before the server closes — the place for graceful work,
+   * such as sending close frames (`ws`'s `wss.close()` does not close existing
+   * clients). Don't await the peer's reply — a peer that never answers would
+   * stall `stop()`; send the frames and return. Sockets this path accepted that
+   * are still open once it settles are destroyed.
+   */
+  close?: () => void | Promise<void>;
+}
+
 export interface RestServerConfig {
   port?: number;
   host?: string;
