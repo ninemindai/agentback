@@ -3,11 +3,14 @@
 **Status:** **Built (webhook subset)** — §6 steps 1–4 landed together:
 `@event` + `events/*` in `@agentback/mcp`, delivery in
 `@agentback/mcp-events`, `examples/hello-mcp-events`, and
-[the guide](../guides/mcp-events.md). Filed 2026-09-30. Deviations from the
+[the guide](../guides/mcp-events.md); reviewed under /autoplan (see
+[plan 007](../../plans/007-mcp-events.md)). The ChatGPT acceptance pass of §6.4
+is still a manual step (TODOS.md). Filed 2026-09-30. Deviations from the
 sketch below: the emitter port is `McpEventEmitter` (not `EventEmitter`, to
 avoid shadowing Node's), retries reuse `JobQueue` rather than the actors
-journal (no replay is offered, so no cursor is needed), and a no-expiry grant
-is off unless `events.allowNoExpiry` is set.
+journal (no replay is offered, so no cursor is needed), a no-expiry grant is
+off unless `events.allowNoExpiry` is set, and the subscriber's principal is
+`AuthInfo.extra.user` or `extra.sub` — never the OAuth `clientId`.
 
 **Sources evaluated:**
 

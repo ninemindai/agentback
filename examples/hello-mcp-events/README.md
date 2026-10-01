@@ -33,13 +33,29 @@ principal.
 
 ```bash
 pnpm -F hello-mcp-events build
+pnpm -F hello-mcp-events demo    # watch one event arrive, then exit
 pnpm -F hello-mcp-events test    # the whole loop, in process
 pnpm -F hello-mcp-events start   # MCP at http://127.0.0.1:3000/mcp
 ```
 
-The test uses a stub transport as the receiver: it echoes the verification
-challenge and records each delivery, which it checks with
+`demo` subscribes as `demo-alice`, calls `add_comment`, and prints the signed
+POST the receiver got (headers, body, and whether the signature verifies).
+The demo and the test use an in-process receiver that echoes the verification
+challenge and records each delivery, checked with
 `verifyWebhook(secret, headers, body)`.
+
+Against the running server, a client must authenticate to subscribe:
+
+```bash
+curl -s http://127.0.0.1:3000/mcp -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' \
+  -H 'authorization: Bearer demo-alice' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
+```
+
+Delivering to a receiver on your own machine needs
+`createPinnedTransport({allowPrivateAddresses: true, ca})` — see the guide's
+"Seeing an event arrive locally".
 
 To try it against ChatGPT, expose the server over `https` (a tunnel), replace
 the demo strategy with real OAuth (`installMcpHttp({auth})`), and walk OpenAI's

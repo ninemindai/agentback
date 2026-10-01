@@ -20,7 +20,7 @@ pnpm add @agentback/mcp zod
 - `@event(name, {payload, input?, description?, title?, scope?})` — method decorator declaring an **MCP Events** event type (see [MCP Events](#mcp-events)). The method is the subscription filter `match(args, data)`.
 - `MCPComponent` — registers `MCPServer` as the application's `Server`; mount with `app.component(MCPComponent)`.
 - `MCPApplication` — `Application` subclass with `MCPComponent` pre-mounted; for stdio-only servers.
-- `MCPServer` — the server class. Exposes `listTools()`, `listResources()`, `listPrompts()`, `callTool()`, `readResource()`, `getPrompt()` for in-process introspection (used by `@agentback/mcp-inspector`). Also `buildServer(options)` to produce a fresh SDK `McpServer` per session for Streamable HTTP transports.
+- `MCPServer` — the server class. Exposes `listTools()`, `listResources()`, `listPrompts()`, `listEvents()`, `callTool()`, `readResource()`, `getPrompt()` for in-process introspection (used by `@agentback/mcp-inspector`). Also `buildServer(options)` to produce a fresh SDK `McpServer` per session for Streamable HTTP transports.
 - `MCPBindings.SERVER`, `MCPBindings.REQUEST_AUTH` — DI binding keys. MCP Events adds `SUBSCRIPTION_STORE`, `EVENTS` (the emitter), `EVENT_DELIVERY` (the delivery port `@agentback/mcp-events` binds) and `EVENT_ACCESS_CHECK` (optional revocation hook).
 - Per-call cancellation: `CoreBindings.ABORT_SIGNAL` is bound into every tool/resource/prompt request context from the SDK's own signal (so `notifications/cancelled` and a dropped connection reach the tool body). `callTool(name, input, {signal})` supplies one on the programmatic path; it shadows a signal inherited from `{ctx}`. See [docs/concepts/cancellation.md](../../docs/concepts/cancellation.md).
 - `ToolMetadata`, `ResourceMetadata`, `PromptMetadata` — types stored on the decorator and read by `MCPServer`.
@@ -135,6 +135,10 @@ Notes:
 
 ## MCP Events
 
+> **Experimental:** `@event`, `events/*` and `@agentback/mcp-events` track the
+> MCP Events WG sketch and OpenAI's webhook subset, and may change in a minor
+> release.
+
 `@event` declares an event type a client can subscribe to by webhook
 (`events/list`, `events/subscribe`, `events/unsubscribe`, plus a top-level
 `capabilities.events`). It is the `@tool` shape — a name and Zod schemas —
@@ -169,7 +173,9 @@ grants and secret rotation (`MCPServerConfig.events`), the app-level
 check. **Delivery** — endpoint verification, the IP-pinned transport, Standard
 Webhooks signing, retries — is `@agentback/mcp-events` (`installMcpEvents`);
 until it is installed, `events/subscribe` answers `-32014 Unsupported`.
-Subscribing requires an authenticated principal (`-32012` otherwise). See
+Subscribing requires an authenticated, per-user principal — `AuthInfo.extra.user`
+or `extra.sub`, never the OAuth `clientId`; `localPrincipal` only off HTTP —
+and `-32012` otherwise. See
 [docs/guides/mcp-events.md](../../docs/guides/mcp-events.md).
 
 ## Layering

@@ -1,5 +1,8 @@
 # @agentback/mcp-events
 
+> **Experimental:** `@event`, `events/*` and this package track the MCP Events
+> WG sketch and OpenAI's webhook subset, and may change in a minor release.
+
 Webhook delivery for **MCP Events** — the extension that lets an MCP client
 subscribe to things happening in your app and have an agent react without the
 user present (ChatGPT ships it). `@agentback/mcp` declares event types
@@ -15,7 +18,7 @@ for the how-to.
 
 ```ts
 import {RestApplication} from '@agentback/rest';
-import {MCPComponent} from '@agentback/mcp';
+import {MCPBindings, MCPComponent} from '@agentback/mcp';
 import {installMcpHttp} from '@agentback/mcp-http';
 import {installMcpEvents} from '@agentback/mcp-events';
 
@@ -28,7 +31,7 @@ await app.start();
 
 // anywhere in the app:
 const events = await app.get(MCPBindings.EVENTS);
-await events.emit('comment.created', {document_id, comment_id, url});
+await events.emit('comment.created', {document_id, comment_id, preview});
 ```
 
 Without `installMcpEvents`, `events/list` still works and `events/subscribe`
@@ -66,18 +69,35 @@ for an AgentBack app on the receiving end.
 
 ### `installMcpEvents` options
 
-| Option                          | Default                                     | Meaning                                                    |
-| ------------------------------- | ------------------------------------------- | ---------------------------------------------------------- |
-| `transport`                     | `createPinnedTransport()`                   | How POSTs leave the process                                |
-| `queue`                         | the app's `messaging.JobQueue`, else memory | Bind the BullMQ adapter for retries that survive a restart |
-| `timeoutMs`                     | `5000`                                      | Per-attempt timeout                                        |
-| `attempts`                      | `4`                                         | Attempts per delivery, first included                      |
-| `backoffMs`                     | `30000`                                     | First retry delay, doubling                                |
-| `concurrency`                   | `8`                                         | Worker concurrency                                         |
-| `verificationsPerHostPerMinute` | `10`                                        | Verification POSTs per destination host                    |
+| Option                                | Default                                     | Meaning                                                           |
+| ------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------- |
+| `transport`                           | `createPinnedTransport()`                   | How POSTs leave the process                                       |
+| `queue`                               | the app's `messaging.JobQueue`, else memory | Bind the BullMQ adapter for retries that survive a restart        |
+| `timeoutMs`                           | `5000`                                      | Per-attempt timeout                                               |
+| `attempts`                            | `4`                                         | Attempts per delivery, first included                             |
+| `backoffMs`                           | `30000`                                     | First retry delay, doubling                                       |
+| `concurrency`                         | `8`                                         | Worker concurrency                                                |
+| `verificationsPerPrincipalPerMinute`  | `10`                                        | Verification POSTs one principal may trigger per host             |
+| `failedVerificationsPerHostPerMinute` | `10`                                        | Failed verifications per host, across principals                  |
+| `onDeliveryResult`                    | —                                           | Called per attempt: `delivered \| retry \| final_failure \| gone` |
 
 Subscription policy (TTL grants, per-principal cap, rotation grace,
-verification cache lifetime) is `MCPServerConfig.events` in `@agentback/mcp`.
+verification cache lifetime, trusted callback origins) is
+`MCPServerConfig.events` in `@agentback/mcp`.
+
+### `createPinnedTransport` options
+
+| Option                  | Default                  | Meaning                                                                         |
+| ----------------------- | ------------------------ | ------------------------------------------------------------------------------- |
+| `allowPrivateAddresses` | `false`                  | Permit loopback/private destinations. **Development only** — disables the guard |
+| `ca`                    | —                        | Extra trusted CAs (PEM), **added** to Node's public roots                       |
+| `resolve`               | `dns.lookup({all:true})` | Name resolution (tests)                                                         |
+| `allowHttp`             | `false`                  | Permit `http:` URLs. Tests only — subscribe already refuses non-`https`         |
+| `maxResponseBytes`      | 64 KiB                   | How much of a response body is read                                             |
+
+A receiver on your own machine needs `allowPrivateAddresses: true` and its
+self-signed CA in `ca`; without them the subscribe answers
+`-32015 connection_refused`, and the server log says why.
 
 ## Security model
 
@@ -97,16 +117,22 @@ The callback URL is attacker-supplied by design, so the rules are strict:
 - **Anti-flooding.** HMAC stops forged deliveries; it does not stop someone
   pointing a subscription at a victim's URL. Nothing is delivered until the
   endpoint echoes a single-use challenge in a `2xx` body (constant-time
-  compare). Verification is cached per `(principal, url)`, so varying
-  `arguments` cannot multiply POSTs at a victim, and it is rate-limited per
-  destination host.
+  compare). Verification is cached per `(principal, url)` and shared by
+  concurrent subscribes, so varying `arguments` cannot multiply POSTs at a
+  victim; it is budgeted per principal, and **failed** handshakes per
+  destination host (a successful echo is consent, so a shared receiver is
+  never locked out by volume).
 - **No oracle.** Failures surface only as a category —
   `connection_refused | timeout | tls_error | http_4xx | http_5xx |
 challenge_failed` — never the endpoint's body, headers or status line.
-- **Bounded retries.** `2xx` is done; `410` and `413` are final; anything else
-  retries with exponential backoff up to `attempts`. Each attempt re-reads the
-  subscription, so an unsubscribe, an expiry (`refreshBefore` passing) or a
-  revocation stops delivery. Bodies over 256 KiB are never sent.
+- **Bounded retries.** `2xx` is done; `410`, `413` and redirects are final;
+  anything else retries with exponential backoff up to `attempts`. Each
+  attempt re-reads the subscription, so an unsubscribe, an expiry
+  (`refreshBefore` passing) or a revocation found by a later emit stops
+  delivery. Bodies over 256 KiB are never sent (`emit` refuses them). The job
+  id is a colon-free hash of `(subscription, eventId)` — BullMQ rejects most
+  ids with a `:` — and finished jobs are removed, so the queue holds only
+  pending work.
 - **Payloads are untrusted data** for the receiving agent, like tool results:
   send a summary plus the id a read tool takes, never instructions.
 

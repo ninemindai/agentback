@@ -413,3 +413,82 @@ matters, the fix is scope, not resolution.
 view once and indexes into it, which is correct when every observer is being
 notified anyway. That was the constraint this TODO named ("the care is in not
 breaking the ported path") and it is why the flag exists rather than a rewrite.
+
+## MCP Events (follow-ups from the plan 007 /autoplan review)
+
+The webhook subset shipped in `@agentback/mcp` + `@agentback/mcp-events`
+(plans/007-mcp-events.md). These were reviewed and deliberately left out of
+that change.
+
+### Run the ChatGPT acceptance pass (proposal §6.4) — manual, before relying on it
+
+Run `examples/hello-mcp-events` behind an `https` tunnel with a real OAuth
+`verifier` that sets `AuthInfo.extra.sub`, connect it in ChatGPT, and walk
+OpenAI's "Test in ChatGPT" list: events visible, subscribe, verification echo,
+signed delivery, unsubscribe, refresh before `refreshBefore`. Record the date,
+ChatGPT build and outcome in the plan's Verification section. Not done in the
+build session: no ChatGPT account and `developers.openai.com` was outside its
+egress allowlist, so OpenAI's page was also read only through the proposal.
+
+### Durable `SubscriptionStore` + an exported conformance suite — P1, M (needs a go-ahead)
+
+The in-memory store is per process: on several replicas an emit misses
+subscriptions held elsewhere and an unsubscribe on one does not stop another.
+Ship `runSubscriptionStoreConformance(factory)` (put/get/delete, expiry hiding
+in get/list/count, `listByEvent`, `countByPrincipal`, verification TTL, a JSON
+round-trip of every field, an atomic per-principal cap) and a Redis store
+passing it (PEXPIREAT per subscription, per-event and per-principal index
+sets, secrets encrypted at rest). Then a two-replica integration test:
+subscribe on A, emit on B, unsubscribe on A stops B. **The proposal (§3.4)
+deferred this to "when a multi-instance deployment needs it"; the review
+flagged it as the user's call, so confirm before scheduling.**
+
+### Suspend failing subscriptions; report `deliveryStatus` — P2, M
+
+One subscriber with tarpit endpoints occupies worker slots for `timeoutMs` per
+attempt (measured: a healthy subscriber waited ~2× the timeout behind 16 slow
+ones at concurrency 8). A per-host in-flight cap was rejected — ChatGPT
+delivers to one gateway host for every user, so it would throttle the main
+case. Instead: suspend a subscription after a sustained failure rate (the
+sketch suggests >95% over 60 min with ≥100 attempts), skip it at emit, and
+report `deliveryStatus` (`active`, `lastDeliveryAt`, `lastError`) on refresh;
+a refresh reactivates. `onDeliveryResult` already carries the outcomes needed.
+
+### Typed event descriptor: `defineEvent` — P2, S
+
+`events.emit('coment.created', …)` and a wrong payload type both compile. Add
+`defineEvent(name, {input?, payload, scope?})` (mirroring messaging's
+`defineQueue`/`defineTopic`), accepted by `@event(descriptor)` and
+`events.emit(descriptor, data, opts)`, keeping the string overloads.
+
+### Export a dev/test receiver helper — P3, S
+
+`createStubReceiver()` (answers the challenge, records deliveries, optional
+printing) to replace the copies in `examples/hello-mcp-events` and the skill
+reference.
+
+### Metrics for MCP Events — P2, S
+
+Wire `onDeliveryResult` and subscription counts into `extension-metrics`:
+deliveries by outcome, verifications ok/failed, a live-subscriptions gauge.
+
+### `messaging-bullmq`: reject a `:` in `EnqueueOptions.jobId` with a clear error — P2, S
+
+BullMQ 6 throws `Custom Id cannot contain :` unless the id has exactly three
+colon-separated parts; the in-memory adapter accepts any id, so a colon id
+passes every in-memory test and fails only on Redis (mcp-events shipped one
+and caught it in review). Fail fast in the adapter, naming the queue — and
+decide whether the in-memory adapter should enforce the same rule (the
+`DefaultScheduler`'s `repeat:<queue>:<key>` ids are three-part and legal).
+
+### Bridge an `EventBus` topic to an `@event` — P3, S
+
+The proposal listed `EventBus` as an emit source; today an `EventBus`
+subscriber calls `emit` by hand. A `bridgeEventBus(app, {topic, event})`
+helper would make that one line.
+
+### AgentBack as an MCP Events _receiver_ — P2, L (proposal first)
+
+Proposal §4: a callback endpoint that verifies Standard Webhooks signatures
+(`verifyWebhook` exists) and runs an `agents` turn per event under
+`withModelScope`. Its own proposal.

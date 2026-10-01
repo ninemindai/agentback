@@ -4,7 +4,12 @@ Use when an MCP client (ChatGPT) should be **notified** when something happens
 in the app — "a comment was added", "a build failed" — so an agent reacts
 without the user present. Webhook delivery mode only (OpenAI's subset of the
 MCP Events extension). Full guide: `docs/guides/mcp-events.md`; runnable:
-`examples/hello-mcp-events`.
+`examples/hello-mcp-events` (`pnpm -F hello-mcp-events demo` prints a delivery).
+**Experimental** — tracks a draft spec.
+
+Not this: for in-process pub/sub between services use `@agentback/messaging`
+(`defineTopic`, `EventBus`); `@event` is for external MCP clients. To bridge,
+emit from an `EventBus` subscriber.
 
 ## Declare, emit, install
 
@@ -73,11 +78,21 @@ await installMcpHttp(app, {auth}); // subscriptions need a principal
   (object roots; checked at `start()`/`buildServer()`). `payload` is required
   and validated at `emit` time — a mismatch throws and nothing is delivered.
   Slots 0/1 of the method are `(args, data)`; `@inject` at slot 2+.
+- **Bind `@event` classes at the app level** (`app.service`). The emitter
+  discovers from the app context; a `perSession` binder's event is listed to
+  that session but cannot be emitted, so subscribing to it answers `-32014`.
+- **`emit` throws before delivering** for an unknown name (message lists the
+  emittable ones), a payload mismatch, an `eventId` that is not 1–255 visible
+  ASCII, or an occurrence over 256 KiB. Its report is
+  `{eventId, subscriptions, queued, revoked}`.
 - **Only `=== true` matches.** A non-boolean or a throw is "no match" (logged).
   `SecurityBindings.USER` is the subscriber while `match` runs.
-- **Webhook subscriptions require an authenticated principal** (`-32012`
-  otherwise); `localPrincipal` counts on stdio. Scope-hidden events answer
-  `-32011` exactly like unknown ones.
+- **Webhook subscriptions require a per-user principal** (`-32012`
+  otherwise): `AuthInfo.extra.user` (strategyAuth sets it) or `extra.sub`
+  (set it in an OAuth `verifier`) — never `clientId`, the OAuth client app
+  every user shares. `localPrincipal` counts only on stdio/in-process, never
+  for an unauthenticated HTTP caller. Scope-hidden events answer `-32011`
+  exactly like unknown ones.
 - **State is app-level**: `MCPBindings.SUBSCRIPTION_STORE` (in-memory default,
   bound by `MCPComponent`) — never on the `MCPServer` instance, which is
   rebuilt per request under stateless HTTP. Bind a shared store for
@@ -85,14 +100,20 @@ await installMcpHttp(app, {auth}); // subscriptions need a principal
 - **Identity is `(principal, url, name, canonical arguments)`**; re-subscribing
   is a refresh (same `sub_` id, new TTL, optional secret rotation with a dual
   signature grace window). The `id` is never accepted as input.
-- **TTL**: default 1 h, clamped to 60 s – 24 h (`MCPServerConfig.events`);
-  `ttlMs: null` → no expiry only with `events.allowNoExpiry` and a durable store.
+- **TTL**: default 1 h, clamped to 60 s – 24 h, never past the token's
+  `expiresAt`; `ttlMs: null` → no expiry only with `events.allowNoExpiry` and
+  a durable store. Policy lives in
+  `app.configure('servers.MCPServer').to({events: {...}})` (also
+  `maxSubscriptionsPerPrincipal`, `trustedCallbackOrigins`, …).
 - **Delivery** (`@agentback/mcp-events`): verification challenge first (cached
-  per `(principal, url)`, rate-limited per host); IP-pinned transport refuses
-  non-public addresses at connect time and never follows redirects; Standard
-  Webhooks `v1,` HMAC signatures; `410`/`413` final, others retried; 256 KiB
-  cap. On an edge host use `fetchTransport(fetch)` — it cannot pin.
-- **Revocation**: `@authorize` voters re-run before every delivery, then
+  per `(principal, url)`, budgeted per principal, failures per host); IP-pinned
+  transport refuses non-public addresses at connect time and never follows
+  redirects; Standard Webhooks `v1,` HMAC signatures; `410`/`413`/3xx final,
+  others retried; 256 KiB cap; `onDeliveryResult` reports each attempt. On an
+  edge host use `fetchTransport(fetch)` — it cannot pin. A local receiver needs
+  `createPinnedTransport({allowPrivateAddresses: true, ca})` (dev only).
+- **Revocation**: `@authorize` voters re-run before every delivery (against the
+  profile captured at subscribe time, no request context), then
   `MCPBindings.EVENT_ACCESS_CHECK` if bound; `false` deletes the subscription.
 - **Payloads are untrusted data** for the receiving agent: a summary + an id
   for a read tool, never a full record or model instructions.
@@ -101,7 +122,54 @@ await installMcpHttp(app, {auth}); // subscriptions need a principal
 
 ## Testing
 
-Pass a stub `transport` to `installMcpEvents` that echoes
-`{"challenge": …}` for `{"type":"verification"}` bodies and records the rest;
-check deliveries with `verifyWebhook(secret, headers, body)` and mint secrets
-with `generateWebhookSecret()`.
+A stub transport is the receiver — no network, no TLS:
+
+```ts
+import {
+  generateWebhookSecret,
+  verifyWebhook,
+  type WebhookRequest,
+} from '@agentback/mcp-events';
+
+const received: WebhookRequest[] = [];
+const transport = async (req: WebhookRequest) => {
+  received.push(req);
+  const body = JSON.parse(req.body);
+  return body.type === 'verification'
+    ? {status: 200, body: JSON.stringify({challenge: body.challenge})} // consent
+    : {status: 204, body: ''};
+};
+await installMcpEvents(app, {transport});
+
+const secret = generateWebhookSecret();
+await client.request(
+  {
+    method: 'events/subscribe',
+    params: {
+      name: 'comment.created',
+      arguments: {document_id: 'd1'},
+      delivery: {
+        mode: 'webhook',
+        url: 'https://receiver.example.com/h',
+        secret,
+      },
+    },
+  },
+  z.any(),
+); // client authenticated as a real user
+// …trigger the emit, then:
+const d = received[1]!;
+expect(
+  await verifyWebhook(
+    secret,
+    {
+      'webhook-id': d.headers['webhook-id'],
+      'webhook-timestamp': d.headers['webhook-timestamp'],
+      'webhook-signature': d.headers['webhook-signature'],
+    },
+    d.body,
+  ),
+).toBe(true);
+```
+
+Deliveries are queued, so poll for them (`await expect.poll(() => received.length).toBe(2)`).

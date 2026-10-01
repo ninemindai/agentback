@@ -21,6 +21,12 @@ const registry = await installMcpConnect(app); // mounts /mcp-connect/api + OAut
 await app.start();
 ```
 
+> **SSRF guard:** `assertPublicUrl` uses the address classifier shared with
+> `@agentback/mcp-events` (`isPublicAddress` in `@agentback/common`), which
+> refuses every IANA special-purpose range: besides loopback/private/link-local,
+> documentation and benchmarking blocks, 6to4/NAT64/mapped addresses carrying a
+> private IPv4, and IPv6 outside `2000::/3`.
+
 ## What it mounts
 
 Under `path` (default `/mcp-connect`), with the JSON API under `<path>/api`:

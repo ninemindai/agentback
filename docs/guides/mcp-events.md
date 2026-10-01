@@ -1,5 +1,9 @@
 # Push events to agents with MCP Events
 
+> **Experimental:** `@event`, `events/*` and `@agentback/mcp-events` track
+> the MCP Events WG sketch and OpenAI's webhook subset, and may change in a
+> minor release.
+
 **Outcome:** an MCP client (ChatGPT, or any host speaking the MCP Events
 extension) subscribes to something happening in your app — "a comment was
 added to document 42" — and your app POSTs each occurrence to the client's
@@ -61,7 +65,16 @@ export class DocEvents {
   same visibility rule as tools. `@authorize` voters also run on subscribe and
   **again before every delivery** (see _Revocation_ below).
 
-Register the class with `app.service(DocEvents)`, as any `@mcpServer`.
+Register the class with `app.service(DocEvents)`, as any `@mcpServer`. Bind
+it at the **app level**: the emitter discovers events from the app context, so
+an event a `perSession` binder contributes is listed to that session but can
+never be emitted — `events/subscribe` refuses it with
+`-32014 {feature: 'event'}` rather than storing a subscription that never
+fires.
+
+`@event` is for **external MCP clients**. For in-process pub/sub between your
+own services use `@agentback/messaging` (`defineTopic`, `EventBus`); to bridge
+the two, emit from an `EventBus` subscriber.
 
 ## 2. Emit
 
@@ -86,10 +99,13 @@ async addComment(
 }
 ```
 
-`emit` throws if `data` does not match `payload` (nothing is delivered), then
-for each live subscription runs the revocation check and `match`, and hands
-the occurrence to delivery. It resolves with
-`{eventId, subscriptions, delivered, revoked}` once deliveries are **queued**,
+`emit` throws, and delivers nothing, if `data` does not match `payload`, if
+the event name is unknown (the message lists the emittable ones), if
+`eventId` is not 1–255 visible ASCII characters (it becomes the `webhook-id`
+header), or if the serialized occurrence exceeds 256 KiB. Then, for each live
+subscription, it runs the revocation check and `match`, and hands the
+occurrence to delivery. It resolves with
+`{eventId, subscriptions, queued, revoked}` once deliveries are **queued**,
 not once endpoints answered — retries are the delivery's business. Emitting is
 not tied to a request: a job processor, an `EventBus` subscriber or a
 webhook from your own upstream can emit just as well.
@@ -116,11 +132,21 @@ await installMcpHttp(app, {auth}); // or strategyAuth
 worker; without it `events/list` still works and `events/subscribe` answers
 `-32014 Unsupported`. It returns an `Installed` (`uninstall()` retracts it).
 
-**Webhook subscriptions need an authenticated principal.** The principal is
-part of the subscription's identity — without it, anyone who guessed
-`(url, name, arguments)` could unsubscribe someone else or swap their secret —
-so an anonymous `events/subscribe` is refused with `-32012 Forbidden`.
-`MCPServerConfig.localPrincipal` counts as a principal on stdio.
+**Webhook subscriptions need an authenticated, per-user principal.** The
+principal is part of the subscription's identity — without it, anyone who
+guessed `(url, name, arguments)` could unsubscribe someone else or swap their
+secret — and the per-principal cap only isolates tenants if it names a
+person. So the principal is:
+
+- `AuthInfo.extra.user` (the framework principal `strategyAuth` sets), else
+  `AuthInfo.extra.sub` — **set the subject there in an OAuth `verifier`**. A
+  token with neither is refused with `-32012`: its `clientId` names the OAuth
+  client application (ChatGPT, say), which every one of its users shares.
+- `MCPServerConfig.localPrincipal`, but only on stdio and in-process calls.
+  An unauthenticated HTTP caller is refused even when one is configured.
+
+A granted TTL never outlives the token: `refreshBefore` is capped at the
+token's `expiresAt`, so the client refreshes with a live credential.
 
 ## What the client sees
 
@@ -154,21 +180,45 @@ looks for it) whenever the app declares an event, on both protocol eras.
   as input.
 - **TTL.** The client suggests `ttlMs`; the server grants `refreshBefore`:
   the default (1 h) when none is suggested, otherwise clamped into
-  `[minTtlMs, maxTtlMs]` (60 s – 24 h). `ttlMs: null` (no expiry) is honoured
-  only with `events.allowNoExpiry`, because a server that grants it must keep
-  the subscription across restarts — the in-memory store cannot.
+  `[minTtlMs, maxTtlMs]` (60 s – 24 h), and never past the token's expiry.
+  `ttlMs: null` (no expiry) is honoured only with `events.allowNoExpiry`,
+  because a server that grants it must keep the subscription across
+  restarts — the in-memory store cannot.
+- **URLs are normalized** (lower-case host, default port dropped), so
+  spellings of one URL are one subscription and one verification.
 - **Secret rotation.** A refresh with a new `whsec_` secret keeps the old one
   signing beside it for `secretRotationGraceMs` (5 min): deliveries carry both
   signatures, so in-flight ones verify under either.
 - **Replay** is not offered: `cursor` is always `null`.
+
+The policy is `MCPServerConfig.events`:
+
+```ts
+app.configure('servers.MCPServer').to({
+  events: {defaultTtlMs: 15 * 60_000, maxSubscriptionsPerPrincipal: 20},
+});
+```
+
+| Field                          | Default | Meaning                                                                      |
+| ------------------------------ | ------- | ---------------------------------------------------------------------------- |
+| `defaultTtlMs`                 | 1 h     | TTL granted when the client suggests none                                    |
+| `minTtlMs`                     | 60 s    | Floor a shorter suggestion is clamped up to                                  |
+| `maxTtlMs`                     | 24 h    | Ceiling a longer suggestion is clamped down to                               |
+| `allowNoExpiry`                | `false` | Honour `ttlMs: null` — only with a durable store                             |
+| `maxSubscriptionsPerPrincipal` | 100     | Live subscriptions per principal (`-32013` past it)                          |
+| `secretRotationGraceMs`        | 5 min   | How long a replaced secret keeps signing                                     |
+| `verificationTtlMs`            | 1 h     | How long a passed verification covers a `(principal, url)`                   |
+| `trustedCallbackOrigins`       | `[]`    | `https` origins treated as verified without a challenge (vetted out of band) |
 
 Errors use the extension's codes: `-32602` (malformed params: non-`https` URL,
 URL with credentials, a secret that is not `whsec_` + 24–64 bytes, arguments
 that fail `input`), `-32011 {kind: 'event' | 'subscription'}` (unknown or
 scope-hidden event; nothing to unsubscribe), `-32012` (no principal, or
 `@authorize` denies), `-32013 {limit, max}` (per-principal cap, verification
-rate limit), `-32014 {feature, value}` (another delivery mode, or delivery not
-installed), `-32015 {reason}` (the endpoint failed verification).
+rate limit), `-32014 {feature, value}` (another delivery mode, delivery not
+installed, or an event that cannot be emitted), `-32015 {reason}` (the
+endpoint failed verification). The wire errors are terse on purpose; the
+server log names the cause and the fix (`DEBUG=agentback:mcp*`).
 
 ## How a delivery is made safe
 
@@ -181,8 +231,12 @@ The callback URL is attacker-supplied by design, which is why
    `{"type":"verification","challenge":"<nonce>"}`; the endpoint must answer
    `2xx` with `{"challenge":"<nonce>"}` (compared in constant time). The result
    is cached per `(principal, url)` for `verificationTtlMs`, so varying
-   `arguments` cannot multiply POSTs at a victim, and handshakes are
-   rate-limited per destination host.
+   `arguments` cannot multiply POSTs at a victim, and concurrent subscribes
+   share one handshake. Handshakes are budgeted per principal (10 a minute per
+   host) and **failed** ones per destination host (10 a minute): a successful
+   echo is consent, so a shared receiver such as ChatGPT's gateway is never
+   locked out by volume. A host listed in `trustedCallbackOrigins` skips the
+   POST.
 2. **The resolved IP is pinned.** The default transport resolves the callback
    host **inside the connection**, refuses if any answer is outside globally
    reachable space (the IANA special-purpose registries), and connects to the
@@ -194,9 +248,12 @@ The callback URL is attacker-supplied by design, which is why
    `webhook-id` is the `eventId` (stable across retries, so the receiver
    dedups), and `webhook-timestamp` is fresh on each attempt.
 4. **Bounded retries.** Deliveries are `@agentback/messaging` jobs: `2xx` is
-   done; `410 Gone` and `413` are final; anything else retries with
-   exponential backoff (4 attempts by default). Each attempt re-reads the
-   subscription, so an unsubscribe, an expiry or a revocation stops it.
+   done; `410 Gone`, `413` and a redirect are final; anything else retries
+   with exponential backoff (4 attempts by default). Each attempt re-reads
+   the subscription, so an unsubscribe, an expiry, or a revocation found by a
+   later emit stops it. Finished jobs are removed, so the queue holds only
+   pending work. `onDeliveryResult` reports every attempt's outcome
+   (`delivered | retry | final_failure | gone`) — wire it to metrics.
 5. **Categories, not echoes.** A failure is reported only as
    `connection_refused | timeout | tls_error | http_4xx | http_5xx |
 challenge_failed` — never the endpoint's own response.
@@ -206,7 +263,11 @@ challenge_failed` — never the endpoint's own response.
 Before every delivery, the event method's `@authorize` voters run again
 against the subscriber's profile, then the optional
 `MCPBindings.EVENT_ACCESS_CHECK` hook. A `false` from either deletes the
-subscription. Bind the hook to whatever can say a principal's access ended —
+subscription. The voters see the profile **captured at subscribe time**, in a
+context with no request — a voter that reads request-scoped bindings will
+deny (and delete) at emit time — so a change in the principal's claims takes
+effect at the next refresh (bounded by the granted TTL) unless the hook says
+otherwise. Bind the hook to whatever can say a principal's access ended —
 token introspection, a revocation list:
 
 ```ts
@@ -218,12 +279,17 @@ app
 ## Deploying
 
 - **One instance:** the defaults (in-memory subscriptions, in-memory queue)
-  are correct. A restart drops subscriptions; clients re-subscribe on their
-  next refresh, which is why grants are short.
-- **Several instances:** bind a shared `MCPBindings.SUBSCRIPTION_STORE` (the
-  `SubscriptionStore` port; the in-memory one is the reference) and the
-  BullMQ `JobQueue` from `@agentback/messaging-bullmq`, which
-  `installMcpEvents` picks up from the app — retries then survive a restart.
+  fit a single process. A restart drops subscriptions — clients re-subscribe
+  on their next refresh, which is why grants are short — and drops retries
+  still pending.
+- **Several instances:** the in-memory store is per process, so an emit on
+  one replica misses subscriptions held by another, and an unsubscribe on one
+  does not stop another. Bind a shared `MCPBindings.SUBSCRIPTION_STORE` (the
+  `SubscriptionStore` port; the in-memory one is the reference, and every
+  record is plain JSON) and the BullMQ `JobQueue` from
+  `@agentback/messaging-bullmq`, which `installMcpEvents` picks up from the
+  app — retries then survive a restart. A shared store must enforce the
+  per-principal cap itself; the in-process lock covers one process.
 - **Edge hosts** have no `node:https`; pass
   `installMcpEvents(app, {transport: fetchTransport(fetch)})`. That transport
   **cannot pin the IP** (the platform resolves the name and exposes no hook),
@@ -231,6 +297,31 @@ app
 - **Feedback loops** are yours to prevent: an agent that reacts to
   `comment.created` by adding a comment will trigger itself. Filter on the
   author in `match`, or emit only for human-authored changes.
+
+## Seeing an event arrive locally
+
+`pnpm -F hello-mcp-events demo` runs the example with a printing in-process
+receiver: it subscribes, calls `add_comment`, and prints the signed delivery
+and whether its signature verifies.
+
+To deliver to a real receiver on your machine, the receiver must speak
+`https` (subscribe refuses anything else) and the pinned transport must be
+told loopback is fine — **development only**, it disables the SSRF guard:
+
+```ts
+import {readFileSync} from 'node:fs';
+import {createPinnedTransport, installMcpEvents} from '@agentback/mcp-events';
+
+await installMcpEvents(app, {
+  transport: createPinnedTransport({
+    allowPrivateAddresses: true,
+    ca: readFileSync('dev-ca.pem', 'utf8'), // your receiver's self-signed CA
+  }),
+});
+```
+
+When a subscribe answers `-32015`, the server log has the cause (for a
+loopback receiver: "refusing to connect to non-public address").
 
 ## Testing
 
