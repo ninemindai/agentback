@@ -110,8 +110,11 @@ export namespace MCPBindings {
    * request on the SDK path; absent on an in-process `callTool`, so inject it
    * optionally. See {@link hasClientExtension}.
    *
-   * @experimental Pulled forward from phase 1b; `canRoundTrip`'s meaning may
-   * change once per-host mounts are evaluated.
+   * Client-asserted: select presentation with it, never authorize. For a
+   * per-host difference you can configure instead, prefer one HTTP mount per
+   * host and read {@link MCPBindings.REQUEST_MOUNT}.
+   *
+   * @experimental Phase 1b of docs/proposals/host-extensions.md.
    */
   export const REQUEST_CLIENT =
     BindingKey.create<RequestClient>('mcp.request.client');
@@ -125,6 +128,28 @@ export namespace MCPBindings {
   export const REQUEST_STATE_KEY = BindingKey.create<string | Uint8Array>(
     'mcp.requestStateKey',
   );
+  /**
+   * The current request's `params._meta` as the client sent it, frozen —
+   * host keys such as `openai/resource` live here. The 2026 envelope keys
+   * (`io.modelcontextprotocol/*`) are lifted out by the SDK; read those
+   * through {@link MCPBindings.REQUEST_CLIENT}. Bound per request on the SDK
+   * path (an empty object when the request carried none); absent on an
+   * in-process `callTool`, so inject it optionally.
+   *
+   * **Client-asserted:** use it to select presentation, never to authorize.
+   *
+   * @experimental Phase 1b of docs/proposals/host-extensions.md.
+   */
+  export const REQUEST_META =
+    BindingKey.create<Readonly<Record<string, unknown>>>('mcp.request.meta');
+  /**
+   * The HTTP mount the current request arrived on ({@link McpMount}). Bound
+   * per request when the server was built for a mount (`@agentback/mcp-http`);
+   * absent on stdio and in-process calls, so inject it optionally.
+   *
+   * @experimental Phase 1b of docs/proposals/host-extensions.md.
+   */
+  export const REQUEST_MOUNT = BindingKey.create<McpMount>('mcp.request.mount');
 }
 
 /**
@@ -133,6 +158,29 @@ export namespace MCPBindings {
  * them with `extensionFilter(MCP_SERVERS)`.
  */
 export const MCP_SERVERS = 'mcpServers';
+
+/**
+ * Extension-point name for capability contributions: constant (`.to()`)
+ * bindings whose value is `{extensions?, experimental?}`, merged with
+ * `MCPServerConfig.capabilities` on every server build. Bind them with
+ * {@link contributeCapabilities}.
+ *
+ * @experimental Phase 1b of docs/proposals/host-extensions.md.
+ */
+export const MCP_CAPABILITIES = 'mcpCapabilities';
+
+/**
+ * Which HTTP mount a request arrived on — server configuration, never client
+ * data. `host` is the per-mount hint `installMcpHttp({host})` sets, so one
+ * mount per host (`/mcp/claude`, `/mcp/chatgpt`) can vary presentation
+ * without trusting what the client says it is.
+ */
+export interface McpMount {
+  /** The mount path, e.g. `/mcp`. */
+  path?: string;
+  /** The host this mount serves, e.g. `'claude'`; free-form. */
+  host?: string;
+}
 
 /**
  * Binding tag for {@link McpDispatchHook} values. Bind a hook value and tag
@@ -290,8 +338,35 @@ export interface ResourceMetadata {
    * where MCP Apps puts `_meta.ui` (csp, domain, prefersBorder).
    */
   meta?: MetaObject;
+  /**
+   * `@appResource({domain: fn})`: resolves `_meta.ui.domain` per
+   * `resources/read`, merged over {@link meta}.
+   */
+  uiDomain?: AppDomainResolver;
   methodName: string | symbol;
 }
+
+/** What an `@appResource({domain})` function sees about one request. */
+export interface AppDomainRequest {
+  /** The client, as it describes itself — client-asserted. */
+  client?: RequestClient;
+  /** The HTTP mount the request arrived on — server configuration. */
+  mount?: McpMount;
+  /** The request's `params._meta` — client-asserted. */
+  meta?: Readonly<Record<string, unknown>>;
+  /** The Web `Request`, on HTTP transports. */
+  request?: McpRequestInfo;
+  /** The per-request DI context, for anything else. */
+  context: Context;
+}
+
+/**
+ * Resolves an MCP Apps widget's sandbox `domain` for one request. Return
+ * `undefined` for the host's default.
+ */
+export type AppDomainResolver = (
+  request: AppDomainRequest,
+) => string | undefined | Promise<string | undefined>;
 
 export interface PromptMetadata {
   name: string;

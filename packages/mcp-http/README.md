@@ -422,6 +422,25 @@ and discovers tools via a chain-walking `find`, so a server resolved from a chil
 context sees that child's tools **and** the app's, while sibling sessions never
 see each other's. See `docs/superpowers/specs/2026-06-15-session-scoped-mcp-server-design.md`.
 
+## One mount per host
+
+Hosts differ in what they read — Claude's widget sandbox `domain`, ChatGPT's
+`openai/*` keys. When a difference is yours to configure, mount the endpoint
+once per host instead of inferring the host from the client's self-reported
+`clientInfo`:
+
+```ts
+await installMcpHttp(app, {path: '/mcp/claude', host: 'claude'});
+await installMcpHttp(app, {path: '/mcp/chatgpt', host: 'chatgpt'});
+```
+
+Each request carries its mount as `MCPBindings.REQUEST_MOUNT` (`{path,
+host?}`) — on both hosts, both protocols, and both eras, including a stateless
+2025 request that never sent `clientInfo`. An `@appResource({domain: fn})`
+receives it as `mount`. Each mount is uninstalled on its own and contributes
+its own `/llms.txt` section. The hint selects presentation only: nothing stops
+a client from calling another host's path, so never authorize on it.
+
 ## Per-tool rate limiting
 
 Throttle `tools/call` over HTTP with a separate bucket per **(caller, tool)** —

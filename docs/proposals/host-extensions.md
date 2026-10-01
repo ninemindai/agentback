@@ -272,6 +272,12 @@ everywhere in the container; the rule arbitrates distinct bindings only.
 
 ### 4.6 Phase 1b — capability contributions
 
+> **Status: implemented.** `contributeCapabilities()` / `resolveCapabilities()`
+> in `packages/mcp/src/capabilities.ts`. Not `install*`-named and not run
+> through `runInstallConformance`: it serves no HTTP path, so its retraction is
+> pinned by `capabilities.unit.ts` and `per-host-mounts.integration.ts`
+> instead.
+
 - **Extension point.** `MCP_CAPABILITIES` takes bindings whose value is
   `{extensions?, experimental?}`. **They must be constant (`.to()`).**
   `buildServer` is synchronous, and the session paths call `.connect` on its
@@ -287,6 +293,9 @@ everywhere in the container; the rule arbitrates distinct bindings only.
   what it negotiated; stateless HTTP sees the change on the next request.
 
 ### 4.7 Phase 1b — `REQUEST_CLIENT` and `REQUEST_META` (G5)
+
+> **Status: implemented**, plus `MCPBindings.REQUEST_MOUNT` and the
+> `@appResource({domain})` function form (§13).
 
 These follow the `REQUEST_AUTH` / `REQUEST_INFO` / `REQUEST_EXTRA` naming.
 
@@ -648,13 +657,13 @@ P1-6's header points here.
 
 ## 11. Open questions
 
-| #   | Question                                                                                                                                                                     | How it closes                                                                                                                                                                       |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Q1  | ~~Do `x-openai-*` keys survive the 2026 wire through `inputRequired.elicit`?~~                                                                                               | **Closed: partly.** They reach the wire; TS SDK clients strip property-level vendor keys and keep top-level ones (`elicit.unit.ts`)                                                 |
-| Q2  | ~~Does the 2026 envelope carry `extensions`?~~                                                                                                                               | **Closed: yes** (`ClientCapabilities2026Schema`)                                                                                                                                    |
-| Q3  | Does `@openai/mcp-extensions/app` (ext-apps `^1.7.5`) work against an ext-apps 2.x `App`?                                                                                    | A widget spike in the example. Otherwise document the raw `postMessage` methods; never add v1 to the lockfile                                                                       |
-| Q4  | Is `clientInfo` reliable enough to pick a per-host `domain`?                                                                                                                 | Test against both hosts. Fallback: one `installMcpHttp` mount per host with a host hint bound per mount; `buildServer` already runs per request, so a mount-scoped default is cheap |
-| Q5  | Claude Desktop is reported to drop `_meta.ui` for stdio servers since ~2026-09-22 ([anthropics/claude-ai-mcp#1069](https://github.com/anthropics/claude-ai-mcp/issues/1069)) | A host bug; the example runs over `mcp-http`                                                                                                                                        |
+| #   | Question                                                                                                                                                                     | How it closes                                                                                                                                                                                                                                                                                     |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Q1  | ~~Do `x-openai-*` keys survive the 2026 wire through `inputRequired.elicit`?~~                                                                                               | **Closed: partly.** They reach the wire; TS SDK clients strip property-level vendor keys and keep top-level ones (`elicit.unit.ts`)                                                                                                                                                               |
+| Q2  | ~~Does the 2026 envelope carry `extensions`?~~                                                                                                                               | **Closed: yes** (`ClientCapabilities2026Schema`)                                                                                                                                                                                                                                                  |
+| Q3  | Does `@openai/mcp-extensions/app` (ext-apps `^1.7.5`) work against an ext-apps 2.x `App`?                                                                                    | A widget spike in the example. Otherwise document the raw `postMessage` methods; never add v1 to the lockfile                                                                                                                                                                                     |
+| Q4  | ~~Is `clientInfo` reliable enough to pick a per-host `domain`?~~                                                                                                             | **Closed: prefer mounts.** A stateless 2025 request never carries `clientInfo`, so it cannot be the primary key. `installMcpHttp({path, host})` binds `REQUEST_MOUNT` on every era and host (`per-host-mounts.integration.ts`); `clientInfo` stays available to a `domain` function as a fallback |
+| Q5  | Claude Desktop is reported to drop `_meta.ui` for stdio servers since ~2026-09-22 ([anthropics/claude-ai-mcp#1069](https://github.com/anthropics/claude-ai-mcp/issues/1069)) | A host bug; the example runs over `mcp-http`                                                                                                                                                                                                                                                      |
 
 ## 12. Out of scope
 
@@ -684,7 +693,9 @@ P1-6's header points here.
    - **Evaluate one `installMcpHttp` mount per host before `REQUEST_CLIENT`.**
      A `/mcp/claude` and a `/mcp/chatgpt` mount, each with its own static
      config, may cover per-host differences without trusting client-asserted
-     facts at all.
+     facts at all. _Done: mounts are the recommended path (Q4); the
+     `host` option is a mount option rather than a `perSession` binding, so
+     it costs no per-request DI context._
 3. **Phase 2 (`mcp`, `agents`, `command`, `metering`, `payments`):** §5. Q1 is
    the first test.
 4. **Phase 3 (gated, §8):** `@agentback/mcp-openai` with fragments, forms,

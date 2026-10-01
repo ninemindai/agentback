@@ -50,6 +50,7 @@ import {
   ORIGIN_REJECTED_HINT,
   originAllowed,
   rejectedOriginLogger,
+  mountOf,
   resolveSessionServer,
   setupStateless,
   withSessionIdExposed,
@@ -79,6 +80,22 @@ export type {AuthInfo, OAuthTokenVerifier, EventStore};
 export interface McpHttpOptions {
   /** URL path the Streamable HTTP transport is mounted at. Default `/mcp`. */
   path?: string;
+  /**
+   * Which host this mount serves (`'claude'`, `'chatgpt'`, …) — free-form.
+   * Bound per request as `MCPBindings.REQUEST_MOUNT` (with the `path`), so
+   * presentation that differs per host (an `@appResource({domain})`
+   * function, a capability check) can key off **server configuration**
+   * instead of the client's self-reported `clientInfo`. Mount the endpoint
+   * once per host, each with its own `path` and `host`:
+   *
+   * @example
+   *   await installMcpHttp(app, {path: '/mcp/claude', host: 'claude'});
+   *   await installMcpHttp(app, {path: '/mcp/chatgpt', host: 'chatgpt'});
+   *
+   * Presentation only — never authorization: nothing stops a client from
+   * calling the other host's path.
+   */
+  host?: string;
   /**
    * Reject requests whose `Host`/`Origin` headers are not in the allowlists
    * below — defends a browser-reachable MCP endpoint against DNS-rebinding
@@ -352,8 +369,12 @@ export async function installMcpHttp(
     // MCP surface. Dynamic value: the tool list is computed per request, so
     // tools registered after install still appear.
     const path = opts.path ?? DEFAULT_PATH;
+    // One section per mount: a second mount (one per host) must not replace
+    // the first's, or uninstalling either would drop the survivor's.
+    const axKey =
+      path === DEFAULT_PATH ? 'ax.sections.mcp' : `ax.sections.mcp${path}`;
     app
-      .bind('ax.sections.mcp')
+      .bind(axKey)
       .toDynamicValue((): AxSection => {
         const tools = mcp
           .listTools()
@@ -372,7 +393,7 @@ export async function installMcpHttp(
         };
       })
       .tag(AX_SECTION_TAG);
-    axBinding = app.getBinding('ax.sections.mcp');
+    axBinding = app.getBinding(axKey);
   } catch (err) {
     // A failed install cleans up its partial footprint before rethrowing
     // (revertible-installs.md, composition rule).
@@ -701,7 +722,9 @@ export function mountMcpHttp(
             sessionCtx = resolved.sessionCtx;
             sessionMcp = resolved.mcp;
           }
-          await sessionMcp.buildServer({scopes}).connect(transport);
+          await sessionMcp
+            .buildServer({scopes, mount: mountOf(options)})
+            .connect(transport);
         } catch (err) {
           sessionCtx?.close();
           throw err;

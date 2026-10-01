@@ -14,7 +14,7 @@ import type {
 } from '@modelcontextprotocol/server';
 import {BindingScope, Context} from '@agentback/core';
 import {loggers} from '@agentback/common';
-import {MCPBindings, MCPServer} from '@agentback/mcp';
+import {MCPBindings, MCPServer, type McpMount} from '@agentback/mcp';
 import type {McpHttpOptions} from './index.js';
 
 const log = loggers('agentback:mcp-http:session');
@@ -94,6 +94,18 @@ export async function resolveSessionServer(options: {
 }
 
 /**
+ * The {@link McpMount} a mount's requests are served on: its path and the
+ * optional per-mount `host` hint. Server configuration, so presentation code
+ * can trust it where it must not trust the client's own `clientInfo`.
+ */
+export function mountOf(options: {path?: string; host?: string}): McpMount {
+  return {
+    path: options.path ?? '/mcp',
+    ...(options.host !== undefined ? {host: options.host} : {}),
+  };
+}
+
+/**
  * Build the `McpServerFactory` that stateless serving hands to
  * `createMcpHandler` — one server per HTTP request, scope-gated by the
  * principal the caller already verified.
@@ -120,6 +132,8 @@ export function perRequestFactory(options: {
    * tools) rather than nothing (expose them).
    */
   authEnabled?: boolean;
+  /** The mount every request is served on, bound as `REQUEST_MOUNT`. */
+  mount?: McpMount;
 }) {
   return async (ctx: McpRequestContext) => {
     // Mirrors the session path's `authEnabled ? (authInfo?.scopes ?? []) :
@@ -128,9 +142,10 @@ export function perRequestFactory(options: {
     // anonymous caller has no authInfo, fell through to `{}`, and every
     // `@tool({scope})` became visible AND callable — `@tool({scope})` is a
     // visibility gate, so nothing downstream re-checks it.
-    const scoped = options.authEnabled
-      ? {scopes: ctx.authInfo?.scopes ?? []}
-      : {};
+    const scoped = {
+      ...(options.authEnabled ? {scopes: ctx.authInfo?.scopes ?? []} : {}),
+      ...(options.mount ? {mount: options.mount} : {}),
+    };
     if (!options.binder || !ctx.requestInfo) {
       return options.mcp.buildServer(scoped);
     }
@@ -599,6 +614,7 @@ export function setupStateless(
       perRequestFactory({
         mcp,
         authEnabled: Boolean(options.auth ?? options.strategyAuth),
+        mount: mountOf(options),
         ...(options.perSession ? {binder: options.perSession} : {}),
         ...(options.appContext ? {appContext: options.appContext} : {}),
       }),

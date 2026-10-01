@@ -45,6 +45,22 @@ specs settle.
 See the "Host extensions" section of
 [docs/guides/mcp-apps-widgets.md](../guides/mcp-apps-widgets.md).
 
+### Capability contributions and per-host presentation — `@agentback/mcp`, `@agentback/mcp-http`
+
+P1-7 phase 1b ([proposal](../proposals/host-extensions.md) §4.6–4.7):
+
+- **`contributeCapabilities(app, {extensions?, experimental?})`** advertises
+  capabilities from code (an installer, a host adapter). It returns an
+  `Installed`; contributions merge with `MCPServerConfig.capabilities`, and
+  the same entry declared differently by two sources throws at `start()`.
+- **`@appResource({domain: fn})`** resolves the widget sandbox domain per
+  `resources/read` from `{client, mount, meta, request, context}`.
+- **`installMcpHttp({host})`**: mount the endpoint once per host
+  (`/mcp/claude`, `/mcp/chatgpt`); the hint reaches handlers as
+  `MCPBindings.REQUEST_MOUNT` on both hosts and every era.
+- **`MCPBindings.REQUEST_META`** — the request's `params._meta`, frozen.
+- `/llms.txt` lists one MCP section per mount.
+
 ### Elicitation: ask the user mid-call — `@agentback/mcp` (experimental)
 
 P1-7 phase 2 ([proposal](../proposals/host-extensions.md) §5). A tool injects

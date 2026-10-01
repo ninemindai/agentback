@@ -43,7 +43,6 @@ import type {
   Implementation,
   InputRequiredResult,
   ListToolsResult,
-  ServerCapabilities,
   Transport,
 } from '@modelcontextprotocol/server';
 import {CoreBindings, extensionFilter, Server} from '@agentback/core';
@@ -78,6 +77,7 @@ import {
   ToolMetadata,
   type McpDispatchHook,
   type McpDispatchInfo,
+  type McpMount,
   type ProgressFn,
   type ToolRequestExtra,
 } from './keys.js';
@@ -96,7 +96,11 @@ import {
   type ToolConflict,
   type ToolCostReport,
 } from './tool-cost.js';
-import {assertIcons, assertJson} from './fragments.js';
+import {assertIcons, type JsonValue, type MetaObject} from './fragments.js';
+import {
+  resolveCapabilities,
+  type McpCapabilityContribution,
+} from './capabilities.js';
 import {
   CONFIRM_REQUEST_KEY,
   createElicitSession,
@@ -244,6 +248,27 @@ function requestClientFor(
   };
 }
 
+/**
+ * The request's `params._meta`, copied and frozen so one handler cannot change
+ * what the next reads. The SDK has already lifted the 2026 envelope keys out.
+ */
+function requestMetaFor(
+  extra: ToolRequestExtra,
+): Readonly<Record<string, unknown>> {
+  const meta = extra.mcpReq?._meta as Record<string, unknown> | undefined;
+  return deepFreeze(meta ? structuredClone(meta) : {});
+}
+
+/** `meta` with `ui.domain` set (or unchanged when `domain` is undefined). */
+function withUiDomain(
+  meta: MetaObject | undefined,
+  domain: string | undefined,
+): MetaObject | undefined {
+  if (domain === undefined) return meta;
+  const ui = (meta?.ui ?? {}) as Record<string, JsonValue>;
+  return {...(meta ?? {}), ui: {...ui, domain}};
+}
+
 /** Hops from `ctx` to the root of its chain (the root is 0). */
 function contextDepth(ctx: Context | undefined): number {
   let depth = 0;
@@ -389,45 +414,6 @@ function buildServerInfo(config: MCPServerConfig): Implementation {
     ...(config.title !== undefined ? {title: config.title} : {}),
     ...(config.icons ? {icons: structuredClone(config.icons)} : {}),
     ...(config.websiteUrl !== undefined ? {websiteUrl: config.websiteUrl} : {}),
-  };
-}
-
-/** Keys an app may add to the advertised server capabilities. */
-const EXTRA_CAPABILITY_KEYS = new Set(['extensions', 'experimental']);
-
-/**
- * The capabilities advertised to clients: the framework-owned
- * `tools`/`resources`/`prompts`, plus any `extensions`/`experimental` the
- * config declares. Validated at runtime, not only by type, so a JS caller
- * cannot override a framework-owned capability.
- */
-function buildCapabilities(config: MCPServerConfig): ServerCapabilities {
-  const extra = config.capabilities ?? {};
-  for (const [key, value] of Object.entries(extra)) {
-    if (!EXTRA_CAPABILITY_KEYS.has(key)) {
-      throw new Error(
-        `MCPServerConfig.capabilities.${key} is not allowed — only ` +
-          `'extensions' and 'experimental' may be added; tools/resources/` +
-          `prompts are framework-owned`,
-      );
-    }
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-      throw new Error(
-        `MCPServerConfig.capabilities.${key} must be an object of extension entries`,
-      );
-    }
-    assertJson(value, `MCPServerConfig.capabilities.${key}`);
-  }
-  return {
-    tools: {},
-    resources: {},
-    prompts: {},
-    ...(extra.extensions
-      ? {extensions: structuredClone(extra.extensions)}
-      : {}),
-    ...(extra.experimental
-      ? {experimental: structuredClone(extra.experimental)}
-      : {}),
   };
 }
 
@@ -603,8 +589,6 @@ export class MCPServer implements Server {
     };
   /** Server info advertised to clients; derived once from the config. */
   private readonly serverInfo: Implementation;
-  /** Server capabilities advertised to clients; derived once from the config. */
-  private readonly capabilities: ServerCapabilities;
 
   constructor(
     // Inject the binding's own resolution context rather than the app root.
@@ -629,14 +613,31 @@ export class MCPServer implements Server {
       },
     };
     this.serverInfo = buildServerInfo(this.config);
-    this.capabilities = buildCapabilities(this.config);
+    // Validates the config's own capabilities eagerly; contributions bound
+    // later join at each server build (and `start()`).
     this.mcp = new McpServer(this.serverInfo, {
-      capabilities: this.capabilities,
+      capabilities: resolveCapabilities(this.config),
     });
   }
 
   get listening(): boolean {
     return this._listening;
+  }
+
+  /**
+   * The `extensions` / `experimental` capabilities this server advertises
+   * now: the config merged with every {@link contributeCapabilities}
+   * contribution. Throws on a conflict, as `start()` does.
+   */
+  advertisedCapabilities(): McpCapabilityContribution {
+    const {extensions, experimental} = resolveCapabilities(
+      this.config,
+      this.context,
+    ) as McpCapabilityContribution;
+    return {
+      ...(extensions ? {extensions} : {}),
+      ...(experimental ? {experimental} : {}),
+    };
   }
 
   /** The underlying MCP SDK server (escape hatch). */
@@ -810,7 +811,36 @@ export class MCPServer implements Server {
     )) as Record<string, Function>;
     const result =
       await instance[resource.meta.methodName as string].call(instance);
-    return {contents: toResourceContents(result, resource.meta)};
+    const meta = resource.meta.uiDomain
+      ? withUiDomain(
+          resource.meta.meta,
+          await this.resolveUiDomain(resource.meta, reqCtx),
+        )
+      : resource.meta.meta;
+    return {contents: toResourceContents(result, {...resource.meta, meta})};
+  }
+
+  /** Run an `@appResource({domain: fn})` resolver for one request. */
+  private async resolveUiDomain(
+    resource: ResourceMetadata,
+    ctx: Context,
+  ): Promise<string | undefined> {
+    const opt = <T>(key: {key: string}) =>
+      ctx.getSync<T>(key.key, {optional: true});
+    const domain = await resource.uiDomain!({
+      client: opt<RequestClient>(MCPBindings.REQUEST_CLIENT),
+      mount: opt<McpMount>(MCPBindings.REQUEST_MOUNT),
+      meta: opt<Readonly<Record<string, unknown>>>(MCPBindings.REQUEST_META),
+      request: opt<Request>(MCPBindings.REQUEST_INFO),
+      context: ctx,
+    });
+    if (domain !== undefined && (typeof domain !== 'string' || !domain)) {
+      throw new Error(
+        `@appResource('${resource.uri}'): the domain function returned ` +
+          `${JSON.stringify(domain)}; return a non-empty string or undefined`,
+      );
+    }
+    return domain;
   }
 
   /**
@@ -1672,9 +1702,13 @@ export class MCPServer implements Server {
   protected requestContextFor(
     extra: ToolRequestExtra,
     sdkServer?: SdkServer,
+    mount?: McpMount,
   ): Context {
     const ctx = new Context(this.context, 'mcp.request');
     ctx.bind(MCPBindings.REQUEST_CLIENT).to(requestClientFor(extra, sdkServer));
+    ctx.bind(MCPBindings.REQUEST_META).to(requestMetaFor(extra));
+    if (mount)
+      ctx.bind(MCPBindings.REQUEST_MOUNT).to(Object.freeze({...mount}));
     // SDK v2 nests the transport extras under `ctx.http` (undefined on stdio).
     if (extra.http?.authInfo) {
       ctx.bind(MCPBindings.REQUEST_AUTH).to(extra.http.authInfo);
@@ -1701,11 +1735,13 @@ export class MCPServer implements Server {
    * at a time, so concurrent HTTP sessions each get their own server instance
    * (all exposing the same surface). See `@agentback/mcp-http`.
    */
-  buildServer(options: {scopes?: string[]} = {}): McpServer {
+  buildServer(options: {scopes?: string[]; mount?: McpMount} = {}): McpServer {
+    // Contributions are re-read per build, so a capability installed (or
+    // retracted) after start reaches the next stateless request.
     const server = new McpServer(this.serverInfo, {
-      capabilities: this.capabilities,
+      capabilities: resolveCapabilities(this.config, this.context),
     });
-    this.registerAllOn(server, options.scopes);
+    this.registerAllOn(server, options.scopes, options.mount);
     return server;
   }
 
@@ -1853,7 +1889,11 @@ export class MCPServer implements Server {
    * Registration wires HANDLERS, never a snapshot: what each handler answers is
    * derived from the container at request time. See the comment inside.
    */
-  private registerAllOn(target: McpServer, scopes?: string[]): void {
+  private registerAllOn(
+    target: McpServer,
+    scopes?: string[],
+    mount?: McpMount,
+  ): void {
     // Tools register through the SDK's LOW-LEVEL request handlers (the
     // `Server` underneath the high-level `McpServer`): the high-level
     // `registerTool` consumes a `ZodRawShape`, which would lock tool schemas
@@ -1929,7 +1969,7 @@ export class MCPServer implements Server {
           // (auth, transport headers, principals) from the shared app
           // context. Always created — dispatchTool binds principals into it,
           // and a shared-context write would leak across requests.
-          const ctx = this.requestContextFor(extra, server);
+          const ctx = this.requestContextFor(extra, server, mount);
 
           const result = await this.dispatchTool(t, input, ctx);
           // A `confirm:` tool asking for native confirmation (2026-07-28).
@@ -2014,7 +2054,10 @@ export class MCPServer implements Server {
           `Resource ${uri} not found`,
         );
       }
-      return this.dispatchResource(found, this.requestContextFor(extra));
+      return this.dispatchResource(
+        found,
+        this.requestContextFor(extra, server, mount),
+      );
     });
 
     server.setRequestHandler('prompts/list', async () => ({
@@ -2039,7 +2082,10 @@ export class MCPServer implements Server {
       // high-level `registerPrompt` argument plumbing, which had no
       // zero-argument form and needed a cast to avoid breaking no-arg calls.
       // `@prompt` methods take no arguments, so there is nothing to validate.
-      return this.dispatchPrompt(found, this.requestContextFor(extra));
+      return this.dispatchPrompt(
+        found,
+        this.requestContextFor(extra, server, mount),
+      );
     });
   }
 
@@ -2112,7 +2158,16 @@ export class MCPServer implements Server {
     // `buildServer()`, which under stateless HTTP runs per request: a tool
     // mounted later that collides is served root-nearest-first and logged.
     this.assertUniqueToolNames();
+    // Conflicting or non-constant capability contributions are a startup
+    // error too — before any client sees a half-merged surface.
+    const capabilities = resolveCapabilities(this.config, this.context);
     this.registerAllOn(this.mcp);
+    // The constructor-built server (`sdkServer`, and stdio under 'legacy')
+    // predates any contribution; register the merged set while that is still
+    // legal — the SDK refuses it once connected.
+    if (!this.mcp.isConnected()) {
+      this.mcp.server.registerCapabilities(capabilities);
+    }
 
     if (this.config.transports.stdio !== false) {
       if (this.config.protocol === 'both') {

@@ -171,7 +171,8 @@ or `elicit.askAll({...})`. **Experimental.**
 - Work before an `ask` re-runs every round and only the final round is
   metered; the rate limiter debits every round.
 - `MCPBindings.REQUEST_CLIENT` — `{era, capabilities?, info?, canRoundTrip}`;
-  `hasClientExtension(client, id)`.
+  `hasClientExtension(client, id)`. `MCPBindings.REQUEST_META` /
+  `REQUEST_MOUNT` — the request's frozen `_meta` and its HTTP mount.
 - Dispatch hooks see `info.inputRequired` after `next()`; metering bills only
   the final round. Agents/CLI projections exclude ELICIT-injecting tools.
 - Test with `createTestApp(App, {mcpEra: 'modern', mcpElicit: answerFn})`.
@@ -354,6 +355,14 @@ const sidebar = toolFragment({
 - Server-level: `MCPServerConfig.{title, icons, websiteUrl}` and
   `capabilities: {extensions, experimental}` (e.g. `openai/settings`); a
   framework-owned capability key throws.
+- From code: `contributeCapabilities(app, {extensions})` → `Installed`
+  (constant `MCP_CAPABILITIES` binding; a differing duplicate entry throws at
+  `start()`).
+- Per host: mount once per host — `installMcpHttp(app, {path: '/mcp/claude',
+host: 'claude'})` — and read `MCPBindings.REQUEST_MOUNT` (server config).
+  `@appResource({domain: ({mount, client}) => …})` resolves the widget domain
+  per request. `MCPBindings.REQUEST_META` is the frozen request `_meta`
+  (client-asserted: presentation only, never authorization).
 - Duplicate tool names throw at `start()` (the same class bound twice is
   fine). `buildServer()` never throws on them: a duplicate mounted later (a
   `perSession` binder, a plugin) is served root-nearest first — an app-level
