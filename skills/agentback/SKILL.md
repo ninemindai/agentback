@@ -119,13 +119,15 @@ npm create agentback my-service -- --with drizzle,auth
 npm create agentback my-service -- --drizzle          # same, shorthand
 npm create agentback my-service -- --auth
 npm create agentback my-service -- -c                 # --console: dev console at /console
+npm create agentback my-service -- --mcp-apps         # MCP Apps widget for Claude / ChatGPT
 ```
 
-| Capability | Adds                                                                         | Valid for        |
-| ---------- | ---------------------------------------------------------------------------- | ---------------- |
-| `console`  | `@agentback/console` at `/console`, replacing the standalone explorer mounts | `hybrid`, `rest` |
-| `drizzle`  | `@agentback/drizzle` + an example table with a route/tool over it            | all three        |
-| `auth`     | the authentication stack wired into `application.ts`                         | all three        |
+| Capability | Adds                                                                                            | Valid for        |
+| ---------- | ----------------------------------------------------------------------------------------------- | ---------------- |
+| `console`  | `@agentback/console` at `/console`, replacing the standalone explorer mounts                    | `hybrid`, `rest` |
+| `drizzle`  | `@agentback/drizzle` + an example table with a route/tool over it                               | all three        |
+| `auth`     | the authentication stack wired into `application.ts`                                            | all three        |
+| `mcp-apps` | an MCP Apps widget tool (`@appResource` + ext-apps view) with Claude's domain from `PUBLIC_URL` | `hybrid`         |
 
 Capabilities are **per template** — `console` needs an HTTP server, so it is
 rejected for the stdio `mcp` template.

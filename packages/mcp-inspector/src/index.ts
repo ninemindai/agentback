@@ -105,6 +105,19 @@ const Manifest = z
     prompts: z.array(
       z.object({name: z.string(), description: z.string().optional()}),
     ),
+    /**
+     * Tool names a runtime-mounted duplicate collides with. Only the served
+     * member appears in `tools`; absent when there are none.
+     */
+    conflicts: z
+      .array(
+        z.object({
+          name: z.string(),
+          served: z.string(),
+          ignored: z.array(z.string()),
+        }),
+      )
+      .optional(),
   })
   .loose();
 
@@ -124,7 +137,7 @@ export class McpInspectorController {
 
   @get('/manifest', {response: Manifest})
   async manifest(): Promise<z.infer<typeof Manifest>> {
-    const tools = this.mcp.listTools().map(t => ({
+    const tools = this.mcp.servedTools().map(t => ({
       name: t.meta.name,
       title: t.meta.title,
       description: t.meta.description,
@@ -147,6 +160,7 @@ export class McpInspectorController {
       ...(r.meta.icons ? {icons: r.meta.icons.map(i => ({...i}))} : {}),
       ...(r.meta.meta ? {contentMeta: r.meta.meta} : {}),
     }));
+    const conflicts = this.mcp.toolConflicts();
     const prompts = this.mcp.listPrompts().map(p => ({
       name: p.meta.name,
       description: p.meta.description,
@@ -168,6 +182,7 @@ export class McpInspectorController {
       tools,
       resources,
       prompts,
+      ...(conflicts.length ? {conflicts} : {}),
     };
   }
 

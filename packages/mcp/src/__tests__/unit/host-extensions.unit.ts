@@ -18,6 +18,7 @@ import {resourceFragment, toolFragment} from '../../fragments.js';
 import {MCP_APP_MIME_TYPE, MCP_SERVERS} from '../../keys.js';
 import {MCPComponent} from '../../mcp.component.js';
 import {MCPServer} from '../../mcp.server.js';
+import {formatToolCostReport} from '../../tool-cost.js';
 import {
   resourceContent,
   toBase64,
@@ -829,6 +830,26 @@ describe('duplicate tool names', () => {
     expect(await callText(await client(server), 'dup')).toBe('a');
     app.unbind('services.A');
     expect(await callText(await client(server), 'dup')).toBe('b');
+  });
+
+  it('reports conflicts and prices only served tools in toolCostReport', async () => {
+    const app = makeApp(A);
+    const server = await app.get<MCPServer>('servers.MCPServer');
+    await server.start();
+    expect(server.toolConflicts()).toEqual([]);
+    expect(server.toolCostReport()).not.toHaveProperty('suppressed');
+    app.service(B);
+    expect(server.servedTools().map(t => t.ctor)).toEqual([A]);
+    expect(server.toolConflicts()).toEqual([
+      {name: 'dup', served: 'A.a', ignored: ['B.b']},
+    ]);
+    const report = server.toolCostReport();
+    expect(report.tools.map(t => t.name)).toEqual(['dup']);
+    expect(report.suppressed).toEqual(server.toolConflicts());
+    expect(formatToolCostReport(report)).toContain(
+      "⚠ duplicate 'dup': serving A.a, ignoring B.b",
+    );
+    await server.stop();
   });
 
   it('a child binding with the SAME key overrides the parent binding', async () => {

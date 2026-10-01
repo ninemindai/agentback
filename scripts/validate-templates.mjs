@@ -40,6 +40,14 @@ const apps = [
     dir: join(ROOT, 'examples', 'tmpl-check-caps'),
     extraArgs: ['--drizzle', '--auth'],
   },
+  // MCP Apps overlay: the widget tool + @appResource compile and its test
+  // bundles the ext-apps view with esbuild against the live workspace.
+  {
+    template: 'hybrid',
+    name: 'tmpl-check-apps',
+    dir: join(ROOT, 'examples', 'tmpl-check-apps'),
+    extraArgs: ['--mcp-apps'],
+  },
 ];
 
 function run(cmd, args, cwd = ROOT) {

@@ -183,6 +183,13 @@ export function App({
         </main>
       ) : (
         <main>
+          {manifest.conflicts?.map(c => (
+            <p className="banner" key={c.name}>
+              Duplicate tool name <code>{c.name}</code>: serving {c.served},
+              ignoring {c.ignored.join(', ')}. Rename one; app-level tools
+              win — to replace a tool, unbind it.
+            </p>
+          ))}
           <section>
             <SectionHead
               label="Tools"
