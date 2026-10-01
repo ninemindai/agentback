@@ -403,6 +403,112 @@ describe('elicit — guards', () => {
   });
 });
 
+describe('elicit — request boundaries', () => {
+  const dispatchOf = (server: MCPServer) =>
+    (
+      server as unknown as {
+        dispatchTool(t: ToolBinding, i: unknown, c: Context): Promise<unknown>;
+      }
+    ).dispatchTool.bind(server);
+
+  function requestCtx(server: MCPServer, mcpReq: Record<string, unknown>) {
+    const ctx = new Context(server['context'] as Context, 'mcp.request');
+    ctx.bind(MCPBindings.REQUEST_EXTRA).to({mcpReq} as never);
+    return ctx;
+  }
+
+  it('refuses request state minted for another tool', async () => {
+    const server = await boot();
+    const {client} = await connect(server, 'modern', byMessage);
+    // Capture a real envelope for `pick`, then replay it against `order`.
+    let captured = '';
+    const tools = server.listTools();
+    const pick = tools.find(t => t.meta.name === 'pick')!;
+    const order = tools.find(t => t.meta.name === 'order')!;
+    const ctx = requestCtx(server, {});
+    ctx.bind(MCPBindings.REQUEST_CLIENT).to({
+      era: 'modern',
+      capabilities: {elicitation: {}},
+      canRoundTrip: true,
+    });
+    const first = (await dispatchOf(server)(pick, {}, ctx)) as {
+      requestState: string;
+    };
+    captured = first.requestState;
+    await expect(
+      dispatchOf(server)(
+        order,
+        {},
+        requestCtx(server, {requestState: () => captured}),
+      ),
+    ).rejects.toMatchObject({code: 'invalid_input'});
+    await client.close();
+  });
+
+  it('a tool called in-process from inside a request ignores that request state', async () => {
+    // An agent turn or nested callTool inside round 2 of another tool's
+    // elicitation must not read the outer envelope as its own.
+    const server = await boot();
+    const outer = requestCtx(server, {
+      requestState: () => 'v1.not-for-you.sig',
+      inputResponses: {part: {action: 'accept', content: {part: 'nut'}}},
+    });
+    await expect(server.callTool('plain', {}, {ctx: outer})).resolves.toBe(
+      'plain',
+    );
+    // Nor the outer request's answers: the inner ask is unanswerable.
+    await expect(
+      server.callTool('pick', {}, {ctx: outer}),
+    ).rejects.toMatchObject({code: 'elicitation_unavailable'});
+  });
+
+  it('a declined answer in askAll is reported, not called a swallowed signal', async () => {
+    const server = await boot();
+    const both = server.listTools().find(t => t.meta.name === 'both')!;
+    const ctx = requestCtx(server, {
+      inputResponses: {qty: {action: 'decline'}},
+    });
+    ctx.bind(MCPBindings.REQUEST_CLIENT).to({
+      era: 'modern',
+      capabilities: {elicitation: {}},
+      canRoundTrip: true,
+    });
+    await expect(dispatchOf(server)(both, {}, ctx)).rejects.toMatchObject({
+      code: 'elicitation_declined',
+    });
+  });
+
+  it('serveTransport honours protocol: legacy', async () => {
+    const app = new Application();
+    apps.push(app);
+    app.component(MCPComponent);
+    app.configure('servers.MCPServer').to({
+      name: 'legacy-only',
+      version: '0.0.0',
+      protocol: 'legacy',
+      transports: {stdio: false},
+    });
+    app.service(Shop);
+    const server = await app.get<MCPServer>('servers.MCPServer');
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    server.serveTransport(st);
+    const client = new Client(
+      {name: 'c', version: '0.0.0'},
+      {versionNegotiation: {mode: 'auto' as const}},
+    );
+    await client.connect(ct);
+    expect(client.getProtocolEra()).toBe('legacy');
+    await client.close();
+  });
+
+  it('an in-process ask names the cause', async () => {
+    const server = await boot();
+    await expect(server.callTool('pick', {})).rejects.toThrow(
+      /called in-process/,
+    );
+  });
+});
+
 describe('elicit — cross-cutting', () => {
   it('dispatch hooks see inputRequired on the asking round only', async () => {
     const seen: boolean[] = [];

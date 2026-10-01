@@ -18,8 +18,14 @@ async function main() {
   });
   const client = new Client(
     {name: 'hello-mcp-test-client', version: '0.0.0'},
-    {capabilities: {}},
+    // Declaring `elicitation` lets the server ask this client questions.
+    {capabilities: {elicitation: {}}},
   );
+  // Answer the server's questions (a real host would show a form).
+  client.setRequestHandler('elicitation/create', async request => {
+    console.log(`server asks: ${request.params.message}`);
+    return {action: 'accept', content: {name: 'Ada'}};
+  });
   await client.connect(transport);
 
   console.log('--- tools/list ---');
@@ -45,6 +51,10 @@ async function main() {
     arguments: {a: 2, b: 40},
   });
   console.log(JSON.stringify(add.content, null, 2));
+
+  console.log('--- tools/call greet (the server asks a question) ---');
+  const greet = await client.callTool({name: 'greet', arguments: {}});
+  console.log(JSON.stringify(greet.content, null, 2));
 
   console.log('--- tools/call echo {text: ""}  (should error: too short) ---');
   try {

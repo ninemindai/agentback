@@ -5,11 +5,18 @@
 // hello-mcp — proves the AgentBack MCP path end-to-end over stdio.
 
 import {z} from 'zod';
-import {isMain} from '@agentback/core';
-import {mcpServer, MCPApplication, tool} from '@agentback/mcp';
+import {inject, isMain} from '@agentback/core';
+import {
+  MCPApplication,
+  MCPBindings,
+  mcpServer,
+  tool,
+  type Elicitor,
+} from '@agentback/mcp';
 
 const EchoInput = z.object({text: z.string().min(1).max(280)});
 const AddInput = z.object({a: z.number().int(), b: z.number().int()});
+const NameForm = z.object({name: z.string().min(1).describe('Your name')});
 
 @mcpServer()
 class EchoTools {
@@ -26,6 +33,20 @@ class EchoTools {
   @tool('add', {description: 'Adds two integers.', input: AddInput})
   async add(input: z.infer<typeof AddInput>): Promise<{sum: number}> {
     return {sum: input.a + input.b};
+  }
+
+  // Elicitation: ask the user mid-call. The tool re-runs from the top once the
+  // answer arrives, so ask before doing anything with side effects. With no
+  // `input:` schema, the injected elicitor sits at slot 0.
+  @tool('greet', {description: 'Asks your name, then greets you.'})
+  async greet(
+    @inject(MCPBindings.ELICIT) elicit: Elicitor,
+  ): Promise<{greeting: string}> {
+    const {name} = await elicit.ask('name', {
+      message: 'What should I call you?',
+      standard: NameForm,
+    });
+    return {greeting: `Hello, ${name}!`};
   }
 }
 
