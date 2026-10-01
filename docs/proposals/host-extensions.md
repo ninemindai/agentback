@@ -356,6 +356,14 @@ These land with 1a: the docs are what make the seams usable.
 >   `MCPServer.serveTransport()` rather than `{mcp: {era}}`.
 > - **Q1 answered:** `x-openai-*` keys reach the 2026 wire, but TS SDK clients
 >   strip them from individual properties and keep top-level extras.
+> - **Branch review added:** the envelope binds the caller (`sub`); the
+>   prompt's store token has its own scope and always needs the human answer
+>   (a retry dropping `elicitation`, or the token replayed as
+>   `confirmationToken`, used to skip it); request state is read only from the
+>   request's own context, so a nested in-process call never inherits it; the
+>   envelope lives an hour and the `confirmed` token as long; the key can come
+>   from `AGENTBACK_MCP_STATE_KEY`, a short key fails `start()`, and a failed
+>   verification is logged; `elicitation_unavailable` names its cause.
 
 ### 5.1 API
 

@@ -89,7 +89,13 @@ describe('elicitation over mcp-http', () => {
     // A stateless 2025 request never saw `initialize` and holds no connection
     // to send `elicitation/create` on; the framework says so before the SDK.
     const text = await call(await start('both'), false);
-    expect(JSON.parse(text).error.code).toBe('elicitation_unavailable');
+    const {error} = JSON.parse(text) as {
+      error: {code: string; message: string};
+    };
+    expect(error.code).toBe('elicitation_unavailable');
+    // The message names the cause and the fix.
+    expect(error.message).toMatch(/stateless 2025-era request/);
+    expect(error.message).toMatch(/protocol: 'legacy'/);
   });
 
   it('session mount, 2025 client: the SDK shim asks over the session', async () => {

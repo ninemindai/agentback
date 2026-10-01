@@ -109,14 +109,18 @@ export namespace MCPBindings {
    * declared capabilities, whether a round trip is possible). Bound per
    * request on the SDK path; absent on an in-process `callTool`, so inject it
    * optionally. See {@link hasClientExtension}.
+   *
+   * @experimental Pulled forward from phase 1b; `canRoundTrip`'s meaning may
+   * change once per-host mounts are evaluated.
    */
   export const REQUEST_CLIENT =
     BindingKey.create<RequestClient>('mcp.request.client');
   /**
    * The key (at least 32 bytes) that signs the framework's `requestState`
-   * envelope for `confirm:` and elicitation. {@link MCPComponent} binds a
-   * random per-process default; **a multi-instance deployment must bind one
-   * shared key**, or a retry landing on another instance is refused.
+   * envelope for `confirm:` and elicitation. {@link MCPComponent} binds
+   * `AGENTBACK_MCP_STATE_KEY` when set, else a random per-process key; **a
+   * multi-instance deployment must share one key**, or a retry landing on
+   * another instance is refused (and logged as a verification failure).
    */
   export const REQUEST_STATE_KEY = BindingKey.create<string | Uint8Array>(
     'mcp.requestStateKey',

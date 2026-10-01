@@ -43,7 +43,8 @@ ESM-only, Node 22.18+, TypeScript 7, pnpm workspaces. **Relative imports use
    ([rest-and-openapi.md](references/rest-and-openapi.md))
 3. **Tools / resources / prompts for MCP clients (Claude, Cursor, agents),
    over stdio or HTTP — incl. MCP Apps `ui://` widgets rendered inline by the
-   host?** → MCP tools ([mcp-tools.md](references/mcp-tools.md))
+   host, or a tool that asks the user something mid-call (elicitation,
+   `elicit.ask`)?** → MCP tools ([mcp-tools.md](references/mcp-tools.md))
 4. **Share schemas/types between server and a typed client (no codegen)?** →
    Schema sharing & client ([schema-sharing-and-client.md](references/schema-sharing-and-client.md))
 5. **Authentication, authorization, scopes, rate limiting (REST or MCP/HTTP)?**

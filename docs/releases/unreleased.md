@@ -63,14 +63,21 @@ error codes `elicitation_unavailable` / `elicitation_unsupported` /
 - **`confirm:`'s native prompt now carries its token in a signed envelope.**
   On the 2026 era the `requestState` is no longer the raw store token; a raw
   token sent as `requestState` is refused (`confirmation_invalid`). The
-  `confirmationToken` input property is unchanged. Multi-instance deployments
-  should bind `MCPBindings.REQUEST_STATE_KEY` to one shared key (≥ 32 bytes),
-  or a retry landing on another instance is refused.
+  envelope is bound to the caller, and the prompt's token can no longer be
+  replayed through the `confirmationToken` input property or used on a retry
+  that drops the `elicitation` capability (both previously skipped the human
+  answer). The `confirmationToken` token dance itself is unchanged.
+  **Multi-instance deployments must share one key** — bind
+  `MCPBindings.REQUEST_STATE_KEY` (≥ 32 bytes) or set
+  `AGENTBACK_MCP_STATE_KEY` — or a retry landing on another instance is
+  refused; the refusal is logged. A key shorter than 32 bytes fails
+  `start()`.
 - **Metering bills a multi-round MCP call once**, on its final round. A
   `confirm:` prompt round used to emit a usage event of its own.
 - **`createTestApp`'s in-memory MCP client is served through
   `MCPServer.serveTransport()`** (both eras on one connection). A 2025 client
   is still the default.
+- `examples/hello-mcp` gains a `greet` tool that asks the user's name.
 - `selectTools` (the agents and CLI projections) now excludes tools that
   inject `MCPBindings.ELICIT`, and throws if one is named in `include`.
 

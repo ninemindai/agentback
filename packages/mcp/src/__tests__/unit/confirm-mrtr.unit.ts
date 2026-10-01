@@ -63,8 +63,14 @@ async function harness() {
     canElicit?: boolean;
     requestState?: string;
     responses?: Record<string, unknown>;
+    clientId?: string;
   }) {
     const ctx = new Context(app, 'mcp.request');
+    if (opts.clientId) {
+      ctx
+        .bind(MCPBindings.REQUEST_AUTH)
+        .to({token: 't', clientId: opts.clientId, scopes: []} as never);
+    }
     // Cast: only the handful of `mcpReq` fields the gate reads matter here,
     // and the SDK's full extra type is not constructible by hand.
     ctx.bind(MCPBindings.REQUEST_EXTRA).to({
@@ -213,6 +219,96 @@ describe('confirm: — the signed request state', () => {
           }),
         ),
       ).rejects.toMatchObject({code: 'confirmation_invalid'});
+    } finally {
+      await h.app.stop();
+    }
+  });
+});
+
+describe('confirm: — the human answer cannot be routed around', () => {
+  const accept = {confirm: {action: 'accept', content: {confirm: true}}};
+
+  it('refuses a retry that drops the elicitation capability', async () => {
+    // The capability rides in every 2026 request, so the client controls it
+    // per round. Dropping it must not skip the answer check.
+    const h = await harness();
+    try {
+      const issued = (await h.gate(
+        {env: 'prod'},
+        h.ctxFor({modern: true, canElicit: true}),
+      )) as {requestState: string};
+      await expect(
+        h.gate(
+          {env: 'prod'},
+          h.ctxFor({
+            modern: true,
+            canElicit: false,
+            requestState: issued.requestState,
+          }),
+        ),
+      ).rejects.toMatchObject({code: 'confirmation_invalid'});
+    } finally {
+      await h.app.stop();
+    }
+  });
+
+  it('refuses the prompt token read out of the envelope and replayed as confirmationToken', async () => {
+    // The envelope is signed, not encrypted: the client can read its token.
+    const h = await harness();
+    try {
+      const issued = (await h.gate(
+        {env: 'prod'},
+        h.ctxFor({modern: true, canElicit: true}),
+      )) as {requestState: string};
+      const body = issued.requestState.split('.')[1]!;
+      const token = (
+        JSON.parse(Buffer.from(body, 'base64url').toString()) as {
+          p: {confirm: string};
+        }
+      ).p.confirm;
+      await expect(
+        h.gate(
+          {env: 'prod', confirmationToken: token},
+          h.ctxFor({modern: false}),
+        ),
+      ).rejects.toMatchObject({code: 'confirmation_invalid'});
+    } finally {
+      await h.app.stop();
+    }
+  });
+
+  it('refuses request state minted for another caller', async () => {
+    const h = await harness();
+    try {
+      const issued = (await h.gate(
+        {env: 'prod'},
+        h.ctxFor({modern: true, canElicit: true, clientId: 'alice'}),
+      )) as {requestState: string};
+      await expect(
+        h.gate(
+          {env: 'prod'},
+          h.ctxFor({
+            modern: true,
+            canElicit: true,
+            clientId: 'mallory',
+            requestState: issued.requestState,
+            responses: accept,
+          }),
+        ),
+      ).rejects.toMatchObject({code: 'confirmation_invalid'});
+      // The rightful caller still gets through.
+      await expect(
+        h.gate(
+          {env: 'prod'},
+          h.ctxFor({
+            modern: true,
+            canElicit: true,
+            clientId: 'alice',
+            requestState: issued.requestState,
+            responses: accept,
+          }),
+        ),
+      ).resolves.toEqual({deployed: 'prod'});
     } finally {
       await h.app.stop();
     }

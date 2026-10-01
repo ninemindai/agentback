@@ -297,13 +297,34 @@ export const unavailableElicitor: Elicitor = {
   },
 };
 
+/** Why a caller cannot be asked. */
+export type UnavailableCause =
+  'in-process' | 'stateless' | 'no-capability' | 'no-request';
+
+const UNAVAILABLE_REASONS: Record<UnavailableCause, string> = {
+  'in-process':
+    'it was called in-process (callTool, an agent turn or the CLI), which ' +
+    'has no user to ask. Call it through an MCP client instead.',
+  stateless:
+    'this is a stateless 2025-era request, which cannot carry a ' +
+    "server-to-client request. The default installMcpHttp mount ('both') " +
+    "serves 2025 clients statelessly: use protocol: 'legacy', stdio, or a " +
+    '2026-07-28 client.',
+  'no-capability': 'the client did not declare the elicitation capability.',
+  'no-request':
+    'there is no MCP request here. Inject MCPBindings.ELICIT as a @tool ' +
+    "method parameter, not into a constructor or a service: the tool's own " +
+    'request binds the real elicitor.',
+};
+
 /** `AgentError` for a caller that cannot answer an elicitation. */
-export function elicitationUnavailable(what: string): AgentError {
+export function elicitationUnavailable(
+  what: string,
+  cause: UnavailableCause = 'no-request',
+): AgentError {
   return new AgentError(
-    `${what} needs the user, but this caller cannot be asked: elicitation ` +
-      `needs an MCP client that declared the elicitation capability, on the ` +
-      `2026 protocol, a 2025 session or stdio. In-process calls and stateless ` +
-      `2025 requests cannot answer.`,
+    `${what} needs the user, but this caller cannot be asked: ` +
+      UNAVAILABLE_REASONS[cause],
     {code: ErrorCodes.ELICITATION_UNAVAILABLE, status: 422, retryable: false},
   );
 }
@@ -315,8 +336,9 @@ export function elicitationUnavailable(what: string): AgentError {
  * elicitation so a single verify covers both. Signed (HMAC), not encrypted:
  * nothing secret goes in it.
  *
- * - `tool` and `fp` (input fingerprint) bind it to one call, so state minted
- *   for one tool or input is refused for another.
+ * - `tool`, `fp` (input fingerprint) and `sub` (the caller) bind it to one
+ *   call, so state minted for one tool, input or caller is refused for
+ *   another.
  * - `confirm` is a `ConfirmationStore` token awaiting a human answer.
  * - `confirmed` is a fresh store token issued after an accepted confirmation,
  *   carried while the tool's own questions are pending. The store stays the
@@ -329,6 +351,8 @@ export interface RequestStatePayload {
   v: 1;
   tool: string;
   fp: string;
+  /** The caller it was minted for (transport client or principal). */
+  sub?: string;
   confirm?: string;
   confirmed?: string;
   answers?: Record<string, unknown>;
@@ -336,14 +360,17 @@ export interface RequestStatePayload {
 
 const codecs = new Map<string, RequestStateCodec<RequestStatePayload>>();
 
-/** The codec for `key` (at least 32 bytes), memoized per key. */
+/** The codec for `key` (at least 32 bytes), memoized per key and TTL. */
 export function requestStateCodec(
   key: string | Uint8Array,
+  ttlSeconds = 3600,
 ): RequestStateCodec<RequestStatePayload> {
-  const id = typeof key === 'string' ? `s:${key}` : `b:${[...key].join(',')}`;
+  const id =
+    (typeof key === 'string' ? `s:${key}` : `b:${[...key].join(',')}`) +
+    `#${ttlSeconds}`;
   let codec = codecs.get(id);
   if (!codec) {
-    codec = createRequestStateCodec<RequestStatePayload>({key});
+    codec = createRequestStateCodec<RequestStatePayload>({key, ttlSeconds});
     codecs.set(id, codec);
   }
   return codec;

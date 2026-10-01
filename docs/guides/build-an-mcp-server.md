@@ -215,9 +215,13 @@ A tool can stop and ask the user something, then carry on with the answer.
 Inject `MCPBindings.ELICIT` and call `ask`:
 
 ```ts
+import {z} from 'zod';
 import {inject} from '@agentback/core';
 import {MCPBindings, mcpServer, tool, type Elicitor} from '@agentback/mcp';
 
+const InspectIn = z.object({assembly: z.string()});
+const InspectOut = z.object({part: z.string(), ok: z.boolean()});
+// A FLAT z.object: string, number, integer, boolean and enum fields only.
 const PartChoice = z.object({part: z.enum(['bolt', 'nut'])});
 
 @mcpServer()
@@ -225,45 +229,92 @@ class Cad {
   @tool('cad_inspect', {input: InspectIn, output: InspectOut})
   async inspect(
     input: z.infer<typeof InspectIn>,
-    @inject(MCPBindings.ELICIT) elicit: Elicitor,
-  ) {
+    @inject(MCPBindings.ELICIT) elicit: Elicitor, // slot 1: slot 0 is the input
+  ): Promise<z.infer<typeof InspectOut>> {
     const {part} = await elicit.ask('part', {
-      message: 'Which part?',
-      standard: PartChoice, // a FLAT z.object: string/number/boolean/enum fields
+      message: `Which part of ${input.assembly}?`,
+      standard: PartChoice,
     });
-    return this.catalog.inspect(part); // side effects AFTER every ask
+    return {part, ok: true}; // side effects go AFTER every ask
   }
 }
 ```
 
+With no `input:` schema the elicitor goes at **slot 0** instead
+(`async greet(@inject(MCPBindings.ELICIT) elicit: Elicitor)`). Inject it as a
+**method parameter**, never into a constructor: a tool class is a singleton,
+so a constructor gets the app-level default, whose asks always fail.
+`examples/hello-mcp` has a runnable `greet` tool.
+
 - **The tool re-runs from the top each round**, on every protocol era. An `ask`
   without an answer yet suspends the call; the next round replays earlier
   answers, so the second run gets past the first `ask`. Ask **before** any side
-  effect.
+  effect, and count expensive reads (an LLM call, a paid API) as side effects:
+  they run again every round and only the final round is metered.
 - `askAll({a: formA, b: formB})` asks several questions in one round.
-- A declined or cancelled answer throws `AgentError` `elicitation_declined`; an
-  answer that fails the form's schema is `invalid_input`.
+- A declined or cancelled answer throws `AgentError` `elicitation_declined`
+  (409); an answer that fails the form's schema is `invalid_input` (400).
 - An optional `extended` form (raw JSON Schema) goes only to clients declaring
   the `openai/elicitation` extension; its answer is still validated against
-  `standard`.
+  `standard`. TS SDK clients drop vendor keys on individual properties but keep
+  top-level ones.
+- If your tool catches errors, let the suspend signal through:
+  `if (isInputRequired(e)) throw e`.
 
 Who can be asked:
 
-| Caller                                                                             | What happens                                                                |
-| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| 2026-07-28 client that declared `elicitation`                                      | `input_required` result; the client answers and retries                     |
-| 2025 session (`protocol: 'legacy'`) or stdio, client declared `elicitation`        | the SDK sends `elicitation/create` over the connection and re-runs the tool |
-| a stateless 2025 request, a client without `elicitation`, an in-process `callTool` | `AgentError` `elicitation_unavailable`                                      |
+| Caller                                                                                                                                           | What happens                                                                |
+| ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| 2026-07-28 client that declared `elicitation`                                                                                                    | `input_required` result; the client answers and retries                     |
+| 2025 session (`installMcpHttp(app, {protocol: 'legacy'})`) or stdio, client declared `elicitation`                                               | the SDK sends `elicitation/create` over the connection and re-runs the tool |
+| a 2025 client on the **default** `installMcpHttp` mount (stateless), a client without `elicitation`, an in-process `callTool`, the MCP Inspector | `AgentError` `elicitation_unavailable` (422), naming the cause              |
 
-Answers from earlier rounds ride in a signed `requestState` envelope keyed by
-`MCPBindings.REQUEST_STATE_KEY` (random per process by default — **bind one
-shared key for multi-instance deployments**). A `confirm:` tool can also ask:
-the confirmation and the answers share the envelope. Tools that inject
-`MCPBindings.ELICIT` are left out of the agents and CLI projections, which have
-no user to ask. Misuse fails loudly: catching the suspend signal without
-rethrowing it (`if (isInputRequired(e)) throw e`), asking after a streamed
-tool's first `yield`, a reserved (`confirm`) or repeated key, or a non-flat
-form.
+The default HTTP mount serves 2025-era clients statelessly, and a stateless
+request has no connection to ask on. Use a 2026 client, stdio, or
+`protocol: 'legacy'` if you must reach 2025 clients over HTTP. The inspector
+calls tools in-process, so test asking tools with an MCP client or
+`createTestApp` (below).
+
+**State and deployment.** Earlier answers ride in a `requestState` envelope
+the client echoes back. It is signed, bound to the tool, the exact input and
+the caller, and valid for an hour; it is **not encrypted**, so the client can
+read the answers it already gave. It is signed with
+`MCPBindings.REQUEST_STATE_KEY`, random per process by default: **a
+multi-instance deployment must share one key** (bind it, or set
+`AGENTBACK_MCP_STATE_KEY`), or a retry that lands on another instance is
+refused and logged as a verification failure. A `confirm:` tool can also ask:
+after the human confirms, the tool's question rounds carry a fresh single-use
+confirmation that lasts as long as the envelope.
+
+**Cross-cutting.** Each round is its own `tools/call`, so `@authorize`,
+dispatch hooks and the price gate run every round, and the rate limiter debits
+every round: a three-question tool costs four rate-limit units. Dispatch hooks
+see `info.inputRequired` after `next()`; metering bills the call once, on its
+final round. Tools that inject `MCPBindings.ELICIT` are left out of the agents
+and CLI projections, which have no user to ask. Misuse fails loudly: swallowing
+the suspend signal, asking after a streamed tool's first `yield`, the reserved
+key `confirm`, a repeated key, or a non-flat form.
+
+**Testing.** `callTool` cannot answer, so drive the tool through
+`createTestApp`'s in-memory client and answer from the test:
+
+```ts
+import {createTestApp} from '@agentback/testing';
+
+it('asks which part', async () => {
+  await using t = await createTestApp(MyApp, {
+    mcpEra: 'modern',
+    mcpElicit: () => ({action: 'accept', content: {part: 'nut'}}),
+  });
+  const r = await t.mcp.callTool({
+    name: 'cad_inspect',
+    arguments: {assembly: 'hinge'},
+  });
+  expect(r.structuredContent).toEqual({part: 'nut', ok: true});
+});
+```
+
+Answer `{action: 'decline'}` to test the `elicitation_declined` path.
 
 This API is **experimental** (phase 2 of
 [P1-7](../proposals/host-extensions.md)).

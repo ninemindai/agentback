@@ -10,6 +10,18 @@ import {InMemoryConfirmationStore} from '@agentback/common';
 import {MCPServer} from './mcp.server.js';
 
 /**
+ * `AGENTBACK_MCP_STATE_KEY` when set (one value shared by every instance),
+ * else a random per-process key — fine for one process, refused by every
+ * other instance behind a load balancer.
+ */
+function defaultRequestStateKey(): string {
+  const env = (
+    globalThis as {process?: {env?: Record<string, string | undefined>}}
+  ).process?.env?.AGENTBACK_MCP_STATE_KEY;
+  return env || randomRequestStateKey();
+}
+
+/**
  * Component that contributes MCPServer to an Application.
  *
  * Also binds the app-level default for {@link MCPBindings.PROGRESS} (a no-op):
@@ -51,6 +63,8 @@ export class MCPComponent implements Component {
     // App-level for the same reason as CONFIRMATION_STORE: state minted on one
     // request is verified on the next, and stateless serving builds a fresh
     // MCPServer per request.
-    Binding.bind(MCPBindings.REQUEST_STATE_KEY.key).to(randomRequestStateKey()),
+    Binding.bind(MCPBindings.REQUEST_STATE_KEY.key).to(
+      defaultRequestStateKey(),
+    ),
   ];
 }

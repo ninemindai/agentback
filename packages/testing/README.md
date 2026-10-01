@@ -13,9 +13,6 @@ await using t = await createTestApp(MyApplication, {
     'services.Mailer': FakeMailer, // class override
   },
   mcpScopes: ['orders:read'], // scope-filtered MCP session
-  // mcpEra: 'modern',            // 2026-07-28 client (default: a 2025 initialize)
-  // mcpElicit: () => ({action: 'accept', content: {part: 'bolt'}}),
-  //                              // answer elicit.ask / confirm: prompts
 });
 
 // 1. Typed — the same defineRoute handles your consumers use:
@@ -32,6 +29,32 @@ const tools = await t.mcp.listTools();
 
 await t.stop(); // or rely on `await using`
 ```
+
+### Tools that ask the user (elicitation)
+
+`t.call()` and `MCPServer.callTool` run in-process and cannot answer an
+`elicit.ask`, so they fail with `elicitation_unavailable`. Drive the tool
+through `t.mcp` and answer from the test with `mcpElicit` (`mcpEra` picks the
+protocol era; default is a 2025 `initialize`):
+
+```ts
+await using t = await createTestApp(MyApp, {
+  mcpEra: 'modern',
+  mcpElicit: ({message}) =>
+    message.startsWith('Which part')
+      ? {action: 'accept', content: {part: 'nut'}}
+      : {action: 'decline'},
+});
+const r = await t.mcp.callTool({
+  name: 'cad_inspect',
+  arguments: {assembly: 'hinge'},
+});
+expect(r.structuredContent).toEqual({part: 'nut', ok: true});
+```
+
+The client answers each round and the tool re-runs with the answer, exactly
+as against a real host. A `confirm:` prompt is answered by the same function
+(`{action: 'accept', content: {confirm: true}}`).
 
 Also exports `runInstallConformance(label, {makeApp, install, served, untouched})` —
 the shared conformance suite for the
