@@ -161,6 +161,7 @@ export class McpInspectorController {
       ...(r.meta.meta ? {contentMeta: r.meta.meta} : {}),
     }));
     const conflicts = this.mcp.toolConflicts();
+    const capabilities = this.mcp.advertisedCapabilities();
     const prompts = this.mcp.listPrompts().map(p => ({
       name: p.meta.name,
       description: p.meta.description,
@@ -175,9 +176,7 @@ export class McpInspectorController {
         ...(this.mcp.config.icons
           ? {icons: this.mcp.config.icons.map(i => ({...i}))}
           : {}),
-        ...(this.mcp.config.capabilities
-          ? {capabilities: {...this.mcp.config.capabilities}}
-          : {}),
+        ...(Object.keys(capabilities).length ? {capabilities} : {}),
       },
       tools,
       resources,

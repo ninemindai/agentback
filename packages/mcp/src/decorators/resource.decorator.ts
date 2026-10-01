@@ -11,7 +11,12 @@ import {
   type MetaObject,
   type ResourceFragment,
 } from '../fragments.js';
-import {MCP_APP_MIME_TYPE, MCPKeys, ResourceMetadata} from '../keys.js';
+import {
+  MCP_APP_MIME_TYPE,
+  MCPKeys,
+  type AppDomainResolver,
+  type ResourceMetadata,
+} from '../keys.js';
 
 export interface ResourceOptions {
   description?: string;
@@ -34,6 +39,7 @@ function decorate(
   options: ResourceOptions & {name?: string},
   baseMeta: MetaObject | undefined,
   reservedUi: string,
+  uiDomain?: AppDomainResolver,
 ): MethodDecorator {
   return function resourceDecorator(
     target: Object,
@@ -69,6 +75,7 @@ function decorate(
       ...(options.title !== undefined ? {title: options.title} : {}),
       ...(options.icons ? {icons: structuredClone(options.icons)} : {}),
       ...(meta ? {meta} : {}),
+      ...(uiDomain ? {uiDomain} : {}),
       methodName,
     };
     MethodDecoratorFactory.createDecorator<ResourceMetadata>(
@@ -135,8 +142,13 @@ export interface AppResourceOptions {
   /**
    * Dedicated sandbox origin. Its format is **host-specific** — see each
    * host's documentation (e.g. Claude derives it from your server URL).
+   *
+   * A string is sent to every host. A function is resolved on every
+   * `resources/read`, after `@authorize`, with the request's client, mount
+   * and context — return `undefined` to let that host use its default. A
+   * per-call `resourceContent({meta: {ui: {domain}}})` still wins.
    */
-  domain?: string;
+  domain?: string | AppDomainResolver;
   /** Ask the host for (or against) a visible border and background. */
   prefersBorder?: boolean;
   /** Extra content-item `_meta` (e.g. host display-mode fragments). */
@@ -182,7 +194,15 @@ function buildUiMeta(uri: string, options: AppResourceOptions): MetaObject {
     }
     ui.permissions = structuredClone(options.permissions) as JsonValue;
   }
-  if (options.domain !== undefined) ui.domain = options.domain;
+  if (typeof options.domain === 'string') ui.domain = options.domain;
+  else if (
+    options.domain !== undefined &&
+    typeof options.domain !== 'function'
+  ) {
+    throw new Error(
+      `@appResource('${uri}'): domain must be a string or a function`,
+    );
+  }
   if (options.prefersBorder !== undefined) {
     ui.prefersBorder = options.prefersBorder;
   }
@@ -223,5 +243,6 @@ export function appResource(
     },
     Object.keys(base).length ? base : undefined,
     'set it through the @appResource options',
+    typeof options.domain === 'function' ? options.domain : undefined,
   );
 }

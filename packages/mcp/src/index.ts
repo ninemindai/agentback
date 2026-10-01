@@ -8,6 +8,7 @@ export * from './types.js';
 export * from './decorators/index.js';
 export * from './policy.js';
 export * from './select-tools.js';
+export * from './capabilities.js';
 export * from './tool-cost.js';
 export * from './mcp.server.js';
 export * from './mcp.component.js';

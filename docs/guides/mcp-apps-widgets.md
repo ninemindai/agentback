@@ -268,6 +268,13 @@ app.configure(MCPBindings.SERVER).to({
 });
 ```
 
+An installer that adds capabilities from code (rather than your config) uses
+`contributeCapabilities(app, {extensions: {...}})`. It returns an `Installed`
+whose `uninstall()` retracts the contribution. The same entry declared
+differently by two sources throws at `start()`, naming both. Stateless HTTP
+picks up a contribution on the next request; a connected stdio or session
+client keeps what it negotiated.
+
 OpenAI's extensions are new and still moving, so AgentBack ships no typed
 `openai/*` helpers yet — see
 [P1-7](../proposals/host-extensions.md) for the planned
@@ -295,11 +302,35 @@ if (!publicUrl) throw new Error('Set PUBLIC_MCP_URL to the URL added in Claude')
 @appResource(UI_URI, {domain: claudeDomain(publicUrl)})
 ```
 
-The domain format is host-specific. It is computed once, so this assumes **one
-public URL per process**, and a static `domain` is sent to every host — set one
-only if Claude is the host that needs it. A per-request `domain` (one value per
-host, or per public URL) arrives in phase 1b of
-[P1-7](../proposals/host-extensions.md).
+The domain format is host-specific. A **string** is computed once and sent to
+every host, so it assumes one public URL per process and that Claude is the
+only host that needs it.
+
+**One mount per host** removes both assumptions. Mount the endpoint once per
+host, each with its own `path` and `host` hint, and give `domain` a function.
+It runs on every `resources/read` (after `@authorize`) and returns `undefined`
+for a host that should get its default:
+
+```ts
+await installMcpHttp(app, {path: '/mcp/claude', host: 'claude'});
+await installMcpHttp(app, {path: '/mcp/chatgpt', host: 'chatgpt'});
+
+@appResource(UI_URI, {
+  domain: ({mount}) =>
+    mount?.host === 'claude'
+      ? claudeDomain(`${process.env.PUBLIC_ORIGIN}/mcp/claude`)
+      : undefined,
+})
+```
+
+The function receives `{client, mount, meta, request, context}`. Prefer
+`mount` (`MCPBindings.REQUEST_MOUNT`): it is **your** configuration, and it
+works on every era and transport, including a stateless 2025 request, where
+the client never sent `clientInfo`. `client.info?.name`
+(`MCPBindings.REQUEST_CLIENT`) and `meta` (`MCPBindings.REQUEST_META`, the
+request's frozen `params._meta`) are what the client _says_ — fine for picking
+a presentation, never for authorization. A per-call
+`resourceContent({meta: {ui: {domain}}})` still wins over the function.
 
 ## See what you emit
 
