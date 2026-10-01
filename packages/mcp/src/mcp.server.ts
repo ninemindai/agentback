@@ -24,6 +24,7 @@ import {
 } from '@modelcontextprotocol/server/stdio';
 import {
   CLIENT_CAPABILITIES_META_KEY,
+  CLIENT_INFO_META_KEY,
   inputRequired,
   inputResponse,
   isInputRequiredResult,
@@ -33,15 +34,18 @@ import {
 } from '@modelcontextprotocol/server';
 import type {
   CallToolResult,
+  Server as SdkServer,
   Icon,
   Implementation,
   InputRequiredResult,
   ListToolsResult,
   ServerCapabilities,
+  Transport,
 } from '@modelcontextprotocol/server';
 import {CoreBindings, extensionFilter, Server} from '@agentback/core';
 import {MetadataAccessor, MetadataInspector} from '@agentback/metadata';
 import {
+  AgentError,
   buildErrorEnvelope,
   ErrorCodes,
   schemaToOpenApiSchema,
@@ -89,6 +93,18 @@ import {
   type ToolCostReport,
 } from './tool-cost.js';
 import {assertIcons, assertJson} from './fragments.js';
+import {
+  CONFIRM_REQUEST_KEY,
+  createElicitSession,
+  ElicitMisuseError,
+  elicitationUnavailable,
+  isInputRequired,
+  requestedSchemaFor,
+  requestStateCodec,
+  type ElicitSession,
+  type RequestClient,
+  type RequestStatePayload,
+} from './elicit.js';
 import {
   toResourceContents,
   type ResourceContentItem,
@@ -183,6 +199,46 @@ function isSameMember(a: ToolBinding, b: ToolBinding): boolean {
   return a.ctor === b.ctor && a.meta.methodName === b.meta.methodName;
 }
 
+/**
+ * What the server knows about the client behind one request.
+ *
+ * The 2026 era carries the client's capabilities in every request's `_meta`
+ * envelope. The 2025 era declared them once, at `initialize`, which only a
+ * connection-holding server saw: a session, or stdio. A stateless 2025
+ * request builds a fresh server that never saw `initialize`, so its
+ * capabilities are unknown and it cannot receive a server→client request.
+ */
+function requestClientFor(
+  extra: ToolRequestExtra,
+  sdkServer?: SdkServer,
+): RequestClient {
+  const envelope = (
+    extra.mcpReq as {envelope?: Record<string, unknown>} | undefined
+  )?.envelope;
+  if (envelope) {
+    const capabilities = envelope[CLIENT_CAPABILITIES_META_KEY] as
+      Record<string, unknown> | undefined;
+    const info = envelope[CLIENT_INFO_META_KEY] as
+      RequestClient['info'] | undefined;
+    return {
+      era: 'modern',
+      ...(capabilities ? {capabilities} : {}),
+      ...(info ? {info} : {}),
+      canRoundTrip: true,
+    };
+  }
+  const capabilities = sdkServer?.getClientCapabilities() as
+    Record<string, unknown> | undefined;
+  const info = sdkServer?.getClientVersion() as
+    RequestClient['info'] | undefined;
+  return {
+    era: 'legacy',
+    ...(capabilities ? {capabilities} : {}),
+    ...(info ? {info} : {}),
+    canRoundTrip: capabilities !== undefined,
+  };
+}
+
 /** Hops from `ctx` to the root of its chain (the root is 0). */
 function contextDepth(ctx: Context | undefined): number {
   let depth = 0;
@@ -207,6 +263,53 @@ const loggedDuplicates = new WeakMap<Context, Set<string>>();
 
 function memberName(t: ToolBinding): string {
   return `${t.ctor.name}.${String(t.meta.methodName)}`;
+}
+
+/** The input with any `confirmationToken` stripped, stably serialized. */
+function inputFingerprint(input: unknown): string {
+  const raw =
+    input && typeof input === 'object'
+      ? {...(input as Record<string, unknown>)}
+      : {};
+  delete raw.confirmationToken;
+  return stableStringify(raw);
+}
+
+function confirmTtlMs(tool: ToolBinding): number | undefined {
+  return typeof tool.meta.confirm === 'object'
+    ? tool.meta.confirm.ttlMs
+    : undefined;
+}
+
+function confirmationInvalid(): Error {
+  const err = new Error(
+    'The confirmation token is invalid, expired, or was issued for a ' +
+      'different input.',
+  );
+  const e = err as Error & {code: string; publicMessage: string};
+  e.code = ErrorCodes.CONFIRMATION_INVALID;
+  e.publicMessage = err.message;
+  return err;
+}
+
+/** A `requestState` that fails verification or belongs to another call. */
+function invalidRequestState(tool: ToolBinding): Error {
+  if (tool.meta.confirm) return confirmationInvalid();
+  return new AgentError(
+    `The request state for ${tool.meta.name} is invalid, expired, or was ` +
+      `issued for a different call. Repeat the call without it.`,
+    {code: ErrorCodes.INVALID_INPUT},
+  );
+}
+
+/** A tool that kept running after an ask suspended it. */
+function swallowedSignal(tool: ToolBinding, session: ElicitSession): Error {
+  const keys = [...session.pending.keys()].map(k => `'${k}'`).join(', ');
+  return new Error(
+    `@tool('${tool.meta.name}') on ${memberName(tool)}: elicit.ask(${keys}) ` +
+      `suspended the call but the tool swallowed the signal — rethrow errors ` +
+      `where isInputRequired(e).`,
+  );
 }
 
 /** Data-URI server icons above this size log a warning (sent per result). */
@@ -437,12 +540,6 @@ export interface CallToolOptions {
    */
   signal?: AbortSignal;
 }
-
-/**
- * The `inputRequests` key the confirmation elicitation is filed under. Stable
- * because the retry reads its answer back by the same name.
- */
-const CONFIRM_REQUEST_KEY = 'confirm';
 
 export class MCPServer implements Server {
   private mcp: McpServer;
@@ -739,13 +836,21 @@ export class MCPServer implements Server {
     // here.
     const reqCtx =
       ctx === this.context ? new Context(this.context, 'mcp.request') : ctx;
-    const run = (): Promise<unknown> =>
-      this.invokeTool(tool, input, reqCtx, call?.principal);
+    const info: McpDispatchInfo = {tool, input, ctx: reqCtx};
+    const run = async (): Promise<unknown> => {
+      const result = await this.invokeTool(
+        tool,
+        input,
+        reqCtx,
+        call?.principal,
+      );
+      info.inputRequired = isInputRequiredResult(result);
+      return result;
+    };
 
     const hooks = await this.resolveDispatchHooks();
     if (hooks.length === 0) return run();
 
-    const info: McpDispatchInfo = {tool, input, ctx: reqCtx};
     let next = run;
     for (let i = hooks.length - 1; i >= 0; i--) {
       const hook = hooks[i]!;
@@ -789,11 +894,17 @@ export class MCPServer implements Server {
     // unauthorized callers learn nothing about a tool's schema.
     await this.authorizeTool(tool, user, reqCtx);
 
+    // The framework's signed request state, shared by `confirm:` and
+    // elicitation. Verified before anything reads it; bound to this tool and
+    // this exact input.
+    const fingerprint = inputFingerprint(input);
+    const state = await this.readRequestState(tool, fingerprint, reqCtx);
+
     // Safety gate: `confirm:` tools require a confirmation round-trip. The
     // token rides in the optional `confirmationToken` input property
     // (advertised in the inputSchema) and is stripped before validation.
     if (tool.meta.confirm) {
-      const gate = await this.enforceConfirmation(tool, input, reqCtx);
+      const gate = await this.enforceConfirmation(tool, input, reqCtx, state);
       // A native confirmation prompt is a RESULT, not an input: it goes back to
       // the client untouched and the tool body never runs this turn.
       if (isInputRequiredResult(gate)) return gate;
@@ -814,6 +925,33 @@ export class MCPServer implements Server {
       nonInjected.push(parsedIn.data);
     }
 
+    // The per-request elicitor. Answers sealed into an earlier round replay
+    // first; this round's `inputResponses` answer what is still open.
+    const session = createElicitSession(
+      state?.answers ?? {},
+      this.mrtrContext(reqCtx).responses,
+    );
+    reqCtx.bind(MCPBindings.ELICIT).to(session);
+    try {
+      const result = await this.runToolBody(tool, nonInjected, reqCtx);
+      if (session.pending.size) throw swallowedSignal(tool, session);
+      return result;
+    } catch (err) {
+      if (!session.pending.size || err instanceof ElicitMisuseError) throw err;
+      if (!isInputRequired(err)) throw swallowedSignal(tool, session);
+      return this.suspendForInput(tool, fingerprint, session, reqCtx);
+    }
+  }
+
+  /**
+   * Resolve the method's `@inject` arguments, invoke it, drain a streamed
+   * result, and validate the output.
+   */
+  private async runToolBody(
+    tool: ToolBinding,
+    nonInjected: unknown[],
+    reqCtx: Context,
+  ): Promise<unknown> {
     // Resolve method-parameter `@inject(...)` against the per-request child
     // context so handlers can inject `MCPBindings.REQUEST_AUTH`,
     // `SecurityBindings.USER` and other request-scoped values.
@@ -857,7 +995,23 @@ export class MCPServer implements Server {
       const collected: unknown[] = [];
       try {
         for (let i = 0; ; i++) {
-          const step = await iterator.next();
+          let step: IteratorResult<unknown>;
+          try {
+            step = await iterator.next();
+          } catch (err) {
+            // Every round re-runs the tool from the top, so an ask after the
+            // first yield would re-send those items on every round.
+            if (isInputRequired(err) && collected.length) {
+              throw new ElicitMisuseError(
+                `@tool('${tool.meta.name}') on ${memberName(tool)}: ` +
+                  `elicit.ask(${err.keys.map(k => `'${k}'`).join(', ')}) ` +
+                  `after the tool streamed ${collected.length} item(s) — ` +
+                  `ask before the first yield, since each round re-runs the ` +
+                  `tool from the top.`,
+              );
+            }
+            throw err;
+          }
           if (step.done) break;
           collected.push(step.value);
           // `total` is unknown for a generator — the ProgressFn type leaves it
@@ -910,7 +1064,6 @@ export class MCPServer implements Server {
    */
   private mrtrContext(reqCtx: Context): {
     canElicit: boolean;
-    requestState?: string;
     responses?: Record<string, unknown>;
   } {
     const extra = reqCtx.getSync(MCPBindings.REQUEST_EXTRA, {
@@ -919,21 +1072,122 @@ export class MCPServer implements Server {
       | {
           mcpReq?: {
             envelope?: Record<string, unknown>;
-            requestState?: () => unknown;
             inputResponses?: Record<string, unknown>;
           };
         }
       | undefined;
     const req = extra?.mcpReq;
-    if (!req?.envelope) return {canElicit: false};
+    const responses = req?.inputResponses
+      ? {responses: req.inputResponses}
+      : {};
+    if (!req?.envelope) return {canElicit: false, ...responses};
     const caps = req.envelope[CLIENT_CAPABILITIES_META_KEY] as
       {elicitation?: unknown} | undefined;
-    const state = req.requestState?.();
-    return {
-      canElicit: Boolean(caps?.elicitation),
-      ...(typeof state === 'string' && state ? {requestState: state} : {}),
-      ...(req.inputResponses ? {responses: req.inputResponses} : {}),
+    return {canElicit: Boolean(caps?.elicitation), ...responses};
+  }
+
+  /** The signing codec for the framework's `requestState` envelope. */
+  private async stateCodec() {
+    const key = await this.context.get(MCPBindings.REQUEST_STATE_KEY);
+    return requestStateCodec(key);
+  }
+
+  /**
+   * Verify and decode the framework's `requestState`, or `undefined` when the
+   * client sent none. The client echoes it back, so the spec treats it as
+   * attacker-controlled: a bad signature, an expired one, or state minted for
+   * another tool or another input is refused rather than ignored.
+   */
+  private async readRequestState(
+    tool: ToolBinding,
+    fingerprint: string,
+    reqCtx: Context,
+  ): Promise<RequestStatePayload | undefined> {
+    const extra = reqCtx.getSync(MCPBindings.REQUEST_EXTRA, {
+      optional: true,
+    });
+    const raw = (
+      extra?.mcpReq as {requestState?: () => unknown} | undefined
+    )?.requestState?.();
+    if (raw === undefined || raw === null || raw === '') return undefined;
+    let payload: RequestStatePayload | undefined;
+    try {
+      if (typeof raw === 'string') {
+        payload = await (await this.stateCodec()).verify(raw, extra!);
+      }
+    } catch {
+      payload = undefined;
+    }
+    if (
+      !payload ||
+      payload.v !== 1 ||
+      payload.tool !== tool.meta.name ||
+      payload.fp !== fingerprint
+    ) {
+      throw invalidRequestState(tool);
+    }
+    return payload;
+  }
+
+  /**
+   * The tool body asked the user something it does not have an answer to:
+   * return an `input_required` result carrying every pending question, or
+   * fail when this caller cannot be asked.
+   *
+   * On the 2026 era the client answers and retries. On a 2025 session or
+   * stdio, the SDK's legacy shim turns the same result into a real
+   * `elicitation/create` request and re-enters this handler. A stateless 2025
+   * request and an in-process `callTool` cannot answer, and the framework says
+   * so before the SDK would raise a protocol error.
+   */
+  private async suspendForInput(
+    tool: ToolBinding,
+    fingerprint: string,
+    session: ElicitSession,
+    reqCtx: Context,
+  ): Promise<InputRequiredResult> {
+    const client = reqCtx.getSync(MCPBindings.REQUEST_CLIENT, {
+      optional: true,
+    });
+    const keys = [...session.pending.keys()].map(k => `'${k}'`).join(', ');
+    if (!client?.canRoundTrip || !client.capabilities?.elicitation) {
+      throw elicitationUnavailable(
+        `@tool('${tool.meta.name}') elicit.ask(${keys})`,
+      );
+    }
+    const inputRequests: Record<
+      string,
+      ReturnType<typeof inputRequired.elicit>
+    > = {};
+    for (const [key, {form}] of session.pending) {
+      inputRequests[key] = inputRequired.elicit({
+        message: form.message,
+        requestedSchema: requestedSchemaFor(key, form, client) as never,
+      });
+    }
+    const payload: RequestStatePayload = {
+      v: 1,
+      tool: tool.meta.name,
+      fp: fingerprint,
+      ...(Object.keys(session.answers).length
+        ? {answers: session.answers}
+        : {}),
     };
+    // A `confirm:` tool that got this far was confirmed this round. The
+    // store token that proved it is spent, so carry a fresh one: the next
+    // round verifies it (single-use) instead of prompting the human again.
+    if (tool.meta.confirm) {
+      payload.confirmed = (await this.confirmationStore()).issue(
+        `tool:${tool.meta.name}`,
+        fingerprint,
+        confirmTtlMs(tool),
+      );
+    }
+    const extra = reqCtx.getSync(MCPBindings.REQUEST_EXTRA, {optional: true});
+    return inputRequired({
+      inputRequests,
+      requestState: await (await this.stateCodec()).mint(payload, extra),
+    });
   }
 
   /**
@@ -948,7 +1202,8 @@ export class MCPServer implements Server {
    * - **2026-07-28, client declares `elicitation`** — the call returns a
    *   native `input_required` result with an elicitation, so a conformant host
    *   renders a real confirmation prompt instead of asking the model to replay
-   *   a token. The token rides in `requestState`.
+   *   a token. The token rides in the framework's signed `requestState`
+   *   envelope (`confirm`).
    *
    * A modern client that cannot elicit falls back to the token dance, because
    * the SDK rejects an elicitation it did not declare support for. The new era
@@ -957,13 +1212,14 @@ export class MCPServer implements Server {
    * **The `ConfirmationStore` remains the sole authority on both paths**, and
    * that is the load-bearing decision here. `requestState` is echoed back by
    * the client, so the MCP spec requires treating it as attacker-controlled on
-   * re-entry; it carries no replay defense, no revocation and no staleness of
-   * its own. Using it merely to *transport* a token the server already issued
-   * — single-use, TTL'd, and fingerprinted against the exact input — means a
-   * forged or replayed `requestState` fails `store.verify` exactly as a forged
-   * input token does. Had the confirmation itself been encoded into
-   * `requestState`, this migration would have traded a server-authoritative
-   * gate for a client-held claim.
+   * re-entry. The envelope is signed, but a signature proves only that this
+   * server minted it — not that it was used once. So the envelope merely
+   * *transports* a token the store issued — single-use, TTL'd, and
+   * fingerprinted against the exact input — and a replayed envelope fails
+   * `store.verify` exactly as a replayed input token does.
+   *
+   * A tool that also asks the user questions carries a fresh store token
+   * (`confirmed`) across its question rounds; see {@link suspendForInput}.
    *
    * Returns the input with the token stripped (ready for schema validation),
    * or an `InputRequiredResult` the caller must return to the client verbatim.
@@ -972,6 +1228,7 @@ export class MCPServer implements Server {
     tool: ToolBinding,
     input: unknown,
     reqCtx?: Context,
+    state?: RequestStatePayload,
   ): Promise<unknown | InputRequiredResult> {
     const raw =
       input && typeof input === 'object'
@@ -982,6 +1239,16 @@ export class MCPServer implements Server {
     const scope = `tool:${tool.meta.name}`;
     const fingerprint = stableStringify(raw);
     const store = await this.confirmationStore();
+
+    // Confirmed in an earlier round of this call; the human is not asked
+    // again, but the store token still has to verify (single-use).
+    if (state?.confirmed) {
+      if (!store.verify(state.confirmed, scope, fingerprint)) {
+        throw confirmationInvalid();
+      }
+      return raw;
+    }
+
     const mrtr = reqCtx ? this.mrtrContext(reqCtx) : {canElicit: false};
 
     // On the MRTR path the token alone must NOT authorize the call.
@@ -996,13 +1263,13 @@ export class MCPServer implements Server {
     //
     // Rejecting only explicit decline/cancel (the first shape of this code) let
     // a missing, malformed, or `{confirm: false}` response through.
-    if (mrtr.canElicit) {
+    if (mrtr.canElicit && state?.confirm) {
       const answer = inputResponse(mrtr.responses ?? {}, CONFIRM_REQUEST_KEY);
       const accepted =
         answer.kind === 'elicit' &&
         answer.action === 'accept' &&
         (answer.content as {confirm?: unknown} | undefined)?.confirm === true;
-      if (mrtr.requestState && !accepted) {
+      if (!accepted) {
         const why =
           answer.kind === 'elicit' && answer.action !== 'accept'
             ? answer.action === 'cancel'
@@ -1022,15 +1289,14 @@ export class MCPServer implements Server {
     // The explicit input property wins, so a caller that already knows the
     // token dance keeps working on either era.
     const token =
-      typeof explicit === 'string' && explicit ? explicit : mrtr.requestState;
+      typeof explicit === 'string' && explicit ? explicit : state?.confirm;
 
     if (typeof token !== 'string' || !token) {
-      const ttlMs =
-        typeof tool.meta.confirm === 'object'
-          ? tool.meta.confirm.ttlMs
-          : undefined;
-      const issued = store.issue(scope, fingerprint, ttlMs);
+      const issued = store.issue(scope, fingerprint, confirmTtlMs(tool));
       if (mrtr.canElicit) {
+        const extra = reqCtx!.getSync(MCPBindings.REQUEST_EXTRA, {
+          optional: true,
+        });
         return inputRequired({
           inputRequests: {
             [CONFIRM_REQUEST_KEY]: inputRequired.elicit({
@@ -1050,7 +1316,12 @@ export class MCPServer implements Server {
             }),
           },
           // Transport only — `store.verify` below is what actually authorizes.
-          requestState: issued,
+          requestState: await (
+            await this.stateCodec()
+          ).mint(
+            {v: 1, tool: tool.meta.name, fp: fingerprint, confirm: issued},
+            extra,
+          ),
         });
       }
       const err = new Error(
@@ -1068,16 +1339,7 @@ export class MCPServer implements Server {
       e.publicMessage = err.message;
       throw err;
     }
-    if (!store.verify(token, scope, fingerprint)) {
-      const err = new Error(
-        'The confirmation token is invalid, expired, or was issued for a ' +
-          'different input.',
-      );
-      const e = err as Error & {code: string; publicMessage: string};
-      e.code = ErrorCodes.CONFIRMATION_INVALID;
-      e.publicMessage = err.message;
-      throw err;
-    }
+    if (!store.verify(token, scope, fingerprint)) throw confirmationInvalid();
     return raw;
   }
 
@@ -1294,8 +1556,12 @@ export class MCPServer implements Server {
    * binding the transport extras (auth, request info, raw extras, progress
    * relay). Shared by the tool/resource/prompt registration closures.
    */
-  protected requestContextFor(extra: ToolRequestExtra): Context {
+  protected requestContextFor(
+    extra: ToolRequestExtra,
+    sdkServer?: SdkServer,
+  ): Context {
     const ctx = new Context(this.context, 'mcp.request');
+    ctx.bind(MCPBindings.REQUEST_CLIENT).to(requestClientFor(extra, sdkServer));
     // SDK v2 nests the transport extras under `ctx.http` (undefined on stdio).
     if (extra.http?.authInfo) {
       ctx.bind(MCPBindings.REQUEST_AUTH).to(extra.http.authInfo);
@@ -1322,6 +1588,20 @@ export class MCPServer implements Server {
    * at a time, so concurrent HTTP sessions each get their own server instance
    * (all exposing the same surface). See `@agentback/mcp-http`.
    */
+  /**
+   * Serve both protocol eras over a transport you supply — an in-memory pair
+   * in tests, a socket, a custom stream. The connection's opening exchange
+   * picks the era (2026-07-28 via `server/discover`, or a 2025 `initialize`),
+   * exactly as stdio under `protocol: 'both'` does, and one server from
+   * {@link buildServer} serves the connection.
+   */
+  serveTransport(
+    transport: Transport,
+    options: {scopes?: string[]} = {},
+  ): {close(): Promise<void>} {
+    return serveStdio(() => this.buildServer(options), {transport});
+  }
+
   buildServer(options: {scopes?: string[]} = {}): McpServer {
     const server = new McpServer(this.serverInfo, {
       capabilities: this.capabilities,
@@ -1525,7 +1805,7 @@ export class MCPServer implements Server {
           // (auth, transport headers, principals) from the shared app
           // context. Always created — dispatchTool binds principals into it,
           // and a shared-context write would leak across requests.
-          const ctx = this.requestContextFor(extra);
+          const ctx = this.requestContextFor(extra, server);
 
           const result = await this.dispatchTool(t, input, ctx);
           // A `confirm:` tool asking for native confirmation (2026-07-28).

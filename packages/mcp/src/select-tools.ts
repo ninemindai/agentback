@@ -2,8 +2,29 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import {describeInjectedArguments} from '@agentback/context';
+import {MCPBindings} from './keys.js';
 import {requiredScopesForTool} from './policy.js';
 import type {ToolBinding} from './mcp.server.js';
+
+/**
+ * Whether the tool's method injects `MCPBindings.ELICIT`, i.e. may ask the
+ * user something mid-call. Read from the method's `@inject` metadata, so it is
+ * known at projection time without running the tool.
+ */
+export function toolAsksUser(t: ToolBinding): boolean {
+  return describeInjectedArguments(
+    t.ctor.prototype,
+    String(t.meta.methodName),
+  ).some(i => {
+    const sel = i?.bindingSelector as unknown;
+    return (
+      sel === MCPBindings.ELICIT ||
+      sel === MCPBindings.ELICIT.key ||
+      String(sel) === MCPBindings.ELICIT.key
+    );
+  });
+}
 
 /**
  * Transport-neutral tool selection, shared by every projection that hands a
@@ -18,7 +39,9 @@ import type {ToolBinding} from './mcp.server.js';
  * - duplicate tool names (ambiguous selection),
  * - include/exclude entries matching no visible tool,
  * - `confirm:` tools named in an include list (their confirmation round-trip
- *   does not survive projection — excluded by default).
+ *   does not survive projection — excluded by default),
+ * - tools that inject `MCPBindings.ELICIT` named in an include list (a
+ *   projected caller has no user to ask — excluded by default).
  */
 export interface SelectToolsOptions {
   /** Only these tools are selected (least privilege). */
@@ -71,6 +94,13 @@ export function selectTools(
   }
 
   for (const n of opts.include ?? []) {
+    if (toolAsksUser(byName.get(n)!)) {
+      throw new Error(
+        `selectTools: tool '${n}' asks the user mid-call (it injects ` +
+          `MCPBindings.ELICIT) — a projected caller has no user to ask, so ` +
+          `such tools are excluded by default.`,
+      );
+    }
     if (byName.get(n)!.meta.confirm) {
       throw new Error(
         `selectTools: tool '${n}' is a confirm: tool — the confirmation ` +
@@ -83,6 +113,7 @@ export function selectTools(
   return visible.filter(
     t =>
       !t.meta.confirm &&
+      !toolAsksUser(t) &&
       (!opts.include || opts.include.includes(t.meta.name)) &&
       !(opts.exclude ?? []).includes(t.meta.name),
   );

@@ -45,7 +45,34 @@ specs settle.
 See the "Host extensions" section of
 [docs/guides/mcp-apps-widgets.md](../guides/mcp-apps-widgets.md).
 
+### Elicitation: ask the user mid-call — `@agentback/mcp` (experimental)
+
+P1-7 phase 2 ([proposal](../proposals/host-extensions.md) §5). A tool injects
+`MCPBindings.ELICIT` and calls `await elicit.ask(key, {message, standard})`
+(or `askAll`). The tool re-runs from the top each round with earlier answers
+replayed. Works for 2026 clients and 2025 sessions/stdio that declared
+`elicitation`; other callers get `elicitation_unavailable`. Also new:
+`MCPBindings.REQUEST_CLIENT`, `hasClientExtension()`,
+`MCPBindings.REQUEST_STATE_KEY`, `MCPServer.serveTransport()`,
+`McpDispatchInfo.inputRequired`, `createTestApp({mcpEra, mcpElicit})`, and the
+error codes `elicitation_unavailable` / `elicitation_unsupported` /
+`elicitation_declined`.
+
 ## ⚠️ Behaviour changes
+
+- **`confirm:`'s native prompt now carries its token in a signed envelope.**
+  On the 2026 era the `requestState` is no longer the raw store token; a raw
+  token sent as `requestState` is refused (`confirmation_invalid`). The
+  `confirmationToken` input property is unchanged. Multi-instance deployments
+  should bind `MCPBindings.REQUEST_STATE_KEY` to one shared key (≥ 32 bytes),
+  or a retry landing on another instance is refused.
+- **Metering bills a multi-round MCP call once**, on its final round. A
+  `confirm:` prompt round used to emit a usage event of its own.
+- **`createTestApp`'s in-memory MCP client is served through
+  `MCPServer.serveTransport()`** (both eras on one connection). A 2025 client
+  is still the default.
+- `selectTools` (the agents and CLI projections) now excludes tools that
+  inject `MCPBindings.ELICIT`, and throws if one is named in `include`.
 
 - **Duplicate tool names now throw at `start()`**, naming both members.
   Before, the last registration silently won. The same class bound twice (e.g.

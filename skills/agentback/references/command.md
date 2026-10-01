@@ -60,6 +60,7 @@ identity the CLI runs as (`@authorize` tools authorize under it).
   `my-svc <command> --help` (flags from the schema).
 - **Lifecycle:** discovery works pre-`start()`; **invocation needs
   `app.start()`** (and `app.stop()` is a no-op without it). The `bin` owns both.
-- **`confirm:` tools are excluded** (parity with `@agentback/agents`).
+- **`confirm:` tools are excluded** (parity with `@agentback/agents`), and so are
+  tools that inject `MCPBindings.ELICIT` (a command has no user to ask mid-call).
 
 See `examples/hello-command` and [docs/guides/command.md](../../../docs/guides/command.md).

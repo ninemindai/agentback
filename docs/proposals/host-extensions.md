@@ -333,6 +333,30 @@ These land with 1a: the docs are what make the seams usable.
 
 ## 5. Phase 2 — user-authored elicitation (G6)
 
+> **Status (2026-10-01): implemented**, experimental. Differences from the
+> design below, each found while building it:
+>
+> - **`REQUEST_CLIENT` landed with phase 2** (it is what dispatch branches on);
+>   `REQUEST_META` and the rest of §4.7 stay in 1b. Legacy capabilities come
+>   from `Server.getClientCapabilities()`, which is `undefined` on a stateless
+>   2025 request — that is what `canRoundTrip: false` means.
+> - **The codec is used standalone, not as the server-wide verify hook.** The
+>   SDK's `ServerOptions.requestState.verify` runs before every handler and
+>   changes `requestState()` from the wire string to the decoded payload, so it
+>   would reject `confirm:`'s raw tokens server-wide. The dispatcher mints and
+>   verifies the one envelope itself.
+> - **A `confirm:` tool that also asks carries a fresh store token**
+>   (`confirmed`) across its question rounds. The confirming token is spent on
+>   the round it is verified, and the signature alone does not prevent replay.
+> - Forms take a `message`; `extended` answers are validated against
+>   `standard`.
+> - The price gate needed no change: `rail.authorize` runs per round and
+>   authorizes without settling.
+> - Tests use `createTestApp(App, {mcpEra, mcpElicit})` and
+>   `MCPServer.serveTransport()` rather than `{mcp: {era}}`.
+> - **Q1 answered:** `x-openai-*` keys reach the 2026 wire, but TS SDK clients
+>   strip them from individual properties and keep top-level extras.
+
 ### 5.1 API
 
 ```ts
@@ -618,7 +642,7 @@ P1-6's header points here.
 
 | #   | Question                                                                                                                                                                     | How it closes                                                                                                                                                                       |
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Q1  | Do `x-openai-*` keys survive the 2026 wire through `inputRequired.elicit`?                                                                                                   | First phase-2 test. If they are stripped, extended forms wait on an SDK fix (file upstream) and `standard` forms carry on                                                           |
+| Q1  | ~~Do `x-openai-*` keys survive the 2026 wire through `inputRequired.elicit`?~~                                                                                               | **Closed: partly.** They reach the wire; TS SDK clients strip property-level vendor keys and keep top-level ones (`elicit.unit.ts`)                                                 |
 | Q2  | ~~Does the 2026 envelope carry `extensions`?~~                                                                                                                               | **Closed: yes** (`ClientCapabilities2026Schema`)                                                                                                                                    |
 | Q3  | Does `@openai/mcp-extensions/app` (ext-apps `^1.7.5`) work against an ext-apps 2.x `App`?                                                                                    | A widget spike in the example. Otherwise document the raw `postMessage` methods; never add v1 to the lockfile                                                                       |
 | Q4  | Is `clientInfo` reliable enough to pick a per-host `domain`?                                                                                                                 | Test against both hosts. Fallback: one `installMcpHttp` mount per host with a host hint bound per mount; `buildServer` already runs per request, so a mount-scoped default is cheap |

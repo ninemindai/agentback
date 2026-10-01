@@ -56,6 +56,12 @@ export const ErrorCodes = {
   CONFLICT: 'conflict',
   CONFIRMATION_REQUIRED: 'confirmation_required',
   CONFIRMATION_INVALID: 'confirmation_invalid',
+  /** An MCP tool asked the user something this caller cannot answer. */
+  ELICITATION_UNAVAILABLE: 'elicitation_unavailable',
+  /** An MCP question has only a form this client cannot render. */
+  ELICITATION_UNSUPPORTED: 'elicitation_unsupported',
+  /** The user declined or cancelled an MCP question. */
+  ELICITATION_DECLINED: 'elicitation_declined',
   PAYMENT_REQUIRED: 'payment_required',
   IDEMPOTENCY_KEY_REQUIRED: 'idempotency_key_required',
   RATE_LIMITED: 'rate_limited',
@@ -205,6 +211,22 @@ export function hintForCode(code: string): string | undefined {
         'The confirmation token is missing, expired, or was issued for a ' +
         'different request payload. Repeat the request without a token to ' +
         'obtain a fresh one, then retry with it.'
+      );
+    case ErrorCodes.ELICITATION_UNAVAILABLE:
+      return (
+        'This tool asks the user a question mid-call. Call it from an MCP ' +
+        'client that declares the elicitation capability (2026 protocol, a ' +
+        '2025 session, or stdio); it cannot run in-process or statelessly.'
+      );
+    case ErrorCodes.ELICITATION_UNSUPPORTED:
+      return (
+        "The tool's question has no form this client can render; the tool " +
+        'needs a standard form for it.'
+      );
+    case ErrorCodes.ELICITATION_DECLINED:
+      return (
+        'The user declined to answer. Do not retry automatically; ask the ' +
+        'user how to proceed.'
       );
     case ErrorCodes.IDEMPOTENCY_KEY_REQUIRED:
       return (

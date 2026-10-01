@@ -42,8 +42,10 @@ async function harness() {
   const mcp = await app.get<MCPServer>('servers.MCPServer');
   await mcp.start();
 
+  // Through the real pipeline (protected `dispatchTool`), so the signed
+  // request state is verified exactly as the SDK handler path verifies it.
   const server = mcp as unknown as {
-    enforceConfirmation: (
+    dispatchTool: (
       tool: ToolBinding,
       input: unknown,
       ctx?: Context,
@@ -88,7 +90,7 @@ async function harness() {
     app,
     ctxFor,
     gate: (input: unknown, ctx?: Context) =>
-      server.enforceConfirmation(deploy, input, ctx),
+      server.dispatchTool(deploy, input, ctx),
   };
 }
 
@@ -155,11 +157,62 @@ describe('confirm: — the store stays the authority under MRTR', () => {
         });
 
       await expect(h.gate({env: 'prod'}, ctx())).resolves.toEqual({
-        env: 'prod',
+        deployed: 'prod',
       });
       await expect(h.gate({env: 'prod'}, ctx())).rejects.toMatchObject({
         code: 'confirmation_invalid',
       });
+    } finally {
+      await h.app.stop();
+    }
+  });
+});
+
+describe('confirm: — the signed request state', () => {
+  it('refuses a TAMPERED envelope', async () => {
+    const h = await harness();
+    try {
+      const issued = (await h.gate(
+        {env: 'prod'},
+        h.ctxFor({modern: true, canElicit: true}),
+      )) as {requestState: string};
+      const s = issued.requestState;
+      const tampered = s.slice(0, -2) + (s.endsWith('A') ? 'BB' : 'AA');
+      await expect(
+        h.gate(
+          {env: 'prod'},
+          h.ctxFor({
+            modern: true,
+            canElicit: true,
+            requestState: tampered,
+            responses: {confirm: {action: 'accept', content: {confirm: true}}},
+          }),
+        ),
+      ).rejects.toMatchObject({code: 'confirmation_invalid'});
+    } finally {
+      await h.app.stop();
+    }
+  });
+
+  it('refuses a bare store token posing as request state', async () => {
+    // Before the shared envelope, the raw store token WAS the request state.
+    // Now an unsigned value fails verification before the store is consulted.
+    const h = await harness();
+    try {
+      const err = (await h
+        .gate({env: 'prod'}, h.ctxFor({modern: false}))
+        .catch((e: unknown) => e)) as {confirmationToken: string};
+      await expect(
+        h.gate(
+          {env: 'prod'},
+          h.ctxFor({
+            modern: true,
+            canElicit: true,
+            requestState: err.confirmationToken,
+            responses: {confirm: {action: 'accept', content: {confirm: true}}},
+          }),
+        ),
+      ).rejects.toMatchObject({code: 'confirmation_invalid'});
     } finally {
       await h.app.stop();
     }
@@ -209,8 +262,8 @@ describe('confirm: — which presentation is chosen', () => {
         {env: 'prod', confirmationToken: err.confirmationToken},
         h.ctxFor({modern: true, canElicit: true}),
       );
-      // Token stripped, ready for schema validation.
-      expect(confirmed).toEqual({env: 'prod'});
+      // Token stripped before schema validation, so the tool ran.
+      expect(confirmed).toEqual({deployed: 'prod'});
     } finally {
       await h.app.stop();
     }
