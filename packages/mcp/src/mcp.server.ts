@@ -569,6 +569,39 @@ export interface CallToolOptions {
    * `@agentback/command`, a job worker) that own the unit of work themselves.
    */
   signal?: AbortSignal;
+  /**
+   * What a transport request would have said about its client, `_meta` and
+   * mount — bound as `REQUEST_CLIENT` / `REQUEST_META` / `REQUEST_MOUNT` for
+   * this call only. For tools that preview per-host presentation (the
+   * inspector's client profiles, tests). It changes presentation inputs only:
+   * identity still comes from {@link principal} and authorization runs as
+   * usual, and it opens no round trip (an `elicit.ask` still answers
+   * `elicitation_unavailable`).
+   */
+  simulate?: SimulatedRequest;
+}
+
+/** A transport request's client facts, simulated for an in-process call. */
+export interface SimulatedRequest {
+  client?: RequestClient;
+  mount?: McpMount;
+  meta?: Record<string, unknown>;
+}
+
+/** Bind (or shadow with `undefined`) the request keys a simulation sets. */
+function bindSimulated(ctx: Context, simulate: SimulatedRequest | undefined) {
+  if (!simulate) return;
+  if (simulate.client) {
+    ctx.bind(MCPBindings.REQUEST_CLIENT).to(structuredClone(simulate.client));
+  }
+  if (simulate.mount) {
+    ctx.bind(MCPBindings.REQUEST_MOUNT).to(Object.freeze({...simulate.mount}));
+  }
+  if (simulate.meta) {
+    ctx
+      .bind(MCPBindings.REQUEST_META)
+      .to(deepFreeze(structuredClone(simulate.meta)));
+  }
 }
 
 export class MCPServer implements Server {
@@ -765,6 +798,7 @@ export class MCPServer implements Server {
       if (reqCtx.parent?.isBound(key.key))
         reqCtx.bind(key).to(undefined as never);
     }
+    bindSimulated(reqCtx, opts?.simulate);
     // Bound on the child, so it shadows any signal the parent context carries
     // — an explicit per-call signal is a narrower statement than the turn's.
     if (opts?.signal) reqCtx.bind(CoreBindings.ABORT_SIGNAL).to(opts.signal);
@@ -776,10 +810,16 @@ export class MCPServer implements Server {
    * MCP client receives. Shares the dispatch path with the SDK-registered
    * handler. Used by the mcp-inspector UI.
    */
-  async readResource(name: string): Promise<{contents: ResourceContentItem[]}> {
+  async readResource(
+    name: string,
+    opts: {simulate?: SimulatedRequest} = {},
+  ): Promise<{contents: ResourceContentItem[]}> {
     const resource = this.collectAllResources().find(r => r.meta.name === name);
     if (!resource) throw new Error(`Unknown resource: ${name}`);
-    return this.dispatchResource(resource);
+    if (!opts.simulate) return this.dispatchResource(resource);
+    const ctx = new Context(this.context, 'mcp.request');
+    bindSimulated(ctx, opts.simulate);
+    return this.dispatchResource(resource, ctx);
   }
 
   /**
@@ -1296,7 +1336,11 @@ export class MCPServer implements Server {
       : undefined;
     const keys = [...session.pending.keys()].map(k => `'${k}'`).join(', ');
     const what = `@tool('${tool.meta.name}') elicit.ask(${keys})`;
-    if (!client) throw elicitationUnavailable(what, 'in-process');
+    // A round trip needs a transport request of this very context; a client
+    // simulated for an in-process call (`callTool({simulate})`) has none.
+    if (!client || !ownExtra(reqCtx)) {
+      throw elicitationUnavailable(what, 'in-process');
+    }
     if (!client.canRoundTrip) throw elicitationUnavailable(what, 'stateless');
     if (!client.capabilities?.elicitation) {
       throw elicitationUnavailable(what, 'no-capability');

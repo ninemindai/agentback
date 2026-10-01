@@ -254,8 +254,10 @@ so a constructor gets the app-level default, whose asks always fail.
 - `askAll({a: formA, b: formB})` asks several questions in one round.
 - A declined or cancelled answer throws `AgentError` `elicitation_declined`
   (409); an answer that fails the form's schema is `invalid_input` (400).
-- An optional `extended` form (raw JSON Schema) goes only to clients declaring
-  the `openai/elicitation` extension; its answer is still validated against
+- An optional `extended` form (raw JSON Schema) goes only to **2026-era**
+  clients declaring the `openai/elicitation` extension. (On a 2025 connection
+  OpenAI's forms use their own `openai/elicitation/create` method, which the
+  SDK shim does not send, so those clients get `standard`.) Its answer is still validated against
   `standard`. TS SDK clients drop vendor keys on individual properties but keep
   top-level ones.
 - If your tool catches errors, let the suspend signal through:

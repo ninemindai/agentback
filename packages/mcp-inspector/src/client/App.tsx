@@ -60,13 +60,15 @@ export function App({
   // Active target: 'local' (in-process server) or a remote mcp-connect id.
   const [target, setTarget] = useState('local');
   const [targets, setTargets] = useState<RemoteTarget[]>([]);
+  // Client profile local calls are made "as" ('' = no simulation).
+  const [as, setAs] = useState('');
 
   const api = useMemo(
     () =>
       target === 'local' || !connect
-        ? localApi(apiBase)
+        ? localApi(apiBase, as || undefined)
         : remoteApi(connect.base, target),
-    [target, apiBase, connect],
+    [target, apiBase, connect, as],
   );
 
   const refreshTargets = useCallback(async () => {
@@ -162,6 +164,22 @@ export function App({
             onTargetsChanged={refreshTargets}
           />
         )}
+        {target === 'local' && manifest?.profiles?.length ? (
+          <select
+            className="filter"
+            aria-label="Call as"
+            title="Preview presentation as a host: calls and reads see its simulated client, mount and _meta"
+            value={as}
+            onChange={e => setAs(e.target.value)}
+          >
+            <option value="">Call as: no host</option>
+            {manifest.profiles.map(p => (
+              <option key={p.id} value={p.id}>
+                Call as: {p.label}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <input
           className="filter"
           placeholder="Filter tools…"

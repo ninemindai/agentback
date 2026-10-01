@@ -42,8 +42,33 @@ export function authInfoToPrincipals(authInfo: AuthInfo): McpPrincipals {
   const user: UserProfile = {
     [securityId]: authInfo.clientId,
     scopes: authInfo.scopes,
+    [SYNTHESIZED_PRINCIPAL]: true,
   };
   return {user};
+}
+
+/**
+ * Marks a `UserProfile` that {@link authInfoToPrincipals} synthesized from a
+ * token's `clientId` because the token carried no user. Under OAuth that id
+ * names the client **application** (ChatGPT, Claude) — shared by every one of
+ * its end users — so it identifies no one in particular.
+ */
+export const SYNTHESIZED_PRINCIPAL = Symbol.for(
+  'agentback.mcp.synthesizedPrincipal',
+);
+
+/**
+ * True for a principal synthesized from a token's `clientId` (see
+ * {@link SYNTHESIZED_PRINCIPAL}). Per-user state — settings, preferences,
+ * anything keyed "per user" — must not be keyed on such a principal: every
+ * user of the same host would share one bucket.
+ */
+export function isSynthesizedPrincipal(user: unknown): boolean {
+  return (
+    typeof user === 'object' &&
+    user !== null &&
+    (user as Record<symbol, unknown>)[SYNTHESIZED_PRINCIPAL] === true
+  );
 }
 
 /**

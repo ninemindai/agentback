@@ -67,6 +67,8 @@ export interface Manifest {
   prompts: PromptInfo[];
   /** Tool names a runtime-mounted duplicate collides with. */
   conflicts?: {name: string; served: string; ignored: string[]}[];
+  /** Client profiles a call or read can be made "as" (local server only). */
+  profiles?: {id: string; label: string}[];
 }
 
 export interface Issue {
@@ -155,9 +157,13 @@ async function postJson(url: string, body?: unknown): Promise<Outcome> {
 
 const enc = encodeURIComponent;
 
-/** The in-process MCP server, via the inspector's own controller at `apiBase`. */
-export function localApi(apiBase: string): Api {
+/**
+ * The in-process MCP server, via the inspector's own controller at `apiBase`.
+ * `as` names a client profile that calls and reads are made as.
+ */
+export function localApi(apiBase: string, as?: string): Api {
   const base = apiBase;
+  const q = as ? '?as=' + enc(as) : '';
   return {
     async fetchManifest() {
       const r = await fetch(base + '/manifest');
@@ -165,8 +171,9 @@ export function localApi(apiBase: string): Api {
       return (await r.json()) as Manifest;
     },
     callTool: (name, args) =>
-      postJson(base + '/tools/' + enc(name) + '/call', args),
-    readResource: r => postJson(base + '/resources/' + enc(r.name) + '/read'),
+      postJson(base + '/tools/' + enc(name) + '/call' + q, args),
+    readResource: r =>
+      postJson(base + '/resources/' + enc(r.name) + '/read' + q),
     getPrompt: name => postJson(base + '/prompts/' + enc(name) + '/get'),
   };
 }

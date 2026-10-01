@@ -19,6 +19,7 @@
     {"path": "packages/introspection"},
     {"path": "packages/mcp-http"},
     {"path": "packages/mcp-client"},
+    {"path": "packages/mcp-openai"},
     {"path": "packages/mcp-host"},
     {"path": "packages/mcp-connect"},
     {"path": "packages/console"},

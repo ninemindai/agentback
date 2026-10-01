@@ -61,6 +61,18 @@ Expose the port on a public HTTPS URL (a tunnel is fine for development) and add
 `https://<host>/mcp` as a custom connector. The full checklist is in
 [docs/guides/mcp-apps-widgets.md](../../docs/guides/mcp-apps-widgets.md#connecting-to-chatgpt--claude).
 
+The same server also carries the ChatGPT extras from `@agentback/mcp-openai`:
+
+- `forecast_home` opens the widget from ChatGPT's sidebar and thread tabs
+  (`openaiUi`);
+- the widget declares its display modes (`displayModes`);
+- a **Temperature unit** setting appears on the app's settings page
+  (`installSettings`, one shared bucket since this demo is single-user).
+
+`/mcp/claude` is a per-host mount (`installMcpHttp({host: 'claude'})`). With
+`PUBLIC_ORIGIN` set to the public origin you add in Claude, its widget gets
+Claude's sandbox domain. `/mcp` keeps each host's default.
+
 Ask Claude something like _"get the forecast for Berlin"_. It calls
 `get_forecast`, and the widget renders the daily cards inline. The **Refresh**
 button calls the tool again from inside the widget via `app.callServerTool(...)`.

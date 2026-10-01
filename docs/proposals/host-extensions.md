@@ -591,6 +591,24 @@ opaque `_meta` stays out (principle 1).
 
 ## 8. Phase 3 — `@agentback/mcp-openai` (gated)
 
+> **Status: implemented** (`packages/mcp-openai`), against the spec at commit
+> `900032d`. The user brought the gate forward. The package stays
+> **experimental** while OpenAI's spec is 0.1.x. Deviations from the plan:
+>
+> - One `openaiUi({entrypoints})` fragment per tool. The single-entrypoint
+>   helpers are shorthands, because the core's merge refuses the same
+>   `openai/ui` key twice.
+> - Entrypoint shapes follow OpenAI's SDK schemas, which add `settings` and
+>   `quickAction` to the spec text.
+> - The `extended` form is gated to the 2026 era (a 2025 connection would need
+>   `openai/elicitation/create`).
+> - The inspector profiles ride a new `callTool`/`readResource` `{simulate}`
+>   seam.
+>
+> Q3 stays open: `@openai/mcp-extensions/app` peers on ext-apps `^1.7.5` and
+> the SDK v1, and adding v1 to the lockfile is ruled out. Widget-side helpers
+> remain out of scope (§12).
+
 **Gate:** start after OpenAI's spec has launched and published a release past
 0.1.0 that has been stable for a few weeks. Until then the §4.1 raw fragments
 and the §4.8 recipe are the hedge: authors can emit any `openai/*` key by hand
@@ -661,7 +679,7 @@ P1-6's header points here.
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Q1  | ~~Do `x-openai-*` keys survive the 2026 wire through `inputRequired.elicit`?~~                                                                                               | **Closed: partly.** They reach the wire; TS SDK clients strip property-level vendor keys and keep top-level ones (`elicit.unit.ts`)                                                                                                                                                               |
 | Q2  | ~~Does the 2026 envelope carry `extensions`?~~                                                                                                                               | **Closed: yes** (`ClientCapabilities2026Schema`)                                                                                                                                                                                                                                                  |
-| Q3  | Does `@openai/mcp-extensions/app` (ext-apps `^1.7.5`) work against an ext-apps 2.x `App`?                                                                                    | A widget spike in the example. Otherwise document the raw `postMessage` methods; never add v1 to the lockfile                                                                                                                                                                                     |
+| Q3  | Does `@openai/mcp-extensions/app` (ext-apps `^1.7.5`) work against an ext-apps 2.x `App`? _(Open; widget helpers are out of scope, see §8 status)_                           | A widget spike in the example. Otherwise document the raw `postMessage` methods; never add v1 to the lockfile                                                                                                                                                                                     |
 | Q4  | ~~Is `clientInfo` reliable enough to pick a per-host `domain`?~~                                                                                                             | **Closed: prefer mounts.** A stateless 2025 request never carries `clientInfo`, so it cannot be the primary key. `installMcpHttp({path, host})` binds `REQUEST_MOUNT` on every era and host (`per-host-mounts.integration.ts`); `clientInfo` stays available to a `domain` function as a fallback |
 | Q5  | Claude Desktop is reported to drop `_meta.ui` for stdio servers since ~2026-09-22 ([anthropics/claude-ai-mcp#1069](https://github.com/anthropics/claude-ai-mcp/issues/1069)) | A host bug; the example runs over `mcp-http`                                                                                                                                                                                                                                                      |
 
