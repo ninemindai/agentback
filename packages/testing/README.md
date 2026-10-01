@@ -13,6 +13,9 @@ await using t = await createTestApp(MyApplication, {
     'services.Mailer': FakeMailer, // class override
   },
   mcpScopes: ['orders:read'], // scope-filtered MCP session
+  // mcpEra: 'modern',            // 2026-07-28 client (default: a 2025 initialize)
+  // mcpElicit: () => ({action: 'accept', content: {part: 'bolt'}}),
+  //                              // answer elicit.ask / confirm: prompts
 });
 
 // 1. Typed — the same defineRoute handles your consumers use:

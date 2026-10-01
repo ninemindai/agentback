@@ -37,7 +37,7 @@ const result = await agent.generate({prompt: 'Forecast for Tokyo?'});
 console.log(result.steps); // ← your own @tool, called by the agent
 ```
 
-`toHostTools` routes every call through `MCPServer.callTool` — the full pipeline (Zod validation, `@authorize` voters, metering hooks, output validation) applies, and `execute` returns the unwrapped, output-validated result. It works before `app.start()`, and it **throws at projection time** on typo'd include names, duplicate names, provider-illegal names, and `confirm:` tools (whose confirmation round-trip can't survive projection).
+`toHostTools` routes every call through `MCPServer.callTool` — the full pipeline (Zod validation, `@authorize` voters, metering hooks, output validation) applies, and `execute` returns the unwrapped, output-validated result. It works before `app.start()`, and it **throws at projection time** on typo'd include names, duplicate names, provider-illegal names, `confirm:` tools (whose confirmation round-trip can't survive projection), and tools that inject `MCPBindings.ELICIT` (an agent has no user to ask).
 
 Run the whole thing with zero credentials: `pnpm -F hello-agents start` drives the loop with a deterministic mock model — see [examples/hello-agents](../../examples/hello-agents).
 
@@ -105,7 +105,7 @@ Tool results are model inputs: a tool that returns untrusted content can steer t
 
 ## Degraded MCP features under projection
 
-`MCPBindings.PROGRESS` → no-op (streamOf tools drain to a collected array) • `REQUEST_EXTRA` → `undefined` • elicitation/sampling → unavailable • `confirm:` → excluded. Tools relying on these still run, silently degraded.
+`MCPBindings.PROGRESS` → no-op (streamOf tools drain to a collected array) • `REQUEST_EXTRA` → `undefined` • sampling → unavailable • tools injecting `MCPBindings.ELICIT` and `confirm:` tools → excluded. Tools relying on these still run, silently degraded.
 
 ## Cloud-sandbox harnesses (level 2 — recipe)
 

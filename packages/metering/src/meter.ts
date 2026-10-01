@@ -63,12 +63,20 @@ export class Meter {
   async observe<T>(
     descriptor: UsageDescriptor | (() => UsageDescriptor),
     fn: () => Promise<T>,
+    options: {
+      /**
+       * Return true to record nothing for a successful result — e.g. one round
+       * of a multi-round MCP call that only asked the user something.
+       */
+      skip?: (result: T) => boolean;
+    } = {},
   ): Promise<T> {
     const start = this.now();
     const resolve = () =>
       typeof descriptor === 'function' ? descriptor() : descriptor;
     try {
       const result = await fn();
+      if (options.skip?.(result)) return result;
       await this.record({
         ...resolve(),
         status: 'ok',

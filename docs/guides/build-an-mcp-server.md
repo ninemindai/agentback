@@ -209,6 +209,65 @@ or a manual `bind().apply(extensionFor(MCP_SERVERS))`. (A dual REST + MCP class 
 and `service` for the MCP extension, since `restController` tags it for REST
 only.)
 
+## Ask the user mid-call (elicitation)
+
+A tool can stop and ask the user something, then carry on with the answer.
+Inject `MCPBindings.ELICIT` and call `ask`:
+
+```ts
+import {inject} from '@agentback/core';
+import {MCPBindings, mcpServer, tool, type Elicitor} from '@agentback/mcp';
+
+const PartChoice = z.object({part: z.enum(['bolt', 'nut'])});
+
+@mcpServer()
+class Cad {
+  @tool('cad_inspect', {input: InspectIn, output: InspectOut})
+  async inspect(
+    input: z.infer<typeof InspectIn>,
+    @inject(MCPBindings.ELICIT) elicit: Elicitor,
+  ) {
+    const {part} = await elicit.ask('part', {
+      message: 'Which part?',
+      standard: PartChoice, // a FLAT z.object: string/number/boolean/enum fields
+    });
+    return this.catalog.inspect(part); // side effects AFTER every ask
+  }
+}
+```
+
+- **The tool re-runs from the top each round**, on every protocol era. An `ask`
+  without an answer yet suspends the call; the next round replays earlier
+  answers, so the second run gets past the first `ask`. Ask **before** any side
+  effect.
+- `askAll({a: formA, b: formB})` asks several questions in one round.
+- A declined or cancelled answer throws `AgentError` `elicitation_declined`; an
+  answer that fails the form's schema is `invalid_input`.
+- An optional `extended` form (raw JSON Schema) goes only to clients declaring
+  the `openai/elicitation` extension; its answer is still validated against
+  `standard`.
+
+Who can be asked:
+
+| Caller                                                                             | What happens                                                                |
+| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| 2026-07-28 client that declared `elicitation`                                      | `input_required` result; the client answers and retries                     |
+| 2025 session (`protocol: 'legacy'`) or stdio, client declared `elicitation`        | the SDK sends `elicitation/create` over the connection and re-runs the tool |
+| a stateless 2025 request, a client without `elicitation`, an in-process `callTool` | `AgentError` `elicitation_unavailable`                                      |
+
+Answers from earlier rounds ride in a signed `requestState` envelope keyed by
+`MCPBindings.REQUEST_STATE_KEY` (random per process by default — **bind one
+shared key for multi-instance deployments**). A `confirm:` tool can also ask:
+the confirmation and the answers share the envelope. Tools that inject
+`MCPBindings.ELICIT` are left out of the agents and CLI projections, which have
+no user to ask. Misuse fails loudly: catching the suspend signal without
+rethrowing it (`if (isInputRequired(e)) throw e`), asking after a streamed
+tool's first `yield`, a reserved (`confirm`) or repeated key, or a non-flat
+form.
+
+This API is **experimental** (phase 2 of
+[P1-7](../proposals/host-extensions.md)).
+
 ## 5. Inspect it: the MCP Inspector
 
 A browser UI to list and _exercise_ tools/resources/prompts without wiring up an
@@ -246,7 +305,10 @@ Invalid input throws with the structured Zod issues attached.
 MCP client over stdio (`transports: {stdio: true}` and an in-memory client
 pair). For unit-style checks, prefer `callTool`/`readResource`/`getPrompt`
 against an app with `transports: {stdio: false}` so the server doesn't take over
-the process's stdin.
+the process's stdin. To test a tool that asks the user, use
+`createTestApp(App, {mcpEra: 'modern', mcpElicit: () => ({action: 'accept', content: {...}})})`
+from `@agentback/testing`: its in-memory client answers each question, so the
+test sees the tool re-run with the answer.
 
 ## Next
 

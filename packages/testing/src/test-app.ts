@@ -34,7 +34,33 @@ export interface TestAppOptions {
    * filtered tool visibility exactly like an authenticated HTTP session.
    */
   mcpScopes?: string[];
+  /**
+   * Which MCP protocol era the in-memory client speaks. Default `'legacy'`
+   * (a 2025 `initialize`); `'modern'` negotiates the 2026-07-28 revision.
+   */
+  mcpEra?: 'legacy' | 'modern';
+  /**
+   * Answer the server's elicitations (`elicit.ask`, `confirm:` prompts). When
+   * set, the client declares the `elicitation` capability and the SDK client
+   * completes each round automatically — on the 2026 era by retrying with
+   * the answers, on a 2025 session by answering `elicitation/create`. This is
+   * the only way an in-process test sees a tool re-run with its answers,
+   * since `callTool` refuses elicitation.
+   */
+  mcpElicit?: (request: {
+    message: string;
+    requestedSchema: Record<string, unknown>;
+  }) =>
+    | {action: 'accept'; content: Record<string, ElicitValue>}
+    | {action: 'decline' | 'cancel'}
+    | Promise<
+        | {action: 'accept'; content: Record<string, ElicitValue>}
+        | {action: 'decline' | 'cancel'}
+      >;
 }
+
+/** A value an elicitation form field can hold. */
+export type ElicitValue = string | number | boolean | string[];
 
 /** Supertest instance type without importing supertest types directly. */
 type SupertestClient = ReturnType<typeof createRestAppClient>;
@@ -176,16 +202,39 @@ export async function createTestApp<A extends Application>(
     const {InMemoryTransport, Client: SdkClient} =
       await import('@modelcontextprotocol/client');
     const mcpServer = (await app.get(MCP_SERVER_KEY)) as {
-      buildServer(opts?: {scopes?: string[]}): {
-        connect(transport: unknown): Promise<void>;
-        close(): Promise<void>;
-      };
+      serveTransport(
+        transport: unknown,
+        opts?: {scopes?: string[]},
+      ): {close(): Promise<void>};
     };
-    const session = mcpServer.buildServer({scopes: options.mcpScopes});
     const [clientTransport, serverTransport] =
       InMemoryTransport.createLinkedPair();
-    await session.connect(serverTransport);
-    const sdk = new SdkClient({name: 'testing-client', version: '0.0.0'});
+    // Serves both eras; the client's opening exchange picks one.
+    const session = mcpServer.serveTransport(serverTransport, {
+      scopes: options.mcpScopes,
+    });
+    const sdk = new SdkClient(
+      {name: 'testing-client', version: '0.0.0'},
+      {
+        ...(options.mcpEra === 'modern'
+          ? {versionNegotiation: {mode: 'auto' as const}}
+          : {}),
+        ...(options.mcpElicit ? {capabilities: {elicitation: {}}} : {}),
+      },
+    );
+    if (options.mcpElicit) {
+      const answer = options.mcpElicit;
+      sdk.setRequestHandler('elicitation/create', async request => {
+        const params = request.params as {
+          message: string;
+          requestedSchema?: Record<string, unknown>;
+        };
+        return answer({
+          message: params.message,
+          requestedSchema: params.requestedSchema ?? {},
+        });
+      });
+    }
     await sdk.connect(clientTransport);
     mcpClient = sdk;
     mcpCleanup = async () => {

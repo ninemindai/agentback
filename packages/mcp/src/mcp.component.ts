@@ -2,6 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import {randomRequestStateKey, unavailableElicitor} from './elicit.js';
 import {Binding} from '@agentback/context';
 import type {Component} from '@agentback/core';
 import {MCPBindings, noopProgress} from './keys.js';
@@ -44,5 +45,12 @@ export class MCPComponent implements Component {
     Binding.bind(MCPBindings.CONFIRMATION_STORE.key).to(
       new InMemoryConfirmationStore(),
     ),
+    // Like PROGRESS: injection never fails; an ask outside an MCP request
+    // throws elicitation_unavailable.
+    Binding.bind(MCPBindings.ELICIT.key).to(unavailableElicitor),
+    // App-level for the same reason as CONFIRMATION_STORE: state minted on one
+    // request is verified on the next, and stateless serving builds a fresh
+    // MCPServer per request.
+    Binding.bind(MCPBindings.REQUEST_STATE_KEY.key).to(randomRequestStateKey()),
   ];
 }

@@ -149,6 +149,6 @@ honest cost of a per-process CLI.
 
 ## Not in scope (v1)
 
-`confirm:` tools (excluded, parity with `@agentback/agents`), nested subcommand
+`confirm:` tools and tools that inject `MCPBindings.ELICIT` (excluded, parity with `@agentback/agents`), nested subcommand
 trees, and interactive prompts. See `examples/hello-command` and the design
 proposal in [docs/proposals/cli-projection.md](../proposals/cli-projection.md).

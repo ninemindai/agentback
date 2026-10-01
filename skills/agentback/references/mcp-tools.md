@@ -142,6 +142,31 @@ A mismatch throws (unlike REST, which only logs). The SDK additionally surfaces
 `structuredContent` alongside the text frame for clients that consume typed
 payloads.
 
+### Elicitation — asking the user mid-call
+
+`@inject(MCPBindings.ELICIT) elicit: Elicitor` (slot 1+ with an `input:`, slot 0
+without) and `await elicit.ask(key, {message, standard: FlatZodObject, extended?})`
+or `elicit.askAll({...})`. **Experimental.**
+
+- The tool **re-runs from the top** each round; earlier answers replay from a
+  signed `requestState` envelope. Ask before side effects.
+- Works for a 2026 client that declared `elicitation` (MRTR) and a 2025 session
+  or stdio client that declared it (the SDK shim sends `elicitation/create`).
+  A stateless 2025 request, a client without the capability, and in-process
+  `callTool` get `elicitation_unavailable`.
+- Declined/cancelled → `elicitation_declined`; schema-invalid answer →
+  `invalid_input`; only an `extended` form for a client without
+  `openai/elicitation` → `elicitation_unsupported`.
+- Guards throw (`ElicitMisuseError` or a swallowed-signal error): catching the
+  signal without `if (isInputRequired(e)) throw e`, asking after a stream tool
+  yielded, the reserved key `confirm`, a repeated key, a non-flat form.
+- `MCPBindings.REQUEST_STATE_KEY` — bind one shared key across instances.
+- `MCPBindings.REQUEST_CLIENT` — `{era, capabilities?, info?, canRoundTrip}`;
+  `hasClientExtension(client, id)`.
+- Dispatch hooks see `info.inputRequired` after `next()`; metering bills only
+  the final round. Agents/CLI projections exclude ELICIT-injecting tools.
+- Test with `createTestApp(App, {mcpEra: 'modern', mcpElicit: answerFn})`.
+
 ### `confirm:` — dangerous tools
 
 `confirm: true` (or `{ttlMs}`) gates a destructive tool behind a two-phase
@@ -165,9 +190,10 @@ protocol error. An explicit `confirmationToken` always wins, on either era, so
 a caller that already speaks the token dance keeps working.
 
 **The `ConfirmationStore` is the sole authority on both paths.** Under the
-native flow the token merely rides in MRTR `requestState`, which the client
-echoes back and the spec therefore treats as attacker-controlled: it has no
-replay defense of its own. A forged or replayed `requestState` fails
+native flow the token rides in the framework's signed MRTR `requestState`
+envelope, which the client echoes back and the spec therefore treats as
+attacker-controlled: a signature proves the server minted it, not that it was
+used once. A forged or replayed `requestState` fails
 `store.verify` exactly as a forged input token does.
 
 On the elicitation path an **affirmative answer is required**, not merely the

@@ -30,3 +30,14 @@ export {
   type ResourceContent,
   type ResourceContentItem,
 } from './resource-content.js';
+export {
+  ElicitMisuseError,
+  hasClientExtension,
+  isInputRequired,
+  InputRequiredSignal,
+  OPENAI_ELICITATION_EXTENSION,
+  type ElicitAnswer,
+  type ElicitForm,
+  type Elicitor,
+  type RequestClient,
+} from './elicit.js';

@@ -118,6 +118,25 @@ describe('createMeteringMcpHook', () => {
     ]);
   });
 
+  it('records nothing for a round that only asked the user, then bills the final one', async () => {
+    // A multi-round MCP call (a confirm: prompt, an elicitation) is one call
+    // to bill: the dispatcher marks a round that suspended as inputRequired.
+    const {app, sink} = givenApp();
+    const hook = createMeteringMcpHook(app);
+    const asking = mcpInfo(app, 'svc-1');
+    await hook(asking, async () => {
+      asking.inputRequired = true;
+      return {resultType: 'input_required'};
+    });
+    expect(sink.all()).toEqual([]);
+    const final = mcpInfo(app, 'svc-1');
+    await hook(final, async () => {
+      final.inputRequired = false;
+      return {ok: true};
+    });
+    expect(sink.all()).toHaveLength(1);
+  });
+
   it('attributes anonymous when no auth is bound', async () => {
     const {app, sink} = givenApp();
     const hook = createMeteringMcpHook(app);

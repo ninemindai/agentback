@@ -12,6 +12,7 @@ import type {SchemaLike} from '@agentback/openapi';
 export type {AuthInfo, Icon} from '@modelcontextprotocol/server';
 import type {MetaObject, ToolAnnotationsInput} from './fragments.js';
 import type {MCPServer, ToolBinding} from './mcp.server.js';
+import type {Elicitor, RequestClient} from './elicit.js';
 
 /**
  * The raw SDK per-request context handed to a tool handler. In SDK v2 this is
@@ -94,6 +95,32 @@ export namespace MCPBindings {
   export const CONFIRMATION_STORE = BindingKey.create<ConfirmationStore>(
     'mcp.confirmationStore',
   );
+  /**
+   * Ask the user something mid-call. Inject into a `@tool` method parameter:
+   * `@inject(MCPBindings.ELICIT) elicit: Elicitor`. Bound per request on the
+   * SDK path; {@link MCPComponent} binds an app-level default whose asks
+   * throw `elicitation_unavailable`, so injection never fails.
+   *
+   * @experimental Phase 2 of docs/proposals/host-extensions.md.
+   */
+  export const ELICIT = BindingKey.create<Elicitor>('mcp.request.elicit');
+  /**
+   * What the server knows about the client behind the current request (era,
+   * declared capabilities, whether a round trip is possible). Bound per
+   * request on the SDK path; absent on an in-process `callTool`, so inject it
+   * optionally. See {@link hasClientExtension}.
+   */
+  export const REQUEST_CLIENT =
+    BindingKey.create<RequestClient>('mcp.request.client');
+  /**
+   * The key (at least 32 bytes) that signs the framework's `requestState`
+   * envelope for `confirm:` and elicitation. {@link MCPComponent} binds a
+   * random per-process default; **a multi-instance deployment must bind one
+   * shared key**, or a retry landing on another instance is refused.
+   */
+  export const REQUEST_STATE_KEY = BindingKey.create<string | Uint8Array>(
+    'mcp.requestStateKey',
+  );
 }
 
 /**
@@ -138,6 +165,13 @@ export interface McpDispatchInfo {
    * read them after `next()` resolves (optional get).
    */
   ctx: Context;
+  /**
+   * Set once `next()` resolves: true when the call suspended to ask the user
+   * (a `confirm:` prompt or an elicitation) instead of producing a result.
+   * Each round of a multi-round call is its own dispatch; a hook that bills
+   * or records outcomes should act only when this is false.
+   */
+  inputRequired?: boolean;
 }
 
 /**
