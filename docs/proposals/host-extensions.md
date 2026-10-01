@@ -372,7 +372,10 @@ ask before side effects; §5.4 makes violations loud.
   one verify for both. The tool name and an input fingerprint go in the
   payload, because the codec's `bind` sees only the request context.
   `ConfirmationStore` remains the single-use authority for confirmation; the
-  envelope only carries the token.
+  envelope only carries the token. The envelope's `confirm?` field is the
+  **modern-era** carrier. On legacy sessions `confirm:` keeps the
+  `confirmationToken` input property (§4.7), so both statements hold, each for
+  its own era.
 - **`confirm:` composes with elicitation.** Both share the envelope, so round 3
   of a confirm-then-ask tool still carries the confirmation. The `confirm` key
   is reserved: `ask('confirm', …)` throws.
@@ -492,11 +495,15 @@ This is the critical review finding. `authInfoToPrincipals` synthesizes
 client id, shared by every one of its users. Keying settings on that would let
 every user read and overwrite everyone's settings.
 
+- **Provenance is marked where it is decided.** `authInfoToPrincipals` tags
+  the `UserProfile` it synthesizes from `clientId` as synthesized (a
+  framework-owned marker). Settings reads that mark instead of comparing
+  strings.
 - **Default `principalKey`.** It uses only a verified subject: a `user` the
-  authentication strategy supplied via `extra.user`. When `securityId` equals
-  the token's `clientId`, or the caller is anonymous, `settings_update`
-  **refuses** with `AgentError` `settings_identity_required`, and
-  `settings_read` returns defaults.
+  authentication strategy supplied via `extra.user`. For a synthesized
+  principal or an anonymous caller, `settings_update` **refuses** with
+  `AgentError` `settings_identity_required`, and `settings_read` returns
+  defaults.
 - **Opt-ins.** `principalKey: (user, auth) => string` overrides the default.
   `shared: true` is an explicit opt-in to one bucket for single-user
   deployments. There is no warning-only mode.
