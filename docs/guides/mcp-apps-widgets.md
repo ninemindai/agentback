@@ -270,8 +270,9 @@ app.configure(MCPBindings.SERVER).to({
 
 An installer that adds capabilities from code (rather than your config) uses
 `contributeCapabilities(app, {extensions: {...}})`. It returns an `Installed`
-whose `uninstall()` retracts the contribution. The same entry declared
-differently by two sources throws at `start()`, naming both. Stateless HTTP
+whose `uninstall()` retracts the contribution. An entry that your config or
+another contribution declares differently throws at the call, naming both, and
+nothing is bound; `start()` re-checks the full set. Stateless HTTP
 picks up a contribution on the next request; a connected stdio or session
 client keeps what it negotiated.
 

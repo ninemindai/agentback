@@ -259,12 +259,11 @@ function requestMetaFor(
   return deepFreeze(meta ? structuredClone(meta) : {});
 }
 
-/** `meta` with `ui.domain` set (or unchanged when `domain` is undefined). */
+/** `meta` with `ui.domain` set. */
 function withUiDomain(
   meta: MetaObject | undefined,
-  domain: string | undefined,
-): MetaObject | undefined {
-  if (domain === undefined) return meta;
+  domain: string,
+): MetaObject {
   const ui = (meta?.ui ?? {}) as Record<string, JsonValue>;
   return {...(meta ?? {}), ui: {...ui, domain}};
 }
@@ -754,6 +753,18 @@ export class MCPServer implements Server {
       opts?.binding ?? this.collectAllTools().find(t => t.meta.name === name);
     if (!tool) throw new Error(`Unknown tool: ${name}`);
     const reqCtx = new Context(opts?.ctx ?? this.context, 'mcp.request');
+    // An in-process call has no MCP request of its own. When `opts.ctx`
+    // descends from one (an agent turn run inside a tool), shadow what that
+    // request said about its client, `_meta` and mount, so a nested tool never
+    // presents itself for someone else's request.
+    for (const key of [
+      MCPBindings.REQUEST_CLIENT,
+      MCPBindings.REQUEST_META,
+      MCPBindings.REQUEST_MOUNT,
+    ]) {
+      if (reqCtx.parent?.isBound(key.key))
+        reqCtx.bind(key).to(undefined as never);
+    }
     // Bound on the child, so it shadows any signal the parent context carries
     // — an explicit per-call signal is a narrower statement than the turn's.
     if (opts?.signal) reqCtx.bind(CoreBindings.ABORT_SIGNAL).to(opts.signal);
@@ -811,13 +822,26 @@ export class MCPServer implements Server {
     )) as Record<string, Function>;
     const result =
       await instance[resource.meta.methodName as string].call(instance);
-    const meta = resource.meta.uiDomain
-      ? withUiDomain(
-          resource.meta.meta,
-          await this.resolveUiDomain(resource.meta, reqCtx),
+    const contents = toResourceContents(result, resource.meta);
+    // A per-call `resourceContent` domain wins, so the resolver runs only
+    // when some item still lacks one — and at most once per read.
+    const lacking = resource.meta.uiDomain
+      ? contents.filter(
+          c => !(c._meta?.ui as {domain?: string} | undefined)?.domain,
         )
-      : resource.meta.meta;
-    return {contents: toResourceContents(result, {...resource.meta, meta})};
+      : [];
+    if (lacking.length) {
+      const domain = await this.resolveUiDomain(resource.meta, reqCtx);
+      if (domain !== undefined) {
+        for (const item of lacking) {
+          item._meta = withUiDomain(
+            item._meta as MetaObject | undefined,
+            domain,
+          );
+        }
+      }
+    }
+    return {contents};
   }
 
   /** Run an `@appResource({domain: fn})` resolver for one request. */

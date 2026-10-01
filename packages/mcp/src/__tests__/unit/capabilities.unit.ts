@@ -4,7 +4,7 @@
 
 import {Client, InMemoryTransport} from '@modelcontextprotocol/client';
 import {afterEach, describe, expect, it} from 'vitest';
-import {inject} from '@agentback/context';
+import {Context, inject} from '@agentback/context';
 import {Application, extensionFor} from '@agentback/core';
 import {appResource, mcpServer, tool} from '../../decorators/index.js';
 import {
@@ -30,6 +30,7 @@ const WIDGETS = {'com.example/widgets': {version: '1'}};
 
 let seenMeta: Readonly<Record<string, unknown>> | undefined;
 let seenDomainRequest: AppDomainRequest | undefined;
+let overrideCalls = 0;
 
 @mcpServer()
 class Probe {
@@ -56,7 +57,12 @@ class Probe {
     return '<html></html>';
   }
 
-  @appResource('ui://probe/override', {domain: () => 'from-fn.example'})
+  @appResource('ui://probe/override', {
+    domain: () => {
+      overrideCalls++;
+      return 'from-fn.example';
+    },
+  })
   override() {
     return resourceContent(
       {text: '<html></html>'},
@@ -173,14 +179,63 @@ describe('resolveCapabilities', () => {
 
   it('makes a conflict a start() error', async () => {
     const {app, server} = await boot({capabilities: {extensions: SETTINGS}});
-    contributeCapabilities(app, {
-      extensions: {'acme/settings': {readTool: 'other'}},
-    });
+    // Bound by hand, so nothing checked it at bind time.
+    app
+      .bind('caps.raw')
+      .to({extensions: {'acme/settings': {readTool: 'other'}}})
+      .apply(extensionFor(MCP_CAPABILITIES));
     await expect(server.start()).rejects.toThrow(/declared differently/);
+  });
+
+  it('refuses an entry named __proto__', async () => {
+    const {app} = await boot();
+    expect(() =>
+      contributeCapabilities(
+        app,
+        JSON.parse('{"extensions": {"__proto__": {"evil": 1}}}'),
+      ),
+    ).toThrow(/__proto__/);
+  });
+
+  it("reads each binding's own value, not a same-key child override", async () => {
+    const {app} = await boot();
+    contributeCapabilities(app, {extensions: WIDGETS}, {key: 'caps.k'});
+    const child = new Context(app, 'child');
+    child.bind('caps.k').toDynamicValue(async () => ({}));
+    expect(resolveCapabilities({}, child).extensions).toEqual(WIDGETS);
   });
 });
 
 describe('contributeCapabilities', () => {
+  it('refuses, at the call, an entry another contribution declares differently', async () => {
+    const {app} = await boot();
+    contributeCapabilities(app, {extensions: {'x/y': {v: 1}}});
+    expect(() =>
+      contributeCapabilities(app, {extensions: {'x/y': {v: 2}}}),
+    ).toThrow(/declared differently/);
+    // Nothing was left bound by the refused call.
+    expect(resolveCapabilities({}, app).extensions).toEqual({'x/y': {v: 1}});
+  });
+
+  it('refuses, at the call, an entry the server config declares differently — even after start()', async () => {
+    const {app, server} = await boot({capabilities: {extensions: SETTINGS}});
+    await server.start();
+    expect(() =>
+      contributeCapabilities(app, {
+        extensions: {'acme/settings': {readTool: 'other'}},
+      }),
+    ).toThrow(/MCPServerConfig\.capabilities/);
+    // The server still builds.
+    expect(() => server.buildServer()).not.toThrow();
+    await server.stop();
+  });
+
+  it('accepts entry ids that are not valid binding-key characters', async () => {
+    const {app} = await boot();
+    contributeCapabilities(app, {extensions: {'a#b': {}}});
+    expect(resolveCapabilities({}, app).extensions).toEqual({'a#b': {}});
+  });
+
   it.each([
     ['2025 initialize', false],
     ['2026 server/discover', true],
@@ -288,6 +343,23 @@ describe('MCPBindings.REQUEST_META and REQUEST_MOUNT', () => {
   });
 });
 
+describe('nested in-process calls', () => {
+  it("shadow the outer request's meta, mount and client", async () => {
+    const {app, server} = await boot();
+    const outer = new Context(app, 'outer-request');
+    outer.bind(MCPBindings.REQUEST_META).to({'openai/resource': {path: '/x'}});
+    outer.bind(MCPBindings.REQUEST_MOUNT).to({path: '/mcp', host: 'claude'});
+    outer
+      .bind(MCPBindings.REQUEST_CLIENT)
+      .to({era: 'modern', canRoundTrip: true});
+    const res = (await server.callTool('meta', {}, {ctx: outer})) as {
+      meta: unknown;
+      mount: unknown;
+    };
+    expect(res).toEqual({meta: null, mount: null});
+  });
+});
+
 describe('@appResource({domain}) as a function', () => {
   async function readUi(client: Client, uri: string) {
     const {contents} = await client.readResource({uri});
@@ -323,12 +395,14 @@ describe('@appResource({domain}) as a function', () => {
     expect(seenDomainRequest?.context).toBeDefined();
   });
 
-  it('lets a per-call resourceContent domain win', async () => {
+  it('lets a per-call resourceContent domain win, without running the resolver', async () => {
     const {server} = await boot();
     const client = await connect(server);
+    overrideCalls = 0;
     expect(await readUi(client, 'ui://probe/override')).toEqual({
       domain: 'per-call.example',
     });
+    expect(overrideCalls).toBe(0);
   });
 
   it('refuses a resolver that returns a non-string', async () => {
