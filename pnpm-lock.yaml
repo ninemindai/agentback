@@ -608,6 +608,43 @@ importers:
         specifier: ^4.6.5
         version: 4.6.5
 
+  examples/hello-mcp-events:
+    dependencies:
+      '@agentback/authentication':
+        specifier: workspace:*
+        version: link:../../packages/authentication
+      '@agentback/context':
+        specifier: workspace:*
+        version: link:../../packages/context
+      '@agentback/mcp':
+        specifier: workspace:*
+        version: link:../../packages/mcp
+      '@agentback/mcp-events':
+        specifier: workspace:*
+        version: link:../../packages/mcp-events
+      '@agentback/mcp-http':
+        specifier: workspace:*
+        version: link:../../packages/mcp-http
+      '@agentback/rest':
+        specifier: workspace:*
+        version: link:../../packages/rest
+      '@agentback/security':
+        specifier: workspace:*
+        version: link:../../packages/security
+      tslib:
+        specifier: ^2.8.1
+        version: 2.8.1
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@modelcontextprotocol/client':
+        specifier: ^2.1.0
+        version: 2.1.0
+      vitest:
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+
   examples/hello-oauth2:
     dependencies:
       '@agentback/authentication':

@@ -1,6 +1,13 @@
 # Proposal: MCP Events — `@event` and webhook delivery
 
-**Status:** **Draft — evaluation only, nothing built.** Filed 2026-09-30.
+**Status:** **Built (webhook subset)** — §6 steps 1–4 landed together:
+`@event` + `events/*` in `@agentback/mcp`, delivery in
+`@agentback/mcp-events`, `examples/hello-mcp-events`, and
+[the guide](../guides/mcp-events.md). Filed 2026-09-30. Deviations from the
+sketch below: the emitter port is `McpEventEmitter` (not `EventEmitter`, to
+avoid shadowing Node's), retries reuse `JobQueue` rather than the actors
+journal (no replay is offered, so no cursor is needed), and a no-expiry grant
+is off unless `events.allowNoExpiry` is set.
 
 **Sources evaluated:**
 

@@ -72,6 +72,7 @@
     {"path": "examples/hello-chat"},
     {"path": "examples/hello-uploads"},
     {"path": "examples/hello-mcp-apps"},
+    {"path": "examples/hello-mcp-events"},
     {"path": "examples/hello-plugin"},
     {"path": "examples/hello-agents"},
     {"path": "examples/hello-command"}

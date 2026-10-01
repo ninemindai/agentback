@@ -17,10 +17,11 @@ pnpm add @agentback/mcp zod
 - Elicitation (**experimental**) — `@inject(MCPBindings.ELICIT) elicit: Elicitor`, then `await elicit.ask(key, {message, standard: FlatZodObject, extended?})` / `elicit.askAll({...})` asks the user mid-call. The tool re-runs from the top each round; answers replay from a signed `requestState` envelope (`MCPBindings.REQUEST_STATE_KEY` — bind one shared key across instances). Works for 2026 clients and 2025 sessions/stdio that declared `elicitation`; others get `elicitation_unavailable`. `MCPBindings.REQUEST_CLIENT` (`{era, capabilities?, info?, canRoundTrip}`) and `hasClientExtension()` describe the caller; `serveTransport(transport)` serves both eras over any transport. See [build-an-mcp-server.md](../../docs/guides/build-an-mcp-server.md#ask-the-user-mid-call-elicitation).
 - Host extensions — `toolFragment({ui?, annotations?, meta?, check?})` / `resourceFragment({meta?, check?})` carry host-specific `_meta` (ChatGPT `openai/*`, …) via `extend:`, checked when the decorator is applied; `MCPServerConfig.{title, icons, websiteUrl, capabilities}` sets server info and `capabilities.extensions`/`experimental`. **Experimental:** `toolFragment`, `resourceFragment`, `@appResource` and `resourceContent` may change in a minor release. Non-`ui` `_meta` keys need a vendor prefix (`openai/x`, `com.example/x`); there is no opt-out before phase 3. `capabilities` accepts only `extensions`/`experimental` — other keys wait for phase 1b's contribution point. Duplicate tool names throw at `start()`. `buildServer()` never throws on them: a duplicate mounted later (a `perSession` binder, a plugin) is served root-nearest first, so an app-level tool wins, and the conflict is logged once. If the winner is scope-hidden from a caller, the name is hidden, not served by the loser. To replace an app tool, unbind it — shadowing is not supported. `servedTools()` / `toolConflicts()` show what a runtime duplicate suppressed (also in `toolCostReport().suppressed` and the inspector). A child binding with the same key overrides its parent (container semantics), and the same class bound at app and child level resolves through the nearest binding. See [docs/guides/mcp-apps-widgets.md](../../docs/guides/mcp-apps-widgets.md#host-extensions-chatgpt-claude).
 - `@prompt(name, {description?})` — method decorator. Method return value is wrapped in the MCP `{messages:[…]}` shape.
+- `@event(name, {payload, input?, description?, title?, scope?})` — method decorator declaring an **MCP Events** event type (see [MCP Events](#mcp-events)). The method is the subscription filter `match(args, data)`.
 - `MCPComponent` — registers `MCPServer` as the application's `Server`; mount with `app.component(MCPComponent)`.
 - `MCPApplication` — `Application` subclass with `MCPComponent` pre-mounted; for stdio-only servers.
 - `MCPServer` — the server class. Exposes `listTools()`, `listResources()`, `listPrompts()`, `callTool()`, `readResource()`, `getPrompt()` for in-process introspection (used by `@agentback/mcp-inspector`). Also `buildServer(options)` to produce a fresh SDK `McpServer` per session for Streamable HTTP transports.
-- `MCPBindings.SERVER`, `MCPBindings.REQUEST_AUTH` — DI binding keys.
+- `MCPBindings.SERVER`, `MCPBindings.REQUEST_AUTH` — DI binding keys. MCP Events adds `SUBSCRIPTION_STORE`, `EVENTS` (the emitter), `EVENT_DELIVERY` (the delivery port `@agentback/mcp-events` binds) and `EVENT_ACCESS_CHECK` (optional revocation hook).
 - Per-call cancellation: `CoreBindings.ABORT_SIGNAL` is bound into every tool/resource/prompt request context from the SDK's own signal (so `notifications/cancelled` and a dropped connection reach the tool body). `callTool(name, input, {signal})` supplies one on the programmatic path; it shadows a signal inherited from `{ctx}`. See [docs/concepts/cancellation.md](../../docs/concepts/cancellation.md).
 - `ToolMetadata`, `ResourceMetadata`, `PromptMetadata` — types stored on the decorator and read by `MCPServer`.
 
@@ -131,6 +132,45 @@ Notes:
 - **Cleanup**: the generator's `return()` is called in a `finally`, so a `try/finally` inside the method runs even if a later step throws.
 - **Empty generator** → `[]`. Strings and arrays are not async-iterable, so plain results are unaffected.
 - A streaming method's return type is an `AsyncGenerator`, which the typed `output:` overload (constraining the return to the collected array) does not statically describe — expect a localized cast at the `@tool` line.
+
+## MCP Events
+
+`@event` declares an event type a client can subscribe to by webhook
+(`events/list`, `events/subscribe`, `events/unsubscribe`, plus a top-level
+`capabilities.events`). It is the `@tool` shape — a name and Zod schemas —
+and the method is the server-side filter:
+
+```ts
+const Filter = z.object({document_id: z.string()});
+const Created = z.object({document_id: z.string(), comment_id: z.string()});
+
+@mcpServer()
+class DocEvents {
+  @event('comment.created', {
+    input: Filter,
+    payload: Created,
+    scope: 'docs:read',
+  })
+  matches(args: z.infer<typeof Filter>, e: z.infer<typeof Created>) {
+    return e.document_id === args.document_id; // only `true` delivers
+  }
+}
+
+// anywhere: emit — `data` is validated against `payload` first
+const events = await app.get(MCPBindings.EVENTS);
+await events.emit('comment.created', {document_id: 'd1', comment_id: 'c1'});
+```
+
+This package holds the protocol half and no network code: the handlers,
+validation (`-32602`/`-32011`…`-32015`), the identity tuple
+`(principal, url, name, arguments)` with its deterministic `sub_` id, TTL
+grants and secret rotation (`MCPServerConfig.events`), the app-level
+`SubscriptionStore` (in-memory default), and the emitter with its revocation
+check. **Delivery** — endpoint verification, the IP-pinned transport, Standard
+Webhooks signing, retries — is `@agentback/mcp-events` (`installMcpEvents`);
+until it is installed, `events/subscribe` answers `-32014 Unsupported`.
+Subscribing requires an authenticated principal (`-32012` otherwise). See
+[docs/guides/mcp-events.md](../../docs/guides/mcp-events.md).
 
 ## Layering
 
