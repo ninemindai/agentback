@@ -2,6 +2,9 @@
 
 **Status:** Design (2026-06-11). Implementation not scheduled — phase 1 is
 ready to pick up; phases 2–3 want a real consumer first.
+**Update (2026-10-01):** `@tool({ui})` shipped. The resource half
+(`@appResource`, content `_meta.ui`) and the superseded `openai/outputTemplate`
+dual-emit are carried forward in [P1-7 host extensions](host-extensions.md).
 **Packages touched:** `mcp`, `mcp-inspector`, `mcp-host` (passthrough), one
 new package (`@agentback/mcp-apps`), one example.
 
