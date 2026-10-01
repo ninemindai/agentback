@@ -28,6 +28,7 @@ Options:
   --with <caps>           Comma-separated capabilities: ${CAP_NAMES.join(', ')}
   --drizzle               Shorthand for --with drizzle
   --auth                  Shorthand for --with auth
+  --mcp-apps              Shorthand for --with mcp-apps (hybrid)
   -c, --console           Shorthand for --with console
   --port <n>              REST server port (rest|hybrid)
   --host <h>              REST server host (rest|hybrid)
@@ -67,6 +68,8 @@ for (let i = 0; i < args.length; i++) {
     caps.add('drizzle');
   } else if (a === '--auth') {
     caps.add('auth');
+  } else if (a === '--mcp-apps') {
+    caps.add('mcp-apps');
   } else if (a === '-c' || a === '--console') {
     caps.add('console');
   } else if (a === '-i' || a === '--interactive') {
@@ -197,6 +200,11 @@ async function run(): Promise<void> {
     if (caps.has('drizzle')) {
       console.log(
         'Drizzle: runs in-memory by default; set DATABASE_URL to use Postgres.\n',
+      );
+    }
+    if (caps.has('mcp-apps')) {
+      console.log(
+        'MCP Apps: set PUBLIC_URL to your public HTTPS URL before connecting Claude (see README).\n',
       );
     }
     if (caps.has('auth')) {

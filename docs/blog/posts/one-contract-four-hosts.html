@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- DRAFT: unlinked from blog/index.html until OpenAI's MCP extensions
+         spec settles (P1-7 §8 gate). -->
+    <meta name="robots" content="noindex" />
+    <title>
+      One Zod contract: a REST route, an MCP tool, a ChatGPT entrypoint and a
+      Claude widget | AgentBack Blog
+    </title>
+    <meta
+      name="description"
+      content="Hosts now read metadata beyond MCP: ChatGPT's openai/* keys, Claude's widget domain. AgentBack carries it through checked seams on the same @tool, so one Zod schema still describes every surface."
+    />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="../index.html">AgentBack blog</a>
+        <div class="nav-links">
+          <a href="../../README.md">Docs</a>
+          <a href="../../../README.md">Repo README</a>
+          <a href="../diagrams/system-boundary.html">Diagram</a>
+        </div>
+      </nav>
+    </header>
+
+    <main class="post-layout">
+      <article class="post-body">
+        <p class="post-meta">Draft · not yet published</p>
+        <h1>One Zod contract, four hosts</h1>
+        <p class="lede">
+          A tool used to have two readers: the model that calls it and the
+          client that lists it. Now the host reads it too. ChatGPT looks for
+          <code>openai/*</code> keys, and Claude looks for a widget
+          <code>domain</code>. AgentBack adds those keys to the same
+          <code>@tool</code> and checks them when the decorator runs, so one
+          Zod schema still describes every surface.
+        </p>
+
+        <h2>The contract</h2>
+        <p>Start with a schema and a method. Nothing here is host-specific:</p>
+
+        <pre><code class="language-ts">const Library = z.object({parts: z.array(Part)});
+
+@tool('parts_library', {
+  title: 'Parts Library',
+  output: Library,
+  annotations: {readOnlyHint: true},
+  ui: {resourceUri: 'ui://bits/library'},
+})
+async library(): Promise&lt;z.infer&lt;typeof Library&gt;&gt; { … }</code></pre>
+
+        <p>
+          That declaration is an MCP tool with an output schema, and an MCP
+          Apps tool whose result a conformant host renders through the linked
+          <code>ui://</code> widget. The widget receives the result's
+          <code>structuredContent</code>, which is the <code>Library</code>
+          shape. A REST route on an <code>@api</code> controller that declares
+          <code>response: Library</code> validates its responses against the
+          same schema object.
+        </p>
+
+        <h2>The host layer</h2>
+        <p>
+          ChatGPT can open a tool from its sidebar. It calls a sidebar
+          ("global") entrypoint with <code>{}</code> as the arguments, so the
+          tool's input must accept an empty object. That rule belongs to
+          ChatGPT, not to MCP, so it ships as a fragment:
+        </p>
+
+        <pre><code class="language-ts">const sidebarEntrypoint = toolFragment({
+  meta: {'openai/ui': {entrypoints: [{type: 'global'}]}},
+  check: ({input}) =&gt; {
+    if (input &amp;&amp; !(input as z.ZodType).safeParse({}).success) {
+      throw new Error('a global entrypoint must accept {} as its input');
+    }
+  },
+});
+
+@tool('parts_library', {…, extend: [sidebarEntrypoint]})</code></pre>
+
+        <p>
+          The <code>check</code> runs when <code>@tool</code> is applied, with
+          the real input schema in hand. If someone later adds a required
+          field, the build fails at the decorator line and names the tool. The
+          alternative is finding out in ChatGPT, where the entrypoint just
+          does nothing.
+        </p>
+
+        <p>
+          Claude renders each widget on its own sandbox origin, derived from
+          the URL you add as a connector. That is a resource-side fact, so it
+          goes on the widget:
+        </p>
+
+        <pre><code class="language-ts">@appResource('ui://bits/library', {domain: claudeDomain(publicUrl)})
+libraryWidget() { return WIDGET_HTML; }</code></pre>
+
+        <h2>What the checks refuse</h2>
+        <p>
+          A passthrough <code>_meta</code> would accept all of this and fail
+          later, somewhere else. The seams refuse it when the decorator runs:
+        </p>
+        <ul>
+          <li>the same key set by two fragments;</li>
+          <li>
+            a key MCP reserves for itself (<code>ui</code>,
+            <code>io.modelcontextprotocol/*</code>);
+          </li>
+          <li>
+            a key without a vendor prefix (<code>openai/ui</code> and
+            <code>com.example/x</code> are fine; a bare <code>ui2</code> is
+            not);
+          </li>
+          <li>an annotation hint that is not a boolean;</li>
+          <li>an icon without a <code>src</code>;</li>
+          <li>a <code>confirm:</code> tool that also claims to be read-only.</li>
+        </ul>
+
+        <p>
+          None of these hints authorize anything. Visibility, entrypoints and
+          annotations change how a host presents a tool. Who may call it is
+          still decided by <code>@authorize</code>.
+        </p>
+
+        <h2>Why the core holds no host vocabulary</h2>
+        <p>
+          OpenAI's extensions are new and still moving, and Claude has exactly
+          one convention so far. Typed <code>openai/*</code> helpers would put a
+          moving spec into every app's dependency graph. So the core ships
+          generic, checked seams, and the host words live in fragments and
+          recipes you can see. When a spec settles, a typed adapter builds on
+          the same seams and your <code>@tool</code> does not change.
+        </p>
+
+        <div class="post-actions">
+          <a class="button" href="../../guides/mcp-apps-widgets.md"
+            >MCP Apps widgets guide</a
+          >
+          <a
+            class="button secondary"
+            href="../../proposals/host-extensions.md"
+            >Read the design notes</a
+          >
+        </div>
+      </article>
+
+      <aside class="aside" aria-label="Post links">
+        <h2>Related</h2>
+        <a href="boundary-coherence.html">Boundary coherence is the product</a>
+        <a href="tools-are-not-endpoints.html">Tools are not endpoints</a>
+        <a href="the-spec-deleted-sessions.html"
+          >The spec deleted sessions. Your tools never noticed.</a
+        >
+      </aside>
+    </main>
+  </body>
+</html>

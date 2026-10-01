@@ -65,6 +65,12 @@ describe('parseNewArgs', () => {
     expect(a.capabilities).toEqual(['drizzle']);
   });
 
+  it('accepts the --mcp-apps shorthand on the hybrid template', () => {
+    expect(parseNewArgs(['my-svc', '--mcp-apps']).capabilities).toEqual([
+      'mcp-apps',
+    ]);
+  });
+
   it('dedupes capabilities across --with and shorthands', () => {
     const a = parseNewArgs(['my-svc', '--with', 'drizzle', '--drizzle']);
     expect(a.capabilities).toEqual(['drizzle']);

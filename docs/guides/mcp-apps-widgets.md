@@ -307,11 +307,18 @@ host, or per public URL) arrives in phase 1b of
   resource's content-item `_meta`, and the server's title and capabilities —
   check them before connecting a host.
 - **`toolCostReport()`** lists `iconBytes` per tool, so a data-URI icon that
-  bloats every `tools/list` shows up.
+  bloats every `tools/list` shows up, and a `suppressed` list when a tool
+  mounted after `start()` collides with an existing name.
+  `MCPServer.toolConflicts()` returns the same list, and the inspector shows
+  it as a banner.
 - In a test, read `tools/list` through an in-memory MCP client (see
   [Test it](#test-it)) and assert `tool._meta['openai/ui']` directly.
 
 ## Connecting to ChatGPT / Claude
+
+**Fastest start:** `npm create agentback my-app -- --mcp-apps` scaffolds a
+hybrid app with a working widget tool, the ext-apps bridge, the HTTP mount and
+Claude's `domain` read from `PUBLIC_URL`.
 
 _Checked against Claude's connector docs and OpenAI's MCP extensions spec
 (commit `900032d`) on 2026-10-01. Both hosts are moving; re-check the linked

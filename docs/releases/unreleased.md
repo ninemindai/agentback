@@ -27,6 +27,13 @@ decorator is applied:
 - `mcp-inspector` shows annotations, icons, `_meta`, content-item `_meta` and
   server capabilities.
 - `examples/hello-mcp-apps` gains `start:http` for remote hosts.
+- **`create-agentback --mcp-apps`** (hybrid; also `agentback new --mcp-apps`)
+  scaffolds a working widget tool: an ext-apps view bundled with esbuild, an
+  `@appResource` serving it, and Claude's `domain` derived from `PUBLIC_URL`.
+- `MCPServer.servedTools()` / `toolConflicts()` report what a runtime-mounted
+  duplicate tool name suppressed; `toolCostReport()` prices only served tools
+  and lists the conflicts as `suppressed`, and `mcp-inspector` shows them as a
+  banner.
 - Tool, resource and server `icons` need a non-empty `src`, and `*Hint`
   annotations must be booleans — checked at decoration (server icons at
   construction).

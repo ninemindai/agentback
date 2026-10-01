@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>greeting widget</title>
+    <style>
+      body { font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 14px; color: #1a1a1a; }
+      h2 { margin: 0 0 .3rem; font-size: 1.1rem; }
+      .muted { color: #888; font-size: .8rem; }
+      button { font: inherit; padding: .3rem .6rem; border-radius: .4rem; border: 1px solid #1a4fff; background: transparent; cursor: pointer; margin-top: .6rem; }
+    </style>
+  </head>
+  <body>
+    <div class="muted" id="status">connecting…</div>
+    <h2 id="greeting"></h2>
+    <button id="again">Greet the world</button>
+
+    <!-- The official ext-apps `App` bridge, bundled from widget/view.js. -->
+    <script type="module">/*__VIEW_BUNDLE__*/</script>
+  </body>
+</html>

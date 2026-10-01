@@ -42,11 +42,12 @@ Add runnable integrations at scaffold time. Each flag pulls in the dependency,
 wires it into `application.ts`, and drops a working example you can run or
 delete.
 
-| Flag        | Templates    | Adds                                                  |
-| ----------- | ------------ | ----------------------------------------------------- |
-| `--drizzle` | all          | Example `users` table + store + REST route / MCP tool |
-| `--auth`    | rest, hybrid | JWT login + a `@authenticate('jwt')`-protected route  |
-| `--console` | rest, hybrid | Unified dev console at `/console`                     |
+| Flag         | Templates    | Adds                                                  |
+| ------------ | ------------ | ----------------------------------------------------- |
+| `--drizzle`  | all          | Example `users` table + store + REST route / MCP tool |
+| `--auth`     | rest, hybrid | JWT login + a `@authenticate('jwt')`-protected route  |
+| `--console`  | rest, hybrid | Unified dev console at `/console`                     |
+| `--mcp-apps` | hybrid       | An MCP Apps widget tool for Claude / ChatGPT          |
 
 ```bash
 npm create agentback my-api -- --template hybrid --drizzle --auth
@@ -68,6 +69,12 @@ HTTP server, so they're rejected for the stdio `mcp` template.
   **in-memory store** so the app runs and tests pass with no database; set
   `DATABASE_URL` and swap in a Postgres-backed store when you're ready (see
   [`@agentback/drizzle`](../drizzle/README.md)).
+- **`--mcp-apps`** adds a `show_greeting` tool whose result renders as an
+  interactive card in MCP Apps hosts: a `widget/` view on the official
+  `@modelcontextprotocol/ext-apps` bridge (bundled with esbuild on first
+  read), an `@appResource` that serves it, and Claude's widget `domain`
+  derived from `PUBLIC_URL`. The README it writes walks through tunnelling and
+  adding the connector.
 - **`--auth`** wires `@agentback/authentication-jwt`: a public `POST /auth/login`
   that issues a token and a protected `GET /auth/me`. It uses a dev signing
   secret by default — set `JWT_SECRET` before deploying.

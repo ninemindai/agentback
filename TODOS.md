@@ -239,58 +239,6 @@ spike proved vs what is still assumed.
 §5.1 of the design doc — the compatibility matrix now exists, and criterion 1
 (more than one 1.x release covered) is not yet met.
 
-### create-agentback --with mcp-apps scaffold
-
-**What:** A `create-agentback` option that scaffolds an MCP Apps server: a
-bundled `@modelcontextprotocol/ext-apps` widget, an `@appResource`, an
-`installMcpHttp` mount and a `PUBLIC_URL` config value for Claude's `domain`.
-
-**Why:** Getting a widget to render in ChatGPT or Claude is the slowest path in
-P1-7 phase 1a (about 20–30 minutes from an existing server). Everything the
-scaffold would contain already exists in `examples/hello-mcp-apps`; a new user
-cannot find it from `npm create agentback`.
-
-**Context:** [docs/proposals/host-extensions.md](docs/proposals/host-extensions.md)
-§12 (distribution, decision T6) keeps distribution out of P1-7. Belongs to the
-future distribution proposal. Start from `examples/hello-mcp-apps` and the
-"Connecting to ChatGPT / Claude" checklist in `docs/guides/mcp-apps-widgets.md`.
-
-**Effort:** S
-**Priority:** P2
-**Depends on:** P1-7 phase 1a.
-
-### Surface suppressed duplicate tool names in the inspector
-
-**What:** Show, in `/mcp-inspector` and `toolCostReport()`, a tool name that a
-runtime-mounted duplicate collides with (which member is served, which is
-ignored).
-
-**Why:** Since P1-7 phase 1a, `buildServer()` never throws on a duplicate: the
-root-nearest tool is served and the conflict is logged once. A `perSession`
-binder whose tool never runs is otherwise visible only in that log line.
-
-**Context:** `MCPServer.computeVisibleTools` / `logDuplicate` in
-`packages/mcp/src/mcp.server.ts`.
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** —
-
-### Blog draft: one Zod contract serving REST, MCP, ChatGPT and Claude
-
-**What:** A narrative post: the same `@tool` schema projected as a REST route,
-an MCP tool, a ChatGPT sidebar entrypoint and a Claude widget.
-
-**Why:** It is the clearest demonstration of the boundary-coherence thesis
-(`docs/agent-ergonomics.md`).
-
-**Context:** Keep it unlinked from `docs/blog/index.html` until OpenAI's MCP
-extensions spec settles (P1-7 §8 gate).
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** P1-7 phase 3 gate.
-
 ### Reload consumers when a provider binding is swapped at runtime
 
 **What:** When a plugin providing DI key `K` is retracted and another mounts in

@@ -57,9 +57,10 @@ Usage:
 
 Options:
   -t, --template <name>   hybrid (default), rest, or mcp
-  --with <caps>           comma-separated add-ons (console, drizzle, auth)
+  --with <caps>           comma-separated add-ons (console, drizzle, auth, mcp-apps)
   --drizzle               shorthand for --with drizzle
   --auth                  shorthand for --with auth
+  --mcp-apps              shorthand for --with mcp-apps (hybrid)
   -c, --console           shorthand for --with console
   --port <n>              REST server port (rest|hybrid)
   --host <h>              REST server host (rest|hybrid)

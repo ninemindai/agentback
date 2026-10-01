@@ -179,6 +179,30 @@ describe('mcp-inspector', () => {
       });
     });
 
+    it('lists only the served member of a runtime duplicate, and the conflict', async () => {
+      @mcpServer()
+      class LateEcho {
+        @tool('echo')
+        echo() {
+          return 'late';
+        }
+      }
+      // After start(): the moment a duplicate can still appear.
+      app.service(LateEcho);
+      const r = await client.get('/mcp-inspector/api/manifest').expect(200);
+      expect(
+        r.body.tools.filter((t: {name: string}) => t.name === 'echo'),
+      ).toHaveLength(1);
+      expect(r.body.conflicts).toEqual([
+        {name: 'echo', served: 'EchoTools.echo', ignored: ['LateEcho.echo']},
+      ]);
+    });
+
+    it('omits conflicts when there are none', async () => {
+      const r = await client.get('/mcp-inspector/api/manifest').expect(200);
+      expect(r.body).not.toHaveProperty('conflicts');
+    });
+
     it('lists resources and prompts', async () => {
       const r = await client.get('/mcp-inspector/api/manifest').expect(200);
       expect(r.body.resources).toEqual([

@@ -126,7 +126,7 @@ export function parseNewArgs(argv: string[]): NewArgs {
     const f = argv[i];
     if (f === '-h' || f === '--help') {
       out.help = true;
-    } else if (f === '--drizzle' || f === '--auth') {
+    } else if (f === '--drizzle' || f === '--auth' || f === '--mcp-apps') {
       caps.add(f.slice(2));
     } else if (f === '-c' || f === '--console') {
       caps.add('console');

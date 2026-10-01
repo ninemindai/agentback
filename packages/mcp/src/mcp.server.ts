@@ -83,7 +83,11 @@ import {
   type MCPServerConfig,
   type MCPServerOptionalKeys,
 } from './types.js';
-import {toolCostReport, type ToolCostReport} from './tool-cost.js';
+import {
+  toolCostReport,
+  type ToolConflict,
+  type ToolCostReport,
+} from './tool-cost.js';
 import {assertIcons, assertJson} from './fragments.js';
 import {
   toResourceContents,
@@ -498,9 +502,58 @@ export class MCPServer implements Server {
     return this.mcp;
   }
 
-  /** Public introspection: list every registered tool. */
+  /**
+   * Public introspection: list every registered tool, root-nearest first.
+   * Includes a runtime-mounted duplicate; see {@link servedTools} for what
+   * callers actually get.
+   */
   listTools(): ToolBinding[] {
     return this.collectAllTools();
+  }
+
+  /**
+   * The tools callers are served, one per name: the root-nearest member when
+   * a runtime-mounted duplicate collides (scope filtering aside — that is
+   * per caller). Pair with {@link toolConflicts} to see what was suppressed.
+   */
+  servedTools(): ToolBinding[] {
+    return this.resolveToolNames().served;
+  }
+
+  /**
+   * Tool names a runtime-mounted duplicate collides with, and which member
+   * wins. Empty in a healthy app: `start()` refuses duplicates, so a conflict
+   * means a tool was mounted afterwards (a `perSession` binder, a plugin).
+   */
+  toolConflicts(): ToolConflict[] {
+    return this.resolveToolNames().conflicts;
+  }
+
+  /** Dedupe tool names root-nearest first, recording each conflict. */
+  private resolveToolNames(): {
+    served: ToolBinding[];
+    conflicts: ToolConflict[];
+  } {
+    const winners = new Map<string, ToolBinding>();
+    const ignored = new Map<string, string[]>();
+    for (const t of this.collectAllTools()) {
+      const prior = winners.get(t.meta.name);
+      if (!prior) {
+        winners.set(t.meta.name, t);
+      } else if (!isSameMember(prior, t)) {
+        const list = ignored.get(t.meta.name) ?? [];
+        list.push(memberName(t));
+        ignored.set(t.meta.name, list);
+      }
+    }
+    return {
+      served: [...winners.values()],
+      conflicts: [...ignored].map(([name, list]) => ({
+        name,
+        served: memberName(winners.get(name)!),
+        ignored: list,
+      })),
+    };
   }
 
   /**
@@ -512,8 +565,11 @@ export class MCPServer implements Server {
   toolCostReport(): ToolCostReport {
     // Reuses the compiled entries rather than re-emitting: this used to be a
     // second, duplicate JSON Schema emission site for the whole tool surface.
-    return toolCostReport(
-      this.collectAllTools().map(t => {
+    // Price what callers are served: a suppressed duplicate never reaches a
+    // `tools/list`, so it costs nothing and is reported separately.
+    const {served, conflicts} = this.resolveToolNames();
+    const report = toolCostReport(
+      served.map(t => {
         const {entry} = compileTool(t);
         return {
           name: entry.name,
@@ -525,6 +581,7 @@ export class MCPServer implements Server {
         };
       }),
     );
+    return conflicts.length ? {...report, suppressed: conflicts} : report;
   }
 
   /** Public introspection: list every registered resource. */

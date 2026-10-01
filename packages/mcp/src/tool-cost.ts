@@ -44,8 +44,23 @@ export interface ToolCostEntry {
   tokens: number;
 }
 
+/**
+ * A tool name two registrations share. `start()` refuses duplicates, so this
+ * only describes one mounted afterwards (a `perSession` binder, a plugin):
+ * `served` is the root-nearest member every caller gets, `ignored` the rest.
+ */
+export interface ToolConflict {
+  name: string;
+  /** `Class.method` of the member served under `name`. */
+  served: string;
+  /** `Class.method` of each member suppressed under `name`. */
+  ignored: string[];
+}
+
 export interface ToolCostReport {
   tools: ToolCostEntry[];
+  /** Tool names a runtime-mounted duplicate collides with; absent when none. */
+  suppressed?: ToolConflict[];
   totalBytes: number;
   /** What one `tools/list` costs a caller's context window, in tokens. */
   totalTokens: number;
@@ -103,5 +118,10 @@ export function formatToolCostReport(
     `${'total'.padEnd(nameWidth)}  ${String(report.totalTokens).padStart(7)}  ` +
       `${String(report.totalBytes).padStart(7)}`,
   );
+  for (const c of report.suppressed ?? []) {
+    lines.push(
+      `⚠ duplicate '${c.name}': serving ${c.served}, ignoring ${c.ignored.join(', ')}`,
+    );
+  }
   return lines.join('\n');
 }

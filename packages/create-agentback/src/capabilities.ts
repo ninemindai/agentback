@@ -80,6 +80,28 @@ function retargetReadmeToConsole(dir: string): void {
   writeFileSync(readmePath, text);
 }
 
+/** The section the `mcp-apps` capability appends to the scaffolded README. */
+const MCP_APPS_README = `
+## MCP Apps widget
+
+\`show_greeting\` renders an interactive card in hosts that support MCP Apps
+(Claude, ChatGPT, VS Code, Goose). The widget lives in \`widget/\` and talks to
+the host through the \`@modelcontextprotocol/ext-apps\` \`App\` bridge; it is
+bundled with esbuild on first read and served from
+\`src/tools/greeting-widget.tools.ts\`.
+
+To use it from claude.ai or ChatGPT:
+
+1. Expose the port on a public HTTPS URL, e.g.
+   \`cloudflared tunnel --url http://localhost:3000\`.
+2. Start with that URL so Claude's widget domain matches:
+   \`PUBLIC_URL=https://<tunnel-host> npm start\`.
+3. Add \`https://<tunnel-host>/mcp\` as a custom connector in the host.
+
+See the AgentBack guide "MCP Apps widgets" for host-specific metadata
+(\`toolFragment\`, \`@appResource\`) and a troubleshooting checklist.
+`;
+
 /** ---- the registry ---- */
 
 export const CAPABILITIES: readonly Capability[] = [
@@ -135,6 +157,34 @@ export const CAPABILITIES: readonly Capability[] = [
           'this.bind(USER_STORE).toClass(InMemoryUserStore).inScope(BindingScope.SINGLETON);',
         registrations: 'this.service(UsersTools);',
       },
+    },
+  },
+  {
+    name: 'mcp-apps',
+    label: 'MCP Apps widget (interactive card in Claude / ChatGPT)',
+    // The hosts that render widgets remotely (claude.ai, ChatGPT) connect over
+    // HTTP, which only the hybrid template serves alongside the in-memory
+    // test client.
+    templates: ['hybrid'],
+    deps: {
+      '@modelcontextprotocol/ext-apps': '^2.0.0',
+      esbuild: '^0.28.2',
+    },
+    wire: {
+      hybrid: {
+        imports:
+          "import {GreetingWidgetTools} from './tools/greeting-widget.tools.js';",
+        registrations: 'this.service(GreetingWidgetTools);',
+      },
+    },
+    apply(ctx) {
+      const readmePath = path.join(ctx.dir, 'README.md');
+      if (existsSync(readmePath)) {
+        writeFileSync(
+          readmePath,
+          readFileSync(readmePath, 'utf8').trimEnd() + '\n' + MCP_APPS_README,
+        );
+      }
     },
   },
   {

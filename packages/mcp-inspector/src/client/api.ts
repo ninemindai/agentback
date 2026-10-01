@@ -65,6 +65,8 @@ export interface Manifest {
   tools: ToolInfo[];
   resources: ResourceInfo[];
   prompts: PromptInfo[];
+  /** Tool names a runtime-mounted duplicate collides with. */
+  conflicts?: {name: string; served: string; ignored: string[]}[];
 }
 
 export interface Issue {

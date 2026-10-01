@@ -178,3 +178,44 @@ describe('stacking capabilities + host options', () => {
     expect(pkg.dependencies['@agentback/authentication-jwt']).toBeDefined();
   });
 });
+
+describe('mcp-apps capability', () => {
+  it('scaffolds the widget, tool, wiring, deps and README section', () => {
+    const {dir} = scaffold({
+      name: 'apps',
+      template: 'hybrid',
+      cwd,
+      capabilities: ['mcp-apps'],
+    });
+    for (const rel of [
+      'widget/shell.html',
+      'widget/view.js',
+      'src/widget/html.ts',
+      'src/widget/claude-domain.ts',
+      'src/tools/greeting-widget.tools.ts',
+      'src/__tests__/greeting-widget.test.ts',
+    ]) {
+      expect(appFile(dir, rel).length).toBeGreaterThan(0);
+    }
+    const appTs = appFile(dir, 'src/application.ts');
+    expect(appTs).toContain(
+      "import {GreetingWidgetTools} from './tools/greeting-widget.tools.js';",
+    );
+    expect(appTs).toContain('this.service(GreetingWidgetTools);');
+    expect(appTs).not.toContain('{{agentback:');
+    const pkg = JSON.parse(appFile(dir, 'package.json')) as {
+      dependencies: Record<string, string>;
+    };
+    expect(pkg.dependencies['@modelcontextprotocol/ext-apps']).toBeDefined();
+    expect(pkg.dependencies.esbuild).toBeDefined();
+    expect(appFile(dir, 'README.md')).toContain('## MCP Apps widget');
+  });
+
+  it('is rejected for templates without the hybrid HTTP surface', () => {
+    for (const template of ['rest', 'mcp'] as const) {
+      expect(() =>
+        scaffold({name: 'x', template, cwd, capabilities: ['mcp-apps']}),
+      ).toThrow(/mcp-apps/);
+    }
+  });
+});
