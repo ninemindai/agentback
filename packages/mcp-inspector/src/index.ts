@@ -14,7 +14,13 @@ import {
   type Installed,
   unbindOwned,
 } from '@agentback/core';
-import {MCPBindings, toolEntryMeta, type MCPServer} from '@agentback/mcp';
+import {
+  MCPBindings,
+  toolEntryMeta,
+  type MCPServer,
+  type SimulatedRequest,
+} from '@agentback/mcp';
+import {BindingKey} from '@agentback/core';
 import {
   installMcpConnect,
   type McpConnectOptions,
@@ -59,6 +65,67 @@ const DEFAULTS = {
   title: 'MCP Inspector',
 };
 
+// ---- Client profiles --------------------------------------------------------
+
+/**
+ * A host to preview presentation as: calls and reads made "as" a profile see
+ * its simulated `REQUEST_CLIENT` / `REQUEST_MOUNT` / `REQUEST_META`, so form
+ * selection, a widget `domain` function and capability checks show what that
+ * host would get — without deploying. Presentation only: identity and
+ * authorization are unchanged, and no round trip opens.
+ */
+export interface InspectorClientProfile extends SimulatedRequest {
+  /** Shown in the inspector's "Call as" picker. */
+  label: string;
+}
+
+/**
+ * Bind a `Record<id, InspectorClientProfile>` here to replace the built-in
+ * profiles (`{}` hides the picker).
+ */
+export const INSPECTOR_CLIENT_PROFILES = BindingKey.create<
+  Record<string, InspectorClientProfile>
+>('mcpInspector.clientProfiles');
+
+/**
+ * Representative host profiles. The declared capabilities follow each host's
+ * published docs (OpenAI's MCP extensions spec; MCP Apps); the `clientInfo`
+ * names and the mount `host` hints are illustrative — match them to what your
+ * `domain` function or `installMcpHttp({host})` mounts key on, or bind
+ * {@link INSPECTOR_CLIENT_PROFILES} with your own.
+ */
+export const DEFAULT_CLIENT_PROFILES: Record<string, InspectorClientProfile> = {
+  chatgpt: {
+    label: 'ChatGPT',
+    client: {
+      era: 'modern',
+      capabilities: {
+        elicitation: {form: {}},
+        extensions: {
+          'openai/elicitation': {form: {}},
+          'io.modelcontextprotocol/ui': {},
+        },
+      },
+      info: {name: 'chatgpt', version: '0'},
+      canRoundTrip: false,
+    },
+    mount: {host: 'chatgpt'},
+  },
+  claude: {
+    label: 'Claude',
+    client: {
+      era: 'modern',
+      capabilities: {
+        elicitation: {form: {}},
+        extensions: {'io.modelcontextprotocol/ui': {}},
+      },
+      info: {name: 'claude-ai', version: '0'},
+      canRoundTrip: false,
+    },
+    mount: {host: 'claude'},
+  },
+};
+
 // ---- Schemas ----------------------------------------------------------------
 
 const NamePath = z.object({name: z.string()});
@@ -66,6 +133,9 @@ const NamePath = z.object({name: z.string()});
 // Tool input is dynamic (validated per-tool by the tool's own Zod schema inside
 // callTool); accept any JSON object here.
 const CallBody = z.record(z.string(), z.unknown());
+
+/** `?as=<profile id>` — call or read as a {@link InspectorClientProfile}. */
+const AsQuery = z.object({as: z.string().optional()});
 
 // Permissive manifest schema: tool input/output schemas are arbitrary JSON
 // Schema objects, so they are left untyped.
@@ -105,6 +175,8 @@ const Manifest = z
     prompts: z.array(
       z.object({name: z.string(), description: z.string().optional()}),
     ),
+    /** Client profiles a call or read can be made "as". */
+    profiles: z.array(z.object({id: z.string(), label: z.string()})).optional(),
     /**
      * Tool names a runtime-mounted duplicate collides with. Only the served
      * member appears in `tools`; absent when there are none.
@@ -133,7 +205,30 @@ const Manifest = z
 @injectable({scope: BindingScope.SINGLETON})
 @api({basePath: API_BASE})
 export class McpInspectorController {
-  constructor(@inject(MCPBindings.SERVER) private readonly mcp: MCPServer) {}
+  constructor(
+    @inject(MCPBindings.SERVER) private readonly mcp: MCPServer,
+    @inject(INSPECTOR_CLIENT_PROFILES, {optional: true})
+    private readonly profiles: Record<
+      string,
+      InspectorClientProfile
+    > = DEFAULT_CLIENT_PROFILES,
+  ) {}
+
+  /** The simulation for `?as=`, or a 400 naming the known profiles. */
+  private simulateAs(as?: string): SimulatedRequest | undefined {
+    if (as === undefined || as === '') return undefined;
+    const p = Object.hasOwn(this.profiles, as) ? this.profiles[as] : undefined;
+    if (!p) {
+      throw Object.assign(
+        new Error(
+          `Unknown client profile '${as}'. Known: ${Object.keys(this.profiles).join(', ') || 'none'}`,
+        ),
+        {statusCode: 400},
+      );
+    }
+    const {label: _label, ...simulate} = p;
+    return simulate;
+  }
 
   @get('/manifest', {response: Manifest})
   async manifest(): Promise<z.infer<typeof Manifest>> {
@@ -182,24 +277,51 @@ export class McpInspectorController {
       resources,
       prompts,
       ...(conflicts.length ? {conflicts} : {}),
+      ...(Object.keys(this.profiles).length
+        ? {
+            profiles: Object.entries(this.profiles).map(([id, p]) => ({
+              id,
+              label: p.label,
+            })),
+          }
+        : {}),
     };
   }
 
   @post('/tools/{name}/call', {
     path: NamePath,
     body: CallBody,
+    query: AsQuery,
     response: z.any(),
   })
   async call(input: {
     path: z.infer<typeof NamePath>;
     body: z.infer<typeof CallBody>;
+    query: z.infer<typeof AsQuery>;
   }): Promise<unknown> {
-    return this.invoke(() => this.mcp.callTool(input.path.name, input.body));
+    const simulate = this.simulateAs(input.query.as);
+    return this.invoke(() =>
+      this.mcp.callTool(
+        input.path.name,
+        input.body,
+        simulate ? {simulate} : undefined,
+      ),
+    );
   }
 
-  @post('/resources/{name}/read', {path: NamePath, response: z.any()})
-  async read(input: {path: z.infer<typeof NamePath>}): Promise<unknown> {
-    return this.invoke(() => this.mcp.readResource(input.path.name));
+  @post('/resources/{name}/read', {
+    path: NamePath,
+    query: AsQuery,
+    response: z.any(),
+  })
+  async read(input: {
+    path: z.infer<typeof NamePath>;
+    query: z.infer<typeof AsQuery>;
+  }): Promise<unknown> {
+    const simulate = this.simulateAs(input.query.as);
+    return this.invoke(() =>
+      this.mcp.readResource(input.path.name, simulate ? {simulate} : {}),
+    );
   }
 
   @post('/prompts/{name}/get', {path: NamePath, response: z.any()})

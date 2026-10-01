@@ -389,8 +389,13 @@ export function requestedSchemaFor(
   form: ElicitForm,
   client: RequestClient | undefined,
 ): Record<string, unknown> {
+  // Modern era only. On a 2025 connection OpenAI's extended forms travel on
+  // their own method (`openai/elicitation/create`), not the standard
+  // `elicitation/create` the SDK shim sends — so a legacy client gets the
+  // standard form even when it declared the extension.
   if (
     form.extended &&
+    client?.era === 'modern' &&
     hasClientExtension(client, OPENAI_ELICITATION_EXTENSION)
   ) {
     return form.extended;

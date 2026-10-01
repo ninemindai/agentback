@@ -592,6 +592,9 @@ importers:
       '@agentback/mcp-http':
         specifier: workspace:*
         version: link:../../packages/mcp-http
+      '@agentback/mcp-openai':
+        specifier: workspace:*
+        version: link:../../packages/mcp-openai
       '@agentback/rest':
         specifier: workspace:*
         version: link:../../packages/rest
@@ -2257,6 +2260,49 @@ importers:
       supertest:
         specifier: ^7.3.0
         version: 7.3.0(supports-color@10.2.2)
+      vitest:
+        specifier: ~5.0.1
+        version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+
+  packages/mcp-openai:
+    dependencies:
+      '@agentback/common':
+        specifier: workspace:~
+        version: link:../common
+      '@agentback/context':
+        specifier: workspace:~
+        version: link:../context
+      '@agentback/core':
+        specifier: workspace:~
+        version: link:../core
+      '@agentback/mcp':
+        specifier: workspace:~
+        version: link:../mcp
+      '@agentback/openapi':
+        specifier: workspace:~
+        version: link:../openapi
+      '@agentback/security':
+        specifier: workspace:~
+        version: link:../security
+      '@modelcontextprotocol/server':
+        specifier: ^2.1.0
+        version: 2.1.0
+      tslib:
+        specifier: ^2.8.1
+        version: 2.8.1
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@agentback/mcp-http':
+        specifier: workspace:~
+        version: link:../mcp-http
+      '@agentback/rest':
+        specifier: workspace:~
+        version: link:../rest
+      '@modelcontextprotocol/client':
+        specifier: ^2.1.0
+        version: 2.1.0
       vitest:
         specifier: ~5.0.1
         version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))

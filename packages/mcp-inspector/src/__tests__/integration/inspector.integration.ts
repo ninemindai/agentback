@@ -6,8 +6,10 @@ import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import supertest from 'supertest';
 import {z} from 'zod';
 import {RestApplication} from '@agentback/rest';
+import {inject} from '@agentback/core';
 import {
   appResource,
+  MCPBindings,
   MCPComponent,
   MCPServer,
   mcpServer,
@@ -16,7 +18,11 @@ import {
   tool,
   toolFragment,
 } from '@agentback/mcp';
-import {installInspector} from '../../index.js';
+import {
+  INSPECTOR_CLIENT_PROFILES,
+  installInspector,
+  type InspectorClientProfile,
+} from '../../index.js';
 
 const EchoInput = z.object({text: z.string().min(1)});
 const AddInput = z.object({a: z.number().int(), b: z.number().int()});
@@ -331,5 +337,100 @@ describe('mcp-inspector', () => {
         .expect(400);
       expect(pr.body.error.message).toMatch(/Unknown prompt/);
     });
+  });
+});
+
+@mcpServer()
+class ProfileTools {
+  @tool('whoami')
+  whoami(
+    @inject(MCPBindings.REQUEST_CLIENT, {optional: true})
+    client?: {
+      info?: {name?: string};
+    },
+  ) {
+    return {client: client?.info?.name ?? null};
+  }
+
+  @appResource('ui://w', {
+    domain: ({mount}) =>
+      mount?.host === 'claude' ? 'abc.claudemcpcontent.com' : undefined,
+  })
+  w() {
+    return '<html></html>';
+  }
+}
+
+describe('mcp-inspector client profiles', () => {
+  let app: RestApplication;
+  let client: ReturnType<typeof supertest>;
+
+  async function boot(profiles?: Record<string, InspectorClientProfile>) {
+    app = new RestApplication({});
+    app.configure('servers.RestServer').to({port: 0, host: '127.0.0.1'});
+    app.component(MCPComponent);
+    app.configure('servers.MCPServer').to({transports: {stdio: false}});
+    app.service(ProfileTools);
+    if (profiles) app.bind(INSPECTOR_CLIENT_PROFILES).to(profiles);
+    await app.get<MCPServer>('servers.MCPServer');
+    await installInspector(app);
+    await app.start();
+    client = supertest((await app.restServer).url);
+  }
+
+  afterEach(async () => app?.stop());
+
+  it('lists the built-in profiles in the manifest', async () => {
+    await boot();
+    const r = await client.get('/mcp-inspector/api/manifest').expect(200);
+    expect(r.body.profiles).toEqual([
+      {id: 'chatgpt', label: 'ChatGPT'},
+      {id: 'claude', label: 'Claude'},
+    ]);
+  });
+
+  it('calls and reads as a profile', async () => {
+    await boot();
+    const plain = await client
+      .post('/mcp-inspector/api/tools/whoami/call')
+      .send({})
+      .expect(200);
+    expect(plain.body).toEqual({client: null});
+    const asClaude = await client
+      .post('/mcp-inspector/api/tools/whoami/call?as=claude')
+      .send({})
+      .expect(200);
+    expect(asClaude.body).toEqual({client: 'claude-ai'});
+    const read = await client
+      .post('/mcp-inspector/api/resources/w/read?as=claude')
+      .expect(200);
+    expect(read.body.contents[0]._meta).toEqual({
+      ui: {domain: 'abc.claudemcpcontent.com'},
+    });
+    const readChatgpt = await client
+      .post('/mcp-inspector/api/resources/w/read?as=chatgpt')
+      .expect(200);
+    expect(readChatgpt.body.contents[0]._meta).toBeUndefined();
+  });
+
+  it('answers 400 for an unknown profile, and honours a bound replacement', async () => {
+    await boot({
+      mine: {
+        label: 'Mine',
+        client: {era: 'legacy', info: {name: 'mine'}, canRoundTrip: false},
+      },
+    });
+    const r = await client
+      .post('/mcp-inspector/api/tools/whoami/call?as=claude')
+      .send({})
+      .expect(400);
+    expect(r.body.error.message).toMatch(
+      /Unknown client profile 'claude'. Known: mine/,
+    );
+    const ok = await client
+      .post('/mcp-inspector/api/tools/whoami/call?as=mine')
+      .send({})
+      .expect(200);
+    expect(ok.body).toEqual({client: 'mine'});
   });
 });

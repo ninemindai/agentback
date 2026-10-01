@@ -360,6 +360,34 @@ describe('nested in-process calls', () => {
   });
 });
 
+describe('simulate (inspector client profiles)', () => {
+  it('binds a simulated client, mount and meta for one in-process call', async () => {
+    const {server} = await boot();
+    const res = await server.callTool(
+      'meta',
+      {},
+      {
+        simulate: {
+          mount: {host: 'claude'},
+          meta: {'openai/resource': {path: '/p'}},
+        },
+      },
+    );
+    expect(res).toEqual({
+      meta: {'openai/resource': {path: '/p'}},
+      mount: {host: 'claude'},
+    });
+    const {contents} = await server.readResource('widget', {
+      simulate: {
+        client: {era: 'modern', info: {name: 'claude-ai'}, canRoundTrip: true},
+      },
+    });
+    expect(contents[0]._meta).toMatchObject({
+      ui: {domain: 'abc.claudemcpcontent.com'},
+    });
+  });
+});
+
 describe('@appResource({domain}) as a function', () => {
   async function readUi(client: Client, uri: string) {
     const {contents} = await client.readResource({uri});

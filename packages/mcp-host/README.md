@@ -77,6 +77,31 @@ match across `/`, and other operators (`{?q}`, `{.ext}`, …) are treated like
 `resources/subscribe` passthrough and `listChanged` notification fan-in need
 upstream notification plumbing — tracked, not blocking.
 
+### Host extensions through the gateway
+
+Tool listings pass through whole — `_meta`, `icons` and `annotations` survive
+— so a ChatGPT entrypoint or a Claude widget `domain` on an upstream still
+reaches the host. Four things do **not** survive the hop:
+
+1. **Request `_meta` is dropped.** A call forwards only `{name, arguments}`,
+   so `_meta["openai/resource"].path` (a ChatGPT file entrypoint) and any other
+   per-request host key never reach the upstream.
+2. **An upstream's `input_required` is not relayed.** A tool that elicits
+   (`elicit.ask`, a 2026 `confirm:` prompt) cannot complete through the
+   gateway.
+3. **Prefixing renames tools that host metadata names.** `openai/settings`'
+   `readTool`/`updateTool`, a settings layout's `tool` items and a quick
+   action's `target.name` refer to the upstream's own names; with the default
+   `<upstream>__` prefix they point at nothing.
+4. **Upstream `extensions` / `experimental` capabilities are not
+   aggregated**, so `openai/settings` is not advertised by the gateway.
+
+Expose a host-extension server directly, or through the gateway with
+`prefix: false` (which fixes 3 only). Relaying request `_meta` and
+`input_required` is ordinary MCP and a candidate follow-up; rewriting host
+vocabulary inside opaque `_meta` is deliberately out of scope
+([P1-7 §7](../../docs/proposals/host-extensions.md#7-gateway-mcp-host-documented-limitations-g8)).
+
 ## Exposing the gateway over HTTP
 
 The aggregated `host.server` is the same `Server` type the SDK transports

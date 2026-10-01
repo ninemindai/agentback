@@ -155,8 +155,8 @@ or `elicit.askAll({...})`. **Experimental.**
   A stateless 2025 request, a client without the capability, and in-process
   `callTool` get `elicitation_unavailable`.
 - Declined/cancelled → `elicitation_declined`; schema-invalid answer →
-  `invalid_input`; only an `extended` form for a client without
-  `openai/elicitation` → `elicitation_unsupported`.
+  `invalid_input`; only an `extended` form for a client that is not 2026-era
+  with `openai/elicitation` → `elicitation_unsupported`.
 - Guards throw (`ElicitMisuseError` or a swallowed-signal error): catching the
   signal without `if (isInputRequired(e)) throw e`, asking after a stream tool
   yielded, the reserved key `confirm`, a repeated key, a non-flat form.
@@ -371,8 +371,32 @@ const sidebar = toolFragment({
 - `toolFragment`, `resourceFragment`, `@appResource` and `resourceContent` are
   **experimental** — shapes may change in a minor release.
 
-Recipes (sidebar entrypoint, display modes, mentions, settings, Claude's
-`domain`) and the host-connection checklist:
+ChatGPT — `@agentback/mcp-openai` (experimental, tracks OpenAI's spec):
+
+- `openaiUi({entrypoints: [{type: 'global'|'thread'|'settings'|'file', …}]})`
+  (or `globalEntrypoint()` etc.) — needs `ui.resourceUri`; `{}` must pass the
+  `input:` (file: `FileEntrypointIn`). **One `openaiUi` per tool** — two would
+  set `openai/ui` twice.
+- `mentionSearch()` with `input: MentionSearchIn, output: MentionSearchOut`.
+- `displayModes({preferred, available})` on `@appResource` (no `pip`).
+- `openaiForm({...textField/choiceField/resourceField})` → the `extended` of
+  `elicit.ask` (2026 clients with `openai/elicitation` only; `standard` must
+  accept what it submits).
+- `resourcePath(ctx, {roots})` — confined `_meta["openai/resource"].path`;
+  refused over HTTP unless `allowHttp`.
+- `installSettings(app, {schema, store, layout})` — `settings_read` /
+  `settings_update` + `openai/settings`. Fields: primitive, `.default()`,
+  `.meta({title})`. Keyed per **verified** user (never a `clientId`-synthesized
+  principal — `isSynthesizedPrincipal`); else update →
+  `settings_identity_required`, read → defaults. `principalKey` / `shared: true`
+  opt in.
+- Inspector "Call as" (ChatGPT/Claude profiles) previews per-host
+  presentation; tests use `callTool(name, input, {simulate})`.
+- Through `mcp-host` request `_meta`, `input_required`, prefixed names in host
+  metadata and upstream capabilities do not survive — expose such servers
+  directly.
+
+Recipes (Claude's `domain`, per-host mounts) and the host-connection checklist:
 `docs/guides/mcp-apps-widgets.md`.
 
 ## Transport: stdio (MCPApplication)
