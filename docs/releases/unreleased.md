@@ -27,17 +27,31 @@ decorator is applied:
 - `mcp-inspector` shows annotations, icons, `_meta`, content-item `_meta` and
   server capabilities.
 - `examples/hello-mcp-apps` gains `start:http` for remote hosts.
+- Tool, resource and server `icons` need a non-empty `src`, and `*Hint`
+  annotations must be booleans — checked at decoration (server icons at
+  construction).
+
+`toolFragment`, `resourceFragment`, `@appResource` and `resourceContent` are
+**experimental**: their shapes may change in a minor release while the host
+specs settle.
 
 See the "Host extensions" section of
 [docs/guides/mcp-apps-widgets.md](../guides/mcp-apps-widgets.md).
 
 ## ⚠️ Behaviour changes
 
-- **Duplicate tool names now throw** at `start()` / `buildServer()`, naming
-  both members. Before, the last registration silently won. The same class
-  bound twice (e.g. `app.controller(C)` + `app.service(C)`) is still accepted.
-  A duplicate mounted at runtime after start is logged and the first
-  registration keeps serving.
+- **Duplicate tool names now throw at `start()`**, naming both members.
+  Before, the last registration silently won. The same class bound twice (e.g.
+  `app.controller(C)` + `app.service(C)`) is still accepted. `buildServer()`
+  never throws on a duplicate (under stateless HTTP it runs per request): one
+  mounted later — by a `perSession` binder or a plugin — is resolved
+  root-nearest first, so an app-level tool always wins, and the conflict is
+  logged once per app and pair. If the winner is scope-hidden from a caller,
+  the name is hidden rather than served by the loser.
+- **Host `_meta` keys need a vendor prefix.** Every key a fragment or
+  `resourceContent()` contributes outside `ui` must look like `openai/x` or
+  `com.example/x`; an unprefixed key throws, since unprefixed keys are reserved
+  for MCP.
 - **`confirm:` tools now publish `annotations: {destructiveHint: true}`** on
   `tools/list` unless the tool sets `destructiveHint` itself. Snapshot tests of
   `tools/list` change. `confirm:` together with `readOnlyHint: true` throws at

@@ -65,7 +65,12 @@ export interface ToolFragment extends ToolFragmentSpec {
   readonly [TOOL_FRAGMENT]: true;
 }
 
-/** Build a {@link ToolFragment}. */
+/**
+ * Build a {@link ToolFragment}.
+ *
+ * @experimental Host extensions are still settling (phase 1a of
+ * docs/proposals/host-extensions.md); the shape may change in a minor release.
+ */
 export function toolFragment(spec: ToolFragmentSpec): ToolFragment {
   return {...spec, [TOOL_FRAGMENT]: true};
 }
@@ -90,7 +95,11 @@ export interface ResourceFragment extends ResourceFragmentSpec {
   readonly [RESOURCE_FRAGMENT]: true;
 }
 
-/** Build a {@link ResourceFragment}. */
+/**
+ * Build a {@link ResourceFragment}.
+ *
+ * @experimental See {@link toolFragment}.
+ */
 export function resourceFragment(spec: ResourceFragmentSpec): ResourceFragment {
   return {...spec, [RESOURCE_FRAGMENT]: true};
 }
@@ -131,17 +140,99 @@ export function assertJson(value: unknown, path: string): void {
   }
 }
 
+/** A `_meta` key prefix label: starts with a letter, ends alphanumeric. */
+const LABEL = '[A-Za-z](?:[A-Za-z0-9-]*[A-Za-z0-9])?';
+/**
+ * A vendor-prefixed `_meta` key, per the MCP spec's `_meta` naming: one or
+ * more dot-separated labels, a single `/`, then a name that begins and ends
+ * alphanumeric.
+ */
+const VENDOR_META_KEY = new RegExp(
+  `^(${LABEL}(?:\\.${LABEL})*)/[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$`,
+);
+
+/**
+ * Throw unless `key` is a vendor-prefixed `_meta` key a host extension may
+ * use. Unprefixed keys are reserved for MCP itself, and so is any prefix in
+ * which `modelcontextprotocol` or `mcp` appears before the last label
+ * (`io.modelcontextprotocol/`, `mcp.dev/`, `tools.mcp.com/`).
+ */
+export function assertVendorMetaKey(key: string): void {
+  const match = VENDOR_META_KEY.exec(key);
+  if (!match) {
+    throw new Error(
+      `_meta key '${key}' needs a vendor prefix ('<vendor>/<key>', e.g. ` +
+        `'openai/${key}' or 'com.example/${key}'); unprefixed keys are ` +
+        `reserved for MCP`,
+    );
+  }
+  const labels = match[1].split('.');
+  if (
+    key.startsWith(RESERVED_META_PREFIX) ||
+    labels.slice(0, -1).some(l => l === 'modelcontextprotocol' || l === 'mcp')
+  ) {
+    throw new Error(
+      `_meta key '${key}' is reserved for the MCP spec (${RESERVED_META_PREFIX}*, ` +
+        `mcp.*/ and similar prefixes)`,
+    );
+  }
+}
+
 /** Reject `_meta` keys this framework or the spec owns. */
 export function assertMetaKeys(meta: MetaObject, reservedUi: string): void {
   for (const key of Object.keys(meta)) {
     if (key === 'ui') {
       throw new Error(`meta key 'ui' is reserved — ${reservedUi}`);
     }
-    if (key.startsWith(RESERVED_META_PREFIX)) {
+    assertVendorMetaKey(key);
+  }
+}
+
+/**
+ * Throw unless `annotations` is plain JSON whose `*Hint` keys are booleans.
+ * Runs on the author's own object, before it is cloned, so a function value
+ * fails here with a path instead of as a `DataCloneError`.
+ */
+export function assertAnnotations(annotations: unknown, path: string): void {
+  assertJson(annotations, path);
+  if (typeof annotations !== 'object' || annotations === null) {
+    throw new Error(`${path} must be an object`);
+  }
+  for (const [k, v] of Object.entries(annotations)) {
+    if (k.endsWith('Hint') && typeof v !== 'boolean') {
       throw new Error(
-        `meta key '${key}' is reserved for the MCP spec (${RESERVED_META_PREFIX}*)`,
+        `${path}.${k} must be a boolean, got ${JSON.stringify(v)}`,
       );
     }
+  }
+}
+
+/**
+ * Throw unless `icons` is an array of plain JSON objects, each with a
+ * non-empty string `src`. Other `Icon` fields are only JSON-checked: hosts
+ * read different subsets and the spec keeps adding to them.
+ */
+export function assertIcons(icons: unknown, path: string): void {
+  if (!Array.isArray(icons)) throw new Error(`${path} must be an array`);
+  icons.forEach((icon, i) => {
+    assertJson(icon, `${path}[${i}]`);
+    if (typeof icon !== 'object' || icon === null || Array.isArray(icon)) {
+      throw new Error(`${path}[${i}] must be an object with a src`);
+    }
+    const src = (icon as {src?: unknown}).src;
+    if (typeof src !== 'string' || src.length === 0) {
+      throw new Error(`${path}[${i}].src must be a non-empty string`);
+    }
+  });
+}
+
+/** Throw when a `ui` object sets neither field; `source` names where it came from. */
+function assertUiNotEmpty(
+  ui: {resourceUri?: string; visibility?: ToolUiVisibility[]},
+  source: string,
+): void {
+  if (ui.resourceUri === undefined && !ui.visibility?.length) {
+    throw new Error(`${source}: must set resourceUri, visibility, or both`);
   }
 }
 
@@ -187,17 +278,22 @@ export function mergeToolOptions(options: {
   confirm?: boolean | {ttlMs?: number};
   extend?: readonly ToolFragment[];
 }): MergedToolMeta {
+  if (options.ui) assertUiNotEmpty(options.ui, 'ui');
+  if (options.annotations) {
+    if ('title' in options.annotations) {
+      throw new Error(
+        `annotations.title is not supported — set the tool's top-level title:`,
+      );
+    }
+    assertAnnotations(options.annotations, 'annotations');
+  }
+  if (options.icons) assertIcons(options.icons, 'icons');
+
   let ui = options.ui ? structuredClone(options.ui) : undefined;
   let annotations = options.annotations
     ? {...structuredClone(options.annotations)}
     : undefined;
   let meta: MetaObject | undefined;
-
-  if (annotations && 'title' in annotations) {
-    throw new Error(
-      `annotations.title is not supported — set the tool's top-level title:`,
-    );
-  }
 
   (options.extend ?? []).forEach((fragment, i) => {
     if (!fragment || (fragment as ToolFragment)[TOOL_FRAGMENT] !== true) {
@@ -207,6 +303,7 @@ export function mergeToolOptions(options: {
     }
     const source = `extend[${i}]`;
     if (fragment.ui) {
+      assertUiNotEmpty(fragment.ui, `${source}.ui`);
       const next = structuredClone(fragment.ui);
       if (
         next.resourceUri !== undefined &&
@@ -234,7 +331,10 @@ export function mergeToolOptions(options: {
           `${source} sets annotations.title — use the tool's top-level title:`,
         );
       }
-      for (const [k, v] of Object.entries(fragment.annotations)) {
+      assertAnnotations(fragment.annotations, `${source}.annotations`);
+      for (const [k, v] of Object.entries(
+        structuredClone(fragment.annotations),
+      )) {
         const current = (annotations as Record<string, unknown> | undefined)?.[
           k
         ];
@@ -252,10 +352,6 @@ export function mergeToolOptions(options: {
       meta = mergeMeta(meta, structuredClone(fragment.meta), source);
     }
   });
-
-  if (ui && ui.resourceUri === undefined && !ui.visibility?.length) {
-    throw new Error(`ui: must set resourceUri, visibility, or both`);
-  }
 
   // `confirm:` marks a tool whose effect warrants a human yes. A read-only
   // tool needs no confirmation, so both at once means one declaration is

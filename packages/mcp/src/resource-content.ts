@@ -2,7 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {assertJson, type MetaObject} from './fragments.js';
+import {assertJson, assertVendorMetaKey, type MetaObject} from './fragments.js';
 
 const RESOURCE_CONTENT = Symbol.for('agentback.mcp.resourceContent');
 
@@ -39,6 +39,9 @@ export type ResourceContentItem = {
  * Unbranded returns keep their existing behaviour (string → text, anything
  * else → JSON text), so this never reinterprets a payload that happens to
  * look like MCP contents.
+ *
+ * @experimental Host extensions are still settling (phase 1a of
+ * docs/proposals/host-extensions.md); the shape may change in a minor release.
  */
 export function resourceContent(
   body: {text: string} | {blob: Uint8Array},
@@ -46,12 +49,10 @@ export function resourceContent(
 ): ResourceContent {
   if (options.meta) {
     assertJson(options.meta, 'resourceContent meta');
+    // `ui` is exempt: it is the MCP Apps key, merged key by key over the
+    // decorator's static `_meta.ui`.
     for (const key of Object.keys(options.meta)) {
-      if (key.startsWith('io.modelcontextprotocol/')) {
-        throw new Error(
-          `resourceContent meta key '${key}' is reserved for the MCP spec`,
-        );
-      }
+      if (key !== 'ui') prefixed(() => assertVendorMetaKey(key));
     }
   }
   if ('blob' in body && !(body.blob instanceof Uint8Array)) {
@@ -65,6 +66,14 @@ export function resourceContent(
   };
 }
 
+function prefixed(check: () => void): void {
+  try {
+    check();
+  } catch (err) {
+    throw new Error(`resourceContent: ${(err as Error).message}`, {cause: err});
+  }
+}
+
 /** True when `value` is a {@link resourceContent} item. */
 export function isResourceContent(value: unknown): value is ResourceContent {
   return (
@@ -74,8 +83,25 @@ export function isResourceContent(value: unknown): value is ResourceContent {
   );
 }
 
-/** Base64 without `Buffer`, so the package stays runtime-neutral. */
-function toBase64(bytes: Uint8Array): string {
+type Base64Bytes = Uint8Array & {toBase64?: () => string};
+type BufferLike = {from(b: Uint8Array): {toString(enc: 'base64'): string}};
+
+/**
+ * Base64 for a blob. Prefers the runtime's native encoder —
+ * `Uint8Array.prototype.toBase64` (modern runtimes), then Node's `Buffer` —
+ * and falls back to a chunked `btoa`, so the package stays runtime-neutral.
+ * The fallback allocates about three times the payload per read.
+ */
+export function toBase64(bytes: Uint8Array): string {
+  const native = (bytes as Base64Bytes).toBase64;
+  if (typeof native === 'function') return native.call(bytes);
+  const buffer = (globalThis as {Buffer?: BufferLike}).Buffer;
+  if (buffer) return buffer.from(bytes).toString('base64');
+  return toBase64Chunked(bytes);
+}
+
+/** @internal The portable fallback of {@link toBase64}; exported for tests. */
+export function toBase64Chunked(bytes: Uint8Array): string {
   let binary = '';
   const chunk = 0x8000;
   for (let i = 0; i < bytes.length; i += chunk) {

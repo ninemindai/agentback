@@ -5,7 +5,13 @@
 import {describe, expect, it} from 'vitest';
 import {Client, InMemoryTransport} from '@modelcontextprotocol/client';
 import {Application} from '@agentback/core';
-import {MCPComponent, MCPServer, mcpServer, tool} from '../../index.js';
+import {
+  MCPComponent,
+  MCPServer,
+  mcpServer,
+  tool,
+  toolFragment,
+} from '../../index.js';
 
 // `buildServer()` mints a fresh SDK server for every serving unit — today one
 // per Streamable-HTTP session, and under the 2026-07-28 stateless revision one
@@ -110,6 +116,49 @@ describe('tool compile cache', () => {
       properties: {city: {type: 'string'}},
     });
     await client.close();
+  });
+
+  it('a cache hit keeps the merged host metadata (_meta, annotations, icons)', async () => {
+    const icon = {src: 'https://example.test/i.svg'};
+    @mcpServer()
+    class HostTools {
+      @tool('hosted', {
+        icons: [icon],
+        annotations: {readOnlyHint: true},
+        ui: {resourceUri: 'ui://hosted/w'},
+        extend: [toolFragment({meta: {'acme/entry': {global: true}}})],
+      })
+      hosted() {
+        return 'ok';
+      }
+    }
+    const app = new Application();
+    app.component(MCPComponent);
+    app.configure('servers.MCPServer').to({
+      name: 'meta',
+      version: '0.0.0',
+      transports: {stdio: false},
+    });
+    app.service(HostTools);
+    const server = await app.get<MCPServer>('servers.MCPServer');
+
+    const listed = [];
+    for (let i = 0; i < 2; i++) {
+      const [ct, st] = InMemoryTransport.createLinkedPair();
+      await server.buildServer().connect(st);
+      const client = new Client({name: 'c', version: '0.0.0'});
+      await client.connect(ct);
+      listed.push((await client.listTools()).tools[0]);
+      await client.close();
+    }
+    for (const entry of listed) {
+      expect(entry._meta).toEqual({
+        ui: {resourceUri: 'ui://hosted/w'},
+        'acme/entry': {global: true},
+      });
+      expect(entry.annotations).toEqual({readOnlyHint: true});
+      expect(entry.icons).toEqual([icon]);
+    }
   });
 
   it('does not cache a failure, so a bad schema keeps failing every build', async () => {

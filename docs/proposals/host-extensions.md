@@ -114,6 +114,16 @@ AgentBack does with it.
 6. **Every new `install*` returns `Installed`** and retracts with
    `revertOwned`.
 
+### Why checked seams, if the SDK grows them
+
+SDK v2's high-level API may eventually accept `_meta` and `icons` itself.
+These seams stay worth having even then, because they do what a passthrough
+cannot: a host rule is checked **at the decorator line** against the tool's
+real Zod `input:` schema, a key set twice or reserved by the spec fails before
+the server starts, and every projection — REST, stdio, HTTP, agents, the CLI —
+reads the same compiled, frozen entry. If the SDK adds the fields, the
+compiled entry feeds them; the authoring surface does not change.
+
 ## 4. Phase 1 — host-neutral core seams (`@agentback/mcp`)
 
 Phase **1a** (§4.1–4.5) has standalone value: it unblocks every
@@ -246,8 +256,19 @@ new MCPApplication({
 ### 4.5 Duplicate tool names are a boot error (G7)
 
 `computeVisibleTools` keys tools by name, so a duplicate silently shadows. The
-fix is a duplicate check at `start()` and in `buildServer` that throws, naming
-both bindings. Installer-generated tools (§8.3) make this load-bearing.
+fix is a duplicate check at `start()` that throws, naming both bindings.
+Installer-generated tools (§8.3) make this load-bearing.
+
+`buildServer()` must **not** throw on a duplicate: under stateless HTTP it runs
+per request, so a tool mounted after `start()` (a `perSession` binder, a plugin)
+would turn every request into a 500. (The first implementation did exactly
+this; the branch review caught it.) Instead `computeVisibleTools` resolves
+duplicates by name **before** the scope filter, root-nearest first — a tool
+bound on the app context beats one bound in a child, then discovery order —
+and logs the conflict once per app context and pair. If the winner is
+scope-hidden from a caller, the name is hidden: the loser is never served under
+it. A child binding with the **same key** still overrides its parent, as
+everywhere in the container; the rule arbitrates distinct bindings only.
 
 ### 4.6 Phase 1b — capability contributions
 
@@ -300,15 +321,15 @@ These land with 1a: the docs are what make the seams usable.
 
 ### 4.9 Tests (phase 1)
 
-| Seam                                          | Extend                                                           | New cases                                                                                                                     |
-| --------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| icons, annotations, `extend` merge and checks | `decorators.unit.ts`, `mcp-apps.unit.ts`                         | each merge conflict throws; reserved keys; `confirm` + `readOnlyHint`; a shared author constant is not frozen                 |
-| compile cache                                 | `tool-compile-cache.unit.ts`                                     | a cache hit preserves the merged `_meta`                                                                                      |
-| `resourceContent` / `@appResource`            | `mcp-apps.unit.ts`                                               | text, blob, array; meta precedence; `_meta.ui` on the content item and not the list entry; `domain()` throws → omitted        |
-| capabilities and serverInfo                   | `stdio-eras.integration.ts`, `mcp-http/stateless.integration.ts` | `'both'` and `'legacy'` stdio; `initialize` and `server/discover`; serverInfo icons in 2026 result `_meta`; bad keys rejected |
-| duplicate names                               | `mcp-server.unit.ts`                                             | throws at `start()` and in `buildServer`                                                                                      |
-| contributions (1b)                            | `mcp-http/uninstall.integration.ts`, `runInstallConformance`     | async binding rejected; collision; `revertOwned` keeps a shadow                                                               |
-| `REQUEST_CLIENT` (1b)                         | `mcp-http/request-info.integration.ts`, `request-extras.unit.ts` | 2026 extension detection; stateless-legacy is unknown; stdio-modern; absent in-process                                        |
+| Seam                                          | Extend                                                             | New cases                                                                                                                     |
+| --------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| icons, annotations, `extend` merge and checks | `decorators.unit.ts`, `mcp-apps.unit.ts`                           | each merge conflict throws; reserved keys; `confirm` + `readOnlyHint`; a shared author constant is not frozen                 |
+| compile cache                                 | `tool-compile-cache.unit.ts`                                       | a cache hit preserves the merged `_meta`                                                                                      |
+| `resourceContent` / `@appResource`            | `mcp-apps.unit.ts`                                                 | text, blob, array; meta precedence; `_meta.ui` on the content item and not the list entry; `domain()` throws → omitted        |
+| capabilities and serverInfo                   | `stdio-eras.integration.ts`, `mcp-http/stateless.integration.ts`   | `'both'` and `'legacy'` stdio; `initialize` and `server/discover`; serverInfo icons in 2026 result `_meta`; bad keys rejected |
+| duplicate names                               | `host-extensions.unit.ts`, `mcp-http/host-identity.integration.ts` | throws at `start()`; `buildServer` serves the root-nearest winner, logs once, hides a scope-hidden winner's name              |
+| contributions (1b)                            | `mcp-http/uninstall.integration.ts`, `runInstallConformance`       | async binding rejected; collision; `revertOwned` keeps a shadow                                                               |
+| `REQUEST_CLIENT` (1b)                         | `mcp-http/request-info.integration.ts`, `request-extras.unit.ts`   | 2026 extension detection; stateless-legacy is unknown; stdio-modern; absent in-process                                        |
 
 ## 5. Phase 2 — user-authored elicitation (G6)
 
@@ -578,8 +599,9 @@ OpenAI defines one (taste decision T5).
   through `resourceContent()`, which runs after `@authorize`.
 - **Capability contributions** cannot override core keys; collisions throw;
   retraction goes through `revertOwned`.
-- **Duplicate tool names throw** (§4.5), so an installer cannot shadow a user
-  tool.
+- **Duplicate tool names throw at `start()`** and resolve root-nearest first
+  afterwards (§4.5), so an installer cannot shadow a user tool under a
+  different binding key.
 
 ## 10. Amends P1-6
 
@@ -623,7 +645,14 @@ P1-6's header points here.
    Release notes cover the `resourceUri` type change, `destructiveHint`
    derivation and the `readResource` return type.
 2. **Phase 1b (`mcp`, `mcp-http`):** §4.6–4.7, when settings or a per-host
-   domain has a consumer.
+   domain has a consumer. Order inside 1b:
+   - **Per-request `domain` first.** Phase 1a's static `domain` assumes one
+     public URL per process and is sent to every host; that is the limit users
+     hit first.
+   - **Evaluate one `installMcpHttp` mount per host before `REQUEST_CLIENT`.**
+     A `/mcp/claude` and a `/mcp/chatgpt` mount, each with its own static
+     config, may cover per-host differences without trusting client-asserted
+     facts at all.
 3. **Phase 2 (`mcp`, `agents`, `command`, `metering`, `payments`):** §5. Q1 is
    the first test.
 4. **Phase 3 (gated, §8):** `@agentback/mcp-openai` with fragments, forms,

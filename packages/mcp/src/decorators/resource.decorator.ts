@@ -5,6 +5,7 @@
 import type {Icon} from '@modelcontextprotocol/server';
 import {MethodDecoratorFactory} from '@agentback/metadata';
 import {
+  assertIcons,
   mergeResourceMeta,
   type JsonValue,
   type MetaObject,
@@ -41,6 +42,7 @@ function decorate(
   ) {
     let meta: MetaObject | undefined;
     try {
+      if (options.icons) assertIcons(options.icons, 'icons');
       meta = mergeResourceMeta(
         uri,
         options.mimeType,
@@ -54,7 +56,7 @@ function decorate(
         'anonymous';
       throw new Error(
         `${decoratorName}('${uri}') on ${className}.${String(methodName)}: ${
-          (err as Error).message
+          err instanceof Error ? err.message : String(err)
         }`,
         {cause: err},
       );
@@ -199,6 +201,9 @@ function buildUiMeta(uri: string, options: AppResourceOptions): MetaObject {
  *     prefersBorder: true,
  *   })
  *   forecastWidget() { return WIDGET_HTML; }
+ *
+ * @experimental Host extensions are still settling (phase 1a of
+ * docs/proposals/host-extensions.md); the shape may change in a minor release.
  */
 export function appResource(
   uri: string,

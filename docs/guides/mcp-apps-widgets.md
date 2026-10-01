@@ -189,8 +189,18 @@ generic seams to carry them, each checked when the decorator is applied:
 piece of tool metadata: its `check` runs against the merged options — including
 the real `input:` schema — when `@tool` is applied, so a broken host rule fails
 at the decorator line, not in the host. The same `_meta` key from two sources,
-a reserved key (`ui`, `io.modelcontextprotocol/*`) or a non-JSON value also
-throws there.
+a reserved key (`ui`, `io.modelcontextprotocol/*`), an unprefixed key or a
+non-JSON value also throws there. Every `_meta` key outside `ui` needs a vendor
+prefix — `openai/ui`, `com.example/widget` — because unprefixed keys are
+reserved for MCP itself.
+
+`@appResource({csp, permissions, domain, prefersBorder})` is the resource side
+of the same idea: those options become `_meta.ui.csp`, `.permissions`,
+`.domain` and `.prefersBorder` on the `resources/read` content item.
+
+`toolFragment`, `resourceFragment`, `@appResource` and `resourceContent` are
+**experimental**: the host specs they serve are still moving, so their shapes
+may change in a minor release.
 
 Visibility, entrypoints and annotations are **presentation hints, never
 authorization**: an `['app']`-only tool is still callable by anyone its
@@ -199,7 +209,11 @@ authorization**: an `['app']`-only tool is still callable by anyone its
 ### Recipe: a ChatGPT sidebar entrypoint with display modes
 
 ```ts
+import {z} from 'zod';
 import {appResource, resourceFragment, tool, toolFragment} from '@agentback/mcp';
+
+const Library = z.object({parts: z.array(z.string())}); // your output schema
+const WIDGET_HTML = '<!doctype html>…'; // your bundled widget (see above)
 
 // ChatGPT opens sidebar ("global") entrypoints with `{}` as the arguments.
 const sidebarEntrypoint = toolFragment({
@@ -243,8 +257,10 @@ structured settings are two ordinary tools named by a capability in the server
 config:
 
 ```ts
+import {MCPBindings} from '@agentback/mcp';
+
 const settings = {readTool: 'settings_read', updateTool: 'settings_update'};
-app.configure('servers.MCPServer').to({
+app.configure(MCPBindings.SERVER).to({
   capabilities: {
     extensions: {'openai/settings': settings},
     experimental: {'openai/settings': settings}, // 2025-era ChatGPT reads this
@@ -273,27 +289,58 @@ const claudeDomain = (serverUrl: string) =>
   createHash('sha256').update(serverUrl).digest('hex').slice(0, 32) +
   '.claudemcpcontent.com';
 
-@appResource(UI_URI, {domain: claudeDomain(process.env.PUBLIC_MCP_URL!)})
+const publicUrl = process.env.PUBLIC_MCP_URL;
+if (!publicUrl) throw new Error('Set PUBLIC_MCP_URL to the URL added in Claude');
+
+@appResource(UI_URI, {domain: claudeDomain(publicUrl)})
 ```
 
-The domain format is host-specific, and a static `domain` is sent to every
-host; set one only if Claude is the host that needs it.
+The domain format is host-specific. It is computed once, so this assumes **one
+public URL per process**, and a static `domain` is sent to every host — set one
+only if Claude is the host that needs it. A per-request `domain` (one value per
+host, or per public URL) arrives in phase 1b of
+[P1-7](../proposals/host-extensions.md).
+
+## See what you emit
+
+- **`/mcp-inspector`** shows each tool's annotations, icons and `_meta`, each
+  resource's content-item `_meta`, and the server's title and capabilities —
+  check them before connecting a host.
+- **`toolCostReport()`** lists `iconBytes` per tool, so a data-URI icon that
+  bloats every `tools/list` shows up.
+- In a test, read `tools/list` through an in-memory MCP client (see
+  [Test it](#test-it)) and assert `tool._meta['openai/ui']` directly.
 
 ## Connecting to ChatGPT / Claude
+
+_Checked against Claude's connector docs and OpenAI's MCP extensions spec
+(commit `900032d`) on 2026-10-01. Both hosts are moving; re-check the linked
+docs if a step misbehaves._
 
 Desktop apps can spawn a stdio server; claude.ai, ChatGPT and the mobile apps
 connect to a remote **Streamable HTTP** endpoint:
 
 1. Serve over HTTP — `installMcpHttp(app)` on a `RestApplication`
    (`pnpm -F hello-mcp-apps start:http` does this).
-2. Put the port on a public **HTTPS** URL. A tunnel is fine for development.
-3. Add `https://<host>/mcp` as a custom connector in the host — see
+2. Put the port on a public **HTTPS** URL. A tunnel is fine for development:
+   `cloudflared tunnel --url http://localhost:3000` (or
+   `ngrok http 3000`).
+3. Verify before you connect: point `/mcp-inspector` at the app, or send an
+   `initialize` to the public URL —
+   `curl -s https://<host>/mcp -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'`
+   — and check the `serverInfo` that comes back.
+4. Add `https://<host>/mcp` as a custom connector in the host — see
    [Claude's connector docs](https://claude.com/docs/connectors/building/mcp-apps/getting-started.md)
    or [OpenAI's plugin docs](https://developers.openai.com/codex/build-plugins).
-4. After changing tools, refresh or reconnect the connector; hosts cache
+5. After changing tools, refresh or reconnect the connector; hosts cache
    `tools/list`.
-5. Check the host's platform support. OpenAI's spec lists file entrypoints,
+6. Check the host's platform support. OpenAI's spec lists file entrypoints,
    file access and composer @-mentions as **desktop-only**.
+
+**Troubleshooting.** A blank widget usually means the widget does not connect
+through the `@modelcontextprotocol/ext-apps` `App` bridge, or (on Claude) its
+`domain` does not match the URL you added. A tool missing from the host after a
+change usually means the host still has the old `tools/list` — reconnect.
 
 ## Test it
 
