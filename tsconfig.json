@@ -37,6 +37,7 @@
     {"path": "packages/plugin"},
     {"path": "packages/common"},
     {"path": "packages/messaging"},
+    {"path": "packages/mcp-events"},
     {"path": "packages/actors"},
     {"path": "packages/actors-do"},
     {"path": "packages/actors-redis"},
