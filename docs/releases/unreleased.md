@@ -52,7 +52,8 @@ P1-7 phase 1b ([proposal](../proposals/host-extensions.md) §4.6–4.7):
 - **`contributeCapabilities(app, {extensions?, experimental?})`** advertises
   capabilities from code (an installer, a host adapter). It returns an
   `Installed`; contributions merge with `MCPServerConfig.capabilities`, and
-  the same entry declared differently by two sources throws at `start()`.
+  the same entry declared differently by two sources throws at the call
+  (and `start()` re-checks).
 - **`@appResource({domain: fn})`** resolves the widget sandbox domain per
   `resources/read` from `{client, mount, meta, request, context}`.
 - **`installMcpHttp({host})`**: mount the endpoint once per host

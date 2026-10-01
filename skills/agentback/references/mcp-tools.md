@@ -356,10 +356,10 @@ const sidebar = toolFragment({
   `capabilities: {extensions, experimental}` (e.g. `openai/settings`); a
   framework-owned capability key throws.
 - From code: `contributeCapabilities(app, {extensions})` → `Installed`
-  (constant `MCP_CAPABILITIES` binding; a differing duplicate entry throws at
-  `start()`).
-- Per host: mount once per host — `installMcpHttp(app, {path: '/mcp/claude',
-host: 'claude'})` — and read `MCPBindings.REQUEST_MOUNT` (server config).
+  (constant `MCP_CAPABILITIES` binding; an entry declared differently
+  elsewhere throws at the call, and `start()` re-checks).
+- Per host: mount once per host —
+  `installMcpHttp(app, {path: '/mcp/claude', host: 'claude'})` — and read `MCPBindings.REQUEST_MOUNT` (server config).
   `@appResource({domain: ({mount, client}) => …})` resolves the widget domain
   per request. `MCPBindings.REQUEST_META` is the frozen request `_meta`
   (client-asserted: presentation only, never authorization).

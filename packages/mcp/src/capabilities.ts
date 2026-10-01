@@ -14,7 +14,7 @@ import {
   type Installed,
 } from '@agentback/core';
 import {assertJson} from './fragments.js';
-import {MCP_CAPABILITIES} from './keys.js';
+import {MCP_CAPABILITIES, MCPBindings} from './keys.js';
 import type {MCPServerConfig} from './types.js';
 
 /**
@@ -25,6 +25,18 @@ import type {MCPServerConfig} from './types.js';
 export type McpCapabilityContribution = NonNullable<
   MCPServerConfig['capabilities']
 >;
+
+let contributionSeq = 0;
+
+/** The MCP server's configured capabilities, when `ctx` can see the config. */
+function serverConfigOf(ctx: Context): Pick<MCPServerConfig, 'capabilities'> {
+  try {
+    return ctx.getConfigSync<MCPServerConfig>(MCPBindings.SERVER.key) ?? {};
+  } catch {
+    // An async config cannot be read here; start() still checks it.
+    return {};
+  }
+}
 
 /** Keys an app may add to the advertised server capabilities. */
 const EXTRA_CAPABILITY_KEYS = ['extensions', 'experimental'] as const;
@@ -57,6 +69,9 @@ export function assertCapabilityContribution(
       throw new Error(
         `${source}.${key} must be an object of extension entries`,
       );
+    }
+    if (Object.prototype.hasOwnProperty.call(entries, '__proto__')) {
+      throw new Error(`${source}.${key} has an entry named '__proto__'`);
     }
     assertJson(entries, `${source}.${key}`);
   }
@@ -114,17 +129,25 @@ export function resolveCapabilities(
           `read synchronously on every server build; got ${binding.type ?? 'an unset binding'}`,
       );
     }
-    const value = ctx!.getSync<unknown>(binding.key);
+    // The binding's own value — not `getSync(key)`, which resolves the
+    // nearest binding of that key and could be a non-constant child override.
+    const value = binding.getValue(ctx!) as unknown;
     assertCapabilityContribution(value, source);
     sources.push({source, value});
   }
 
-  const merged: Record<string, Record<string, JSONObject>> = {};
+  // Null-prototype maps, so no entry id is ever read as an accessor.
+  const merged: Record<string, Record<string, JSONObject>> = Object.create(
+    null,
+  );
   const owners = new Map<string, string>();
   for (const {source, value} of sources) {
     for (const key of EXTRA_CAPABILITY_KEYS) {
       for (const [id, entry] of Object.entries(value[key] ?? {})) {
-        const slot = (merged[key] ??= {});
+        const slot = (merged[key] ??= Object.create(null) as Record<
+          string,
+          JSONObject
+        >);
         const owner = owners.get(`${key}/${id}`);
         if (owner !== undefined) {
           if (jsonEqual(slot[id], entry)) continue;
@@ -147,13 +170,16 @@ export function resolveCapabilities(
  * {@link MCPServerConfig.capabilities} is the app's own static declaration.
  *
  * Binds a constant {@link MCP_CAPABILITIES} contribution on `ctx` (usually the
- * application). It is validated now, and conflicts with the config or another
- * contribution throw at the next server build — `app.start()` at the latest.
- * Stateless HTTP sees it on the next request; a connected stdio or session
- * client keeps what it negotiated.
+ * application) under a fresh key unless `options.key` names one. It is
+ * checked **now** against the MCP server config and every contribution
+ * visible from `ctx`: an entry declared differently elsewhere throws here and
+ * nothing is bound. `start()` re-checks the full set. Stateless HTTP sees the
+ * contribution on the next request; a connected stdio or session client keeps
+ * what it negotiated.
  *
  * `uninstall()` retracts it identity-guarded: if something else has since
- * bound the same key, that binding is left alone.
+ * bound the same key, that binding is left alone; a binding it displaced is
+ * restored.
  *
  * @example
  *   const installed = contributeCapabilities(app, {
@@ -169,15 +195,22 @@ export function contributeCapabilities(
   options: {key?: string} = {},
 ): Installed {
   assertCapabilityContribution(contribution, 'contributeCapabilities');
-  const ids = EXTRA_CAPABILITY_KEYS.flatMap(k =>
-    Object.keys(contribution[k] ?? {}),
-  );
-  const key = options.key ?? `${MCP_CAPABILITIES}.${ids.join('+') || 'empty'}`;
+  // A fresh key per call: deriving it from the entry ids made a second
+  // contribution of the same id silently replace the first.
+  const key = options.key ?? `${MCP_CAPABILITIES}.${++contributionSeq}`;
   const binding = new Binding(key)
     .to(structuredClone(contribution))
     .apply(extensionFor(MCP_CAPABILITIES));
   const displaced = ctx.contains(key) ? ctx.getBinding(key) : undefined;
   ctx.add(binding);
+  // Surface a conflict at the call site. Detected only at the next server
+  // build, it would fail every new connection after `start()` instead.
+  try {
+    resolveCapabilities(serverConfigOf(ctx), ctx);
+  } catch (err) {
+    revertOwned(ctx, binding, displaced);
+    throw err;
+  }
   let done = false;
   return {
     uninstall: async () => {
