@@ -319,8 +319,13 @@ const sidebar = toolFragment({
 - Server-level: `MCPServerConfig.{title, icons, websiteUrl}` and
   `capabilities: {extensions, experimental}` (e.g. `openai/settings`); a
   framework-owned capability key throws.
-- Duplicate tool names throw at `start()`/`buildServer()` (the same class
-  bound twice is fine).
+- Duplicate tool names throw at `start()` (the same class bound twice is
+  fine). `buildServer()` never throws on them: a duplicate mounted later (a
+  `perSession` binder, a plugin) is served root-nearest first — an app-level
+  tool wins — and logged once. To replace an app tool, unbind it.
+- Non-`ui` `_meta` keys need a vendor prefix (`openai/x`, `com.example/x`).
+- `toolFragment`, `resourceFragment`, `@appResource` and `resourceContent` are
+  **experimental** — shapes may change in a minor release.
 
 Recipes (sidebar entrypoint, display modes, mentions, settings, Claude's
 `domain`) and the host-connection checklist:
@@ -670,7 +675,8 @@ are declared via `@api`-decorated REST controllers registered in the DI containe
   hosts. Bundle the widget and inline it into the `ui://` resource's HTML.
 - **Host metadata is presentation, not policy** — `ui.visibility`,
   annotations and host entrypoints never gate a call; `@authorize` does.
-- **Tool names are unique** — a duplicate throws at `start()`/`buildServer()`.
+- **Tool names are unique** — a duplicate throws at `start()`; one mounted later
+  is served root-nearest first (app-level wins) and logged once.
 - **Stdio stdout is the transport wire** — all logging after `app.start()` must
   go to `stderr`.
 - **HTTP transport = per-session servers** built by `buildServer({scopes})`;

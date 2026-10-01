@@ -54,6 +54,7 @@ import {
   InMemoryConfirmationStore,
   abortError,
   loggers,
+  notifyLogHooksAlways,
   stableStringify,
   type ConfirmationStore,
 } from '@agentback/common';
@@ -83,7 +84,7 @@ import {
   type MCPServerOptionalKeys,
 } from './types.js';
 import {toolCostReport, type ToolCostReport} from './tool-cost.js';
-import {assertJson} from './fragments.js';
+import {assertIcons, assertJson} from './fragments.js';
 import {
   toResourceContents,
   type ResourceContentItem,
@@ -178,11 +179,46 @@ function isSameMember(a: ToolBinding, b: ToolBinding): boolean {
   return a.ctor === b.ctor && a.meta.methodName === b.meta.methodName;
 }
 
+/** Hops from `ctx` to the root of its chain (the root is 0). */
+function contextDepth(ctx: Context | undefined): number {
+  let depth = 0;
+  for (let c = ctx?.parent; c; c = c.parent) depth++;
+  return ctx ? depth : Infinity;
+}
+
+/** The root of `ctx`'s chain: the app context, for any server it builds. */
+function rootContext(ctx: Context): Context {
+  let c = ctx;
+  while (c.parent) c = c.parent;
+  return c;
+}
+
+/**
+ * Duplicate-name conflicts already logged, per root (app) context. Stateless
+ * HTTP builds a server per request, so without this one runtime conflict
+ * would log on every request. Keyed by the conflicting PAIR, so a different
+ * class later colliding on the same name is reported again.
+ */
+const loggedDuplicates = new WeakMap<Context, Set<string>>();
+
+function memberName(t: ToolBinding): string {
+  return `${t.ctor.name}.${String(t.meta.methodName)}`;
+}
+
 /** Data-URI server icons above this size log a warning (sent per result). */
 const SERVER_ICON_WARN_BYTES = 1024;
 
 /** The server info advertised to clients, from the config. */
 function buildServerInfo(config: MCPServerConfig): Implementation {
+  if (config.icons) {
+    try {
+      assertIcons(config.icons, 'icons');
+    } catch (err) {
+      throw new Error(`MCPServerConfig.${(err as Error).message}`, {
+        cause: err,
+      });
+    }
+  }
   for (const icon of config.icons ?? []) {
     if (
       icon.src.startsWith('data:') &&
@@ -1036,8 +1072,26 @@ export class MCPServer implements Server {
     return out;
   }
 
+  /**
+   * Every discovered tool, ordered root-nearest first: a tool bound on the app
+   * context precedes one bound on a per-session/per-request child, then
+   * discovery order. `ctx.find` itself is child-first, so without this a
+   * binder could shadow an app tool of the same name. A child binding with
+   * the SAME key still overrides its parent binding, as everywhere in the
+   * container — this ordering only arbitrates distinct bindings.
+   */
   private collectAllTools(): ToolBinding[] {
-    return this.collectMembers<ToolMetadata>(MCPKeys.TOOL);
+    const tools = this.collectMembers<ToolMetadata>(MCPKeys.TOOL);
+    const depth = new Map<Function, number>();
+    for (const b of this.context.find(extensionFilter(MCP_SERVERS))) {
+      const ctor = b.valueConstructor;
+      if (typeof ctor !== 'function' || depth.has(ctor)) continue;
+      depth.set(ctor, contextDepth(this.context.getOwnerContext(b.key)));
+    }
+    return tools
+      .map((t, i) => ({t, i, d: depth.get(t.ctor) ?? Infinity}))
+      .sort((a, b) => a.d - b.d || a.i - b.i)
+      .map(x => x.t);
   }
 
   private collectAllResources(): {ctor: Function; meta: ResourceMetadata}[] {
@@ -1242,22 +1296,24 @@ export class MCPServer implements Server {
       string,
       {tool: ToolBinding; entry: ToolListEntry}
     >();
+    // Names already decided — by the root-nearest tool, whether or not it
+    // turned out visible to this caller. Deciding BEFORE the scope filter is
+    // what keeps a loser from being served under the winner's name to a
+    // caller the winner is hidden from.
+    const claimed = new Map<string, ToolBinding>();
     for (const t of this.collectAllTools()) {
-      // Duplicate names fail registration (`assertUniqueToolNames`). A tool
-      // mounted at runtime after that can still collide; serve the first and
-      // keep listing working for everyone else rather than silently swapping
-      // which implementation a name runs.
-      const prior = visible.get(t.meta.name);
-      if (prior && isSameMember(prior.tool, t)) continue;
+      // Duplicate names fail `start()` (`assertUniqueToolNames`). One mounted
+      // afterwards — by a `perSession` binder, a plugin, an installer — can
+      // still collide; `buildServer()` must not throw on it (under stateless
+      // HTTP that is every request), so the root-nearest tool wins and the
+      // conflict is logged once.
+      const prior = claimed.get(t.meta.name);
+      if (prior && isSameMember(prior, t)) continue;
       if (prior) {
-        log.error(
-          'duplicate MCP tool name %s (%s.%s) — serving the first registration',
-          t.meta.name,
-          t.ctor.name,
-          String(t.meta.methodName),
-        );
+        this.logDuplicate(prior, t);
         continue;
       }
+      claimed.set(t.meta.name, t);
       const compiled = compileTool(t);
       // Visibility: scopes from `@authorize({scopes})` (or the legacy
       // `@tool(..., {scope})`) gate registration on authenticated transports.
@@ -1279,6 +1335,28 @@ export class MCPServer implements Server {
       visible.set(t.meta.name, {tool: t, entry: compiled.entry});
     }
     return visible;
+  }
+
+  /** Log a runtime duplicate tool name once per app context and pair. */
+  private logDuplicate(winner: ToolBinding, loser: ToolBinding): void {
+    const root = rootContext(this.context);
+    let seen = loggedDuplicates.get(root);
+    if (!seen) loggedDuplicates.set(root, (seen = new Set()));
+    const key = `${winner.meta.name}|${memberName(winner)}|${memberName(loser)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    const args = [
+      "duplicate MCP tool name '%s': serving %s, ignoring %s. The name is " +
+        'suppressed for callers the winner is scope-hidden from. Rename one; ' +
+        'app-level tools win — to replace a tool, unbind it.',
+      winner.meta.name,
+      memberName(winner),
+      memberName(loser),
+    ];
+    log.error(...(args as [string, ...unknown[]]));
+    // A silently dropped tool must reach an `onLog` sink even when nobody
+    // enabled this DEBUG namespace.
+    notifyLogHooksAlways(log.error, args);
   }
 
   /**
@@ -1346,7 +1424,6 @@ export class MCPServer implements Server {
     // caught exactly this). Compile once here, discard the result: it is
     // memoized per (class, method), so the per-request derivations below reuse
     // it, and a failure is deliberately not cached so every build re-throws.
-    this.assertUniqueToolNames();
     this.computeVisibleTools(scopes);
 
     const server = target.server;
@@ -1567,6 +1644,10 @@ export class MCPServer implements Server {
   // to a transport at all — `serveStdio` builds one server per connection.
 
   async start(): Promise<void> {
+    // Duplicate names are a startup error. They are checked here and not in
+    // `buildServer()`, which under stateless HTTP runs per request: a tool
+    // mounted later that collides is served root-nearest-first and logged.
+    this.assertUniqueToolNames();
     this.registerAllOn(this.mcp);
 
     if (this.config.transports.stdio !== false) {

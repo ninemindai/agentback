@@ -230,7 +230,7 @@ export function tool(
         'anonymous';
       throw new Error(
         `@tool('${name}') on ${className}.${String(methodName)}: ${
-          (err as Error).message
+          err instanceof Error ? err.message : String(err)
         }`,
         {cause: err},
       );
