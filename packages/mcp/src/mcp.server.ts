@@ -33,8 +33,11 @@ import {
 } from '@modelcontextprotocol/server';
 import type {
   CallToolResult,
+  Icon,
+  Implementation,
   InputRequiredResult,
   ListToolsResult,
+  ServerCapabilities,
 } from '@modelcontextprotocol/server';
 import {CoreBindings, extensionFilter, Server} from '@agentback/core';
 import {MetadataAccessor, MetadataInspector} from '@agentback/metadata';
@@ -74,8 +77,17 @@ import {
   requiredScopesForMember,
   requiredScopesForTool,
 } from './policy.js';
-import {DEFAULT_MCP_CONFIG, type MCPServerConfig} from './types.js';
+import {
+  DEFAULT_MCP_CONFIG,
+  type MCPServerConfig,
+  type MCPServerOptionalKeys,
+} from './types.js';
 import {toolCostReport, type ToolCostReport} from './tool-cost.js';
+import {assertJson} from './fragments.js';
+import {
+  toResourceContents,
+  type ResourceContentItem,
+} from './resource-content.js';
 
 const log = loggers('agentback:mcp:server');
 
@@ -111,6 +123,8 @@ interface ToolListEntry {
   description?: string;
   inputSchema: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
+  annotations?: Record<string, unknown>;
+  icons?: Icon[];
   _meta?: Record<string, unknown>;
 }
 
@@ -159,6 +173,99 @@ function deepFreeze<T>(value: T): T {
  * guard below must keep throwing on every `buildServer()`, so a bad schema still
  * fails at `app.start()` rather than at the first `tools/list`.
  */
+/** Two tool bindings that resolve to the same class method. */
+function isSameMember(a: ToolBinding, b: ToolBinding): boolean {
+  return a.ctor === b.ctor && a.meta.methodName === b.meta.methodName;
+}
+
+/** Data-URI server icons above this size log a warning (sent per result). */
+const SERVER_ICON_WARN_BYTES = 1024;
+
+/** The server info advertised to clients, from the config. */
+function buildServerInfo(config: MCPServerConfig): Implementation {
+  for (const icon of config.icons ?? []) {
+    if (
+      icon.src.startsWith('data:') &&
+      icon.src.length > SERVER_ICON_WARN_BYTES
+    ) {
+      log.warn(
+        'MCP server icon is a %d-byte data URI; on protocol 2026-07-28 server ' +
+          'info rides on every result — prefer an https URL',
+        icon.src.length,
+      );
+    }
+  }
+  return {
+    name: config.name ?? DEFAULT_MCP_CONFIG.name,
+    version: config.version ?? DEFAULT_MCP_CONFIG.version,
+    ...(config.title !== undefined ? {title: config.title} : {}),
+    ...(config.icons ? {icons: structuredClone(config.icons)} : {}),
+    ...(config.websiteUrl !== undefined ? {websiteUrl: config.websiteUrl} : {}),
+  };
+}
+
+/** Keys an app may add to the advertised server capabilities. */
+const EXTRA_CAPABILITY_KEYS = new Set(['extensions', 'experimental']);
+
+/**
+ * The capabilities advertised to clients: the framework-owned
+ * `tools`/`resources`/`prompts`, plus any `extensions`/`experimental` the
+ * config declares. Validated at runtime, not only by type, so a JS caller
+ * cannot override a framework-owned capability.
+ */
+function buildCapabilities(config: MCPServerConfig): ServerCapabilities {
+  const extra = config.capabilities ?? {};
+  for (const [key, value] of Object.entries(extra)) {
+    if (!EXTRA_CAPABILITY_KEYS.has(key)) {
+      throw new Error(
+        `MCPServerConfig.capabilities.${key} is not allowed — only ` +
+          `'extensions' and 'experimental' may be added; tools/resources/` +
+          `prompts are framework-owned`,
+      );
+    }
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      throw new Error(
+        `MCPServerConfig.capabilities.${key} must be an object of extension entries`,
+      );
+    }
+    assertJson(value, `MCPServerConfig.capabilities.${key}`);
+  }
+  return {
+    tools: {},
+    resources: {},
+    prompts: {},
+    ...(extra.extensions
+      ? {extensions: structuredClone(extra.extensions)}
+      : {}),
+    ...(extra.experimental
+      ? {experimental: structuredClone(extra.experimental)}
+      : {}),
+  };
+}
+
+/**
+ * The `_meta` a tool publishes on its `tools/list` entry: MCP Apps (SEP-1865)
+ * `ui` — linking the tool to its `ui://` widget and/or setting its
+ * visibility — plus any host keys merged from `extend` fragments (`ui` itself
+ * is reserved to the `ui:` option, so the two never collide). `undefined`
+ * when the tool publishes none. Shared with the inspector so both show the
+ * same bytes.
+ */
+export function toolEntryMeta(
+  meta: ToolMetadata,
+): Record<string, unknown> | undefined {
+  const ui = meta.ui
+    ? {
+        ...(meta.ui.resourceUri !== undefined
+          ? {resourceUri: meta.ui.resourceUri}
+          : {}),
+        ...(meta.ui.visibility ? {visibility: meta.ui.visibility} : {}),
+      }
+    : undefined;
+  if (!ui && !meta.meta) return undefined;
+  return {...(meta.meta ?? {}), ...(ui ? {ui} : {})};
+}
+
 function compileTool(t: ToolBinding): CompiledTool {
   const methodName = t.meta.methodName as string;
   let perClass = compiledTools.get(t.ctor);
@@ -227,6 +334,7 @@ function compileTool(t: ToolBinding): CompiledTool {
     );
   }
 
+  const _meta = toolEntryMeta(t.meta);
   const compiled: CompiledTool = {
     requiredScopes: requiredScopesForTool(t.ctor, t.meta),
     // Frozen because this object is now shared by every session/request that
@@ -240,20 +348,9 @@ function compileTool(t: ToolBinding): CompiledTool {
         : {}),
       inputSchema,
       ...(outputSchema ? {outputSchema} : {}),
-      // MCP Apps (SEP-1865): link the tool to its ui:// widget so a
-      // conformant host renders the resource for this tool's results.
-      ...(t.meta.ui
-        ? {
-            _meta: {
-              ui: {
-                resourceUri: t.meta.ui.resourceUri,
-                ...(t.meta.ui.visibility
-                  ? {visibility: t.meta.ui.visibility}
-                  : {}),
-              },
-            },
-          }
-        : {}),
+      ...(t.meta.annotations ? {annotations: t.meta.annotations} : {}),
+      ...(t.meta.icons ? {icons: t.meta.icons} : {}),
+      ...(_meta ? {_meta} : {}),
     }),
   };
   if (!perClass) {
@@ -314,12 +411,18 @@ export class MCPServer implements Server {
   private stdioHandle?: StdioServerHandle;
   /** Tools already reported as class-level-gated (one log line per tool). */
   private warnedClassGated = new Set<string>();
-  readonly config: Required<
-    Omit<MCPServerConfig, 'transports' | 'localPrincipal'>
-  > & {
-    transports: NonNullable<MCPServerConfig['transports']>;
-    localPrincipal?: UserProfile;
-  };
+  readonly config: Required<Omit<MCPServerConfig, MCPServerOptionalKeys>> &
+    Pick<
+      MCPServerConfig,
+      'localPrincipal' | 'title' | 'icons' | 'websiteUrl' | 'capabilities'
+    > & {
+      transports: NonNullable<MCPServerConfig['transports']>;
+      localPrincipal?: UserProfile;
+    };
+  /** Server info advertised to clients; derived once from the config. */
+  private readonly serverInfo: Implementation;
+  /** Server capabilities advertised to clients; derived once from the config. */
+  private readonly capabilities: ServerCapabilities;
 
   constructor(
     // Inject the binding's own resolution context rather than the app root.
@@ -343,10 +446,11 @@ export class MCPServer implements Server {
         ...(cfg?.transports ?? {}),
       },
     };
-    this.mcp = new McpServer(
-      {name: this.config.name, version: this.config.version},
-      {capabilities: {tools: {}, resources: {}, prompts: {}}},
-    );
+    this.serverInfo = buildServerInfo(this.config);
+    this.capabilities = buildCapabilities(this.config);
+    this.mcp = new McpServer(this.serverInfo, {
+      capabilities: this.capabilities,
+    });
   }
 
   get listening(): boolean {
@@ -381,6 +485,7 @@ export class MCPServer implements Server {
           description: entry.description,
           inputSchema: entry.inputSchema,
           outputSchema: entry.outputSchema,
+          icons: entry.icons,
         };
       }),
     );
@@ -424,9 +529,7 @@ export class MCPServer implements Server {
    * MCP client receives. Shares the dispatch path with the SDK-registered
    * handler. Used by the mcp-inspector UI.
    */
-  async readResource(
-    name: string,
-  ): Promise<{contents: {uri: string; mimeType: string; text: string}[]}> {
+  async readResource(name: string): Promise<{contents: ResourceContentItem[]}> {
     const resource = this.collectAllResources().find(r => r.meta.name === name);
     if (!resource) throw new Error(`Unknown resource: ${name}`);
     return this.dispatchResource(resource);
@@ -456,7 +559,7 @@ export class MCPServer implements Server {
       meta: ResourceMetadata;
     },
     ctx: Context = this.context,
-  ): Promise<{contents: {uri: string; mimeType: string; text: string}[]}> {
+  ): Promise<{contents: ResourceContentItem[]}> {
     const reqCtx =
       ctx === this.context ? new Context(this.context, 'mcp.request') : ctx;
     const user = await this.bindRequestPrincipals(reqCtx);
@@ -472,15 +575,7 @@ export class MCPServer implements Server {
     )) as Record<string, Function>;
     const result =
       await instance[resource.meta.methodName as string].call(instance);
-    return {
-      contents: [
-        {
-          uri: resource.meta.uri,
-          mimeType: resource.meta.mimeType ?? 'text/plain',
-          text: typeof result === 'string' ? result : JSON.stringify(result),
-        },
-      ],
-    };
+    return {contents: toResourceContents(result, resource.meta)};
   }
 
   /**
@@ -1117,10 +1212,9 @@ export class MCPServer implements Server {
    * (all exposing the same surface). See `@agentback/mcp-http`.
    */
   buildServer(options: {scopes?: string[]} = {}): McpServer {
-    const server = new McpServer(
-      {name: this.config.name, version: this.config.version},
-      {capabilities: {tools: {}, resources: {}, prompts: {}}},
-    );
+    const server = new McpServer(this.serverInfo, {
+      capabilities: this.capabilities,
+    });
     this.registerAllOn(server, options.scopes);
     return server;
   }
@@ -1149,6 +1243,21 @@ export class MCPServer implements Server {
       {tool: ToolBinding; entry: ToolListEntry}
     >();
     for (const t of this.collectAllTools()) {
+      // Duplicate names fail registration (`assertUniqueToolNames`). A tool
+      // mounted at runtime after that can still collide; serve the first and
+      // keep listing working for everyone else rather than silently swapping
+      // which implementation a name runs.
+      const prior = visible.get(t.meta.name);
+      if (prior && isSameMember(prior.tool, t)) continue;
+      if (prior) {
+        log.error(
+          'duplicate MCP tool name %s (%s.%s) — serving the first registration',
+          t.meta.name,
+          t.ctor.name,
+          String(t.meta.methodName),
+        );
+        continue;
+      }
       const compiled = compileTool(t);
       // Visibility: scopes from `@authorize({scopes})` (or the legacy
       // `@tool(..., {scope})`) gate registration on authenticated transports.
@@ -1170,6 +1279,33 @@ export class MCPServer implements Server {
       visible.set(t.meta.name, {tool: t, entry: compiled.entry});
     }
     return visible;
+  }
+
+  /**
+   * Throw when two registered tools share a name. Lists are keyed by name, so
+   * a duplicate would otherwise silently shadow one implementation — the
+   * usual cause is a class registered twice (e.g. both `app.controller(C)` and
+   * `app.service(C)`), or an installer-generated tool clashing with an app's.
+   */
+  private assertUniqueToolNames(): void {
+    const seen = new Map<string, ToolBinding>();
+    for (const t of this.collectAllTools()) {
+      const prior = seen.get(t.meta.name);
+      // The same class bound twice resolves to one implementation through
+      // `resolveMember`, so it is a no-op duplicate, not a conflict.
+      if (prior && isSameMember(prior, t)) continue;
+      if (prior) {
+        const where = (b: ToolBinding) =>
+          `${b.ctor.name}.${String(b.meta.methodName)}`;
+        throw new Error(
+          `Duplicate MCP tool name '${t.meta.name}': ${where(prior)} and ` +
+            `${where(t)}. Rename one, or register the class once ` +
+            `(a class registered as both a controller and a service is ` +
+            `bound twice).`,
+        );
+      }
+      seen.set(t.meta.name, t);
+    }
   }
 
   /**
@@ -1210,6 +1346,7 @@ export class MCPServer implements Server {
     // caught exactly this). Compile once here, discard the result: it is
     // memoized per (class, method), so the per-request derivations below reuse
     // it, and a failure is deliberately not cached so every build re-throws.
+    this.assertUniqueToolNames();
     this.computeVisibleTools(scopes);
 
     const server = target.server;
@@ -1309,6 +1446,8 @@ export class MCPServer implements Server {
         uri: r.meta.uri,
         description: r.meta.description,
         mimeType: r.meta.mimeType,
+        ...(r.meta.title !== undefined ? {title: r.meta.title} : {}),
+        ...(r.meta.icons ? {icons: r.meta.icons} : {}),
       })),
     }));
 

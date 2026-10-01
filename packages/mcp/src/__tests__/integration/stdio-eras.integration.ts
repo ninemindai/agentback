@@ -48,7 +48,8 @@ mcpServer()(Tools);
 const app = new Application();
 app.component(MCPComponent);
 app.configure('servers.MCPServer').to({
-  name: 'stdio-test', version: '0.0.0',
+  name: 'stdio-test', version: '0.0.0', title: 'Stdio Test',
+  capabilities: {extensions: {'acme/ext': {k: 1}}},
   ${protocol === undefined ? '' : `protocol: ${JSON.stringify(protocol)},`}
   transports: {stdio: true},
 });
@@ -128,6 +129,27 @@ describe('stdio protocol eras', () => {
     expect((await client.listTools()).tools.map(t => t.name)).toContain('echo');
     await client.close();
   }, 30_000);
+
+  // P1-7: configured server identity + extension capabilities reach the client
+  // on every stdio path — `server/discover` (modern), `initialize` (2025 via
+  // 'both'), and the constructor-built server under 'legacy'.
+  it.each([
+    ['modern, protocol both', 'both', true, 'modern'],
+    ['2025, protocol both', 'both', false, 'legacy'],
+    ['2025, protocol legacy', 'legacy', false, 'legacy'],
+  ] as const)(
+    'advertises title and extension capabilities (%s)',
+    async (_label, protocol, modern, era) => {
+      const client = await connect(protocol === 'both' ? both : legacy, modern);
+      expect(client.getProtocolEra()).toBe(era);
+      expect(client.getServerCapabilities()?.extensions).toEqual({
+        'acme/ext': {k: 1},
+      });
+      expect(client.getServerVersion()?.title).toBe('Stdio Test');
+      await client.close();
+    },
+    30_000,
+  );
 
   it('serves the modern era with no `protocol` set at all', async () => {
     // The flip itself. Nothing but `transports: {stdio: true}` configured.

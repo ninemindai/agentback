@@ -141,8 +141,16 @@ export function App({
       <header>
         <h1>{title}</h1>
         {manifest && (
-          <span className="server">
-            {manifest.server.name} v{manifest.server.version}
+          <span
+            className="server"
+            title={
+              manifest.server.capabilities
+                ? `capabilities: ${JSON.stringify(manifest.server.capabilities)}`
+                : undefined
+            }
+          >
+            {manifest.server.title ?? manifest.server.name} v
+            {manifest.server.version}
           </span>
         )}
         {connect && (

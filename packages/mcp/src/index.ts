@@ -12,3 +12,21 @@ export * from './tool-cost.js';
 export * from './mcp.server.js';
 export * from './mcp.component.js';
 export * from './mcp.application.js';
+export {
+  resourceFragment,
+  toolFragment,
+  type JsonValue,
+  type MetaObject,
+  type ResolvedToolOptions,
+  type ResourceFragment,
+  type ResourceFragmentSpec,
+  type ToolAnnotationsInput,
+  type ToolFragment,
+  type ToolFragmentSpec,
+} from './fragments.js';
+export {
+  isResourceContent,
+  resourceContent,
+  type ResourceContent,
+  type ResourceContentItem,
+} from './resource-content.js';

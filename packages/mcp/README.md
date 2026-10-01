@@ -11,8 +11,10 @@ pnpm add @agentback/mcp zod
 ## What it provides
 
 - `@mcpServer()` — class decorator; shorthand for `@bind({tags:{mcpServer:true}})`. Marks the class as a tool/resource/prompt contributor.
-- `@tool(name, {input?, output?, description?, title?, scope?})` — method decorator. `input` and `output` are `ZodObject` schemas. When `input` is set, slot 0 of the method is the validated `z.infer<typeof input>` bundle; `@inject(...)` lives at slot 1+. When `output` is set, the return type is constrained at compile time and validated at runtime.
-- `@resource(name, uri, {description?, mimeType?})` — method decorator. Method return value is wrapped in the MCP `{contents:[…]}` shape.
+- `@tool(name, {input?, output?, description?, title?, scope?, confirm?, ui?, icons?, annotations?, extend?})` — method decorator. `input` and `output` are `ZodObject` schemas. When `input` is set, slot 0 of the method is the validated `z.infer<typeof input>` bundle; `@inject(...)` lives at slot 1+. When `output` is set, the return type is constrained at compile time and validated at runtime.
+- `@resource(uri, {name?, description?, mimeType?, title?, icons?, extend?})` — method decorator. Method return value is wrapped in the MCP `{contents:[…]}` shape; return `resourceContent({text} | {blob}, {mimeType?, meta?})` items for binary content or per-call `_meta`.
+- `@appResource(uri, {csp?, permissions?, domain?, prefersBorder?, title?, icons?, extend?})` — an MCP Apps (SEP-1865) widget resource: fixes the `text/html;profile=mcp-app` MIME type, requires a `ui://` URI, and emits the typed `_meta.ui` on the `resources/read` content item.
+- Host extensions — `toolFragment({ui?, annotations?, meta?, check?})` / `resourceFragment({meta?, check?})` carry host-specific `_meta` (ChatGPT `openai/*`, …) via `extend:`, checked when the decorator is applied; `MCPServerConfig.{title, icons, websiteUrl, capabilities}` sets server info and `capabilities.extensions`/`experimental`. Duplicate tool names throw at `start()`/`buildServer()`. See [docs/guides/mcp-apps-widgets.md](../../docs/guides/mcp-apps-widgets.md#host-extensions-chatgpt-claude).
 - `@prompt(name, {description?})` — method decorator. Method return value is wrapped in the MCP `{messages:[…]}` shape.
 - `MCPComponent` — registers `MCPServer` as the application's `Server`; mount with `app.component(MCPComponent)`.
 - `MCPApplication` — `Application` subclass with `MCPComponent` pre-mounted; for stdio-only servers.

@@ -14,7 +14,7 @@ import {
   type Installed,
   unbindOwned,
 } from '@agentback/core';
-import {MCPBindings, type MCPServer} from '@agentback/mcp';
+import {MCPBindings, toolEntryMeta, type MCPServer} from '@agentback/mcp';
 import {
   installMcpConnect,
   type McpConnectOptions,
@@ -71,7 +71,13 @@ const CallBody = z.record(z.string(), z.unknown());
 // Schema objects, so they are left untyped.
 const Manifest = z
   .object({
-    server: z.object({name: z.string(), version: z.string()}),
+    server: z.object({
+      name: z.string(),
+      version: z.string(),
+      title: z.string().optional(),
+      icons: z.array(z.record(z.string(), z.unknown())).optional(),
+      capabilities: z.record(z.string(), z.unknown()).optional(),
+    }),
     tools: z.array(
       z.object({
         name: z.string(),
@@ -79,6 +85,9 @@ const Manifest = z
         description: z.string().optional(),
         inputSchema: z.any().optional(),
         outputSchema: z.any().optional(),
+        annotations: z.record(z.string(), z.unknown()).optional(),
+        icons: z.array(z.record(z.string(), z.unknown())).optional(),
+        _meta: z.record(z.string(), z.unknown()).optional(),
       }),
     ),
     resources: z.array(
@@ -87,6 +96,10 @@ const Manifest = z
         uri: z.string(),
         description: z.string().optional(),
         mimeType: z.string().optional(),
+        title: z.string().optional(),
+        icons: z.array(z.record(z.string(), z.unknown())).optional(),
+        /** Static `_meta` placed on each content item `resources/read` returns. */
+        contentMeta: z.record(z.string(), z.unknown()).optional(),
       }),
     ),
     prompts: z.array(
@@ -121,19 +134,37 @@ export class McpInspectorController {
       ...(t.meta.output
         ? {outputSchema: schemaToOpenApiSchema(t.meta.output)}
         : {}),
+      ...(t.meta.annotations ? {annotations: {...t.meta.annotations}} : {}),
+      ...(t.meta.icons ? {icons: t.meta.icons.map(i => ({...i}))} : {}),
+      ...(toolEntryMeta(t.meta) ? {_meta: toolEntryMeta(t.meta)} : {}),
     }));
     const resources = this.mcp.listResources().map(r => ({
       name: r.meta.name,
       uri: r.meta.uri,
       description: r.meta.description,
       mimeType: r.meta.mimeType,
+      ...(r.meta.title !== undefined ? {title: r.meta.title} : {}),
+      ...(r.meta.icons ? {icons: r.meta.icons.map(i => ({...i}))} : {}),
+      ...(r.meta.meta ? {contentMeta: r.meta.meta} : {}),
     }));
     const prompts = this.mcp.listPrompts().map(p => ({
       name: p.meta.name,
       description: p.meta.description,
     }));
     return {
-      server: {name: this.mcp.config.name, version: this.mcp.config.version},
+      server: {
+        name: this.mcp.config.name,
+        version: this.mcp.config.version,
+        ...(this.mcp.config.title !== undefined
+          ? {title: this.mcp.config.title}
+          : {}),
+        ...(this.mcp.config.icons
+          ? {icons: this.mcp.config.icons.map(i => ({...i}))}
+          : {}),
+        ...(this.mcp.config.capabilities
+          ? {capabilities: {...this.mcp.config.capabilities}}
+          : {}),
+      },
       tools,
       resources,
       prompts,

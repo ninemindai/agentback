@@ -87,15 +87,18 @@ surface goes dark.
 
 `options` fields:
 
-| field         | type                         | required | meaning                                                                                                                            |
-| ------------- | ---------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `input`       | `ZodObject`                  | no       | Zod schema for slot 0; drives the SDK inputSchema                                                                                  |
-| `output`      | `ZodObject`                  | no       | Zod schema for the return; validated at runtime                                                                                    |
-| `description` | `string`                     | no       | Shown in tools/list                                                                                                                |
-| `title`       | `string`                     | no       | Human-readable display name                                                                                                        |
-| `scope`       | `string`                     | no       | OAuth scope required to see/call the tool                                                                                          |
-| `confirm`     | `boolean \| {ttlMs?}`        | no       | Dangerous tool: native `elicitation` prompt on `2026-07-28` hosts that declare it, else a `confirmation_required` token round-trip |
-| `ui`          | `{resourceUri, visibility?}` | no       | MCP Apps (SEP-1865) widget link, emitted as `_meta.ui` — see [MCP Apps Widgets](#mcp-apps-widgets-ui)                              |
+| field         | type                          | required | meaning                                                                                                                            |
+| ------------- | ----------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `input`       | `ZodObject`                   | no       | Zod schema for slot 0; drives the SDK inputSchema                                                                                  |
+| `output`      | `ZodObject`                   | no       | Zod schema for the return; validated at runtime                                                                                    |
+| `description` | `string`                      | no       | Shown in tools/list                                                                                                                |
+| `title`       | `string`                      | no       | Human-readable display name                                                                                                        |
+| `scope`       | `string`                      | no       | OAuth scope required to see/call the tool                                                                                          |
+| `confirm`     | `boolean \| {ttlMs?}`         | no       | Dangerous tool: native `elicitation` prompt on `2026-07-28` hosts that declare it, else a `confirmation_required` token round-trip |
+| `ui`          | `{resourceUri?, visibility?}` | no       | MCP Apps (SEP-1865) widget link, emitted as `_meta.ui` — see [MCP Apps Widgets](#mcp-apps-widgets-ui)                              |
+| `icons`       | `Icon[]`                      | no       | Tool icons (host entrypoints, e.g. a sidebar)                                                                                      |
+| `annotations` | `{readOnlyHint?, …}`          | no       | MCP tool annotations — presentation hints, never authorization; `confirm:` implies `destructiveHint: true`                         |
+| `extend`      | `ToolFragment[]`              | no       | Host `_meta` fragments (`toolFragment({meta, check})`), checked at decoration — see [Host extensions](#host-extensions)            |
 
 ### Slot 0 = `z.infer<typeof input>` when input is declared
 
@@ -276,6 +279,52 @@ class WeatherTools {
 
 Full walkthrough: `docs/guides/mcp-apps-widgets.md`; runnable example:
 `examples/hello-mcp-apps` (bundles the widget at server startup).
+
+### Host extensions
+
+ChatGPT (`openai/*` keys) and Claude (host conventions) read extra metadata on
+top of MCP Apps. The framework carries it through generic, checked seams —
+never a host vocabulary:
+
+```ts
+import {appResource, resourceFragment, tool, toolFragment} from '@agentback/mcp';
+
+const sidebar = toolFragment({
+  meta: {'openai/ui': {entrypoints: [{type: 'global'}]}},
+  check: ({input}) => { /* throw if input: does not accept {} */ },
+});
+
+@tool('parts_library', {
+  output: Library,
+  icons: [{src: 'https://example.com/lib.svg', mimeType: 'image/svg+xml'}],
+  annotations: {readOnlyHint: true},
+  ui: {resourceUri: 'ui://bits/library'},
+  extend: [sidebar],
+})
+
+@appResource('ui://bits/library', {
+  csp: {connectDomains: ['https://api.example.com']}, // omit when fully inlined
+  prefersBorder: true,
+  extend: [resourceFragment({meta: {'openai/ui': {preferredDisplayMode: 'fullscreen'}}})],
+})
+```
+
+- `extend` fragments merge into the tool's `ui`/`annotations`/`_meta`; a
+  conflicting value, a duplicate key, `meta.ui`, `io.modelcontextprotocol/*`
+  or non-JSON throws **at decoration**, as does a fragment `check`.
+- `ui: {visibility: ['app']}` with no `resourceUri` is valid (a tool the host
+  calls but the model does not see) — it is NOT authorization.
+- `@appResource` puts `_meta.ui` on the `resources/read` **content item**.
+  `resourceContent({blob})` serves binary (base64) and per-call `_meta`.
+- Server-level: `MCPServerConfig.{title, icons, websiteUrl}` and
+  `capabilities: {extensions, experimental}` (e.g. `openai/settings`); a
+  framework-owned capability key throws.
+- Duplicate tool names throw at `start()`/`buildServer()` (the same class
+  bound twice is fine).
+
+Recipes (sidebar entrypoint, display modes, mentions, settings, Claude's
+`domain`) and the host-connection checklist:
+`docs/guides/mcp-apps-widgets.md`.
 
 ## Transport: stdio (MCPApplication)
 
@@ -619,6 +668,9 @@ are declared via `@api`-decorated REST controllers registered in the DI containe
 - **MCP Apps widgets must use the `@modelcontextprotocol/ext-apps` `App`
   bridge** — a hand-rolled raw-`postMessage` widget renders blank in real
   hosts. Bundle the widget and inline it into the `ui://` resource's HTML.
+- **Host metadata is presentation, not policy** — `ui.visibility`,
+  annotations and host entrypoints never gate a call; `@authorize` does.
+- **Tool names are unique** — a duplicate throws at `start()`/`buildServer()`.
 - **Stdio stdout is the transport wire** — all logging after `app.start()` must
   go to `stderr`.
 - **HTTP transport = per-session servers** built by `buildServer({scopes})`;

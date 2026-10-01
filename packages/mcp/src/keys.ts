@@ -3,13 +3,14 @@
 // License text available at https://opensource.org/license/mit/
 
 import {BindingKey, type Context} from '@agentback/context';
-import type {AuthInfo, ServerContext} from '@modelcontextprotocol/server';
+import type {AuthInfo, Icon, ServerContext} from '@modelcontextprotocol/server';
 import type {ConfirmationStore} from '@agentback/common';
 import {MetadataAccessor} from '@agentback/metadata';
 import type {SchemaLike} from '@agentback/openapi';
 // Re-exported so tool handlers can type the injected `MCPBindings.REQUEST_AUTH`
 // principal (`auth?: AuthInfo`) without reaching into the MCP SDK internals.
-export type {AuthInfo} from '@modelcontextprotocol/server';
+export type {AuthInfo, Icon} from '@modelcontextprotocol/server';
+import type {MetaObject, ToolAnnotationsInput} from './fragments.js';
 import type {MCPServer, ToolBinding} from './mcp.server.js';
 
 /**
@@ -164,9 +165,18 @@ export type ToolUiVisibility = 'model' | 'app';
  * tool should also declare an `output:` schema).
  */
 export interface ToolUiMeta {
-  /** `ui://` resource URI of the widget HTML this tool renders. */
-  resourceUri: string;
-  /** Where the host may surface the widget; omitted → host default policy. */
+  /**
+   * `ui://` resource URI of the widget HTML this tool renders. Optional: a
+   * tool may set only `visibility` (e.g. `['app']` for a tool the host calls
+   * but the model never sees) without linking a widget.
+   */
+  resourceUri?: string;
+  /**
+   * Where the host may surface the tool; omitted → host default policy.
+   *
+   * A rendering hint, NOT authorization: an `['app']`-only tool is still
+   * callable by any caller the tool's `@authorize` policy admits.
+   */
   visibility?: ToolUiVisibility[];
 }
 
@@ -215,6 +225,16 @@ export interface ToolMetadata {
    * executes. `{ttlMs}` overrides the 5-minute token lifetime.
    */
   confirm?: boolean | {ttlMs?: number};
+  /**
+   * Tool annotations (`readOnlyHint`, `destructiveHint`, …), merged from the
+   * `annotations:` option and `extend` fragments; `confirm:` implies
+   * `destructiveHint: true` unless set explicitly.
+   */
+  annotations?: ToolAnnotationsInput;
+  /** Icons for the tool's `tools/list` entry (e.g. host sidebar icons). */
+  icons?: Icon[];
+  /** Extra `_meta` keys merged from `extend` fragments (never `ui`). */
+  meta?: MetaObject;
   methodName: string | symbol;
 }
 
@@ -223,6 +243,15 @@ export interface ResourceMetadata {
   uri: string;
   description?: string;
   mimeType?: string;
+  /** Display title on the `resources/list` entry. */
+  title?: string;
+  /** Icons on the `resources/list` entry. */
+  icons?: Icon[];
+  /**
+   * Static `_meta` placed on every content item `resources/read` returns —
+   * where MCP Apps puts `_meta.ui` (csp, domain, prefersBorder).
+   */
+  meta?: MetaObject;
   methodName: string | symbol;
 }
 

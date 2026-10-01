@@ -11,7 +11,7 @@ AgentBack expresses this with the primitives you already use — a `@tool` and a
 
 > Working example: [`examples/hello-mcp-apps`](../../examples/hello-mcp-apps)
 > (`pnpm -F hello-mcp-apps build`, then register `dist/server.js` with Claude
-> Desktop).
+> Desktop, or run `pnpm -F hello-mcp-apps start:http` for remote hosts).
 
 ## The shape
 
@@ -128,14 +128,172 @@ const WIDGET_HTML = shellHtml.replace(
 
 ## What AgentBack emits
 
-- `tools/list` carries `_meta: {ui: {resourceUri, visibility?}}` on the tool.
-- `resources/list` and `resources/read` carry `mimeType: text/html;profile=mcp-app`.
+- `tools/list` carries `_meta: {ui: {resourceUri?, visibility?}}` on the tool,
+  plus `annotations` and `icons` when declared.
+- `resources/list` carries the `mimeType` (`text/html;profile=mcp-app`) and any
+  `title`/`icons`; `resources/read` carries the same `mimeType` and the widget's
+  `_meta.ui` (`csp`, `permissions`, `domain`, `prefersBorder`) **on the content
+  item** — where the MCP Apps spec puts it.
 - `tools/call` returns `structuredContent` (from the tool's `output:` schema),
   which the host forwards to the widget as a `ui/notifications/tool-result`.
 
 No special server capability flag is needed — `@agentback/mcp` already
 advertises `resources`, and the tool `_meta` is enough for the host to discover
 the link.
+
+### `@appResource` — the widget resource, typed
+
+`@appResource` is `@resource` with the MIME type fixed, a `ui://` URI required,
+and the widget's `_meta.ui` built from typed options:
+
+```ts
+import {appResource} from '@agentback/mcp';
+
+@appResource(UI_URI, {
+  title: 'Forecast',
+  // Origins the widget may call / load from. Omit it when the view is fully
+  // inlined: hosts then apply a restrictive default (no network).
+  csp: {connectDomains: ['https://api.example.com']},
+  prefersBorder: true,
+})
+forecastWidget(): string {
+  return WIDGET_HTML;
+}
+```
+
+A resource method may also return `resourceContent({text} | {blob}, {mimeType?,
+meta?})` items: `blob` (a `Uint8Array`) is served base64-encoded, and per-call
+`meta` is merged over the decorator's static `_meta` (the `ui` object key by
+key).
+
+## Host extensions (ChatGPT, Claude)
+
+Hosts layer their own metadata on top of MCP Apps. ChatGPT reads `openai/*`
+keys ([OpenAI MCP Extensions](https://github.com/openai/mcp-extensions/blob/main/docs/spec.md)):
+sidebar and thread entrypoints, display modes, structured settings, composer
+@-mentions. Claude reads host conventions such as the widget `domain`. AgentBack
+does not hard-code either vocabulary; it gives every `@tool`/`@resource` the
+generic seams to carry them, each checked when the decorator is applied:
+
+| Option                                    | Emitted as                                  |
+| ----------------------------------------- | ------------------------------------------- |
+| `@tool({icons})`                          | tool `icons` (e.g. a sidebar icon)          |
+| `@tool({annotations})`                    | tool `annotations` (`readOnlyHint`, …)      |
+| `@tool({ui: {visibility: ['app']}})`      | `_meta.ui.visibility` with no widget        |
+| `@tool({extend: [toolFragment(...)]})`    | extra tool `_meta` keys                     |
+| `@resource/@appResource({extend: [...]})` | extra content-item `_meta` keys             |
+| `MCPServerConfig.title/icons/websiteUrl`  | server info                                 |
+| `MCPServerConfig.capabilities`            | `capabilities.extensions` / `.experimental` |
+
+`toolFragment({ui?, annotations?, meta?, check?})` is a reusable, self-checking
+piece of tool metadata: its `check` runs against the merged options — including
+the real `input:` schema — when `@tool` is applied, so a broken host rule fails
+at the decorator line, not in the host. The same `_meta` key from two sources,
+a reserved key (`ui`, `io.modelcontextprotocol/*`) or a non-JSON value also
+throws there.
+
+Visibility, entrypoints and annotations are **presentation hints, never
+authorization**: an `['app']`-only tool is still callable by anyone its
+`@authorize` policy admits.
+
+### Recipe: a ChatGPT sidebar entrypoint with display modes
+
+```ts
+import {appResource, resourceFragment, tool, toolFragment} from '@agentback/mcp';
+
+// ChatGPT opens sidebar ("global") entrypoints with `{}` as the arguments.
+const sidebarEntrypoint = toolFragment({
+  meta: {'openai/ui': {entrypoints: [{type: 'global'}]}},
+  check: ({input}) => {
+    if (input && !(input as z.ZodType).safeParse({}).success) {
+      throw new Error('a global entrypoint must accept {} as its input');
+    }
+  },
+});
+
+@tool('parts_library', {
+  title: 'Parts Library',
+  output: Library,
+  icons: [{src: 'https://bits.example.com/library.svg', mimeType: 'image/svg+xml'}],
+  annotations: {readOnlyHint: true},
+  ui: {resourceUri: 'ui://bits/library'},
+  extend: [sidebarEntrypoint],
+})
+async library(): Promise<z.infer<typeof Library>> { /* … */ }
+
+@appResource('ui://bits/library', {
+  extend: [
+    resourceFragment({
+      meta: {
+        'openai/ui': {
+          preferredDisplayMode: 'fullscreen',
+          availableDisplayModes: ['inline', 'fullscreen'],
+        },
+      },
+    }),
+  ],
+})
+libraryWidget(): string { return WIDGET_HTML; }
+```
+
+Other `openai/*` keys follow the same pattern: a composer @-mention tool is
+`ui: {visibility: ['app']}` plus
+`toolFragment({meta: {'openai/extensions': {'mentions/search': {}}}})`, and
+structured settings are two ordinary tools named by a capability in the server
+config:
+
+```ts
+const settings = {readTool: 'settings_read', updateTool: 'settings_update'};
+app.configure('servers.MCPServer').to({
+  capabilities: {
+    extensions: {'openai/settings': settings},
+    experimental: {'openai/settings': settings}, // 2025-era ChatGPT reads this
+  },
+});
+```
+
+OpenAI's extensions are new and still moving, so AgentBack ships no typed
+`openai/*` helpers yet — see
+[P1-7](../proposals/host-extensions.md) for the planned
+`@agentback/mcp-openai`. The fragments above are the stable seam those helpers
+will build on.
+
+### Recipe: Claude's widget domain
+
+Claude derives a widget's dedicated sandbox origin from your server URL — the
+first 32 hex characters of its SHA-256, followed by `.claudemcpcontent.com`
+([Claude docs](https://claude.com/docs/connectors/building/mcp-apps/getting-started.md)).
+Use the **public** URL users add in Claude (from config, not the request URL,
+which is wrong behind a proxy or tunnel):
+
+```ts
+import {createHash} from 'node:crypto';
+
+const claudeDomain = (serverUrl: string) =>
+  createHash('sha256').update(serverUrl).digest('hex').slice(0, 32) +
+  '.claudemcpcontent.com';
+
+@appResource(UI_URI, {domain: claudeDomain(process.env.PUBLIC_MCP_URL!)})
+```
+
+The domain format is host-specific, and a static `domain` is sent to every
+host; set one only if Claude is the host that needs it.
+
+## Connecting to ChatGPT / Claude
+
+Desktop apps can spawn a stdio server; claude.ai, ChatGPT and the mobile apps
+connect to a remote **Streamable HTTP** endpoint:
+
+1. Serve over HTTP — `installMcpHttp(app)` on a `RestApplication`
+   (`pnpm -F hello-mcp-apps start:http` does this).
+2. Put the port on a public **HTTPS** URL. A tunnel is fine for development.
+3. Add `https://<host>/mcp` as a custom connector in the host — see
+   [Claude's connector docs](https://claude.com/docs/connectors/building/mcp-apps/getting-started.md)
+   or [OpenAI's plugin docs](https://developers.openai.com/codex/build-plugins).
+4. After changing tools, refresh or reconnect the connector; hosts cache
+   `tools/list`.
+5. Check the host's platform support. OpenAI's spec lists file entrypoints,
+   file access and composer @-mentions as **desktop-only**.
 
 ## Test it
 

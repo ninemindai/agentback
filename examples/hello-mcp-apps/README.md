@@ -47,6 +47,20 @@ Then register it with Claude Desktop (Settings → Developer → Edit Config,
 }
 ```
 
+### Over HTTP (claude.ai, ChatGPT, mobile)
+
+Remote hosts connect to a Streamable HTTP endpoint instead of spawning a
+process:
+
+```bash
+PORT=3000 pnpm -F hello-mcp-apps start:http
+# → MCP over HTTP at http://127.0.0.1:3000/mcp
+```
+
+Expose the port on a public HTTPS URL (a tunnel is fine for development) and add
+`https://<host>/mcp` as a custom connector. The full checklist is in
+[docs/guides/mcp-apps-widgets.md](../../docs/guides/mcp-apps-widgets.md#connecting-to-chatgpt--claude).
+
 Ask Claude something like _"get the forecast for Berlin"_. It calls
 `get_forecast`, and the widget renders the daily cards inline. The **Refresh**
 button calls the tool again from inside the widget via `app.callServerTool(...)`.
