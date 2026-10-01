@@ -17,14 +17,15 @@ tracked in the doc headers.
 
 ## P1 — extend the moat
 
-| #    | Proposal                                             | One-liner                                                                                          |
-| ---- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| P1-1 | [Drizzle recipe](p1-1-drizzle-recipe.md)             | Ship `@agentback/drizzle` per [db-story.md](../db-story.md)                                        |
-| P1-2 | [Standard Schema compat](p1-2-standard-schema.md)    | Decorators accept any `~standard` schema; JSON-Schema emission stays mandatory                     |
-| P1-3 | [MCP suite completion](p1-3-mcp-suite-completion.md) | `mcp-host` resources/prompts aggregation; `REQUEST_EXTRA`/`PROGRESS` bindings for tools            |
-| P1-4 | [extension-otel](p1-4-extension-otel.md)             | OpenTelemetry traces across REST, MCP, and jobs — `@opentelemetry/api` only                        |
-| P1-5 | [Skill generation](p1-5-skill-generation.md)         | `generateSkill()` + `/skills/<name>/SKILL.md` — derived from the registry, recipes via DI          |
-| P1-6 | [MCP Apps](p1-6-mcp-apps.md)                         | Interactive tool UI (SEP-1865): `@tool(..., {ui})`, `@appResource`, typed view bridge — **design** |
+| #    | Proposal                                             | One-liner                                                                                                                                   |
+| ---- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| P1-1 | [Drizzle recipe](p1-1-drizzle-recipe.md)             | Ship `@agentback/drizzle` per [db-story.md](../db-story.md)                                                                                 |
+| P1-2 | [Standard Schema compat](p1-2-standard-schema.md)    | Decorators accept any `~standard` schema; JSON-Schema emission stays mandatory                                                              |
+| P1-3 | [MCP suite completion](p1-3-mcp-suite-completion.md) | `mcp-host` resources/prompts aggregation; `REQUEST_EXTRA`/`PROGRESS` bindings for tools                                                     |
+| P1-4 | [extension-otel](p1-4-extension-otel.md)             | OpenTelemetry traces across REST, MCP, and jobs — `@opentelemetry/api` only                                                                 |
+| P1-5 | [Skill generation](p1-5-skill-generation.md)         | `generateSkill()` + `/skills/<name>/SKILL.md` — derived from the registry, recipes via DI                                                   |
+| P1-6 | [MCP Apps](p1-6-mcp-apps.md)                         | Interactive tool UI (SEP-1865): `@tool(..., {ui})`, `@appResource`, typed view bridge — **design**                                          |
+| P1-7 | [MCP host extensions](host-extensions.md)            | ChatGPT (`openai/*`) + Claude conventions: core `_meta`/annotations/capability seams, user elicitation, `@agentback/mcp-hosts` — **design** |
 
 ## P2 — prerequisites surfaced by review
 
