@@ -114,6 +114,26 @@ import {
   toResourceContents,
   type ResourceContentItem,
 } from './resource-content.js';
+import {
+  assertUniqueEventNames,
+  servedEvents,
+  visibleEvents,
+  type EventBinding,
+} from './events/registry.js';
+import {
+  McpEventError,
+  McpEventErrorCodes,
+  type EventSubscription,
+} from './events/ports.js';
+import {
+  grantTtl,
+  invalidParams,
+  parseSubscribeParams,
+  parseUnsubscribeParams,
+  resolveEventsConfig,
+  subscriptionId,
+  type ResolvedEventsConfig,
+} from './events/subscriptions.js';
 
 const log = loggers('agentback:mcp:server');
 
@@ -596,7 +616,12 @@ export class MCPServer implements Server {
   readonly config: Required<Omit<MCPServerConfig, MCPServerOptionalKeys>> &
     Pick<
       MCPServerConfig,
-      'localPrincipal' | 'title' | 'icons' | 'websiteUrl' | 'capabilities'
+      | 'localPrincipal'
+      | 'title'
+      | 'icons'
+      | 'websiteUrl'
+      | 'capabilities'
+      | 'events'
     > & {
       transports: NonNullable<MCPServerConfig['transports']>;
       localPrincipal?: UserProfile;
@@ -605,6 +630,8 @@ export class MCPServer implements Server {
   private readonly serverInfo: Implementation;
   /** Server capabilities advertised to clients; derived once from the config. */
   private readonly capabilities: ServerCapabilities;
+  /** MCP Events subscription policy, defaults applied; validated at boot. */
+  private readonly eventsConfig: ResolvedEventsConfig;
 
   constructor(
     // Inject the binding's own resolution context rather than the app root.
@@ -630,6 +657,7 @@ export class MCPServer implements Server {
     };
     this.serverInfo = buildServerInfo(this.config);
     this.capabilities = buildCapabilities(this.config);
+    this.eventsConfig = resolveEventsConfig(this.config.events);
     this.mcp = new McpServer(this.serverInfo, {
       capabilities: this.capabilities,
     });
@@ -734,6 +762,14 @@ export class MCPServer implements Server {
   /** Public introspection: list every registered prompt. */
   listPrompts(): {ctor: Function; meta: PromptMetadata}[] {
     return this.collectAllPrompts();
+  }
+
+  /**
+   * Public introspection: the `@event` types callers are served, one per
+   * name, root-nearest first.
+   */
+  listEvents(): EventBinding[] {
+    return servedEvents(this.context);
   }
 
   /**
@@ -2041,6 +2077,273 @@ export class MCPServer implements Server {
       // `@prompt` methods take no arguments, so there is nothing to validate.
       return this.dispatchPrompt(found, this.requestContextFor(extra));
     });
+
+    this.registerEventsOn(target, scopes);
+  }
+
+  /**
+   * MCP Events (webhook delivery, OpenAI's subset of the WG sketch):
+   * `events/list`, `events/subscribe`, `events/unsubscribe`, and the
+   * top-level `events` capability.
+   *
+   * The handlers ride inside `registerAllOn`, so stdio, sessions and the
+   * per-request stateless factory share one path — and receive the same
+   * `scopes`, which an authenticated transport passes as `[]` (never
+   * `undefined`) for an anonymous caller, so a scoped event is hidden from it.
+   * Nothing subscription-shaped lives on this instance: subscriptions and the
+   * verification cache are in the app-level `SUBSCRIPTION_STORE`, because a
+   * stateless server is gone before the first delivery.
+   */
+  private registerEventsOn(target: McpServer, scopes?: string[]): void {
+    // Compile eagerly, as tools do: a schema that cannot describe itself (or
+    // a non-object input/payload) fails here, not at a client's first list.
+    visibleEvents(this.context, scopes);
+    const server = target.server;
+    // Advertised when the app declares any event (even one this caller cannot
+    // see — a capability is not a list). Top level, as
+    // OpenAI's guide places it, not under `extensions`: the SDK does not
+    // parse its own outgoing capabilities, so the key survives — a test pins
+    // that, since a stricter SDK would strip it with no error anywhere.
+    if (servedEvents(this.context).length > 0) {
+      server.registerCapabilities({events: {}} as ServerCapabilities);
+    }
+    // The 3-argument form is the SDK's API for non-spec methods. Params are
+    // accepted as-is and validated here, so every refusal carries the
+    // extension's own code and message rather than a generic schema error.
+    const anyParams = {
+      '~standard': {
+        version: 1 as const,
+        vendor: 'agentback',
+        validate: (value: unknown) => ({value}),
+      },
+    };
+    server.setRequestHandler('events/list', {params: anyParams}, async () => ({
+      events: [...visibleEvents(this.context, scopes).values()].map(
+        v => v.entry,
+      ),
+    }));
+    server.setRequestHandler(
+      'events/subscribe',
+      {params: anyParams},
+      async (params, extra) =>
+        this.wireError(() => this.subscribeEvent(params, extra, scopes)),
+    );
+    server.setRequestHandler(
+      'events/unsubscribe',
+      {params: anyParams},
+      async (params, extra) =>
+        this.wireError(() => this.unsubscribeEvent(params, extra, scopes)),
+    );
+  }
+
+  /** Re-express an {@link McpEventError} as the JSON-RPC error it names. */
+  private async wireError<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (err) {
+      if (err instanceof McpEventError) {
+        throw new ProtocolError(err.code, err.message, err.data);
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * The subscriber's canonical principal, or `-32012`. Webhook mode needs an
+   * authenticated principal: the identity tuple is only unguessable with the
+   * principal in it. Transport auth wins; `localPrincipal` (an explicit,
+   * configured identity) also counts.
+   */
+  private async eventPrincipal(
+    reqCtx: Context,
+  ): Promise<{user: UserProfile; principal: string}> {
+    const user = await this.bindRequestPrincipals(reqCtx);
+    const principal = user?.[securityId];
+    if (!user || typeof principal !== 'string' || principal.length === 0) {
+      throw new McpEventError(
+        McpEventErrorCodes.Forbidden,
+        'Forbidden: webhook subscriptions require an authenticated principal',
+      );
+    }
+    return {user, principal};
+  }
+
+  /** The visible event `name`, or `-32011 {kind: 'event'}`. */
+  private visibleEvent(name: string, scopes?: string[]): EventBinding {
+    // A scope-hidden event answers exactly like an unknown one, as a hidden
+    // tool does: its existence is not disclosed.
+    const found = visibleEvents(this.context, scopes).get(name);
+    if (!found) {
+      throw new McpEventError(
+        McpEventErrorCodes.NotFound,
+        `Event ${name} not found`,
+        {kind: 'event'},
+      );
+    }
+    return found.event;
+  }
+
+  /**
+   * `events/subscribe`: validate, authorize, verify the endpoint if needed,
+   * then upsert by the identity tuple. Idempotent — a refresh re-grants the
+   * TTL and may rotate the secret.
+   */
+  protected async subscribeEvent(
+    raw: unknown,
+    extra: ToolRequestExtra,
+    scopes?: string[],
+  ): Promise<{
+    id: string;
+    refreshBefore: string | null;
+    cursor: null;
+    truncated: false;
+  }> {
+    const reqCtx = this.requestContextFor(extra);
+    const {user, principal} = await this.eventPrincipal(reqCtx);
+    const {params, mode} = parseSubscribeParams(raw);
+    const event = this.visibleEvent(params.name, scopes);
+    try {
+      await this.authorizeMember(
+        event.ctor,
+        event.meta.methodName as string,
+        user,
+        reqCtx,
+      );
+    } catch {
+      throw new McpEventError(
+        McpEventErrorCodes.Forbidden,
+        `Forbidden: not authorized for event ${params.name}`,
+      );
+    }
+    if (mode !== undefined && mode !== 'webhook') {
+      throw new McpEventError(
+        McpEventErrorCodes.Unsupported,
+        `Delivery mode ${String(mode)} is not supported`,
+        {feature: 'deliveryMode', value: mode},
+      );
+    }
+    if (event.meta.input) {
+      const parsed = standardParse(event.meta.input, params.arguments);
+      if (!parsed.success) {
+        const first = parsed.issues[0];
+        const where = first?.path?.length ? first.path.join('.') : 'arguments';
+        throw invalidParams(
+          `Invalid arguments for event ${params.name}: ${where}: ${
+            first?.message ?? 'invalid'
+          }`,
+        );
+      }
+    } else if (Object.keys(params.arguments).length > 0) {
+      throw invalidParams(`Event ${params.name} takes no arguments`);
+    }
+
+    const delivery = await reqCtx.get(MCPBindings.EVENT_DELIVERY, {
+      optional: true,
+    });
+    if (!delivery) {
+      throw new McpEventError(
+        McpEventErrorCodes.Unsupported,
+        'Webhook delivery is not configured on this server',
+        {feature: 'deliveryMode', value: 'webhook'},
+      );
+    }
+
+    const store = await reqCtx.get(MCPBindings.SUBSCRIPTION_STORE);
+    const cfg = this.eventsConfig;
+    const id = await subscriptionId(
+      principal,
+      params.url,
+      params.name,
+      params.arguments,
+    );
+    const existing = await store.get(id);
+    if (
+      !existing &&
+      (await store.countByPrincipal(principal)) >=
+        cfg.maxSubscriptionsPerPrincipal
+    ) {
+      throw new McpEventError(
+        McpEventErrorCodes.ResourceExhausted,
+        'Subscription limit reached',
+        {limit: 'subscriptions', max: cfg.maxSubscriptionsPerPrincipal},
+      );
+    }
+
+    // Anti-flooding: nothing is delivered to a URL whose owner has not shown
+    // intent. Cached per (principal, url), so varying `arguments` cannot
+    // multiply verification POSTs at a victim, and one principal's
+    // verification never waives another's.
+    if (!(await store.isVerified(principal, params.url))) {
+      const signal = await reqCtx.get(CoreBindings.ABORT_SIGNAL, {
+        optional: true,
+      });
+      await delivery.verify(
+        {subscriptionId: id, principal, url: params.url, secret: params.secret},
+        {signal},
+      );
+      await store.markVerified(principal, params.url, cfg.verificationTtlMs);
+    }
+
+    const now = Date.now();
+    const {expiresAt, refreshBefore} = grantTtl(params.ttlMs, cfg, now);
+    // Rotation: a refresh with a new secret keeps the old one signing beside
+    // it for a grace window, so deliveries already in flight still verify.
+    let previousSecret = existing?.previousSecret;
+    if (existing && existing.secret !== params.secret) {
+      previousSecret = {
+        secret: existing.secret,
+        until: now + cfg.secretRotationGraceMs,
+      };
+    }
+    if (previousSecret && previousSecret.until <= now)
+      previousSecret = undefined;
+    const sub: EventSubscription = {
+      id,
+      principal,
+      user,
+      name: params.name,
+      arguments: params.arguments,
+      url: params.url,
+      secret: params.secret,
+      ...(previousSecret ? {previousSecret} : {}),
+      expiresAt,
+      createdAt: existing?.createdAt ?? now,
+      refreshedAt: now,
+    };
+    await store.put(sub);
+    return {id, refreshBefore, cursor: null, truncated: false};
+  }
+
+  /**
+   * `events/unsubscribe`: eager cleanup by the same identity tuple. The
+   * derived `id` is never accepted as input — knowing it authorizes nothing.
+   */
+  protected async unsubscribeEvent(
+    raw: unknown,
+    extra: ToolRequestExtra,
+    // Unused: a subscription outlives its event's visibility (a scope can be
+    // narrowed after subscribing), and deleting one's own subscription needs
+    // no visibility.
+    _scopes?: string[],
+  ): Promise<Record<string, never>> {
+    const reqCtx = this.requestContextFor(extra);
+    const {principal} = await this.eventPrincipal(reqCtx);
+    const params = parseUnsubscribeParams(raw);
+    const store = await reqCtx.get(MCPBindings.SUBSCRIPTION_STORE);
+    const id = await subscriptionId(
+      principal,
+      params.url,
+      params.name,
+      params.arguments,
+    );
+    if (!(await store.delete(id))) {
+      throw new McpEventError(
+        McpEventErrorCodes.NotFound,
+        'Subscription not found',
+        {kind: 'subscription'},
+      );
+    }
+    return {};
   }
 
   /**
@@ -2112,6 +2415,7 @@ export class MCPServer implements Server {
     // `buildServer()`, which under stateless HTTP runs per request: a tool
     // mounted later that collides is served root-nearest-first and logged.
     this.assertUniqueToolNames();
+    assertUniqueEventNames(this.context);
     this.registerAllOn(this.mcp);
 
     if (this.config.transports.stdio !== false) {

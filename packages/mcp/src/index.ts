@@ -12,6 +12,15 @@ export * from './tool-cost.js';
 export * from './mcp.server.js';
 export * from './mcp.component.js';
 export * from './mcp.application.js';
+export * from './events/ports.js';
+export {InMemorySubscriptionStore} from './events/in-memory-store.js';
+export {DefaultMcpEventEmitter} from './events/emitter.js';
+export {
+  isWebhookSecret,
+  subscriptionId,
+  DEFAULT_EVENTS_CONFIG,
+} from './events/subscriptions.js';
+export type {EventBinding, EventListEntry} from './events/registry.js';
 export {
   resourceFragment,
   toolFragment,

@@ -4,9 +4,11 @@
 
 import {randomRequestStateKey, unavailableElicitor} from './elicit.js';
 import {Binding} from '@agentback/context';
-import type {Component} from '@agentback/core';
+import {createBindingFromClass, type Component} from '@agentback/core';
 import {MCPBindings, noopProgress} from './keys.js';
 import {InMemoryConfirmationStore} from '@agentback/common';
+import {DefaultMcpEventEmitter} from './events/emitter.js';
+import {InMemorySubscriptionStore} from './events/in-memory-store.js';
 import {MCPServer} from './mcp.server.js';
 
 /**
@@ -44,6 +46,11 @@ function defaultRequestStateKey(): string {
  * the same instance by walking the context chain. Still in-memory, so a
  * multi-instance deployment must override it with a shared store.
  *
+ * MCP Events gets the same treatment: {@link MCPBindings.SUBSCRIPTION_STORE}
+ * (in-memory) and the {@link MCPBindings.EVENTS} emitter are app-level, since
+ * `events/subscribe` and the emit that delivers to it are different requests.
+ * The webhook delivery port is bound by `@agentback/mcp-events`.
+ *
  * @example
  *   const app = new RestApplication();
  *   app.component(MCPComponent);
@@ -66,5 +73,11 @@ export class MCPComponent implements Component {
     Binding.bind(MCPBindings.REQUEST_STATE_KEY.key).to(
       defaultRequestStateKey(),
     ),
+    Binding.bind(MCPBindings.SUBSCRIPTION_STORE.key).to(
+      new InMemorySubscriptionStore(),
+    ),
+    createBindingFromClass(DefaultMcpEventEmitter, {
+      key: MCPBindings.EVENTS.key,
+    }),
   ];
 }

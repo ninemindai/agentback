@@ -10,6 +10,12 @@ import type {SchemaLike} from '@agentback/openapi';
 // Re-exported so tool handlers can type the injected `MCPBindings.REQUEST_AUTH`
 // principal (`auth?: AuthInfo`) without reaching into the MCP SDK internals.
 export type {AuthInfo, Icon} from '@modelcontextprotocol/server';
+import type {
+  EventDelivery,
+  EventAccessCheck,
+  McpEventEmitter,
+  SubscriptionStore,
+} from './events/ports.js';
 import type {MetaObject, ToolAnnotationsInput} from './fragments.js';
 import type {MCPServer, ToolBinding} from './mcp.server.js';
 import type {Elicitor, RequestClient} from './elicit.js';
@@ -124,6 +130,42 @@ export namespace MCPBindings {
    */
   export const REQUEST_STATE_KEY = BindingKey.create<string | Uint8Array>(
     'mcp.requestStateKey',
+  );
+  /**
+   * Webhook subscriptions to `@event` types (MCP Events). Bound app-level by
+   * {@link MCPComponent} to an in-memory store, for the same reason as
+   * {@link CONFIRMATION_STORE}: under `protocol: 'both'` a fresh `MCPServer`
+   * is built per request, so `events/subscribe` and the later emit must find
+   * one store by walking the context chain. Bind a shared store for
+   * multi-instance deployments.
+   */
+  export const SUBSCRIPTION_STORE = BindingKey.create<SubscriptionStore>(
+    'mcp.subscriptionStore',
+  );
+  /**
+   * The emit side of MCP Events: `events.emit('comment.created', data)`
+   * validates `data` against the event's `payload` schema, runs each live
+   * subscription's `match`, and hands the occurrence to
+   * {@link EVENT_DELIVERY}. Bound app-level by {@link MCPComponent}.
+   */
+  export const EVENTS = BindingKey.create<McpEventEmitter>('mcp.events');
+  /**
+   * The webhook delivery port: endpoint verification and signed POSTs. The
+   * network code lives in `@agentback/mcp-events` (`installMcpEvents`), so
+   * this package stays host-neutral. Unbound ⇒ `events/subscribe` answers
+   * `-32014 Unsupported` and `events/list` still works.
+   */
+  export const EVENT_DELIVERY =
+    BindingKey.create<EventDelivery>('mcp.eventDelivery');
+  /**
+   * Optional revocation hook for MCP Events, consulted before every delivery
+   * (after the event method's `@authorize` voters). Return `false` and the
+   * subscription is deleted: the principal's access was revoked during the
+   * subscription's lifetime. Bind one that asks whatever issued the
+   * principal's credentials (token introspection, a revocation list).
+   */
+  export const EVENT_ACCESS_CHECK = BindingKey.create<EventAccessCheck>(
+    'mcp.eventAccessCheck',
   );
 }
 
@@ -293,6 +335,37 @@ export interface ResourceMetadata {
   methodName: string | symbol;
 }
 
+/**
+ * An MCP Events event type, declared with `@event(name, {...})` on an
+ * `@mcpServer` class. The decorated method is the subscription filter:
+ * `match(args, data)` returns `true` to deliver an occurrence to a
+ * subscription.
+ */
+export interface EventMetadata {
+  name: string;
+  description?: string;
+  title?: string;
+  /**
+   * Schema for the subscription `arguments` (filters a client subscribes
+   * with) — the event's `inputSchema`. Must lower to an object root, as
+   * `@tool`'s `input:` does. Omitted ⇒ the event takes no arguments.
+   */
+  input?: SchemaLike;
+  /**
+   * Schema for the occurrence's `data` — the event's `payloadSchema`.
+   * Validated at emit time, so a delivered payload matches it by
+   * construction.
+   */
+  payload: SchemaLike;
+  /**
+   * OAuth scope required to see the event in `events/list` and to subscribe
+   * to it, exactly as `@tool({scope})`. `@authorize({scopes})` on the method
+   * works too.
+   */
+  scope?: string;
+  methodName: string | symbol;
+}
+
 export interface PromptMetadata {
   name: string;
   description?: string;
@@ -311,4 +384,7 @@ export namespace MCPKeys {
     PromptMetadata,
     MethodDecorator
   >('mcp:prompt');
+  export const EVENT = MetadataAccessor.create<EventMetadata, MethodDecorator>(
+    'mcp:event',
+  );
 }
