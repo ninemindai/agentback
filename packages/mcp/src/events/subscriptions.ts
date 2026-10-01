@@ -3,6 +3,7 @@
 // License text available at https://opensource.org/license/mit/
 
 import {stableStringify} from '@agentback/common';
+import {securityId, type UserProfile} from '@agentback/security';
 import {ProtocolError, ProtocolErrorCode} from '@modelcontextprotocol/server';
 import {assertJson} from '../fragments.js';
 import type {McpEventsConfig} from '../types.js';
@@ -18,6 +19,7 @@ export const DEFAULT_EVENTS_CONFIG: ResolvedEventsConfig = {
   maxSubscriptionsPerPrincipal: 100,
   secretRotationGraceMs: 5 * 60_000,
   verificationTtlMs: 60 * 60_000,
+  trustedCallbackOrigins: [],
 };
 
 export function resolveEventsConfig(
@@ -34,11 +36,30 @@ export function resolveEventsConfig(
   ] as const) {
     const v = out[key];
     if (!Number.isFinite(v) || v < 0) {
-      throw new Error(`MCPServerConfig.events.${key} must be a number >= 0`);
+      throw new Error(
+        `MCPServerConfig.events.${key} must be a number >= 0 (got ${String(v)})`,
+      );
     }
   }
   if (out.minTtlMs > out.maxTtlMs) {
-    throw new Error('MCPServerConfig.events.minTtlMs exceeds maxTtlMs');
+    throw new Error(
+      `MCPServerConfig.events.minTtlMs (${out.minTtlMs}) exceeds maxTtlMs (${out.maxTtlMs})`,
+    );
+  }
+  for (const origin of out.trustedCallbackOrigins) {
+    let parsed: URL | undefined;
+    try {
+      parsed = new URL(origin);
+    } catch {
+      parsed = undefined;
+    }
+    if (!parsed || parsed.protocol !== 'https:' || parsed.origin !== origin) {
+      throw new Error(
+        `MCPServerConfig.events.trustedCallbackOrigins: ${JSON.stringify(
+          origin,
+        )} is not an https origin (scheme://host[:port], no path)`,
+      );
+    }
   }
   return out;
 }
@@ -218,5 +239,36 @@ function callbackUrl(value: unknown): string {
     throw invalidParams('delivery.url must not carry credentials');
   }
   if (url.hash) throw invalidParams('delivery.url must not have a fragment');
-  return value;
+  // Normalized (lower-case host, default port dropped), so spellings of one
+  // URL are one identity, one verification and one delivery target.
+  return url.href;
+}
+
+/**
+ * The JSON-only claims of a profile, for {@link EventSubscription.profile}:
+ * its string-keyed properties (the `securityId` symbol is the subscription's
+ * `principal`). Anything that is not plain JSON is dropped.
+ */
+export function toProfile(user: UserProfile): Record<string, unknown> {
+  try {
+    const json = JSON.parse(JSON.stringify(user)) as unknown;
+    return json && typeof json === 'object' && !Array.isArray(json)
+      ? (json as Record<string, unknown>)
+      : {};
+  } catch {
+    // A cyclic or BigInt-bearing profile keeps only what authorization reads.
+    const {roles, scopes} = user as {roles?: unknown; scopes?: unknown};
+    return JSON.parse(JSON.stringify({roles, scopes})) as Record<
+      string,
+      unknown
+    >;
+  }
+}
+
+/** Rebuild the subscriber's `UserProfile` from a stored subscription. */
+export function subscriberProfile(sub: {
+  principal: string;
+  profile: Readonly<Record<string, unknown>>;
+}): UserProfile {
+  return {...sub.profile, [securityId]: sub.principal} as UserProfile;
 }

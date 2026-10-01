@@ -631,6 +631,9 @@ importers:
       '@agentback/security':
         specifier: workspace:*
         version: link:../../packages/security
+      '@modelcontextprotocol/client':
+        specifier: ^2.1.0
+        version: 2.1.0
       tslib:
         specifier: ^2.8.1
         version: 2.8.1
@@ -638,9 +641,6 @@ importers:
         specifier: ^4.6.5
         version: 4.6.5
     devDependencies:
-      '@modelcontextprotocol/client':
-        specifier: ^2.1.0
-        version: 2.1.0
       vitest:
         specifier: ~5.0.1
         version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@22.18.13)(vite@8.3.1(@types/node@22.18.13)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))

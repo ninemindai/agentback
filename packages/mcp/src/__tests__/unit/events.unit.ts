@@ -5,8 +5,8 @@
 import {afterEach, describe, expect, it} from 'vitest';
 import {z} from 'zod';
 import {authorize} from '@agentback/authorization';
-import {inject} from '@agentback/context';
-import {Application} from '@agentback/core';
+import {Context, inject} from '@agentback/context';
+import {Application, extensionFor} from '@agentback/core';
 import {
   securityId,
   SecurityBindings,
@@ -17,10 +17,11 @@ import type {AuthInfo} from '@modelcontextprotocol/server';
 import {MCPComponent} from '../../mcp.component.js';
 import {MCPServer} from '../../mcp.server.js';
 import {event, mcpServer, tool} from '../../decorators/index.js';
-import {MCPBindings} from '../../keys.js';
+import {MCP_SERVERS, MCPBindings} from '../../keys.js';
 import type {MCPServerConfig} from '../../types.js';
 import {
   CallbackEndpointError,
+  MAX_EVENT_BYTES,
   McpEventErrorCodes,
   type EventDelivery,
   type EventOccurrence,
@@ -568,7 +569,7 @@ describe('events/subscribe', () => {
       comment_id: 'c1',
       text: 'hi',
     });
-    expect(report).toMatchObject({subscriptions: 1, delivered: 1});
+    expect(report).toMatchObject({subscriptions: 1, queued: 1});
     // Request 2, on a fresh server, unsubscribes the same subscription.
     const c2 = await connect(server);
     await c2.request(
@@ -655,7 +656,7 @@ describe('emit', () => {
     expect(report).toEqual({
       eventId: 'gh-123',
       subscriptions: 2,
-      delivered: 1,
+      queued: 1,
       revoked: 0,
     });
     expect(delivery.delivered).toHaveLength(1);
@@ -698,7 +699,7 @@ describe('emit', () => {
       auth: authInfo('blocked'),
     });
     const r = await emitter.emit('doc.touched', {by: 'x'});
-    expect(r).toMatchObject({subscriptions: 2, delivered: 1});
+    expect(r).toMatchObject({subscriptions: 2, queued: 1});
     expect(delivery.delivered[0]!.sub.principal).toBe('u1');
   });
 
@@ -707,7 +708,7 @@ describe('emit', () => {
       name: 'doc.sloppy',
       arguments: {},
     });
-    expect((await emitter.emit('doc.sloppy', {n: 1})).delivered).toBe(0);
+    expect((await emitter.emit('doc.sloppy', {n: 1})).queued).toBe(0);
     expect(delivery.delivered).toHaveLength(0);
   });
 
@@ -719,8 +720,8 @@ describe('emit', () => {
     await subscribe(server, subParams({name: 'doc.throws', arguments: {}}), {
       auth: authInfo('u2'),
     });
-    expect((await emitter.emit('doc.throws', {n: 1})).delivered).toBe(0);
-    expect((await emitter.emit('doc.throws', {n: 2})).delivered).toBe(2);
+    expect((await emitter.emit('doc.throws', {n: 1})).queued).toBe(0);
+    expect((await emitter.emit('doc.throws', {n: 2})).queued).toBe(2);
   });
 
   it('revokes a subscription the access check refuses', async () => {
@@ -730,10 +731,10 @@ describe('emit', () => {
       allowed.has(sub.principal),
     );
     const data = {document_id: 'd1', comment_id: 'c', text: 't'};
-    expect((await emitter.emit('comment.created', data)).delivered).toBe(1);
+    expect((await emitter.emit('comment.created', data)).queued).toBe(1);
     allowed.delete('u1');
     expect(await emitter.emit('comment.created', data)).toMatchObject({
-      delivered: 0,
+      queued: 0,
       revoked: 1,
     });
     // Deleted, not merely skipped.
@@ -748,7 +749,7 @@ describe('emit', () => {
     await store.put({
       id: 'sub_x',
       principal: 'u1',
-      user: {[securityId]: 'u1', roles: []} as unknown as UserProfile,
+      profile: {roles: []},
       name: 'audit.logged',
       arguments: {},
       url: URL1,
@@ -759,7 +760,7 @@ describe('emit', () => {
     });
     const emitter = await a.get(MCPBindings.EVENTS);
     expect(await emitter.emit('audit.logged', {line: 'l'})).toMatchObject({
-      delivered: 0,
+      queued: 0,
       revoked: 1,
     });
     expect(delivery.delivered).toHaveLength(0);
@@ -771,7 +772,7 @@ describe('emit', () => {
     await store.put({
       id: 'sub_old',
       principal: 'u1',
-      user: {[securityId]: 'u1'} as UserProfile,
+      profile: {},
       name: 'comment.created',
       arguments: {document_id: 'd1'},
       url: URL1,
@@ -817,7 +818,7 @@ describe('subscription helpers', () => {
 
   it('validates the config at boot', () => {
     expect(() => resolveEventsConfig({minTtlMs: 10, maxTtlMs: 5})).toThrow(
-      /minTtlMs exceeds maxTtlMs/,
+      /minTtlMs \(10\) exceeds maxTtlMs \(5\)/,
     );
     expect(() => resolveEventsConfig({defaultTtlMs: -1})).toThrow(
       /defaultTtlMs must be a number >= 0/,
@@ -842,7 +843,7 @@ describe('subscription helpers', () => {
     await store.put({
       id: 's',
       principal: 'p',
-      user: {[securityId]: 'p'} as UserProfile,
+      profile: {},
       name: 'e',
       arguments: {},
       url: URL1,
@@ -860,5 +861,250 @@ describe('subscription helpers', () => {
     expect(await store.get('s')).toBeUndefined();
     expect(await store.listByEvent('e')).toEqual([]);
     expect(await store.delete('s')).toBe(false);
+  });
+});
+
+describe('review fixes: identity, races and limits', () => {
+  /** A raw OAuth verifier's AuthInfo: no framework principal in `extra`. */
+  function oauthInfo(
+    clientId: string,
+    extra: Record<string, unknown> = {},
+    expiresAt?: number,
+  ): AuthInfo {
+    return {token: 't', clientId, scopes: [], extra, expiresAt};
+  }
+
+  it('refuses a clientId-only token: the client app is not a person', async () => {
+    const {server} = await givenServer();
+    await expect(
+      subscribe(server, subParams(), {auth: oauthInfo('chatgpt')}),
+    ).rejects.toMatchObject({
+      code: McpEventErrorCodes.Forbidden,
+      message: expect.stringMatching(/per-user principal/),
+    });
+  });
+
+  it('keys on extra.sub, so users of one client app are isolated', async () => {
+    const {server} = await givenServer({
+      events: {maxSubscriptionsPerPrincipal: 1},
+    });
+    const a = await subscribe(server, subParams(), {
+      auth: oauthInfo('chatgpt', {sub: 'user-a'}),
+    });
+    const b = await subscribe(server, subParams(), {
+      auth: oauthInfo('chatgpt', {sub: 'user-b'}),
+    });
+    expect(a.id).not.toBe(b.id);
+    expect(a.id).toBe(
+      await subscriptionId('user-a', URL1, 'comment.created', {
+        document_id: 'd1',
+      }),
+    );
+  });
+
+  it('does not let localPrincipal stand in for an anonymous HTTP caller', async () => {
+    const {server} = await givenServer({
+      localPrincipal: {[securityId]: 'local'} as UserProfile,
+    });
+    const anonymousHttp = {
+      mcpReq: {signal: new AbortController().signal},
+      http: {},
+    };
+    await expect(
+      (
+        server as unknown as {
+          subscribeEvent(p: unknown, e: unknown): Promise<unknown>;
+        }
+      ).subscribeEvent(subParams(), anonymousHttp),
+    ).rejects.toMatchObject({code: McpEventErrorCodes.Forbidden});
+    // With no HTTP request (stdio, in-process) the local principal counts.
+    await expect(subscribe(server, subParams())).resolves.toMatchObject({
+      cursor: null,
+    });
+  });
+
+  it('reports a failing voter as an error, not as Forbidden', async () => {
+    @mcpServer()
+    class Flaky {
+      @authorize({
+        voters: [
+          async () => {
+            throw new Error('db down');
+          },
+        ],
+      })
+      @event('flaky', {payload: z.object({n: z.number()})})
+      m() {
+        return true;
+      }
+    }
+    const {server} = await givenServer({}, {classes: [Flaky]});
+    const err = await subscribe(
+      server,
+      subParams({name: 'flaky', arguments: {}}),
+      {auth: authInfo('u1')},
+    ).catch(e => e);
+    expect(err.code).not.toBe(McpEventErrorCodes.Forbidden);
+    expect(String(err.message)).toMatch(/db down/);
+  });
+
+  it('refuses a subscription to an event only a child context declares', async () => {
+    @mcpServer()
+    class SessionOnly {
+      @event('session.only', {payload: z.object({n: z.number()})})
+      m() {
+        return true;
+      }
+    }
+    const {app: a} = await givenServer();
+    const child = new Context(a, 'session');
+    child
+      .bind('services.SessionOnly')
+      .toClass(SessionOnly)
+      .apply(extensionFor(MCP_SERVERS));
+    const sessionServer = new MCPServer(child, {transports: {stdio: false}});
+    await expect(
+      subscribe(
+        sessionServer,
+        subParams({name: 'session.only', arguments: {}}),
+        {
+          auth: authInfo('u1'),
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: McpEventErrorCodes.Unsupported,
+      data: {feature: 'event', value: 'session.only'},
+    });
+  });
+
+  it('never grants past the token’s expiry', async () => {
+    const {server} = await givenServer();
+    const tokenExpires = Math.floor(Date.now() / 1000) + 300;
+    const res = await subscribe(server, subParams({ttlMs: 3_600_000}), {
+      auth: oauthInfo('app', {sub: 'u1'}, tokenExpires),
+    });
+    expect(Date.parse(res.refreshBefore!)).toBeLessThanOrEqual(
+      tokenExpires * 1000,
+    );
+  });
+
+  it('normalizes the callback URL, so spellings of one URL are one subscription', async () => {
+    const {server} = await givenServer();
+    const auth = authInfo('u1');
+    const res = await subscribe(
+      server,
+      subParams({
+        delivery: {url: 'https://HOOKS.example.com:443/a', secret: SECRET},
+      }),
+      {auth},
+    );
+    expect(res.id).toBe(
+      await subscriptionId('u1', URL1, 'comment.created', {document_id: 'd1'}),
+    );
+    await expect(
+      unsubscribe(
+        server,
+        {
+          name: 'comment.created',
+          arguments: {document_id: 'd1'},
+          delivery: {url: URL1},
+        },
+        auth,
+      ),
+    ).resolves.toEqual({});
+  });
+
+  it('holds the cap and verifies once under concurrent subscribes', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(r => (release = r));
+    const delivery = new FakeDelivery();
+    const verify = delivery.verify.bind(delivery);
+    delivery.verify = async t => {
+      await gate;
+      return verify(t);
+    };
+    const {app: a, server} = await givenServer(
+      {events: {maxSubscriptionsPerPrincipal: 3}},
+      {delivery},
+    );
+    const auth = authInfo('alice');
+    const calls = Array.from({length: 20}, (_, i) =>
+      subscribe(server, subParams({arguments: {document_id: `d${i}`}}), {
+        auth,
+      }).then(
+        () => 'ok',
+        e => e.code,
+      ),
+    );
+    await new Promise(r => setTimeout(r, 10));
+    release();
+    const results = await Promise.all(calls);
+    expect(results.filter(r => r === 'ok')).toHaveLength(3);
+    expect(
+      results.filter(r => r === McpEventErrorCodes.ResourceExhausted),
+    ).toHaveLength(17);
+    expect(delivery.verified).toHaveLength(1);
+    const store = await a.get(MCPBindings.SUBSCRIPTION_STORE);
+    expect(await store.countByPrincipal('alice')).toBe(3);
+  });
+
+  it('skips the challenge for a trusted callback origin', async () => {
+    const {server, delivery} = await givenServer({
+      events: {trustedCallbackOrigins: ['https://hooks.example.com']},
+    });
+    await subscribe(server, subParams(), {auth: authInfo('u1')});
+    expect(delivery.verified).toHaveLength(0);
+    expect(() =>
+      resolveEventsConfig({trustedCallbackOrigins: ['http://x.example.com']}),
+    ).toThrow(/not an https origin/);
+    expect(() =>
+      resolveEventsConfig({
+        trustedCallbackOrigins: ['https://x.example.com/path'],
+      }),
+    ).toThrow(/not an https origin/);
+  });
+
+  it('stores a plain-JSON subscription record', async () => {
+    const {app: a, server} = await givenServer();
+    const {id} = await subscribe(server, subParams(), {
+      auth: authInfo('u1', ['docs:read']),
+    });
+    const sub = await (await a.get(MCPBindings.SUBSCRIPTION_STORE)).get(id);
+    expect(JSON.parse(JSON.stringify(sub))).toEqual(sub);
+    expect(sub?.profile).toMatchObject({scopes: ['docs:read']});
+  });
+
+  it('refuses an invalid eventId and an oversize occurrence before delivering', async () => {
+    const {server, delivery, app: a} = await givenServer();
+    await subscribe(server, subParams(), {auth: authInfo('u1')});
+    const emitter = await a.get(MCPBindings.EVENTS);
+    const data = {document_id: 'd1', comment_id: 'c', text: 't'};
+    for (const eventId of ['', 'a b', 'a\r\nb', 'x'.repeat(256)]) {
+      await expect(
+        emitter.emit('comment.created', data, {eventId}),
+      ).rejects.toThrow(/Invalid eventId/);
+    }
+    await expect(
+      emitter.emit('comment.created', {
+        ...data,
+        text: 'x'.repeat(MAX_EVENT_BYTES),
+      }),
+    ).rejects.toThrow(/over the 262144-byte delivery limit/);
+    expect(delivery.delivered).toHaveLength(0);
+  });
+
+  it('lists the emittable events when the name is unknown', async () => {
+    const {app: a} = await givenServer();
+    const emitter = await a.get(MCPBindings.EVENTS);
+    await expect(emitter.emit('coment.created', {})).rejects.toThrow(
+      /Unknown MCP event 'coment.created'. Emittable events: comment.created, /,
+    );
+  });
+
+  it('puts the offending value in config errors', () => {
+    expect(() => resolveEventsConfig({defaultTtlMs: -5})).toThrow(/got -5/);
+    expect(() => resolveEventsConfig({minTtlMs: 10, maxTtlMs: 5})).toThrow(
+      /minTtlMs \(10\) exceeds maxTtlMs \(5\)/,
+    );
   });
 });

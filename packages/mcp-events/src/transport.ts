@@ -2,7 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import type {Fetch} from '@agentback/common';
+import {ipVersion, isPublicAddress, type Fetch} from '@agentback/common';
 import type {CallbackFailureReason} from '@agentback/mcp';
 
 /** One outbound webhook POST. */
@@ -64,14 +64,32 @@ export const DEFAULT_MAX_RESPONSE_BYTES = 64 * 1024;
  * address it picked, so a callback hostname that rebinds to an internal
  * address after subscribe-time checks is not caught here. Prefer
  * {@link createPinnedTransport} on Node; on an edge host, restrict egress at
- * the platform instead. Redirects are still refused (`redirect: 'manual'`).
+ * the platform instead. What it can check, it does: an IP-literal host
+ * outside public space and `localhost`/`*.localhost` are refused before any
+ * request, and redirects are refused (`redirect: 'manual'`).
  */
 export function fetchTransport(
   fetchImpl: Fetch = globalThis.fetch,
-  opts: {maxResponseBytes?: number} = {},
+  opts: {maxResponseBytes?: number; allowPrivateAddresses?: boolean} = {},
 ): WebhookTransport {
   const max = opts.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
   return async req => {
+    if (!opts.allowPrivateAddresses) {
+      const host = new URL(req.url).hostname
+        .replace(/^\[|\]$/g, '')
+        .replace(/\.$/, '')
+        .toLowerCase();
+      if (
+        (ipVersion(host) && !isPublicAddress(host)) ||
+        host === 'localhost' ||
+        host.endsWith('.localhost')
+      ) {
+        throw new TransportError(
+          'connection_refused',
+          `refusing to connect to non-public address ${host}`,
+        );
+      }
+    }
     const timeout = AbortSignal.timeout(req.timeoutMs);
     const signal = req.signal
       ? AbortSignal.any([req.signal, timeout])

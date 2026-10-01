@@ -38,6 +38,13 @@ export interface McpEventsConfig {
    * before the next subscribe re-verifies it (default 1 h).
    */
   verificationTtlMs?: number;
+  /**
+   * Exact `https` origins (`https://hooks.example.com`) whose callback URLs
+   * are treated as verified without a challenge POST — the allowlist path of
+   * endpoint verification, for a receiver you vetted out of band (a gateway
+   * you operate, a host's documented webhook origin). Default `[]`.
+   */
+  trustedCallbackOrigins?: string[];
 }
 
 export interface MCPServerConfig {

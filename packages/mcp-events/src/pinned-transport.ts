@@ -31,7 +31,10 @@ export interface PinnedTransportOptions {
   allowHttp?: boolean;
   /** Name resolution. Defaults to `dns.lookup` with `{all: true}`. */
   resolve?: Resolver;
-  /** Extra trusted CAs (PEM) — for a test or a private PKI. */
+  /**
+   * Extra trusted CAs (PEM) — for a test or a private PKI. Added to Node's
+   * public roots, not substituted for them.
+   */
   ca?: string | string[];
   /** Cap on how much of a response body is read (default 64 KiB). */
   maxResponseBytes?: number;
@@ -60,11 +63,12 @@ export function createPinnedTransport(
   return async req => {
     // Loaded lazily so importing this package never pulls `node:*` onto a
     // host that only uses `fetchTransport`.
-    const [{request: httpsRequest}, {request: httpRequest}, dns] =
+    const [{request: httpsRequest}, {request: httpRequest}, dns, tls] =
       await Promise.all([
         import('node:https'),
         import('node:http'),
         import('node:dns'),
+        import('node:tls'),
       ]);
     const url = new URL(req.url);
     const secure = url.protocol === 'https:';
@@ -147,7 +151,11 @@ export function createPinnedTransport(
           // A fresh connection per request: an agent's pooled socket could
           // outlive the address check it was opened under.
           agent: false,
-          ...(secure && opts.ca ? {ca: opts.ca} : {}),
+          // Node REPLACES the public roots when `ca` is set; keep them, so a
+          // private CA is added, not substituted.
+          ...(secure && opts.ca
+            ? {ca: [...tls.rootCertificates, ...[opts.ca].flat()]}
+            : {}),
         },
         res => {
           const chunks: Buffer[] = [];

@@ -20,14 +20,27 @@ import {extensionFilter} from '@agentback/core';
 import {ErrorCodes, standardParse} from '@agentback/openapi';
 import {SecurityBindings} from '@agentback/security';
 import {MCP_SERVERS, MCPBindings} from '../keys.js';
-import type {
-  EmitOptions,
-  EmitReport,
-  EventOccurrence,
-  EventSubscription,
-  McpEventEmitter,
+import {
+  MAX_EVENT_BYTES,
+  type EmitOptions,
+  type EmitReport,
+  type EventOccurrence,
+  type EventSubscription,
+  type McpEventEmitter,
 } from './ports.js';
 import {servedEvents, type EventBinding} from './registry.js';
+import {subscriberProfile} from './subscriptions.js';
+
+/** Subscriptions processed concurrently per emit. */
+const FANOUT_CONCURRENCY = 32;
+
+/** An emit-time payload error, shaped like an invalid tool output. */
+function invalidPayload(message: string, issues?: unknown): Error {
+  const err = new Error(message) as Error & {code: string; issues?: unknown};
+  err.code = ErrorCodes.INVALID_OUTPUT;
+  if (issues !== undefined) err.issues = issues;
+  return err;
+}
 
 const log = loggers('agentback:mcp:events');
 
@@ -57,21 +70,37 @@ export class DefaultMcpEventEmitter implements McpEventEmitter {
     data: unknown,
     opts: EmitOptions = {},
   ): Promise<EmitReport> {
-    const event = servedEvents(this.ctx).find(e => e.meta.name === name);
-    if (!event) throw new Error(`Unknown MCP event: ${name}`);
+    const served = servedEvents(this.ctx);
+    const event = served.find(e => e.meta.name === name);
+    if (!event) {
+      throw new Error(
+        `Unknown MCP event '${name}'. Emittable events: ${
+          served.map(e => e.meta.name).join(', ') || '(none)'
+        }. An @event must be on an @mcpServer class bound at the app level ` +
+          `(app.service(...)); an event a perSession binder contributes is ` +
+          `listed to that session but cannot be emitted.`,
+      );
+    }
+    if (
+      opts.eventId !== undefined &&
+      !/^[\x21-\x7e]{1,255}$/.test(opts.eventId)
+    ) {
+      throw new Error(
+        `Invalid eventId for event ${name}: 1-255 visible ASCII characters ` +
+          `(it is sent as the webhook-id header)`,
+      );
+    }
 
     const parsed = standardParse(event.meta.payload, data);
     if (!parsed.success) {
       const first = parsed.issues[0];
       const where = first?.path?.length ? first.path.join('.') : 'data';
-      const err = new Error(
+      throw invalidPayload(
         `Invalid payload for event ${name}: ${where}: ${
           first?.message ?? 'invalid'
         }`,
-      ) as Error & {code: string; issues: unknown};
-      err.code = ErrorCodes.INVALID_OUTPUT;
-      err.issues = parsed.issues;
-      throw err;
+        parsed.issues,
+      );
     }
     // A frozen copy: one subscription's `match` cannot alter what the next
     // sees, and a vendor that validates in place never freezes the caller's
@@ -86,13 +115,25 @@ export class DefaultMcpEventEmitter implements McpEventEmitter {
       data: payload,
       cursor: null,
     };
+    // Refused here, like a schema mismatch, rather than dropped later: a
+    // receiver may answer 413, and a 413 is never retried.
+    const bytes = new TextEncoder().encode(
+      JSON.stringify(occurrence),
+    ).byteLength;
+    if (bytes > MAX_EVENT_BYTES) {
+      throw invalidPayload(
+        `Invalid payload for event ${name}: the occurrence is ${bytes} bytes, ` +
+          `over the ${MAX_EVENT_BYTES}-byte delivery limit. Send a summary ` +
+          `plus the id a read tool takes.`,
+      );
+    }
 
     const store = await this.ctx.get(MCPBindings.SUBSCRIPTION_STORE);
     const subs = await store.listByEvent(name);
     const report: EmitReport = {
       eventId: occurrence.eventId,
       subscriptions: subs.length,
-      delivered: 0,
+      queued: 0,
       revoked: 0,
     };
     if (subs.length === 0) return report;
@@ -103,41 +144,49 @@ export class DefaultMcpEventEmitter implements McpEventEmitter {
     const accessCheck = await this.ctx.get(MCPBindings.EVENT_ACCESS_CHECK, {
       optional: true,
     });
+    // Resolved once per emit; a class retracted since discovery matches none.
+    const key = this.ctx
+      .find(extensionFilter(MCP_SERVERS))
+      .find(b => b.valueConstructor === event.ctor)?.key;
+    if (key === undefined) return report;
 
-    await Promise.all(
-      subs.map(async sub => {
-        try {
-          if (!(await this.stillPermitted(event, sub, accessCheck))) {
-            await store.delete(sub.id);
-            report.revoked++;
-            log.info(
-              'revoked subscription %s to %s: access check failed',
-              sub.id,
-              name,
-            );
-            return;
-          }
-          if (!(await this.matches(event, sub, payload))) return;
-          if (!delivery) {
-            log.warn(
-              'no MCPBindings.EVENT_DELIVERY bound; dropping %s for %s',
-              occurrence.eventId,
-              sub.id,
-            );
-            return;
-          }
-          await delivery.deliver(sub, occurrence);
-          report.delivered++;
-        } catch (err) {
-          log.error(
-            'event %s: subscription %s failed: %s',
-            name,
+    const one = async (sub: EventSubscription) => {
+      try {
+        if (!(await this.stillPermitted(event, sub, accessCheck))) {
+          await store.delete(sub.id);
+          report.revoked++;
+          log.info(
+            'revoked subscription %s to %s: access check failed',
             sub.id,
-            err instanceof Error ? err.message : String(err),
+            name,
           );
+          return;
         }
-      }),
-    );
+        if (!(await this.matches(event, key, sub, payload))) return;
+        if (!delivery) {
+          log.warn(
+            'no MCPBindings.EVENT_DELIVERY bound; dropping %s for %s',
+            occurrence.eventId,
+            sub.id,
+          );
+          return;
+        }
+        await delivery.deliver(sub, occurrence);
+        report.queued++;
+      } catch (err) {
+        log.error(
+          'event %s: subscription %s failed: %s',
+          name,
+          sub.id,
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+    };
+    // Bounded fan-out: a popular event must not open thousands of concurrent
+    // voter runs and enqueues at once.
+    for (let i = 0; i < subs.length; i += FANOUT_CONCURRENCY) {
+      await Promise.all(subs.slice(i, i + FANOUT_CONCURRENCY).map(one));
+    }
     return report;
   }
 
@@ -156,7 +205,7 @@ export class DefaultMcpEventEmitter implements McpEventEmitter {
     const meta = getAuthorizationMetadata(event.ctor, methodName);
     if (meta && !meta.skip) {
       const authCtx = buildAuthorizationContext(
-        sub.user,
+        subscriberProfile(sub),
         `${event.ctor.name}.${methodName}`,
       );
       const decision = await runAuthorization(
@@ -172,6 +221,7 @@ export class DefaultMcpEventEmitter implements McpEventEmitter {
   /** Run the event's `match(args, data)` for one subscription. */
   private async matches(
     event: EventBinding,
+    key: string,
     sub: EventSubscription,
     payload: Record<string, unknown>,
   ): Promise<boolean> {
@@ -190,12 +240,8 @@ export class DefaultMcpEventEmitter implements McpEventEmitter {
       }
       args = parsedArgs.data;
     }
-    const key = this.ctx
-      .find(extensionFilter(MCP_SERVERS))
-      .find(b => b.valueConstructor === event.ctor)?.key;
-    if (key === undefined) return false; // retracted since discovery
     const reqCtx = new Context(this.ctx, 'mcp.event');
-    reqCtx.bind(SecurityBindings.USER).to(sub.user);
+    reqCtx.bind(SecurityBindings.USER).to(subscriberProfile(sub));
     const methodName = event.meta.methodName as string;
     const callArgs = await resolveInjectedArguments(
       event.ctor.prototype,

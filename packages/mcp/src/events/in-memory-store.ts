@@ -58,7 +58,14 @@ export class InMemorySubscriptionStore implements SubscriptionStore {
     url: string,
     ttlMs: number,
   ): Promise<void> {
-    this.verified.set(verificationKey(principal, url), this.now() + ttlMs);
+    const now = this.now();
+    this.verified.set(verificationKey(principal, url), now + ttlMs);
+    // Bounded: drop lapsed verifications once the map grows.
+    if (this.verified.size > 10_000) {
+      for (const [k, until] of this.verified) {
+        if (until <= now) this.verified.delete(k);
+      }
+    }
   }
 
   private live(sub: EventSubscription): boolean {

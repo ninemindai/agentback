@@ -95,6 +95,43 @@ describe('installMcpEvents (revertible install)', () => {
     expect(await a.get(MCPBindings.EVENT_DELIVERY)).toBe(shadow);
   });
 
+  it('stops the worker on uninstall', async () => {
+    const a = givenApp();
+    let attempts = 0;
+    const queue = new InMemoryJobQueue();
+    const {delivery, uninstall} = await installMcpEvents(a, {
+      queue,
+      transport: async () => {
+        attempts++;
+        return {status: 200, body: ''};
+      },
+    });
+    const store = await a.get(MCPBindings.SUBSCRIPTION_STORE);
+    const sub = {
+      id: 'sub_1',
+      principal: 'p',
+      profile: {},
+      name: 'ping',
+      arguments: {},
+      url: 'https://h.example.com/',
+      secret: 'whsec_' + btoa('k'.repeat(32)),
+      expiresAt: null,
+      createdAt: 0,
+      refreshedAt: 0,
+    };
+    await store.put(sub);
+    await uninstall();
+    await delivery.deliver(sub, {
+      eventId: 'e1',
+      name: 'ping',
+      timestamp: new Date().toISOString(),
+      data: {n: 1},
+      cursor: null,
+    });
+    await new Promise(r => setTimeout(r, 100));
+    expect(attempts).toBe(0);
+  });
+
   it('rides the app’s JobQueue binding when there is one', async () => {
     const a = givenApp();
     const queue = new InMemoryJobQueue();
@@ -110,7 +147,7 @@ describe('installMcpEvents (revertible install)', () => {
       {
         id: 'sub_1',
         principal: 'p',
-        user: {} as never,
+        profile: {},
         name: 'ping',
         arguments: {},
         url: 'https://h.example.com/',

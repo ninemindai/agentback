@@ -17,7 +17,9 @@ export {InMemorySubscriptionStore} from './events/in-memory-store.js';
 export {DefaultMcpEventEmitter} from './events/emitter.js';
 export {
   isWebhookSecret,
+  subscriberProfile,
   subscriptionId,
+  toProfile,
   DEFAULT_EVENTS_CONFIG,
 } from './events/subscriptions.js';
 export type {EventBinding, EventListEntry} from './events/registry.js';

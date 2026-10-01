@@ -2,8 +2,6 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import type {UserProfile} from '@agentback/security';
-
 /**
  * The general-purpose error codes the MCP Events extension defines, in the
  * JSON-RPC implementation-defined server range. `-32602 InvalidParams` is the
@@ -64,10 +62,16 @@ export class CallbackEndpointError extends McpEventError {
 }
 
 /**
+ * Largest serialized occurrence (`{eventId, name, timestamp, data, cursor}`)
+ * that is delivered: 256 KiB, the delivery profile's limit. `emit` refuses a
+ * larger one — receivers may answer `413`, which is never retried.
+ */
+export const MAX_EVENT_BYTES = 256 * 1024;
+
+/**
  * One webhook subscription, keyed by `(principal, url, name, arguments)`.
- * Held by a {@link SubscriptionStore}; every field but `user` is
- * JSON-serializable, and a durable store persists `user` as the profile its
- * own authentication layer can rebuild.
+ * Held by a {@link SubscriptionStore}; every field is plain JSON, so a
+ * durable store can persist it as-is.
  */
 export interface EventSubscription {
   /** Server-derived routing handle (`sub_…`), deterministic over the key. */
@@ -75,11 +79,14 @@ export interface EventSubscription {
   /** Canonical principal id (the subscriber's `securityId`). */
   readonly principal: string;
   /**
-   * The subscriber's profile at subscribe time. Delivery re-runs the event's
-   * `@authorize` voters against it and binds it as `SecurityBindings.USER`
-   * while `match` runs.
+   * The subscriber's profile claims at subscribe time, JSON only — the
+   * string-keyed properties of its `UserProfile` (roles, scopes, email, …);
+   * the `securityId` is `principal`. Delivery rebuilds the profile from these
+   * two to re-run the event's `@authorize` voters and to bind
+   * `SecurityBindings.USER` while `match` runs. Plain JSON so a durable store
+   * can persist it as-is (a symbol key would not survive serialization).
    */
-  readonly user: UserProfile;
+  readonly profile: Readonly<Record<string, unknown>>;
   /** Event type name. */
   readonly name: string;
   /** Subscription arguments exactly as the client sent them. */
@@ -125,7 +132,8 @@ export interface SubscriptionStore {
 
 /**
  * One event occurrence as delivered — the webhook body. `cursor` is always
- * `null`: replay is not offered, so a client has nothing to persist.
+ * `null` today: replay is not offered, so a client has nothing to persist.
+ * Typed `string | null` so adding replay later is not a breaking change.
  */
 export interface EventOccurrence {
   eventId: string;
@@ -133,7 +141,7 @@ export interface EventOccurrence {
   /** ISO 8601. */
   timestamp: string;
   data: Record<string, unknown>;
-  cursor: null;
+  cursor: string | null;
 }
 
 /** The endpoint an {@link EventDelivery} is asked to verify. */
@@ -181,9 +189,10 @@ export type EventAccessCheck = (
 /** Options for {@link McpEventEmitter.emit}. */
 export interface EmitOptions {
   /**
-   * Stable id for deduplication. Use the upstream's id when there is one
-   * (a GitHub delivery GUID, a Stripe `evt_…`): a re-emit of the same id to
-   * the same subscription is delivered once. Defaults to a fresh `evt_…`.
+   * Stable id for deduplication — it becomes the `webhook-id` header, which
+   * receivers dedupe on. Use the upstream's id when there is one (a GitHub
+   * delivery GUID, a Stripe `evt_…`). 1–255 visible ASCII characters.
+   * Defaults to a fresh `evt_…`.
    */
   eventId?: string;
   /** When the event occurred. Defaults to now. */
@@ -195,8 +204,12 @@ export interface EmitReport {
   eventId: string;
   /** Live subscriptions to the event type. */
   subscriptions: number;
-  /** Subscriptions whose `match` accepted the occurrence and were handed to delivery. */
-  delivered: number;
+  /**
+   * Subscriptions whose `match` accepted the occurrence and whose delivery
+   * was queued — not yet answered by the endpoint; retries are the delivery's
+   * business.
+   */
+  queued: number;
   /** Subscriptions deleted because their principal's access was revoked. */
   revoked: number;
 }
@@ -206,7 +219,9 @@ export interface McpEventEmitter {
   /**
    * Emit one occurrence of event type `name`. `data` is validated against the
    * event's `payload` schema first (a mismatch throws, nothing is
-   * delivered); the validated value is what subscribers receive.
+   * delivered); the validated value is what subscribers receive. Also throws,
+   * before any delivery, for an unknown event, an invalid `eventId`, or an
+   * occurrence over {@link MAX_EVENT_BYTES}.
    */
   emit(name: string, data: unknown, opts?: EmitOptions): Promise<EmitReport>;
 }

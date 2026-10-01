@@ -12,8 +12,13 @@ import {
   type EventSubscription,
 } from '@agentback/mcp';
 import {InMemoryJobQueue, type Subscription} from '@agentback/messaging';
-import {securityId, type UserProfile} from '@agentback/security';
-import {MAX_DELIVERY_BYTES, WebhookEventDelivery} from '../../delivery.js';
+import {
+  deliveryJobId,
+  MAX_DELIVERY_BYTES,
+  WEBHOOK_DELIVERY_QUEUE,
+  WebhookEventDelivery,
+  type DeliveryResult,
+} from '../../delivery.js';
 import {generateWebhookSecret, verifyWebhook} from '../../signing.js';
 import {
   TransportError,
@@ -53,7 +58,7 @@ function subscription(
   return {
     id: 'sub_1',
     principal: 'u1',
-    user: {[securityId]: 'u1'} as UserProfile,
+    profile: {},
     name: 'comment.created',
     arguments: {},
     url: URL1,
@@ -99,14 +104,14 @@ function headersOf(req: WebhookRequest) {
   };
 }
 
-describe('WebhookEventDelivery.verify', () => {
-  const target = {
-    subscriptionId: 'sub_1',
-    principal: 'u1',
-    url: URL1,
-    secret: SECRET,
-  };
+const target = {
+  subscriptionId: 'sub_1',
+  principal: 'u1',
+  url: URL1,
+  secret: SECRET,
+};
 
+describe('WebhookEventDelivery.verify', () => {
   it('sends a signed verification envelope and accepts an exact echo', async () => {
     const requests: WebhookRequest[] = [];
     const {delivery} = await given(async req => {
@@ -151,9 +156,14 @@ describe('WebhookEventDelivery.verify', () => {
     });
   });
 
-  it('rate-limits verification POSTs per destination host', async () => {
+  it('budgets verifications per principal, and failures per host', async () => {
     let now = 1_000_000;
-    const {delivery} = await given(echo, {now: () => now});
+    let echoOk = true;
+    const {delivery} = await given(
+      async req => (echoOk ? echo(req) : {status: 500, body: ''}),
+      {now: () => now},
+    );
+    // One principal: 10 attempts per host per minute, successful or not.
     for (let i = 0; i < 10; i++) await delivery.verify(target);
     const err = await delivery.verify(target).catch(e => e);
     expect(err).toBeInstanceOf(McpEventError);
@@ -161,8 +171,25 @@ describe('WebhookEventDelivery.verify', () => {
       code: McpEventErrorCodes.ResourceExhausted,
       data: {limit: 'verifications', max: 10},
     });
+    // Successes are consent: 50 other principals still verify on the host.
+    for (let i = 0; i < 50; i++) {
+      await delivery.verify({...target, principal: `p${i}`});
+    }
+    // Ten FAILED verifications lock the host for everyone, for a minute.
+    echoOk = false;
+    for (let i = 0; i < 10; i++) {
+      await delivery.verify({...target, principal: `f${i}`}).catch(() => {});
+    }
+    echoOk = true;
+    expect(
+      await delivery.verify({...target, principal: 'late'}).catch(e => e),
+    ).toMatchObject({data: {limit: 'failed_verifications', max: 10}});
     // Another host is unaffected; the window slides.
-    await delivery.verify({...target, url: 'https://other.example.com/in'});
+    await delivery.verify({
+      ...target,
+      principal: 'late',
+      url: 'https://other.example.com/in',
+    });
     now += 61_000;
     await delivery.verify(target);
   });
@@ -289,28 +316,121 @@ describe('WebhookEventDelivery.deliver', () => {
     );
   });
 
-  it('delivers a duplicate eventId to the same subscription once', async () => {
+  it('queues a duplicate eventId once while it is pending', async () => {
     const {transport, requests} = scripted({status: 200, body: ''});
     const {store, delivery} = await given(transport);
     const sub = subscription();
     await store.put(sub);
-    await delivery.deliver(sub, occurrence());
-    await delivery.deliver(sub, occurrence());
+    await Promise.all([
+      delivery.deliver(sub, occurrence()),
+      delivery.deliver(sub, occurrence()),
+    ]);
     await vi.waitFor(() => expect(requests).toHaveLength(1));
     await new Promise(r => setTimeout(r, 100));
     expect(requests).toHaveLength(1);
   });
 
-  it('does not send a body over 256 KiB', async () => {
+  it('uses a colon-free, stable job id (BullMQ rejects most ids with a colon)', async () => {
+    const a = await deliveryJobId('sub_1', 'evt:with:colons');
+    expect(a).toMatch(/^whk_[0-9a-f]{40}$/);
+    expect(await deliveryJobId('sub_1', 'evt:with:colons')).toBe(a);
+    expect(await deliveryJobId('sub_1', 'evt_other')).not.toBe(a);
+    expect(await deliveryJobId('sub_2', 'evt:with:colons')).not.toBe(a);
+  });
+
+  it('releases finished jobs, delivered or abandoned', async () => {
+    const store = new InMemorySubscriptionStore();
+    const queue = new InMemoryJobQueue();
+    let n = 0;
+    const delivery = new WebhookEventDelivery(
+      async () => ({status: n++ % 2 ? 200 : 410, body: ''}),
+      queue,
+      async () => store,
+      {backoffMs: 5, attempts: 1},
+    );
+    workers.push(delivery.start());
+    const sub = subscription();
+    await store.put(sub);
+    for (let i = 0; i < 20; i++) {
+      await delivery.deliver(sub, occurrence({eventId: `evt_${i}`}));
+    }
+    await vi.waitFor(() => expect(n).toBe(20));
+    await vi.waitFor(() =>
+      expect(queue.backingStore.list(WEBHOOK_DELIVERY_QUEUE.name)).toHaveLength(
+        0,
+      ),
+    );
+  });
+
+  it.each([301, 302, 307, 308])(
+    'treats a %d as final (redirects are never followed)',
+    async status => {
+      const {transport, requests} = scripted({status, body: ''});
+      const {store, delivery} = await given(transport);
+      const sub = subscription();
+      await store.put(sub);
+      await delivery.deliver(sub, occurrence());
+      await vi.waitFor(() => expect(requests).toHaveLength(1));
+      await new Promise(r => setTimeout(r, 100));
+      expect(requests).toHaveLength(1);
+    },
+  );
+
+  it('reports every attempt’s outcome', async () => {
+    const results: DeliveryResult[] = [];
+    const store = new InMemorySubscriptionStore();
+    const answers = [500, 200];
+    const delivery = new WebhookEventDelivery(
+      async () => ({status: answers.shift() ?? 200, body: ''}),
+      new InMemoryJobQueue(),
+      async () => store,
+      {backoffMs: 5, attempts: 2, onDeliveryResult: r => void results.push(r)},
+    );
+    workers.push(delivery.start());
+    const sub = subscription();
+    await store.put(sub);
+    await delivery.deliver(sub, occurrence());
+    await vi.waitFor(() => expect(results).toHaveLength(2));
+    expect(results).toEqual([
+      expect.objectContaining({
+        attempt: 1,
+        outcome: 'retry',
+        reason: 'http_5xx',
+      }),
+      expect.objectContaining({attempt: 2, outcome: 'delivered', status: 200}),
+    ]);
+    // Exhausted attempts are final; a vanished subscription is `gone`.
+    const failing = new WebhookEventDelivery(
+      async () => ({status: 503, body: ''}),
+      new InMemoryJobQueue(),
+      async () => store,
+      {backoffMs: 5, attempts: 1, onDeliveryResult: r => void results.push(r)},
+    );
+    workers.push(failing.start());
+    await failing.deliver(sub, occurrence({eventId: 'evt_fail'}));
+    await failing.deliver(
+      subscription({id: 'sub_missing'}),
+      occurrence({eventId: 'evt_gone'}),
+    );
+    await vi.waitFor(() =>
+      expect(results.map(r => r.outcome)).toEqual(
+        expect.arrayContaining(['final_failure', 'gone']),
+      ),
+    );
+  });
+
+  it('refuses a body over 256 KiB', async () => {
     const {transport, requests} = scripted({status: 200, body: ''});
     const {store, delivery} = await given(transport);
     const sub = subscription();
     await store.put(sub);
-    await delivery.deliver(
-      sub,
-      occurrence({data: {blob: 'x'.repeat(MAX_DELIVERY_BYTES)}}),
-    );
-    await new Promise(r => setTimeout(r, 100));
+    await expect(
+      delivery.deliver(
+        sub,
+        occurrence({data: {blob: 'x'.repeat(MAX_DELIVERY_BYTES)}}),
+      ),
+    ).rejects.toThrow(/over the 262144-byte delivery limit/);
+    await new Promise(r => setTimeout(r, 50));
     expect(requests).toHaveLength(0);
   });
 });
