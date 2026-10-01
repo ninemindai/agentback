@@ -5,7 +5,9 @@
 // hello-mcp-apps — proves the AgentBack MCP Apps (SEP-1865) path end-to-end:
 // a @tool links a ui:// widget via `ui:`, a @resource serves the widget HTML
 // with the mcp-app MIME type, and a conformant host (Claude Desktop) renders
-// the widget for the tool's structuredContent. Runs over stdio.
+// the widget for the tool's structuredContent. Runs over stdio by default, or
+// over Streamable HTTP with `--http` — the transport remote hosts (claude.ai,
+// ChatGPT) connect to.
 //
 // The widget (widget/view.js) uses the official @modelcontextprotocol/ext-apps
 // `App` bridge and is bundled with esbuild at startup, then inlined into the
@@ -16,12 +18,15 @@ import * as esbuild from 'esbuild';
 import {z} from 'zod';
 import {isMain} from '@agentback/core';
 import {
-  MCP_APP_MIME_TYPE,
+  appResource,
   MCPApplication,
+  MCPComponent,
   mcpServer,
-  resource,
   tool,
+  type MCPServerConfig,
 } from '@agentback/mcp';
+import {installMcpHttp} from '@agentback/mcp-http';
+import {RestApplication} from '@agentback/rest';
 
 const UI_URI = 'ui://hello-mcp-apps/forecast';
 
@@ -99,6 +104,8 @@ class WeatherTools {
     // SEP-1865: link the tool to its widget. The host renders UI_URI for this
     // tool's results; the widget binds the result's `structuredContent`.
     ui: {resourceUri: UI_URI, visibility: ['model', 'app']},
+    // A presentation hint, not authorization: the tool only reads.
+    annotations: {readOnlyHint: true, openWorldHint: false},
   })
   async getForecast(
     input: z.infer<typeof ForecastInput>,
@@ -107,15 +114,45 @@ class WeatherTools {
   }
 
   // The widget HTML, served as a ui:// resource with the mcp-app MIME type so
-  // conformant hosts render it in an iframe.
-  @resource(UI_URI, {name: 'forecast-widget', mimeType: MCP_APP_MIME_TYPE})
+  // conformant hosts render it in an iframe. `@appResource` also emits the
+  // widget's `_meta.ui` on the content item; the view is fully inlined, so no
+  // `csp` is needed — hosts then apply their restrictive default.
+  @appResource(UI_URI, {
+    name: 'forecast-widget',
+    title: 'Forecast',
+    prefersBorder: true,
+  })
   forecastWidget(): string {
     return WIDGET_HTML;
   }
 }
 
+const SERVER: MCPServerConfig = {
+  name: 'hello-mcp-apps',
+  version: '0.0.1',
+  title: 'Hello MCP Apps',
+};
+
 async function main() {
+  if (process.argv.includes('--http')) {
+    // Remote hosts connect over Streamable HTTP. Expose this port on a public
+    // HTTPS URL (a tunnel is fine for development) and add that URL + `/mcp`
+    // as a custom connector — see docs/guides/mcp-apps-widgets.md.
+    const app = new RestApplication();
+    app.component(MCPComponent);
+    app.configure('servers.MCPServer').to({
+      ...SERVER,
+      transports: {stdio: false},
+    });
+    app.service(WeatherTools);
+    await installMcpHttp(app);
+    await app.start();
+    const {url} = await app.restServer;
+    process.stderr.write(`hello-mcp-apps: MCP over HTTP at ${url}/mcp\n`);
+    return;
+  }
   const app = new MCPApplication();
+  app.configure('servers.MCPServer').to(SERVER);
   app.service(WeatherTools);
   // stdio transport is on by default: every stdout write after start() must be
   // a JSON-RPC frame — log to stderr.

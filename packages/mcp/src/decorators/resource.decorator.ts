@@ -2,39 +2,221 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import type {Icon} from '@modelcontextprotocol/server';
 import {MethodDecoratorFactory} from '@agentback/metadata';
-import {MCPKeys, ResourceMetadata} from '../keys.js';
+import {
+  mergeResourceMeta,
+  type JsonValue,
+  type MetaObject,
+  type ResourceFragment,
+} from '../fragments.js';
+import {MCP_APP_MIME_TYPE, MCPKeys, ResourceMetadata} from '../keys.js';
 
 export interface ResourceOptions {
   description?: string;
   mimeType?: string;
+  /** Display title on the `resources/list` entry. */
+  title?: string;
+  /** Icons on the `resources/list` entry. */
+  icons?: Icon[];
+  /**
+   * Fragments whose `meta` is placed on every content item `resources/read`
+   * returns. `_meta.ui` is reserved: declare an MCP Apps widget with
+   * `@appResource`.
+   */
+  extend?: readonly ResourceFragment[];
 }
 
-/**
- * Declare a method as an MCP resource. The `uri` may be a literal URI or a
- * URI Template (RFC 6570) using `{arg}` placeholders that map to `@arg`
- * declarations on the same method.
- */
-export function resource(
+function decorate(
+  decoratorName: string,
   uri: string,
-  options: ResourceOptions & {name?: string} = {},
+  options: ResourceOptions & {name?: string},
+  baseMeta: MetaObject | undefined,
+  reservedUi: string,
 ): MethodDecorator {
   return function resourceDecorator(
     target: Object,
     methodName: string | symbol,
     descriptor: PropertyDescriptor,
   ) {
-    const meta: ResourceMetadata = {
+    let meta: MetaObject | undefined;
+    try {
+      meta = mergeResourceMeta(
+        uri,
+        options.mimeType,
+        baseMeta,
+        options.extend,
+        reservedUi,
+      );
+    } catch (err) {
+      const className =
+        (target as {constructor?: {name: string}}).constructor?.name ??
+        'anonymous';
+      throw new Error(
+        `${decoratorName}('${uri}') on ${className}.${String(methodName)}: ${
+          (err as Error).message
+        }`,
+        {cause: err},
+      );
+    }
+    const resourceMeta: ResourceMetadata = {
       name: options.name ?? String(methodName),
       uri,
       description: options.description,
       mimeType: options.mimeType,
+      ...(options.title !== undefined ? {title: options.title} : {}),
+      ...(options.icons ? {icons: structuredClone(options.icons)} : {}),
+      ...(meta ? {meta} : {}),
       methodName,
     };
     MethodDecoratorFactory.createDecorator<ResourceMetadata>(
       MCPKeys.RESOURCE,
-      meta,
-      {decoratorName: '@resource'},
+      resourceMeta,
+      {decoratorName},
     )(target, methodName, descriptor);
   };
+}
+
+/**
+ * Declare a method as an MCP resource served at an exact `uri`.
+ *
+ * The method may return a string (served as text), any other value (served as
+ * JSON text), or {@link resourceContent} items for binary content or per-call
+ * `_meta`.
+ */
+export function resource(
+  uri: string,
+  options: ResourceOptions & {name?: string} = {},
+): MethodDecorator {
+  return decorate(
+    '@resource',
+    uri,
+    options,
+    undefined,
+    'declare an MCP Apps widget with @appResource',
+  );
+}
+
+/**
+ * Content Security Policy for an MCP Apps widget (SEP-1865 `_meta.ui.csp`).
+ * When omitted, conformant hosts apply a restrictive default: no network, no
+ * external resources.
+ */
+export interface AppCsp {
+  /** Origins for fetch/XHR/WebSocket. */
+  connectDomains?: string[];
+  /** Origins for scripts, images, styles and fonts. */
+  resourceDomains?: string[];
+  /** Origins for nested iframes. */
+  frameDomains?: string[];
+  /** Allowed `<base>` URIs. */
+  baseUriDomains?: string[];
+}
+
+/** Browser permissions an MCP Apps widget requests (`_meta.ui.permissions`). */
+export interface AppPermissions {
+  camera?: Record<string, never>;
+  microphone?: Record<string, never>;
+  geolocation?: Record<string, never>;
+  clipboardWrite?: Record<string, never>;
+}
+
+export interface AppResourceOptions {
+  name?: string;
+  description?: string;
+  title?: string;
+  icons?: Icon[];
+  /** Widget CSP; omitted → the host's restrictive default. */
+  csp?: AppCsp;
+  /** Browser permissions the widget requests. */
+  permissions?: AppPermissions;
+  /**
+   * Dedicated sandbox origin. Its format is **host-specific** — see each
+   * host's documentation (e.g. Claude derives it from your server URL).
+   */
+  domain?: string;
+  /** Ask the host for (or against) a visible border and background. */
+  prefersBorder?: boolean;
+  /** Extra content-item `_meta` (e.g. host display-mode fragments). */
+  extend?: readonly ResourceFragment[];
+}
+
+const CSP_KEYS = new Set([
+  'connectDomains',
+  'resourceDomains',
+  'frameDomains',
+  'baseUriDomains',
+]);
+const PERMISSION_KEYS = new Set([
+  'camera',
+  'microphone',
+  'geolocation',
+  'clipboardWrite',
+]);
+
+function buildUiMeta(uri: string, options: AppResourceOptions): MetaObject {
+  if (!uri.startsWith('ui://')) {
+    throw new Error(
+      `@appResource('${uri}'): MCP Apps widget URIs must start with ui://`,
+    );
+  }
+  const ui: Record<string, JsonValue> = {};
+  if (options.csp) {
+    for (const [k, v] of Object.entries(options.csp)) {
+      if (!CSP_KEYS.has(k)) {
+        throw new Error(`@appResource('${uri}'): unknown csp key '${k}'`);
+      }
+      if (!Array.isArray(v) || v.some(d => typeof d !== 'string')) {
+        throw new Error(`@appResource('${uri}'): csp.${k} must be a string[]`);
+      }
+    }
+    ui.csp = structuredClone(options.csp) as JsonValue;
+  }
+  if (options.permissions) {
+    for (const k of Object.keys(options.permissions)) {
+      if (!PERMISSION_KEYS.has(k)) {
+        throw new Error(`@appResource('${uri}'): unknown permission '${k}'`);
+      }
+    }
+    ui.permissions = structuredClone(options.permissions) as JsonValue;
+  }
+  if (options.domain !== undefined) ui.domain = options.domain;
+  if (options.prefersBorder !== undefined) {
+    ui.prefersBorder = options.prefersBorder;
+  }
+  return Object.keys(ui).length ? {ui} : {};
+}
+
+/**
+ * Declare an MCP Apps (SEP-1865) widget resource. Fixes the MIME type to
+ * {@link MCP_APP_MIME_TYPE}, requires a `ui://` URI, and emits the typed
+ * `_meta.ui` (csp, permissions, domain, prefersBorder) on the content item
+ * `resources/read` returns — where the spec places it.
+ *
+ * @example
+ *   @appResource('ui://weather/forecast', {
+ *     csp: {connectDomains: ['https://api.example.com']},
+ *     prefersBorder: true,
+ *   })
+ *   forecastWidget() { return WIDGET_HTML; }
+ */
+export function appResource(
+  uri: string,
+  options: AppResourceOptions = {},
+): MethodDecorator {
+  const base = buildUiMeta(uri, options);
+  return decorate(
+    '@appResource',
+    uri,
+    {
+      name: options.name,
+      description: options.description,
+      title: options.title,
+      icons: options.icons,
+      extend: options.extend,
+      mimeType: MCP_APP_MIME_TYPE,
+    },
+    Object.keys(base).length ? base : undefined,
+    'set it through the @appResource options',
+  );
 }

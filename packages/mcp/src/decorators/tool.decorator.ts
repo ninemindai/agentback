@@ -5,9 +5,43 @@
 import {describeInjectedArguments} from '@agentback/context';
 import {MethodDecoratorFactory} from '@agentback/metadata';
 import type {InferSchema, SchemaLike} from '@agentback/openapi';
+import type {Icon} from '@modelcontextprotocol/server';
+import {
+  mergeToolOptions,
+  type ToolAnnotationsInput,
+  type ToolFragment,
+} from '../fragments.js';
 import {MCPKeys, ToolMetadata, ToolUiMeta} from '../keys.js';
 
-export interface ToolOptions<S extends SchemaLike> {
+/**
+ * Presentation options shared by every `@tool` overload: icons, annotations,
+ * and `extend` fragments carrying host-specific `_meta`.
+ */
+export interface ToolPresentationOptions {
+  /**
+   * Icons for the tool's `tools/list` entry. Hosts use them for entrypoints
+   * (e.g. a sidebar icon). Prefer `https` URLs over large data URIs — the
+   * icon is sent on every `tools/list`.
+   */
+  icons?: Icon[];
+  /**
+   * MCP tool annotations (`readOnlyHint`, `destructiveHint`,
+   * `idempotentHint`, `openWorldHint`). Hints for how a host presents the
+   * tool — never authorization. `confirm:` implies `destructiveHint: true`
+   * unless set here, and `confirm:` with `readOnlyHint: true` throws.
+   */
+  annotations?: ToolAnnotationsInput;
+  /**
+   * Fragments merged into this tool's `ui`, `annotations` and `_meta`, each
+   * checked when the decorator is applied. Host adapters ship fragments;
+   * `toolFragment({meta: {...}})` emits a host key by hand.
+   */
+  extend?: readonly ToolFragment[];
+}
+
+export interface ToolOptions<
+  S extends SchemaLike,
+> extends ToolPresentationOptions {
   /**
    * Schema describing the tool's input arguments: a Zod object or any
    * Standard Schema V1 (`~standard`) vendor. Non-Zod schemas must be able to
@@ -54,7 +88,7 @@ export interface ToolOptionsWithOutput<
   output: O;
 }
 
-export interface ToolOptionsNoInput {
+export interface ToolOptionsNoInput extends ToolPresentationOptions {
   description?: string;
   title?: string;
   /** OAuth scope required to see and call this tool (see `ToolOptions.scope`). */
@@ -164,7 +198,7 @@ export function tool(
     scope?: string;
     confirm?: boolean | {ttlMs?: number};
     ui?: ToolUiMeta;
-  } = {},
+  } & ToolPresentationOptions = {},
 ): MethodDecorator {
   return function toolDecorator(
     target: object,
@@ -187,6 +221,21 @@ export function tool(
       }
     }
 
+    let merged;
+    try {
+      merged = mergeToolOptions({name, ...options});
+    } catch (err) {
+      const className =
+        (target as {constructor?: {name: string}}).constructor?.name ??
+        'anonymous';
+      throw new Error(
+        `@tool('${name}') on ${className}.${String(methodName)}: ${
+          (err as Error).message
+        }`,
+        {cause: err},
+      );
+    }
+
     const meta: ToolMetadata = {
       name,
       description: options.description,
@@ -195,7 +244,7 @@ export function tool(
       output: options.output,
       scope: options.scope,
       confirm: options.confirm,
-      ui: options.ui,
+      ...merged,
       methodName,
     };
     MethodDecoratorFactory.createDecorator<ToolMetadata>(MCPKeys.TOOL, meta, {

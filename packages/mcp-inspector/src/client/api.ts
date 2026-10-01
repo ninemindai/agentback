@@ -30,6 +30,11 @@ export interface ToolInfo {
   description?: string;
   inputSchema?: JsonSchema;
   outputSchema?: JsonSchema;
+  /** MCP tool annotations (readOnlyHint, destructiveHint, …). */
+  annotations?: Record<string, unknown>;
+  icons?: Record<string, unknown>[];
+  /** The tool's published `_meta` (MCP Apps `ui` + host extension keys). */
+  _meta?: Record<string, unknown>;
 }
 
 export interface ResourceInfo {
@@ -37,6 +42,10 @@ export interface ResourceInfo {
   uri: string;
   description?: string;
   mimeType?: string;
+  title?: string;
+  icons?: Record<string, unknown>[];
+  /** Static `_meta` placed on each content item `resources/read` returns. */
+  contentMeta?: Record<string, unknown>;
 }
 
 export interface PromptInfo {
@@ -45,7 +54,14 @@ export interface PromptInfo {
 }
 
 export interface Manifest {
-  server: {name: string; version: string};
+  server: {
+    name: string;
+    version: string;
+    title?: string;
+    icons?: Record<string, unknown>[];
+    /** Extra advertised capabilities (`extensions` / `experimental`). */
+    capabilities?: Record<string, unknown>;
+  };
   tools: ToolInfo[];
   resources: ResourceInfo[];
   prompts: PromptInfo[];

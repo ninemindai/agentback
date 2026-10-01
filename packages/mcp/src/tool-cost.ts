@@ -26,10 +26,18 @@ export interface ToolDefinitionLike {
   description?: string;
   inputSchema?: unknown;
   outputSchema?: unknown;
+  /** Tool icons — sent on every `tools/list`, priced separately. */
+  icons?: unknown;
 }
 
 export interface ToolCostEntry {
   name: string;
+  /**
+   * Serialized size of the tool's `icons`. Reported apart from `bytes` and
+   * `tokens`: icons ride on every `tools/list` response but are host chrome,
+   * not model context, so they cost bandwidth rather than context window.
+   */
+  iconBytes: number;
   /** Serialized size of the tool's `tools/list` entry. */
   bytes: number;
   /** Estimated token cost of the entry (chars/4). */
@@ -58,6 +66,7 @@ export function toolCostReport(tools: ToolDefinitionLike[]): ToolCostReport {
     });
     return {
       name: t.name,
+      iconBytes: t.icons === undefined ? 0 : JSON.stringify(t.icons).length,
       bytes: serialized.length,
       tokens: estimateTokens(serialized),
     };

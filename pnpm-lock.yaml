@@ -589,6 +589,12 @@ importers:
       '@agentback/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
+      '@agentback/mcp-http':
+        specifier: workspace:*
+        version: link:../../packages/mcp-http
+      '@agentback/rest':
+        specifier: workspace:*
+        version: link:../../packages/rest
       '@modelcontextprotocol/ext-apps':
         specifier: ^2.0.0
         version: 2.0.0(@modelcontextprotocol/client@2.1.0)(@modelcontextprotocol/core@2.1.0)(@modelcontextprotocol/server@2.1.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5)

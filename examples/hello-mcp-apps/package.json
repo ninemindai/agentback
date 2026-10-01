@@ -7,11 +7,14 @@
   "scripts": {
     "build": "tsc -b",
     "start": "node dist/server.js",
+    "start:http": "node dist/server.js --http",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
     "@agentback/core": "workspace:*",
     "@agentback/mcp": "workspace:*",
+    "@agentback/mcp-http": "workspace:*",
+    "@agentback/rest": "workspace:*",
     "@modelcontextprotocol/ext-apps": "^2.0.0",
     "esbuild": "^0.28.2",
     "tslib": "^2.8.1",

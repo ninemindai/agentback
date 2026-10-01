@@ -95,6 +95,22 @@ export function ToolCard({
             {pending ? 'Running…' : 'Run'}
           </button>
           {outcome && <OutcomeView outcome={outcome} />}
+          {(tool.annotations || tool.icons || tool._meta) && (
+            <details className="collapse">
+              <summary>host metadata</summary>
+              <pre className="json">
+                {JSON.stringify(
+                  {
+                    annotations: tool.annotations,
+                    icons: tool.icons,
+                    _meta: tool._meta,
+                  },
+                  null,
+                  2,
+                )}
+              </pre>
+            </details>
+          )}
           {tool.outputSchema && (
             <details className="collapse">
               <summary>output schema</summary>

@@ -7,12 +7,14 @@ import supertest from 'supertest';
 import {z} from 'zod';
 import {RestApplication} from '@agentback/rest';
 import {
+  appResource,
   MCPComponent,
   MCPServer,
   mcpServer,
   prompt,
   resource,
   tool,
+  toolFragment,
 } from '@agentback/mcp';
 import {installInspector} from '../../index.js';
 
@@ -44,6 +46,24 @@ class EchoTools {
   @prompt('welcome', {description: 'a welcome prompt'})
   welcome() {
     return 'Welcome!';
+  }
+}
+
+@mcpServer()
+class HostTools {
+  @tool('library', {
+    annotations: {readOnlyHint: true},
+    icons: [{src: 'https://example.com/i.svg'}],
+    ui: {resourceUri: 'ui://lib'},
+    extend: [toolFragment({meta: {'acme/ui': {entry: 'global'}}})],
+  })
+  library() {
+    return {};
+  }
+
+  @appResource('ui://lib', {title: 'Library', prefersBorder: true})
+  lib() {
+    return '<html></html>';
   }
 }
 
@@ -119,6 +139,43 @@ describe('mcp-inspector', () => {
         type: 'object',
         properties: {sum: {type: 'integer'}},
         required: ['sum'],
+      });
+    });
+
+    it('shows host metadata: annotations, icons, _meta, content _meta, capabilities', async () => {
+      await app.stop();
+      app = new RestApplication({});
+      app.configure('servers.RestServer').to({port: 0, host: '127.0.0.1'});
+      app.component(MCPComponent);
+      app.configure('servers.MCPServer').to({
+        name: 'host-test',
+        version: '1.0.0',
+        title: 'Host Test',
+        transports: {stdio: false},
+        capabilities: {extensions: {'acme/settings': {readTool: 'r'}}},
+      });
+      app.service(HostTools);
+      await app.get<MCPServer>('servers.MCPServer');
+      await installInspector(app);
+      await app.start();
+      const c = supertest((await app.restServer).url);
+      const r = await c.get('/mcp-inspector/api/manifest').expect(200);
+      expect(r.body.server).toEqual({
+        name: 'host-test',
+        version: '1.0.0',
+        title: 'Host Test',
+        capabilities: {extensions: {'acme/settings': {readTool: 'r'}}},
+      });
+      expect(r.body.tools[0]).toMatchObject({
+        name: 'library',
+        annotations: {readOnlyHint: true},
+        icons: [{src: 'https://example.com/i.svg'}],
+        _meta: {'acme/ui': {entry: 'global'}, ui: {resourceUri: 'ui://lib'}},
+      });
+      expect(r.body.resources[0]).toMatchObject({
+        uri: 'ui://lib',
+        title: 'Library',
+        contentMeta: {ui: {prefersBorder: true}},
       });
     });
 

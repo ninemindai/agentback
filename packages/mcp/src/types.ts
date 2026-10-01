@@ -3,12 +3,35 @@
 // License text available at https://opensource.org/license/mit/
 
 import type {UserProfile} from '@agentback/security';
+import type {Icon, JSONObject} from '@modelcontextprotocol/server';
 
 export interface MCPServerConfig {
   /** MCP server name advertised to clients. */
   name?: string;
   /** Server semver version. */
   version?: string;
+  /** Human-readable server title, advertised in the server info. */
+  title?: string;
+  /**
+   * Server icons, advertised in the server info. Hosts fall back to them for
+   * entrypoints whose tools declare no icon. On protocol `2026-07-28` the
+   * server info rides on **every** result's `_meta`, so prefer `https` URLs —
+   * a data URI over ~1 KB logs a warning at boot.
+   */
+  icons?: Icon[];
+  /** Server website, advertised in the server info. */
+  websiteUrl?: string;
+  /**
+   * Extra server capabilities — host or vendor extensions advertised under
+   * `capabilities.extensions` (and the legacy `capabilities.experimental`),
+   * e.g. `{extensions: {'openai/settings': {readTool, updateTool}}}`. They
+   * appear on `initialize` (2025 era) and `server/discover` (2026). Only these
+   * two keys are accepted; `tools`/`resources`/`prompts` stay framework-owned.
+   */
+  capabilities?: {
+    extensions?: Record<string, JSONObject>;
+    experimental?: Record<string, JSONObject>;
+  };
   /**
    * Ambient identity for transports with no authentication (stdio, direct
    * `callTool`). When set, `@authorize`-gated tools are evaluated against
@@ -49,8 +72,17 @@ export interface MCPServerConfig {
   };
 }
 
+/** Optional {@link MCPServerConfig} keys with no default. */
+export type MCPServerOptionalKeys =
+  | 'transports'
+  | 'localPrincipal'
+  | 'title'
+  | 'icons'
+  | 'websiteUrl'
+  | 'capabilities';
+
 export const DEFAULT_MCP_CONFIG: Required<
-  Omit<MCPServerConfig, 'transports' | 'localPrincipal'>
+  Omit<MCPServerConfig, MCPServerOptionalKeys>
 > & {transports: NonNullable<MCPServerConfig['transports']>} = {
   name: 'agentback-mcp',
   version: '0.0.0',

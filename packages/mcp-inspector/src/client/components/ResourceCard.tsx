@@ -30,11 +30,24 @@ export function ResourceCard({
     <div className="card">
       <h3>
         {resource.uri}
+        {resource.title && <span className="badge">{resource.title}</span>}
         {resource.mimeType && (
           <span className="badge">{resource.mimeType}</span>
         )}
       </h3>
       {resource.description && <p className="desc">{resource.description}</p>}
+      {(resource.icons || resource.contentMeta) && (
+        <details className="collapse">
+          <summary>host metadata</summary>
+          <pre className="json">
+            {JSON.stringify(
+              {icons: resource.icons, contentMeta: resource.contentMeta},
+              null,
+              2,
+            )}
+          </pre>
+        </details>
+      )}
       <button className="btn" onClick={read} disabled={pending}>
         {pending ? 'Reading…' : 'Read'}
       </button>
