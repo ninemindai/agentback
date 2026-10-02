@@ -98,7 +98,8 @@ export type ElicitAnswer<F> =
  *
  * The tool body **re-runs from the top** each round, on every era: an `ask`
  * whose answer is not here yet suspends the call, and the next round replays
- * earlier answers. So ask **before** any side effect.
+ * earlier answers. So ask **before** any side effect, and wrap expensive
+ * work that must precede an ask in {@link Elicitor.once}.
  *
  * @experimental Phase 2 of docs/proposals/host-extensions.md.
  */
@@ -112,7 +113,26 @@ export interface Elicitor {
   askAll<M extends Record<string, ElicitForm>>(
     forms: M,
   ): Promise<{[K in keyof M]: ElicitAnswer<M[K]>}>;
+  /**
+   * Run `fn` once per call, not once per round: the first round stores its
+   * JSON result in the signed request-state envelope, and later rounds
+   * replay it instead of running `fn` again — so a lookup, a search or a
+   * paid model call that must happen before an `ask` is neither repeated nor
+   * re-billed.
+   *
+   * - The result must be plain JSON (it travels to the client and back) and,
+   *   with every other `once` result in the call, at most 32 KiB.
+   * - The envelope is signed, **not encrypted**: the client can read what
+   *   you store. Never pass a secret through `once`.
+   * - A throw is not stored; the next round runs `fn` again.
+   * - Each key is used once per call, like an `ask` key.
+   * - With nobody to ask (an in-process call), `fn` simply runs.
+   */
+  once<T>(key: string, fn: () => T | Promise<T>): Promise<T>;
 }
+
+/** The ceiling on one call's stored {@link Elicitor.once} results, in bytes. */
+export const ONCE_MAX_BYTES = 32 * 1024;
 
 const INPUT_REQUIRED = Symbol.for('agentback.mcp.inputRequired');
 
@@ -165,6 +185,8 @@ export interface ElicitSession extends Elicitor {
   readonly pending: Map<string, PendingAsk>;
   /** Every answer known this round: replayed ones plus newly accepted ones. */
   readonly answers: Record<string, unknown>;
+  /** {@link Elicitor.once} results: replayed ones plus this round's. */
+  readonly memo: Record<string, unknown>;
 }
 
 /** Throw unless `form.standard` lowers to a flat object of primitives. */
@@ -210,10 +232,13 @@ export function assertFlatForm(key: string, form: ElicitForm): void {
 export function createElicitSession(
   replayed: Record<string, unknown>,
   responses: Record<string, unknown> | undefined,
+  replayedMemo: Record<string, unknown> = {},
 ): ElicitSession {
   const pending = new Map<string, PendingAsk>();
   const answers: Record<string, unknown> = {...replayed};
   const asked = new Set<string>();
+  const memo: Record<string, unknown> = {...replayedMemo};
+  const onceKeys = new Set<string>();
 
   /** The answer for `key`, or `undefined` to record it as pending. */
   function resolve(key: string, form: ElicitForm): unknown {
@@ -263,6 +288,32 @@ export function createElicitSession(
   return {
     pending,
     answers,
+    memo,
+    async once<T>(key: string, fn: () => T | Promise<T>): Promise<T> {
+      if (typeof key !== 'string' || !key) {
+        throw new ElicitMisuseError('elicit.once(key): key must be a string');
+      }
+      if (onceKeys.has(key)) {
+        throw new ElicitMisuseError(
+          `elicit.once('${key}'): used twice in one call — use a distinct key`,
+        );
+      }
+      onceKeys.add(key);
+      if (Object.hasOwn(memo, key)) return structuredClone(memo[key]) as T;
+      const value = await fn();
+      const json = onceJson(key, value);
+      memo[key] = JSON.parse(json);
+      const size = new TextEncoder().encode(JSON.stringify(memo)).length;
+      if (size > ONCE_MAX_BYTES) {
+        delete memo[key];
+        throw new ElicitMisuseError(
+          `elicit.once('${key}'): the stored results reach ${size} bytes, ` +
+            `over the ${ONCE_MAX_BYTES}-byte limit — they travel to the ` +
+            `client and back every round. Store an id and re-fetch instead.`,
+        );
+      }
+      return value;
+    },
     async ask<F extends ElicitForm>(key: string, form: F) {
       const value = resolve(key, form);
       if (pending.size) throw new InputRequiredSignal([...pending.keys()]);
@@ -279,12 +330,34 @@ export function createElicitSession(
   };
 }
 
+/** `value` as JSON, or an {@link ElicitMisuseError} naming the key. */
+function onceJson(key: string, value: unknown): string {
+  let json: string | undefined;
+  try {
+    json = JSON.stringify(value);
+  } catch (err) {
+    throw new ElicitMisuseError(
+      `elicit.once('${key}'): the result is not JSON (${(err as Error).message})`,
+    );
+  }
+  if (json === undefined) {
+    throw new ElicitMisuseError(
+      `elicit.once('${key}'): the result is not JSON (got ${typeof value})`,
+    );
+  }
+  return json;
+}
+
 /**
  * The app-level default for `MCPBindings.ELICIT`, so injection never fails
  * outside an MCP request (an in-process `callTool`, a unit test): any ask
  * throws `elicitation_unavailable`.
  */
 export const unavailableElicitor: Elicitor = {
+  // Nobody can be asked, so there is no later round to replay into.
+  async once(_key, fn) {
+    return fn();
+  },
   async ask(key) {
     throw elicitationUnavailable(`elicit.ask('${key}')`);
   },
@@ -356,6 +429,8 @@ export interface RequestStatePayload {
   confirm?: string;
   confirmed?: string;
   answers?: Record<string, unknown>;
+  /** {@link Elicitor.once} results, replayed on the next round. */
+  once?: Record<string, unknown>;
 }
 
 const codecs = new Map<string, RequestStateCodec<RequestStatePayload>>();

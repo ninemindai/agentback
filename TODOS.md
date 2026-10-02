@@ -239,26 +239,6 @@ spike proved vs what is still assumed.
 §5.1 of the design doc — the compatibility matrix now exists, and criterion 1
 (more than one 1.x release covered) is not yet met.
 
-### Elicitation follow-ups (P1-7 phase 2)
-
-**What:**
-
-- `elicit.once(key, fn)` — memoize expensive work done before an `ask` in the
-  request-state envelope, so a re-run round does not repeat (or re-bill) it.
-- MCP Inspector: render elicitation forms so an asking tool can be exercised
-  from `/mcp-inspector` (it calls tools in-process today, which cannot answer).
-
-**Why:** The re-run-from-the-top model is the right one for stateless serving,
-but it charges repeated work to the tool author; the gateway and inspector are
-the two surfaces where an asking tool currently has no story.
-
-**Context:** `packages/mcp/src/elicit.ts`, `MCPServer.suspendForInput`;
-docs/proposals/host-extensions.md §5 (status note) and §7.
-
-**Effort:** S–M each
-**Priority:** P3
-**Depends on:** —
-
 ### Reload consumers when a provider binding is swapped at runtime
 
 **What:** When a plugin providing DI key `K` is retracted and another mounts in

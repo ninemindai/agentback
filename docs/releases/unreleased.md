@@ -103,7 +103,10 @@ replayed. Works for 2026 clients and 2025 sessions/stdio that declared
 `elicitation`; other callers get `elicitation_unavailable`. Also new:
 `MCPBindings.REQUEST_CLIENT`, `hasClientExtension()`,
 `MCPBindings.REQUEST_STATE_KEY`, `MCPServer.serveTransport()`,
-`McpDispatchInfo.inputRequired`, `createTestApp({mcpEra, mcpElicit})`, and the
+`McpDispatchInfo.inputRequired`, `createTestApp({mcpEra, mcpElicit})`,
+**`elicit.once(key, fn)`** (expensive pre-ask work runs once per call, not
+once per round), **question forms in `mcp-inspector`** (an asking tool runs
+through a real 2026 client; `POST /tools/{name}/answer` continues it), and the
 error codes `elicitation_unavailable` / `elicitation_unsupported` /
 `elicitation_declined`.
 

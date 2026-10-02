@@ -17,6 +17,7 @@ import {
   resource,
   tool,
   toolFragment,
+  type Elicitor,
 } from '@agentback/mcp';
 import {
   INSPECTOR_CLIENT_PROFILES,
@@ -432,5 +433,93 @@ describe('mcp-inspector client profiles', () => {
       .send({})
       .expect(200);
     expect(ok.body).toEqual({client: 'mine'});
+  });
+});
+
+@mcpServer()
+class AskingTools {
+  @tool('greet', {input: z.object({greeting: z.string()})})
+  async greet(
+    input: {greeting: string},
+    @inject(MCPBindings.ELICIT) elicit: Elicitor,
+  ) {
+    const {name} = await elicit.ask('who', {
+      message: 'Your name?',
+      standard: z.object({name: z.string().min(1)}),
+    });
+    const {age} = await elicit.ask('age', {
+      message: 'Your age?',
+      standard: z.object({age: z.number().int()}),
+    });
+    return {text: `${input.greeting}, ${name} (${age})`};
+  }
+}
+
+describe('mcp-inspector answers elicitation', () => {
+  let app: RestApplication;
+  let client: ReturnType<typeof supertest>;
+
+  beforeEach(async () => {
+    app = new RestApplication({});
+    app.configure('servers.RestServer').to({port: 0, host: '127.0.0.1'});
+    app.component(MCPComponent);
+    app.configure('servers.MCPServer').to({transports: {stdio: false}});
+    app.service(AskingTools);
+    await app.get<MCPServer>('servers.MCPServer');
+    await installInspector(app);
+    await app.start();
+    client = supertest((await app.restServer).url);
+  });
+
+  afterEach(async () => app.stop());
+
+  it('returns each question, then the result once every answer is in', async () => {
+    const first = await client
+      .post('/mcp-inspector/api/tools/greet/call')
+      .send({greeting: 'Hi'})
+      .expect(200);
+    const q1 = first.body.inputRequired;
+    expect(q1.questions.who.message).toBe('Your name?');
+    expect(q1.questions.who.requestedSchema).toMatchObject({
+      type: 'object',
+      properties: {name: {type: 'string'}},
+    });
+
+    const second = await client
+      .post('/mcp-inspector/api/tools/greet/answer')
+      .send({
+        arguments: {greeting: 'Hi'},
+        requestState: q1.requestState,
+        inputResponses: {who: {action: 'accept', content: {name: 'Ada'}}},
+      })
+      .expect(200);
+    const q2 = second.body.inputRequired;
+    expect(Object.keys(q2.questions)).toEqual(['age']);
+
+    const done = await client
+      .post('/mcp-inspector/api/tools/greet/answer')
+      .send({
+        arguments: {greeting: 'Hi'},
+        requestState: q2.requestState,
+        inputResponses: {age: {action: 'accept', content: {age: 36}}},
+      })
+      .expect(200);
+    expect(done.body).toEqual({text: 'Hi, Ada (36)'});
+  });
+
+  it('reports a declined question as an error', async () => {
+    const first = await client
+      .post('/mcp-inspector/api/tools/greet/call')
+      .send({greeting: 'Hi'})
+      .expect(200);
+    const r = await client
+      .post('/mcp-inspector/api/tools/greet/answer')
+      .send({
+        arguments: {greeting: 'Hi'},
+        requestState: first.body.inputRequired.requestState,
+        inputResponses: {who: {action: 'decline'}},
+      })
+      .expect(400);
+    expect(r.body.error.message).toMatch(/declined.*elicitation_declined/);
   });
 });

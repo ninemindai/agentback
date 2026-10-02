@@ -2220,6 +2220,9 @@ importers:
       '@agentback/rest':
         specifier: workspace:~
         version: link:../rest
+      '@modelcontextprotocol/client':
+        specifier: ^2.1.0
+        version: 2.1.0
       '@types/express':
         specifier: ^5.0.6
         version: 5.0.6

@@ -249,8 +249,12 @@ so a constructor gets the app-level default, whose asks always fail.
 - **The tool re-runs from the top each round**, on every protocol era. An `ask`
   without an answer yet suspends the call; the next round replays earlier
   answers, so the second run gets past the first `ask`. Ask **before** any side
-  effect, and count expensive reads (an LLM call, a paid API) as side effects:
-  they run again every round and only the final round is metered.
+  effect. Expensive work that must come before an `ask` (an LLM call, a paid
+  API, a slow search) goes in `elicit.once(key, fn)`: the first round stores
+  its JSON result in the request-state envelope and later rounds replay it,
+  so it runs, and bills, once per call. The envelope is signed, not
+  encrypted, so the client can read what you store: never pass a secret
+  through `once`. Results are capped at 32 KiB per call.
 - `askAll({a: formA, b: formB})` asks several questions in one round.
 - A declined or cancelled answer throws `AgentError` `elicitation_declined`
   (409); an answer that fails the form's schema is `invalid_input` (400).
@@ -265,16 +269,17 @@ so a constructor gets the app-level default, whose asks always fail.
 
 Who can be asked:
 
-| Caller                                                                                                                                           | What happens                                                                |
-| ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
-| 2026-07-28 client that declared `elicitation`                                                                                                    | `input_required` result; the client answers and retries                     |
-| 2025 session (`installMcpHttp(app, {protocol: 'legacy'})`) or stdio, client declared `elicitation`                                               | the SDK sends `elicitation/create` over the connection and re-runs the tool |
-| a 2025 client on the **default** `installMcpHttp` mount (stateless), a client without `elicitation`, an in-process `callTool`, the MCP Inspector | `AgentError` `elicitation_unavailable` (422), naming the cause              |
+| Caller                                                                                                                        | What happens                                                                |
+| ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| 2026-07-28 client that declared `elicitation`                                                                                 | `input_required` result; the client answers and retries                     |
+| 2025 session (`installMcpHttp(app, {protocol: 'legacy'})`) or stdio, client declared `elicitation`                            | the SDK sends `elicitation/create` over the connection and re-runs the tool |
+| a 2025 client on the **default** `installMcpHttp` mount (stateless), a client without `elicitation`, an in-process `callTool` | `AgentError` `elicitation_unavailable` (422), naming the cause              |
 
 The default HTTP mount serves 2025-era clients statelessly, and a stateless
 request has no connection to ask on. Use a 2026 client, stdio, or
-`protocol: 'legacy'` if you must reach 2025 clients over HTTP. The inspector
-calls tools in-process, so test asking tools with an MCP client or
+`protocol: 'legacy'` if you must reach 2025 clients over HTTP. The MCP
+Inspector answers too: it runs an asking tool through a real 2026-era client
+and renders each question as a form. In tests, use an MCP client or
 `createTestApp` (below).
 
 **State and deployment.** Earlier answers ride in a `requestState` envelope
@@ -334,7 +339,9 @@ await installInspector(app); // before app.start(); needs servers.MCPServer boun
 ```
 
 The inspector fills tool argument forms from each tool's Zod-derived JSON Schema,
-shows validation errors inline, renders results, and logs a call history. (It's
+shows validation errors inline, renders results, and logs a call history. When
+a tool asks the user (`elicit.ask`, a 2026 `confirm:` prompt), it shows the
+question as a form and continues the call with your answer. (It's
 itself a worked example of a dogfooded REST controller — see its
 [README](../../packages/mcp-inspector/README.md).)
 
