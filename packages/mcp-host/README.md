@@ -81,25 +81,38 @@ upstream notification plumbing — tracked, not blocking.
 
 Tool listings pass through whole — `_meta`, `icons` and `annotations` survive
 — so a ChatGPT entrypoint or a Claude widget `domain` on an upstream still
-reaches the host. Four things do **not** survive the hop:
+reaches the host. Two more things are relayed:
 
-1. **Request `_meta` is dropped.** A call forwards only `{name, arguments}`,
-   so `_meta["openai/resource"].path` (a ChatGPT file entrypoint) and any other
-   per-request host key never reach the upstream.
-2. **An upstream's `input_required` is not relayed.** A tool that elicits
-   (`elicit.ask`, a 2026 `confirm:` prompt) cannot complete through the
-   gateway.
-3. **Prefixing renames tools that host metadata names.** `openai/settings`'
+- **Request `_meta`** (`relayMeta`, default on). Vendor-prefixed keys a
+  client sends on `tools/call`, `resources/read` and `prompts/get` —
+  `_meta["openai/resource"].path` from a ChatGPT file entrypoint, say — reach
+  the upstream. Reserved `io.modelcontextprotocol/*` keys and `progressToken`
+  describe this hop and are never forwarded. Pass a key predicate to narrow
+  it, or `false` for none.
+- **Elicitation** (`relayElicitation`, default on). The gateway declares the
+  `elicitation` capability to every upstream and forwards a question
+  (`elicit.ask`, a 2026 `confirm:` prompt) to its downstream client, then
+  returns the answer.
+  - Upstreams are spoken to with automatic version negotiation. A stateless
+    2026 upstream asks through multi-round-trip results, and a 2025 session
+    upstream sends a real `elicitation/create`. Both reach the same relay.
+  - A downstream client that did not declare `elicitation` gets an error
+    saying so.
+  - With `relayElicitation: false`, upstreams see a client that cannot be
+    asked.
+
+Two limitations remain:
+
+1. **Prefixing renames tools that host metadata names.** `openai/settings`'
    `readTool`/`updateTool`, a settings layout's `tool` items and a quick
-   action's `target.name` refer to the upstream's own names; with the default
+   action's `target.name` refer to the upstream's own names. With the default
    `<upstream>__` prefix they point at nothing.
-4. **Upstream `extensions` / `experimental` capabilities are not
+2. **Upstream `extensions` / `experimental` capabilities are not
    aggregated**, so `openai/settings` is not advertised by the gateway.
 
-Expose a host-extension server directly, or through the gateway with
-`prefix: false` (which fixes 3 only). Relaying request `_meta` and
-`input_required` is ordinary MCP and a candidate follow-up; rewriting host
-vocabulary inside opaque `_meta` is deliberately out of scope
+For a server that uses either, expose it directly, or through the gateway with
+`prefix: false` (which fixes 1 only). Rewriting host vocabulary inside opaque
+`_meta` is deliberately out of scope
 ([P1-7 §7](../../docs/proposals/host-extensions.md#7-gateway-mcp-host-documented-limitations-g8)).
 
 ## Exposing the gateway over HTTP

@@ -3,7 +3,11 @@
 // License text available at https://opensource.org/license/mit/
 
 import {StdioClientTransport} from '@modelcontextprotocol/client/stdio';
-import {Client, ProtocolErrorCode} from '@modelcontextprotocol/client';
+import {
+  Client,
+  ProtocolErrorCode,
+  type ClientOptions,
+} from '@modelcontextprotocol/client';
 import {Server, ProtocolError} from '@modelcontextprotocol/server';
 import type {
   Prompt,
@@ -46,6 +50,25 @@ export interface McpHostOptions {
    * clients pass back verbatim; the host routes them by URI instead.
    */
   prefix?: boolean;
+  /**
+   * Forward a request's vendor `_meta` to the upstream that serves it
+   * (`tools/call`, `resources/read`, `prompts/get`). Default `true`: keys with
+   * a vendor prefix (`openai/resource`, `com.example/x`) pass; reserved
+   * `io.modelcontextprotocol/*` keys and unprefixed SDK keys (`progressToken`)
+   * never do. Pass a predicate to choose keys yourself, or `false` to forward
+   * none. It is what the client sent — client-asserted, as it would be to the
+   * upstream directly.
+   */
+  relayMeta?: boolean | ((key: string) => boolean);
+  /**
+   * Let an upstream tool ask the user (elicitation). Default `true`: the
+   * gateway declares the `elicitation` capability to every upstream and
+   * forwards each question to the downstream client, returning its answer.
+   * A downstream client that did not declare `elicitation` gets a clear error
+   * instead of a question; with `false`, upstreams see a client that cannot
+   * be asked (and answer `elicitation_unavailable` or their own equivalent).
+   */
+  relayElicitation?: boolean;
 }
 
 export interface McpHost {
@@ -81,17 +104,32 @@ interface Upstream {
   client: Client;
 }
 
-/** Connect a client to a single upstream MCP server. */
-async function connectUpstream(cfg: UpstreamConfig): Promise<Client> {
+/**
+ * Connect a client to a single upstream MCP server. Version negotiation is
+ * `auto`: a 2026-era upstream is spoken to in its own revision (so a
+ * stateless upstream can still elicit, via multi-round-trip results), and an
+ * older one falls back to the 2025 handshake.
+ */
+async function connectUpstream(
+  cfg: UpstreamConfig,
+  clientOptions: ClientOptions,
+  beforeConnect: (client: Client) => void,
+): Promise<Client> {
   if (cfg.transport === 'http') {
     const {client} = await connectMcp({
       url: cfg.url,
       name: 'mcp-host',
       ...(cfg.bearerToken ? {bearerToken: cfg.bearerToken} : {}),
+      clientOptions,
+      beforeConnect,
     });
     return client;
   }
-  const client = new Client({name: 'mcp-host', version: '0.0.0'});
+  const client = new Client(
+    {name: 'mcp-host', version: '0.0.0'},
+    clientOptions,
+  );
+  beforeConnect(client);
   if (cfg.transport === 'custom') {
     await client.connect(cfg.clientTransport);
     return client;
@@ -121,6 +159,29 @@ function emptyOnMethodNotFound<T>(fallback: T): (e: unknown) => T {
     }
     throw e;
   };
+}
+
+const RESERVED_META_PREFIX = 'io.modelcontextprotocol/';
+
+/** The vendor `_meta` keys of a request worth forwarding upstream. */
+function relayableMeta(
+  meta: Record<string, unknown> | undefined,
+  policy: boolean | ((key: string) => boolean),
+): Record<string, unknown> | undefined {
+  if (!meta || policy === false) return undefined;
+  const allow =
+    typeof policy === 'function'
+      ? policy
+      : (key: string) =>
+          key.includes('/') && !key.startsWith(RESERVED_META_PREFIX);
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(meta)) {
+    // Reserved keys never pass, whatever the predicate says: they describe
+    // this hop (the client's protocol envelope), not the upstream's.
+    if (k.startsWith(RESERVED_META_PREFIX) || k === 'progressToken') continue;
+    if (allow(k)) out[k] = v;
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -204,9 +265,44 @@ export async function createMcpHost(options: McpHostOptions): Promise<McpHost> {
 
   const exposed = (upstream: string, name: string) =>
     prefix ? `${upstream}__${name}` : name;
+  const relayMetaPolicy = options.relayMeta ?? true;
+  const relayElicitation = options.relayElicitation ?? true;
+  const metaOf = (params: {_meta?: Record<string, unknown>}) => {
+    const _meta = relayableMeta(params._meta, relayMetaPolicy);
+    return _meta ? {_meta} : {};
+  };
+
+  // The aggregated server, created up front so upstream elicitation handlers
+  // can reach the downstream client through it.
+  const server = new Server(
+    {name: options.name ?? 'mcp-host', version: options.version ?? '0.0.0'},
+    {capabilities: {tools: {}}},
+  );
+
+  const clientOptions: ClientOptions = {
+    versionNegotiation: {mode: 'auto'},
+    ...(relayElicitation ? {capabilities: {elicitation: {form: {}}}} : {}),
+  };
+  const beforeConnect = (client: Client) => {
+    if (!relayElicitation) return;
+    // An upstream's question goes to the one downstream client this gateway
+    // serves. A 2025 upstream session sends `elicitation/create` here; for a
+    // 2026 upstream the client SDK drives the multi-round-trip result and
+    // calls this same handler.
+    client.setRequestHandler('elicitation/create', async req => {
+      if (!server.getClientCapabilities()?.elicitation) {
+        throw new ProtocolError(
+          ProtocolErrorCode.InvalidRequest,
+          'mcp-host: an upstream tool asked the user a question, but the ' +
+            'client connected to this gateway did not declare elicitation',
+        );
+      }
+      return server.elicitInput(req.params);
+    });
+  };
 
   for (const cfg of options.upstreams) {
-    const client = await connectUpstream(cfg);
+    const client = await connectUpstream(cfg, clientOptions, beforeConnect);
     clients.push(client);
     // Capability-guarded probing: only query the surfaces the upstream
     // advertises — a server without a capability may reject (or not answer)
@@ -281,16 +377,11 @@ export async function createMcpHost(options: McpHostOptions): Promise<McpHost> {
     }
   }
 
-  const server = new Server(
-    {name: options.name ?? 'mcp-host', version: options.version ?? '0.0.0'},
-    {
-      capabilities: {
-        tools: {},
-        ...(promptUpstreams.length ? {prompts: {}} : {}),
-        ...(resourceUpstreams.length ? {resources: {}} : {}),
-      },
-    },
-  );
+  // Legal until the server connects, which the caller does after this.
+  server.registerCapabilities({
+    ...(promptUpstreams.length ? {prompts: {}} : {}),
+    ...(resourceUpstreams.length ? {resources: {}} : {}),
+  });
 
   server.setRequestHandler('tools/list', async () => ({
     tools: [...toolRoutes.values()].map(r => r.def),
@@ -304,6 +395,7 @@ export async function createMcpHost(options: McpHostOptions): Promise<McpHost> {
     return route.client.callTool({
       name: route.originalName,
       arguments: req.params.arguments ?? {},
+      ...metaOf(req.params),
     });
   });
 
@@ -341,6 +433,7 @@ export async function createMcpHost(options: McpHostOptions): Promise<McpHost> {
       return route.client.getPrompt({
         name: route.originalName,
         ...(req.params.arguments ? {arguments: req.params.arguments} : {}),
+        ...metaOf(req.params),
       });
     });
   }
@@ -377,14 +470,15 @@ export async function createMcpHost(options: McpHostOptions): Promise<McpHost> {
 
     server.setRequestHandler('resources/read', async req => {
       const {uri} = req.params;
+      const meta = metaOf(req.params);
       // Exact URI first (routing map built at connect)…
       const owner = resourceRoutes.get(uri);
-      if (owner) return owner.readResource({uri});
+      if (owner) return owner.readResource({uri, ...meta});
       // …then the most specific (longest-literal) matching template.
       const best = templateRoutes
         .filter(t => t.regex.test(uri))
         .sort((a, b) => b.literalLength - a.literalLength)[0];
-      if (best) return best.client.readResource({uri});
+      if (best) return best.client.readResource({uri, ...meta});
       throw new Error(`mcp-host: unknown resource '${uri}'`);
     });
   }

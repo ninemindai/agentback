@@ -584,6 +584,9 @@ pass through on listing. Four things break:
    settings tool names, layout `tool` items, previews, quick actions.
 4. **Upstream `extensions` / `experimental` capabilities are not aggregated.**
 
+> **Status:** 1 and 2 are now relayed (`relayMeta`, `relayElicitation`);
+> 3 and 4 remain documented limitations.
+
 Decision: document all four in the `mcp-host` README. Expose host-extension
 servers directly or with `prefix: false`. Relaying `_meta` and `input_required`
 is ordinary MCP and a candidate follow-up; rewriting host vocabulary inside

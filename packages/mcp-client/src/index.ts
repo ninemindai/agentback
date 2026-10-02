@@ -7,6 +7,7 @@ import {
   StreamableHTTPClientTransport,
 } from '@modelcontextprotocol/client';
 import type {
+  ClientOptions,
   OAuthClientProvider,
   FetchLike,
 } from '@modelcontextprotocol/client';
@@ -40,6 +41,18 @@ export interface ConnectMcpOptions {
   fetch?: FetchLike;
   /** Extra request init (headers, etc.). */
   requestInit?: RequestInit;
+  /**
+   * Options for the SDK `Client` — declared `capabilities` (e.g.
+   * `elicitation`), `versionNegotiation`, … Capabilities are fixed at
+   * construction, so they must be set here rather than after connecting.
+   */
+  clientOptions?: ClientOptions;
+  /**
+   * Runs on the constructed client before it connects — register request
+   * handlers (`elicitation/create`, …) here so none is missed during the
+   * opening exchange.
+   */
+  beforeConnect?: (client: Client) => void;
 }
 
 /**
@@ -70,10 +83,14 @@ export async function connectMcp(
     ...(options.requestInit ? {requestInit: options.requestInit} : {}),
     ...(fetchImpl ? {fetch: fetchImpl} : {}),
   });
-  const client = new Client({
-    name: options.name ?? 'mcp-client',
-    version: options.version ?? '0.0.0',
-  });
+  const client = new Client(
+    {
+      name: options.name ?? 'mcp-client',
+      version: options.version ?? '0.0.0',
+    },
+    options.clientOptions,
+  );
+  options.beforeConnect?.(client);
   await client.connect(transport);
   return {client, transport};
 }

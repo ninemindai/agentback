@@ -31,14 +31,16 @@ const {client} = await connectMcp({
 const {client} = await connectMcp({url, authProvider: myOAuthClientProvider});
 ```
 
-| option             | meaning                                                       |
-| ------------------ | ------------------------------------------------------------- |
-| `url`              | the server's Streamable HTTP endpoint                         |
-| `bearerToken`      | token or `() => string \| Promise<string>` (re-called on 401) |
-| `authProvider`     | full OAuth flow — an SDK `OAuthClientProvider`                |
-| `fetch`            | custom `FetchLike` (advanced; overrides `bearerToken`)        |
-| `requestInit`      | extra request init (headers, …)                               |
-| `name` / `version` | client identity sent during `initialize`                      |
+| option             | meaning                                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------------------------ |
+| `url`              | the server's Streamable HTTP endpoint                                                                  |
+| `bearerToken`      | token or `() => string \| Promise<string>` (re-called on 401)                                          |
+| `authProvider`     | full OAuth flow — an SDK `OAuthClientProvider`                                                         |
+| `fetch`            | custom `FetchLike` (advanced; overrides `bearerToken`)                                                 |
+| `requestInit`      | extra request init (headers, …)                                                                        |
+| `name` / `version` | client identity sent during `initialize`                                                               |
+| `clientOptions`    | SDK `ClientOptions` — declared `capabilities`, `versionNegotiation`, …                                 |
+| `beforeConnect`    | `(client) => void` — register request handlers (e.g. `elicitation/create`) before the opening exchange |
 
 `bearerFetch(tokenOrGetter)` is exported standalone if you want the
 Authorization-injecting, 401-retrying `fetch` wrapper for other uses.
