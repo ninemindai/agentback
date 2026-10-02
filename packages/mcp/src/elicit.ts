@@ -124,7 +124,13 @@ export interface Elicitor {
    *   with every other `once` result in the call, at most 32 KiB.
    * - The envelope is signed, **not encrypted**: the client can read what
    *   you store. Never pass a secret through `once`.
+   * - Every round, the first included, gets the **JSON form** of the result
+   *   (a `Date` is an ISO string, a `Map` is `{}`, `NaN` is `null`).
    * - A throw is not stored; the next round runs `fn` again.
+   * - It is not single-use: a caller may replay a round's envelope on a new
+   *   call with the same input within its hour, and so choose among results
+   *   the server produced for that tool, input and caller. Do not use it for
+   *   freshness- or authorization-sensitive data you do not re-check.
    * - Each key is used once per call, like an `ask` key.
    * - With nobody to ask (an in-process call), `fn` simply runs.
    */
@@ -306,13 +312,17 @@ export function createElicitSession(
       const size = new TextEncoder().encode(JSON.stringify(memo)).length;
       if (size > ONCE_MAX_BYTES) {
         delete memo[key];
+        // Not stored, so the key is free again — a retry is not a reuse.
+        onceKeys.delete(key);
         throw new ElicitMisuseError(
           `elicit.once('${key}'): the stored results reach ${size} bytes, ` +
             `over the ${ONCE_MAX_BYTES}-byte limit — they travel to the ` +
             `client and back every round. Store an id and re-fetch instead.`,
         );
       }
-      return value;
+      // The JSON form, not `value`: every round must see the same value, and
+      // later rounds can only replay JSON (a Date would come back a string).
+      return structuredClone(memo[key]) as T;
     },
     async ask<F extends ElicitForm>(key: string, form: F) {
       const value = resolve(key, form);
