@@ -3,6 +3,11 @@
 // License text available at https://opensource.org/license/mit/
 
 import {existsSync} from 'node:fs';
+import {
+  Client,
+  InMemoryTransport,
+  isInputRequiredResult,
+} from '@modelcontextprotocol/client';
 import {fileURLToPath} from 'node:url';
 import express from 'express';
 import {z} from 'zod';
@@ -16,6 +21,7 @@ import {
 } from '@agentback/core';
 import {
   MCPBindings,
+  toolAsksUser,
   toolEntryMeta,
   type MCPServer,
   type SimulatedRequest,
@@ -133,6 +139,22 @@ const NamePath = z.object({name: z.string()});
 // Tool input is dynamic (validated per-tool by the tool's own Zod schema inside
 // callTool); accept any JSON object here.
 const CallBody = z.record(z.string(), z.unknown());
+
+/**
+ * The answers to a tool's questions, sent back with the call's arguments and
+ * the opaque `requestState` the previous round returned.
+ */
+const AnswerBody = z.object({
+  arguments: z.record(z.string(), z.unknown()).default({}),
+  requestState: z.string().optional(),
+  inputResponses: z.record(
+    z.string(),
+    z.object({
+      action: z.enum(['accept', 'decline', 'cancel']),
+      content: z.record(z.string(), z.unknown()).optional(),
+    }),
+  ),
+});
 
 /** `?as=<profile id>` — call or read as a {@link InspectorClientProfile}. */
 const AsQuery = z.object({as: z.string().optional()});
@@ -299,6 +321,13 @@ export class McpInspectorController {
     body: z.infer<typeof CallBody>;
     query: z.infer<typeof AsQuery>;
   }): Promise<unknown> {
+    // A tool that asks the user goes through a real MCP client: an
+    // in-process call has nobody to ask.
+    if (this.asks(input.path.name)) {
+      return this.invoke(() =>
+        this.askingCall({name: input.path.name, arguments: input.body}),
+      );
+    }
     const simulate = this.simulateAs(input.query.as);
     return this.invoke(() =>
       this.mcp.callTool(
@@ -307,6 +336,90 @@ export class McpInspectorController {
         simulate ? {simulate} : undefined,
       ),
     );
+  }
+
+  /**
+   * Continue a call that asked the user: the arguments again, the answers,
+   * and the previous round's `requestState`. Answers another question the
+   * same way until the tool returns.
+   */
+  @post('/tools/{name}/answer', {
+    path: NamePath,
+    body: AnswerBody,
+    response: z.any(),
+  })
+  async answer(input: {
+    path: z.infer<typeof NamePath>;
+    body: z.infer<typeof AnswerBody>;
+  }): Promise<unknown> {
+    return this.invoke(() =>
+      this.askingCall({
+        name: input.path.name,
+        arguments: input.body.arguments,
+        inputResponses: input.body.inputResponses,
+        ...(input.body.requestState !== undefined
+          ? {requestState: input.body.requestState}
+          : {}),
+      }),
+    );
+  }
+
+  /** True when `name` is a served tool that injects the elicitor. */
+  private asks(name: string): boolean {
+    const t = this.mcp.servedTools().find(x => x.meta.name === name);
+    return t !== undefined && toolAsksUser(t);
+  }
+
+  /**
+   * Run one round of an asking tool through an in-memory 2026-era MCP client
+   * in manual multi-round-trip mode. A question comes back as
+   * `{inputRequired: {questions, requestState}}` for the page to render; the
+   * page answers through {@link answer}. The tool sees a real client that
+   * declared `elicitation`, so `elicit.ask` and `confirm:` behave as they do
+   * for a conformant host — only the human is the page.
+   */
+  private async askingCall(params: Record<string, unknown>): Promise<unknown> {
+    const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+    const served = this.mcp.serveTransport(serverSide);
+    const client = new Client(
+      {name: 'mcp-inspector', version: '0.0.0'},
+      {
+        versionNegotiation: {mode: 'auto'},
+        capabilities: {elicitation: {form: {}}},
+        inputRequired: {autoFulfill: false},
+      },
+    );
+    try {
+      await client.connect(clientSide);
+      const result = await client.callTool(params as never, {
+        allowInputRequired: true,
+      });
+      if (isInputRequiredResult(result)) {
+        const questions: Record<
+          string,
+          {message?: string; requestedSchema?: unknown}
+        > = {};
+        for (const [key, req] of Object.entries(result.inputRequests ?? {})) {
+          const p = (req as {params?: Record<string, unknown>}).params ?? {};
+          questions[key] = {
+            message: p.message as string | undefined,
+            requestedSchema: p.requestedSchema,
+          };
+        }
+        return {
+          inputRequired: {
+            questions,
+            ...(result.requestState !== undefined
+              ? {requestState: result.requestState}
+              : {}),
+          },
+        };
+      }
+      return unwrapToolResult(result);
+    } finally {
+      await client.close().catch(() => {});
+      await served.close().catch(() => {});
+    }
   }
 
   @post('/resources/{name}/read', {
@@ -345,6 +458,46 @@ export class McpInspectorController {
       throw e;
     }
   }
+}
+
+/**
+ * The tool's value from a `tools/call` result, the shape the in-process path
+ * returns: `structuredContent`, else the parsed single text item. An error
+ * result throws with its message, so the page shows it like any failure.
+ */
+function unwrapToolResult(result: {
+  isError?: boolean;
+  structuredContent?: unknown;
+  content?: unknown;
+}): unknown {
+  const items = (result.content ?? []) as {type?: string; text?: string}[];
+  const text =
+    items.length === 1 && items[0].type === 'text' ? items[0].text : undefined;
+  if (result.isError) {
+    let message = text ?? 'The tool failed.';
+    try {
+      const env = JSON.parse(message) as {
+        error?: {message?: string; code?: string};
+      };
+      if (env.error?.message) {
+        message = env.error.code
+          ? `${env.error.message} (${env.error.code})`
+          : env.error.message;
+      }
+    } catch {
+      // Plain text error.
+    }
+    throw new Error(message);
+  }
+  if (result.structuredContent !== undefined) return result.structuredContent;
+  if (text !== undefined) {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
+  }
+  return result.content;
 }
 
 // ---- Install / mount --------------------------------------------------------
@@ -561,6 +714,9 @@ section .card:nth-child(2){animation-delay:.04s}section .card:nth-child(3){anima
 .field input:focus, .field select:focus, .field textarea:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(154,51,36,.12); }
 .field textarea { min-height:64px; resize:vertical; }
 .banner { color:var(--err); font-size:12px; margin:.5rem 0; font-family:var(--mono); }
+.question { border:1px solid var(--line-2); border-radius:5px; background:var(--card); padding:.6rem .75rem; margin:.5rem 0; }
+.question-set { border:0; padding:0; margin:.5rem 0; }
+.question-set legend { font-weight:600; padding:0; margin-bottom:.25rem; }
 .collapse { margin-top:.7rem; }
 .collapse summary { cursor:pointer; color:var(--muted); font-size:12px; font-family:var(--mono); }
 pre.json { background:var(--paper); border:1px solid var(--line-2); padding:.8rem; border-radius:5px; white-space:pre-wrap; word-break:break-word; font-size:12px; font-family:var(--mono); margin:.6rem 0 0; }

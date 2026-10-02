@@ -109,8 +109,36 @@ export type RecordFn = (
 export interface Api {
   fetchManifest(): Promise<Manifest>;
   callTool(name: string, args: Record<string, unknown>): Promise<Outcome>;
+  /**
+   * Continue a call that asked the user (local server only). Absent on a
+   * remote target, which has no answering seam.
+   */
+  answerTool?(name: string, body: AnswerBody): Promise<Outcome>;
   readResource(resource: ResourceInfo): Promise<Outcome>;
   getPrompt(name: string): Promise<Outcome>;
+}
+
+/** The body of a continued call: arguments, answers, previous round's state. */
+export interface AnswerBody {
+  arguments: Record<string, unknown>;
+  requestState?: string;
+  inputResponses: Record<
+    string,
+    {action: 'accept' | 'decline' | 'cancel'; content?: Record<string, unknown>}
+  >;
+}
+
+/** A call result that is a question rather than the tool's value. */
+export interface InputRequired {
+  questions: Record<string, {message?: string; requestedSchema?: JsonSchema}>;
+  requestState?: string;
+}
+
+/** The questions in a successful outcome, when the tool asked instead. */
+export function inputRequiredOf(outcome: Outcome): InputRequired | undefined {
+  if (!outcome.ok) return undefined;
+  const r = outcome.result as {inputRequired?: InputRequired} | undefined;
+  return r && typeof r === 'object' ? r.inputRequired : undefined;
 }
 
 /** Remote-connect wiring, supplied by the shell when mcp-connect is mounted. */
@@ -172,6 +200,8 @@ export function localApi(apiBase: string, as?: string): Api {
     },
     callTool: (name, args) =>
       postJson(base + '/tools/' + enc(name) + '/call' + q, args),
+    answerTool: (name, body) =>
+      postJson(base + '/tools/' + enc(name) + '/answer', body),
     readResource: r =>
       postJson(base + '/resources/' + enc(r.name) + '/read' + q),
     getPrompt: name => postJson(base + '/prompts/' + enc(name) + '/get'),

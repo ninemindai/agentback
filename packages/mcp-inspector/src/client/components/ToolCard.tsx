@@ -3,11 +3,12 @@
 // This file is licensed under the MIT License.
 
 import {useMemo, useState} from 'react';
-import {type RecordFn, type ToolInfo} from '../api';
+import {inputRequiredOf, type RecordFn, type ToolInfo} from '../api';
 import {useApi} from '../ApiContext';
 import {coerceValue} from '../lib/coerce';
 import {SchemaField} from './SchemaField';
 import {OutcomeView} from './JsonView';
+import {QuestionForm, type QuestionAnswer} from './QuestionForm';
 import type {Outcome} from '../api';
 
 /** Initial form value for a field type: unchecked for booleans, empty otherwise. */
@@ -51,14 +52,34 @@ export function ToolCard({
     }
   }
 
+  // The arguments of the call in flight, resent with each round's answers.
+  const [callArgs, setCallArgs] = useState<Record<string, unknown>>({});
+  const asking = outcome ? inputRequiredOf(outcome) : undefined;
+
   async function run() {
     const args: Record<string, unknown> = {};
     for (const n of names) {
       const v = coerceValue(values[n]!, props[n]!);
       if (v !== undefined) args[n] = v;
     }
+    setCallArgs(args);
     setPending(true);
     const result = await api.callTool(tool.name, args);
+    setOutcome(result);
+    record('tool', tool.name, result);
+    setPending(false);
+  }
+
+  async function answer(answers: Record<string, QuestionAnswer>) {
+    if (!asking || !api.answerTool) return;
+    setPending(true);
+    const result = await api.answerTool(tool.name, {
+      arguments: callArgs,
+      ...(asking.requestState !== undefined
+        ? {requestState: asking.requestState}
+        : {}),
+      inputResponses: answers,
+    });
     setOutcome(result);
     record('tool', tool.name, result);
     setPending(false);
@@ -94,7 +115,17 @@ export function ToolCard({
           <button className="btn" onClick={run} disabled={pending}>
             {pending ? 'Running…' : 'Run'}
           </button>
-          {outcome && <OutcomeView outcome={outcome} />}
+          {asking && api.answerTool ? (
+            <QuestionForm
+              // A fresh form per round: the questions change.
+              key={asking.requestState ?? 'round'}
+              questions={asking.questions}
+              pending={pending}
+              onSubmit={answer}
+            />
+          ) : (
+            outcome && <OutcomeView outcome={outcome} />
+          )}
           {(tool.annotations || tool.icons || tool._meta) && (
             <details className="collapse">
               <summary>host metadata</summary>

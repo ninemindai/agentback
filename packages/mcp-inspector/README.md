@@ -44,6 +44,11 @@ Options:
 - **Prompts** — Get button → renders the MCP `{messages:[…]}` wire shape.
 - **History** — an in-memory panel logging every invocation (kind, name,
   status, elapsed ms), each expandable to its result. Cleared on reload.
+- **Answers questions** — a tool that asks the user (`elicit.ask`, a
+  `confirm:` prompt) runs through a real in-memory 2026-era MCP client in
+  manual multi-round-trip mode. Each question renders as a form (Answer or
+  Decline), and the call continues until the tool returns. Other tools keep
+  the in-process path; "Call as" profiles do not apply to asking tools.
 - **Call as** — run a tool or read a resource with a host's simulated client,
   mount and `_meta` (built-in **ChatGPT** and **Claude** profiles; bind
   `INSPECTOR_CLIENT_PROFILES` to replace them, `{}` to hide the picker). It
@@ -65,6 +70,9 @@ Fixed at `/mcp-inspector/api`:
   own Zod schema); returns the raw result, or `400 {error:{statusCode, message,
 details}}` (`details` = Zod issues) on invalid input / unknown tool.
 - `POST /resources/{name}/read` — `{contents:[…]}`; `400` on unknown.
+- `POST /tools/{name}/answer` — `{arguments, requestState?, inputResponses}`
+  continues a call that returned `{inputRequired: {questions, requestState}}`
+  (`inputResponses` maps each question key to `{action, content?}`).
 - `?as=<profile>` on either POST calls or reads as a client profile (`400` for
   an unknown one); `GET /manifest` lists them under `profiles`.
 - `POST /prompts/{name}/get` — `{messages:[…]}`; `400` on unknown.

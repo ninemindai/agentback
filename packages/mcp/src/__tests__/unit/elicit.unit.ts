@@ -33,6 +33,26 @@ const bump = (k: string) => (runs[k] = (runs[k] ?? 0) + 1);
 
 @mcpServer()
 class Shop {
+  // Costly work that must precede the question: runs once per call.
+  @tool('quote')
+  async quote(@inject(MCPBindings.ELICIT) elicit: Elicitor) {
+    bump('quote');
+    const price = await elicit.once('price', async () => {
+      bump('price');
+      return {cents: 42};
+    });
+    const {part} = await elicit.ask('part', {
+      message: 'Which part?',
+      standard: Part,
+    });
+    return `${part} at ${price.cents}`;
+  }
+
+  @tool('price_only')
+  async priceOnly(@inject(MCPBindings.ELICIT) elicit: Elicitor) {
+    return elicit.once('price', () => ({cents: 7}));
+  }
+
   @tool('pick')
   async pick(@inject(MCPBindings.ELICIT) elicit: Elicitor) {
     bump('pick');
@@ -225,6 +245,17 @@ const byMessage = (m: string): Answer =>
       : {action: 'accept', content: {confirm: true} as never};
 
 describe.each(['modern', 'legacy'] as const)('elicit on the %s era', era => {
+  it('once: runs costly work once per call, not once per round', async () => {
+    const server = await boot();
+    const {client} = await connect(server, era, byMessage);
+    runs.quote = 0;
+    runs.price = 0;
+    const r = await client.callTool({name: 'quote', arguments: {}});
+    expect(text(r)).toBe('bolt at 42');
+    expect(runs.quote).toBe(2); // the body re-ran…
+    expect(runs.price).toBe(1); // …but the costly work did not
+  });
+
   it('asks, re-runs the tool from the top, and returns the answer', async () => {
     const server = await boot();
     const {client, seen} = await connect(server, era, byMessage);
@@ -371,6 +402,40 @@ describe('elicit — guards', () => {
     const server = await boot();
     // In-process: the guard fires before the caller's own limits apply.
     await expect(server.callTool(name, {})).rejects.toThrow(message);
+  });
+
+  it('once: guards its key, its value and its size', async () => {
+    const session = createElicitSession({}, undefined);
+    await expect(session.once('k', () => 1)).resolves.toBe(1);
+    await expect(session.once('k', () => 2)).rejects.toThrow(
+      "elicit.once('k'): used twice in one call",
+    );
+    await expect(session.once('fn', () => () => 1)).rejects.toThrow(
+      "elicit.once('fn'): the result is not JSON",
+    );
+    await expect(session.once('big', () => 1n)).rejects.toThrow(
+      "elicit.once('big'): the result is not JSON",
+    );
+    await expect(
+      session.once('huge', () => 'x'.repeat(40 * 1024)),
+    ).rejects.toThrow(/over the 32768-byte limit/);
+    expect(Object.keys(session.memo)).toEqual(['k']);
+    // A replayed result is returned as a copy, without running fn.
+    const replay = createElicitSession({}, undefined, {k: {a: 1}});
+    let ran = false;
+    const v = await replay.once('k', () => {
+      ran = true;
+      return {a: 2};
+    });
+    expect(v).toEqual({a: 1});
+    expect(ran).toBe(false);
+  });
+
+  it('once: an in-process call simply runs fn', async () => {
+    const server = await boot();
+    await expect(server.callTool('price_only', {})).resolves.toEqual({
+      cents: 7,
+    });
   });
 
   it('a key asked twice in one call is a misuse', async () => {

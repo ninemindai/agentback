@@ -29,6 +29,7 @@
     "@agentback/mcp-connect": "workspace:~",
     "@agentback/openapi": "workspace:~",
     "@agentback/rest": "workspace:~",
+    "@modelcontextprotocol/client": "^2.1.0",
     "@types/express": "^5.0.6",
     "express": "^5.2.1",
     "tslib": "^2.8.1",

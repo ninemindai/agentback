@@ -342,8 +342,10 @@ These land with 1a: the docs are what make the seams usable.
 
 ## 5. Phase 2 — user-authored elicitation (G6)
 
-> **Status (2026-10-01): implemented**, experimental. Differences from the
-> design below, each found while building it:
+> **Status (2026-10-01): implemented**, experimental. Follow-ups since
+> (2026-10-02): `elicit.once(key, fn)` replays expensive pre-ask work from the
+> envelope; `mcp-host` relays upstream questions; the inspector answers them.
+> Differences from the design below, each found while building it:
 >
 > - **`REQUEST_CLIENT` landed with phase 2** (it is what dispatch branches on);
 >   `REQUEST_META` and the rest of §4.7 stay in 1b. Legacy capabilities come

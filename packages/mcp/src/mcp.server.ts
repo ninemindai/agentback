@@ -1082,6 +1082,7 @@ export class MCPServer implements Server {
     const session = createElicitSession(
       state?.answers ?? {},
       this.mrtrContext(reqCtx).responses,
+      state?.once ?? {},
     );
     reqCtx.bind(MCPBindings.ELICIT).to(session);
     try {
@@ -1364,6 +1365,7 @@ export class MCPServer implements Server {
       ...(Object.keys(session.answers).length
         ? {answers: session.answers}
         : {}),
+      ...(Object.keys(session.memo).length ? {once: session.memo} : {}),
     };
     // A `confirm:` tool that got this far was confirmed this round. The
     // store token that proved it is spent, so carry a fresh one: the next

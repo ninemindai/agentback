@@ -163,13 +163,16 @@ or `elicit.askAll({...})`. **Experimental.**
 - Inject as a **method parameter** only (a singleton's constructor gets the
   app-level default, whose asks fail). The MCP Inspector and the default
   stateless HTTP mount (for 2025 clients) cannot answer; the error names the
-  cause.
+  cause. The MCP Inspector can: it runs an asking tool through a real 2026
+  client and renders each question as a form.
 - `MCPBindings.REQUEST_STATE_KEY` — share one key across instances (bind it
   or set `AGENTBACK_MCP_STATE_KEY`); verification failures are logged. The
   envelope is signed, bound to tool + input + caller, valid for an hour, and
   readable by the client (not encrypted).
 - Work before an `ask` re-runs every round and only the final round is
-  metered; the rate limiter debits every round.
+  metered; the rate limiter debits every round. Wrap expensive pre-ask work
+  in `elicit.once(key, fn)`: its JSON result is replayed from the signed
+  envelope (readable by the client — never a secret; 32 KiB per call).
 - `MCPBindings.REQUEST_CLIENT` — `{era, capabilities?, info?, canRoundTrip}`;
   `hasClientExtension(client, id)`. `MCPBindings.REQUEST_META` /
   `REQUEST_MOUNT` — the request's frozen `_meta` and its HTTP mount.
