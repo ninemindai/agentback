@@ -101,7 +101,8 @@ export function isVerifiedPrincipal(user: unknown): user is UserProfile {
 
 /**
  * The scopes a session must hold for a tool to be *visible* (registered for
- * `tools/list` / `tools/call`).
+ * `tools/list` / `tools/call`). `@event` types share the rule: their `scope`
+ * option gates `events/list` and `events/subscribe` the same way.
  *
  * Source order: `@authorize({scopes})` on the method (with class-level
  * fallback, same resolver REST uses) > the legacy `@tool(..., {scope})`
@@ -113,7 +114,7 @@ export function isVerifiedPrincipal(user: unknown): user is UserProfile {
  */
 export function requiredScopesForTool(
   ctor: Function,
-  meta: ToolMetadata,
+  meta: Pick<ToolMetadata, 'methodName' | 'scope'>,
 ): string[] {
   const fromAuthz = requiredScopesForMember(ctor, meta.methodName as string);
   if (fromAuthz.length) return fromAuthz;

@@ -38,6 +38,7 @@
     {"path": "packages/plugin"},
     {"path": "packages/common"},
     {"path": "packages/messaging"},
+    {"path": "packages/mcp-events"},
     {"path": "packages/actors"},
     {"path": "packages/actors-do"},
     {"path": "packages/actors-redis"},
@@ -72,6 +73,7 @@
     {"path": "examples/hello-chat"},
     {"path": "examples/hello-uploads"},
     {"path": "examples/hello-mcp-apps"},
+    {"path": "examples/hello-mcp-events"},
     {"path": "examples/hello-plugin"},
     {"path": "examples/hello-agents"},
     {"path": "examples/hello-command"}

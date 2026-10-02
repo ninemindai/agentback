@@ -15,6 +15,7 @@ maintaining this index.
 | 004  | Make `multer` an optional peer dependency of `@agentback/rest`                                 | P2       | S/M      | —          | DONE                            |
 | 005  | Introduce `ExpressService`: DI-owned Express host RestServer injects                           | P2       | L        | —          | DONE                            |
 | 006  | Phase 2: `EdgeRestApplication` / `ExpressRestApplication` split (edge installs drop `express`) | P3       | L (core) | 005        | DONE (P2.1-P2.3; P2.4 deferred) |
+| 007  | MCP Events: `@event` + webhook delivery (`@agentback/mcp-events`)                              | P2       | L        | —          | DONE                            |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) |
 REJECTED (with one-line rationale: finding fixed independently or approach

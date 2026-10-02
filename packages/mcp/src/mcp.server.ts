@@ -43,6 +43,7 @@ import type {
   Implementation,
   InputRequiredResult,
   ListToolsResult,
+  ServerCapabilities,
   Transport,
 } from '@modelcontextprotocol/server';
 import {CoreBindings, extensionFilter, Server} from '@agentback/core';
@@ -119,8 +120,68 @@ import {
   toResourceContents,
   type ResourceContentItem,
 } from './resource-content.js';
+import {
+  assertUniqueEventNames,
+  servedEvents,
+  visibleEvents,
+  type EventBinding,
+} from './events/registry.js';
+import {
+  McpEventError,
+  McpEventErrorCodes,
+  type EventSubscription,
+  type SubscriptionStore,
+} from './events/ports.js';
+import {
+  grantTtl,
+  invalidParams,
+  parseSubscribeParams,
+  parseUnsubscribeParams,
+  resolveEventsConfig,
+  subscriptionId,
+  toProfile,
+  type ResolvedEventsConfig,
+} from './events/subscriptions.js';
 
 const log = loggers('agentback:mcp:server');
+
+/** MCP Events operator hints already logged, per application. */
+const warnedEvents = new WeakMap<Context, Set<string>>();
+
+/**
+ * In-flight endpoint verifications, keyed by store then `(principal, url)`.
+ * Module-level (keyed on the app-level store) because a stateless server is
+ * built per request: concurrent subscribes would each build their own.
+ */
+const inflightVerifications = new WeakMap<
+  SubscriptionStore,
+  Map<string, Promise<void>>
+>();
+
+/** Tail of each principal's lock chain, keyed by store then principal. */
+const principalLocks = new WeakMap<
+  SubscriptionStore,
+  Map<string, Promise<unknown>>
+>();
+
+/** Run `fn` exclusively per `(store, principal)` within this process. */
+async function withLock<T>(
+  store: SubscriptionStore,
+  principal: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  let locks = principalLocks.get(store);
+  if (!locks) principalLocks.set(store, (locks = new Map()));
+  const prior = locks.get(principal) ?? Promise.resolve();
+  const run = prior.then(fn, fn);
+  const tail = run.catch(() => {});
+  locks.set(principal, tail);
+  try {
+    return await run;
+  } finally {
+    if (locks.get(principal) === tail) locks.delete(principal);
+  }
+}
 
 export interface ToolBinding {
   ctor: Function;
@@ -615,13 +676,20 @@ export class MCPServer implements Server {
   readonly config: Required<Omit<MCPServerConfig, MCPServerOptionalKeys>> &
     Pick<
       MCPServerConfig,
-      'localPrincipal' | 'title' | 'icons' | 'websiteUrl' | 'capabilities'
+      | 'localPrincipal'
+      | 'title'
+      | 'icons'
+      | 'websiteUrl'
+      | 'capabilities'
+      | 'events'
     > & {
       transports: NonNullable<MCPServerConfig['transports']>;
       localPrincipal?: UserProfile;
     };
   /** Server info advertised to clients; derived once from the config. */
   private readonly serverInfo: Implementation;
+  /** MCP Events subscription policy, defaults applied; validated at boot. */
+  private readonly eventsConfig: ResolvedEventsConfig;
 
   constructor(
     // Inject the binding's own resolution context rather than the app root.
@@ -646,6 +714,7 @@ export class MCPServer implements Server {
       },
     };
     this.serverInfo = buildServerInfo(this.config);
+    this.eventsConfig = resolveEventsConfig(this.config.events);
     // Validates the config's own capabilities eagerly; contributions bound
     // later join at each server build (and `start()`).
     this.mcp = new McpServer(this.serverInfo, {
@@ -768,6 +837,14 @@ export class MCPServer implements Server {
   /** Public introspection: list every registered prompt. */
   listPrompts(): {ctor: Function; meta: PromptMetadata}[] {
     return this.collectAllPrompts();
+  }
+
+  /**
+   * Public introspection: the `@event` types callers are served, one per
+   * name, root-nearest first.
+   */
+  listEvents(): EventBinding[] {
+    return servedEvents(this.context);
   }
 
   /**
@@ -2164,6 +2241,411 @@ export class MCPServer implements Server {
         this.requestContextFor(extra, server, mount),
       );
     });
+
+    this.registerEventsOn(target, scopes);
+  }
+
+  /**
+   * MCP Events (webhook delivery, OpenAI's subset of the WG sketch):
+   * `events/list`, `events/subscribe`, `events/unsubscribe`, and the
+   * top-level `events` capability.
+   *
+   * The handlers ride inside `registerAllOn`, so stdio, sessions and the
+   * per-request stateless factory share one path — and receive the same
+   * `scopes`, which an authenticated transport passes as `[]` (never
+   * `undefined`) for an anonymous caller, so a scoped event is hidden from it.
+   * Nothing subscription-shaped lives on this instance: subscriptions and the
+   * verification cache are in the app-level `SUBSCRIPTION_STORE`, because a
+   * stateless server is gone before the first delivery.
+   */
+  private registerEventsOn(target: McpServer, scopes?: string[]): void {
+    // Compile eagerly, as tools do: a schema that cannot describe itself (or
+    // a non-object input/payload) fails here, not at a client's first list.
+    visibleEvents(this.context, scopes);
+    const server = target.server;
+    // Advertised when the app declares any event (even one this caller cannot
+    // see — a capability is not a list). Top level, as
+    // OpenAI's guide places it, not under `extensions`: the SDK does not
+    // parse its own outgoing capabilities, so the key survives — a test pins
+    // that, since a stricter SDK would strip it with no error anywhere.
+    if (servedEvents(this.context).length > 0) {
+      server.registerCapabilities({events: {}} as ServerCapabilities);
+    }
+    // The 3-argument form is the SDK's API for non-spec methods. Params are
+    // accepted as-is and validated here, so every refusal carries the
+    // extension's own code and message rather than a generic schema error.
+    const anyParams = {
+      '~standard': {
+        version: 1 as const,
+        vendor: 'agentback',
+        validate: (value: unknown) => ({value}),
+      },
+    };
+    server.setRequestHandler('events/list', {params: anyParams}, async () => ({
+      events: [...visibleEvents(this.context, scopes).values()].map(
+        v => v.entry,
+      ),
+    }));
+    server.setRequestHandler(
+      'events/subscribe',
+      {params: anyParams},
+      async (params, extra) =>
+        this.wireError(() => this.subscribeEvent(params, extra, scopes)),
+    );
+    server.setRequestHandler(
+      'events/unsubscribe',
+      {params: anyParams},
+      async (params, extra) =>
+        this.wireError(() => this.unsubscribeEvent(params, extra, scopes)),
+    );
+  }
+
+  /** Re-express an {@link McpEventError} as the JSON-RPC error it names. */
+  private async wireError<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (err) {
+      if (err instanceof McpEventError) {
+        throw new ProtocolError(err.code, err.message, err.data);
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * The subscriber's canonical principal, or `-32012`. Webhook mode needs an
+   * authenticated principal: the identity tuple is only unguessable with the
+   * principal in it, and the per-principal cap only isolates tenants if the
+   * principal is a person, not a client application.
+   *
+   * - **Transport auth** (`REQUEST_AUTH`): the framework principal at
+   *   `extra.user` (set by `strategyAuth`), else the subject at `extra.sub`
+   *   (set it in an OAuth `verifier`). Never `clientId`: under OAuth that is
+   *   the client application every end user shares, so keying on it would
+   *   pool every user's subscriptions under one identity.
+   * - **No transport auth and no HTTP request** (stdio, in-process): the
+   *   configured `localPrincipal`.
+   * - **An unauthenticated HTTP request**: refused, even with a
+   *   `localPrincipal` configured — that identity is for the local operator,
+   *   not for anonymous network callers.
+   */
+  private async eventPrincipal(
+    reqCtx: Context,
+    extra: ToolRequestExtra,
+  ): Promise<{user: UserProfile; principal: string}> {
+    const authInfo = await reqCtx.get(MCPBindings.REQUEST_AUTH, {
+      optional: true,
+    });
+    const user = await this.bindRequestPrincipals(reqCtx);
+    let principal: unknown;
+    if (authInfo) {
+      const claims = (authInfo.extra ?? {}) as {
+        user?: UserProfile;
+        sub?: unknown;
+      };
+      principal = claims.user ? claims.user[securityId] : claims.sub;
+      if (typeof principal !== 'string' || principal.length === 0) {
+        this.warnOnce(
+          'no-subject',
+          'events/subscribe refused (-32012): the token carries no per-user ' +
+            'principal. Set AuthInfo.extra.user (strategyAuth does) or ' +
+            'AuthInfo.extra.sub in your OAuth verifier; clientId names the ' +
+            'client application, which every user shares.',
+        );
+        throw new McpEventError(
+          McpEventErrorCodes.Forbidden,
+          'Forbidden: webhook subscriptions need a per-user principal',
+        );
+      }
+    } else if (extra.http) {
+      this.warnOnce(
+        'anonymous',
+        'events/subscribe refused (-32012): an unauthenticated HTTP caller. ' +
+          'Configure installMcpHttp({auth} | {strategyAuth}); localPrincipal ' +
+          'applies to stdio and in-process calls only.',
+      );
+      principal = undefined;
+    } else {
+      principal = user?.[securityId];
+    }
+    if (!user || typeof principal !== 'string' || principal.length === 0) {
+      throw new McpEventError(
+        McpEventErrorCodes.Forbidden,
+        'Forbidden: webhook subscriptions require an authenticated principal',
+      );
+    }
+    // A principal taken from `extra.sub` replaces the clientId-synthesized id,
+    // so voters and `match` see the subject the subscription is keyed on.
+    return {user: {...user, [securityId]: principal}, principal};
+  }
+
+  /** Log an operator hint once per application (the wire error is terse). */
+  private warnOnce(kind: string, message: string): void {
+    const root = rootContext(this.context);
+    let seen = warnedEvents.get(root);
+    if (!seen) warnedEvents.set(root, (seen = new Set()));
+    if (seen.has(kind)) return;
+    seen.add(kind);
+    log.warn(message);
+    notifyLogHooksAlways(log.warn, [message]);
+  }
+
+  /** The visible event `name`, or `-32011 {kind: 'event'}`. */
+  private visibleEvent(name: string, scopes?: string[]): EventBinding {
+    // A scope-hidden event answers exactly like an unknown one, as a hidden
+    // tool does: its existence is not disclosed.
+    const found = visibleEvents(this.context, scopes).get(name);
+    if (!found) {
+      throw new McpEventError(
+        McpEventErrorCodes.NotFound,
+        `Event ${name} not found`,
+        {kind: 'event'},
+      );
+    }
+    return found.event;
+  }
+
+  /**
+   * `events/subscribe`: validate, authorize, verify the endpoint if needed,
+   * then upsert by the identity tuple. Idempotent — a refresh re-grants the
+   * TTL and may rotate the secret.
+   */
+  protected async subscribeEvent(
+    raw: unknown,
+    extra: ToolRequestExtra,
+    scopes?: string[],
+  ): Promise<{
+    id: string;
+    refreshBefore: string | null;
+    cursor: string | null;
+    truncated: boolean;
+  }> {
+    const reqCtx = this.requestContextFor(extra);
+    const {user, principal} = await this.eventPrincipal(reqCtx, extra);
+    const {params, mode} = parseSubscribeParams(raw);
+    const event = this.visibleEvent(params.name, scopes);
+    try {
+      await this.authorizeMember(
+        event.ctor,
+        event.meta.methodName as string,
+        user,
+        reqCtx,
+      );
+    } catch (err) {
+      // Only a denial is a Forbidden; a voter that failed (a database down)
+      // is an internal error, not a verdict about this principal.
+      if ((err as {code?: unknown}).code === ErrorCodes.FORBIDDEN) {
+        throw new McpEventError(
+          McpEventErrorCodes.Forbidden,
+          `Forbidden: not authorized for event ${params.name}`,
+        );
+      }
+      log.error(
+        'events/subscribe %s: authorization failed: %s',
+        params.name,
+        err instanceof Error ? err.message : String(err),
+      );
+      throw err;
+    }
+    if (mode !== undefined && mode !== 'webhook') {
+      throw new McpEventError(
+        McpEventErrorCodes.Unsupported,
+        `Delivery mode ${String(mode)} is not supported`,
+        {feature: 'deliveryMode', value: mode},
+      );
+    }
+    if (event.meta.input) {
+      const parsed = standardParse(event.meta.input, params.arguments);
+      if (!parsed.success) {
+        const first = parsed.issues[0];
+        const where = first?.path?.length ? first.path.join('.') : 'arguments';
+        throw invalidParams(
+          `Invalid arguments for event ${params.name}: ${where}: ${
+            first?.message ?? 'invalid'
+          }`,
+        );
+      }
+    } else if (Object.keys(params.arguments).length > 0) {
+      throw invalidParams(`Event ${params.name} takes no arguments`);
+    }
+    // The emitter discovers events from the app context. An event only a
+    // per-session binder contributes is listed to that session but can never
+    // be emitted, so a subscription to it would silently never fire.
+    const emitterCtx = reqCtx.getOwnerContext(MCPBindings.EVENTS.key);
+    if (
+      emitterCtx &&
+      !servedEvents(emitterCtx).some(
+        e =>
+          e.ctor === event.ctor && e.meta.methodName === event.meta.methodName,
+      )
+    ) {
+      throw new McpEventError(
+        McpEventErrorCodes.Unsupported,
+        `Event ${params.name} cannot be emitted from the application context`,
+        {feature: 'event', value: params.name},
+      );
+    }
+
+    const delivery = await reqCtx.get(MCPBindings.EVENT_DELIVERY, {
+      optional: true,
+    });
+    if (!delivery) {
+      this.warnOnce(
+        'no-delivery',
+        'events/subscribe refused (-32014): no MCPBindings.EVENT_DELIVERY is ' +
+          'bound. Call installMcpEvents(app) from @agentback/mcp-events.',
+      );
+      throw new McpEventError(
+        McpEventErrorCodes.Unsupported,
+        'Webhook delivery is not configured on this server',
+        {feature: 'deliveryMode', value: 'webhook'},
+      );
+    }
+
+    const store = await reqCtx.get(MCPBindings.SUBSCRIPTION_STORE);
+    const cfg = this.eventsConfig;
+    const id = await subscriptionId(
+      principal,
+      params.url,
+      params.name,
+      params.arguments,
+    );
+    const assertUnderCap = async () => {
+      if (
+        !(await store.get(id)) &&
+        (await store.countByPrincipal(principal)) >=
+          cfg.maxSubscriptionsPerPrincipal
+      ) {
+        throw new McpEventError(
+          McpEventErrorCodes.ResourceExhausted,
+          'Subscription limit reached',
+          {limit: 'subscriptions', max: cfg.maxSubscriptionsPerPrincipal},
+        );
+      }
+    };
+    // Checked before verifying (no pointless POST) and again right before the
+    // write: the verification await reopens the window for concurrent calls.
+    await assertUnderCap();
+
+    // Anti-flooding: nothing is delivered to a URL whose owner has not shown
+    // intent. Cached per (principal, url), so varying `arguments` cannot
+    // multiply verification POSTs at a victim, and one principal's
+    // verification never waives another's. Concurrent subscribes for the same
+    // pair share ONE in-flight handshake. A configured trusted origin is the
+    // sketch's allowlist path: consent was given out of band.
+    if (!(await store.isVerified(principal, params.url))) {
+      if (cfg.trustedCallbackOrigins.includes(new URL(params.url).origin)) {
+        await store.markVerified(principal, params.url, cfg.verificationTtlMs);
+      } else {
+        const signal = await reqCtx.get(CoreBindings.ABORT_SIGNAL, {
+          optional: true,
+        });
+        let pending = inflightVerifications.get(store);
+        if (!pending) inflightVerifications.set(store, (pending = new Map()));
+        const key = JSON.stringify([principal, params.url]);
+        let handshake = pending.get(key);
+        if (!handshake) {
+          handshake = (async () => {
+            await delivery.verify(
+              {
+                subscriptionId: id,
+                principal,
+                url: params.url,
+                secret: params.secret,
+              },
+              {signal},
+            );
+            await store.markVerified(
+              principal,
+              params.url,
+              cfg.verificationTtlMs,
+            );
+          })().finally(() => pending.delete(key));
+          pending.set(key, handshake);
+        }
+        await handshake;
+      }
+    }
+
+    const now = Date.now();
+    let {expiresAt, refreshBefore} = grantTtl(params.ttlMs, cfg, now);
+    // Never outlive the credential that authorized the subscription: past the
+    // token's expiry the client must refresh with a live one.
+    const authInfo = await reqCtx.get(MCPBindings.REQUEST_AUTH, {
+      optional: true,
+    });
+    if (
+      authInfo?.expiresAt &&
+      (expiresAt === null || authInfo.expiresAt * 1000 < expiresAt)
+    ) {
+      expiresAt = Math.max(authInfo.expiresAt * 1000, now + 1);
+      refreshBefore = new Date(expiresAt).toISOString();
+    }
+    // Check-then-write runs under a per-principal lock, so concurrent
+    // subscribes cannot each pass the cap before any of them is stored. (A
+    // shared store across processes must enforce the cap itself.)
+    return withLock(store, principal, async () => {
+      await assertUnderCap();
+      const existing = await store.get(id);
+      // Rotation: a refresh with a new secret keeps the old one signing beside
+      // it for a grace window, so deliveries already in flight still verify.
+      let previousSecret = existing?.previousSecret;
+      if (existing && existing.secret !== params.secret) {
+        previousSecret = {
+          secret: existing.secret,
+          until: now + cfg.secretRotationGraceMs,
+        };
+      }
+      if (previousSecret && previousSecret.until <= now)
+        previousSecret = undefined;
+      const sub: EventSubscription = {
+        id,
+        principal,
+        profile: toProfile(user),
+        name: params.name,
+        arguments: params.arguments,
+        url: params.url,
+        secret: params.secret,
+        ...(previousSecret ? {previousSecret} : {}),
+        expiresAt,
+        createdAt: existing?.createdAt ?? now,
+        refreshedAt: now,
+      };
+      await store.put(sub);
+      return {id, refreshBefore, cursor: null, truncated: false};
+    });
+  }
+
+  /**
+   * `events/unsubscribe`: eager cleanup by the same identity tuple. The
+   * derived `id` is never accepted as input — knowing it authorizes nothing.
+   */
+  protected async unsubscribeEvent(
+    raw: unknown,
+    extra: ToolRequestExtra,
+    // Unused: a subscription outlives its event's visibility (a scope can be
+    // narrowed after subscribing), and deleting one's own subscription needs
+    // no visibility.
+    _scopes?: string[],
+  ): Promise<Record<string, never>> {
+    const reqCtx = this.requestContextFor(extra);
+    const {principal} = await this.eventPrincipal(reqCtx, extra);
+    const params = parseUnsubscribeParams(raw);
+    const store = await reqCtx.get(MCPBindings.SUBSCRIPTION_STORE);
+    const id = await subscriptionId(
+      principal,
+      params.url,
+      params.name,
+      params.arguments,
+    );
+    if (!(await store.delete(id))) {
+      throw new McpEventError(
+        McpEventErrorCodes.NotFound,
+        'Subscription not found',
+        {kind: 'subscription'},
+      );
+    }
+    return {};
   }
 
   /**
@@ -2235,6 +2717,7 @@ export class MCPServer implements Server {
     // `buildServer()`, which under stateless HTTP runs per request: a tool
     // mounted later that collides is served root-nearest-first and logged.
     this.assertUniqueToolNames();
+    assertUniqueEventNames(this.context);
     // Conflicting or non-constant capability contributions are a startup
     // error too — before any client sees a half-merged surface.
     const capabilities = resolveCapabilities(this.config, this.context);

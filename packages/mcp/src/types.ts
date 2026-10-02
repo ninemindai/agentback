@@ -5,6 +5,48 @@
 import type {UserProfile} from '@agentback/security';
 import type {Icon, JSONObject} from '@modelcontextprotocol/server';
 
+/**
+ * MCP Events subscription policy (`events/subscribe`). Every field has a
+ * default; see `DEFAULT_EVENTS_CONFIG`.
+ */
+export interface McpEventsConfig {
+  /** TTL granted when the client suggests none (default 1 h). */
+  defaultTtlMs?: number;
+  /**
+   * Floor a shorter `ttlMs` suggestion is clamped up to, so clients cannot
+   * cause refresh storms (default 60 s).
+   */
+  minTtlMs?: number;
+  /** Ceiling a longer suggestion is clamped down to (default 24 h). */
+  maxTtlMs?: number;
+  /**
+   * Honour `ttlMs: null` with `refreshBefore: null` (no expiry). Off by
+   * default: a server that grants no expiry MUST keep the subscription across
+   * restarts, which the in-memory store cannot. Turn on only with a durable
+   * `MCPBindings.SUBSCRIPTION_STORE`.
+   */
+  allowNoExpiry?: boolean;
+  /** Live subscriptions one principal may hold (default 100) ⇒ `-32013`. */
+  maxSubscriptionsPerPrincipal?: number;
+  /**
+   * How long a secret replaced by a refresh keeps signing beside the new
+   * one, so in-flight deliveries verify under either (default 5 min).
+   */
+  secretRotationGraceMs?: number;
+  /**
+   * How long a passed endpoint verification covers a `(principal, url)`
+   * before the next subscribe re-verifies it (default 1 h).
+   */
+  verificationTtlMs?: number;
+  /**
+   * Exact `https` origins (`https://hooks.example.com`) whose callback URLs
+   * are treated as verified without a challenge POST — the allowlist path of
+   * endpoint verification, for a receiver you vetted out of band (a gateway
+   * you operate, a host's documented webhook origin). Default `[]`.
+   */
+  trustedCallbackOrigins?: string[];
+}
+
 export interface MCPServerConfig {
   /** MCP server name advertised to clients. */
   name?: string;
@@ -39,6 +81,8 @@ export interface MCPServerConfig {
    * scopes/roles is denied on unauthenticated transports — the safe default.
    */
   localPrincipal?: UserProfile;
+  /** MCP Events subscription policy; see {@link McpEventsConfig}. */
+  events?: McpEventsConfig;
   /**
    * Protocol eras this server speaks over **stdio**.
    *
@@ -79,7 +123,8 @@ export type MCPServerOptionalKeys =
   | 'title'
   | 'icons'
   | 'websiteUrl'
-  | 'capabilities';
+  | 'capabilities'
+  | 'events';
 
 export const DEFAULT_MCP_CONFIG: Required<
   Omit<MCPServerConfig, MCPServerOptionalKeys>

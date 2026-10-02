@@ -13,7 +13,8 @@ description: >-
   @actorQuery, ActorRegistry, @injectActor, z.infer, toHostTools, installAgent,
   running a Vercel AI SDK ToolLoopAgent/HarnessAgent with the app's own @tool
   classes as host tools (@agentback/agents), rendering an MCP Apps (SEP-1865)
-  ui:// widget for a tool result (@tool({ui})), or building a
+  ui:// widget for a tool result (@tool({ui})), pushing MCP Events to a
+  subscribed client's webhook (@event, installMcpEvents), or building a
   hybrid REST+MCP app where both ends share the same Zod schemas. Also covers
   scaffolding a new app with `npm create agentback` / the `create-agentback`
   CLI (rest | mcp | hybrid templates).
@@ -76,6 +77,9 @@ ESM-only, Node 22.18+, TypeScript 7, pnpm workspaces. **Relative imports use
     Cancellation ([cancellation.md](references/cancellation.md))
 14. **Make model calls survive a flaky or degraded provider, and bill them in
     tokens?** → Model gateway ([model-gateway.md](references/model-gateway.md))
+15. **Notify an MCP client (ChatGPT) when something happens in the app, so an
+    agent reacts without the user present — webhook subscriptions to event
+    types?** → MCP Events ([mcp-events.md](references/mcp-events.md))
 
 ## Getting Started: scaffold a new app
 
@@ -225,6 +229,7 @@ if (isMain(import.meta)) await main();
 | Plugins             | `@agentback/plugin`: `loadPlugins(app)` (declarative), `loadPlugin(app, specifier)` (imperative)             | Mount **and retract** `Component`-contributing packages with fail-closed DI-key collision governance; both return an `Installed` (`uninstall()`); `agentback:{plugin,component,provides,inject}` marker derives mount order |
 | REST routing        | `@api`, `@get/@post/@put/@patch/@del`, `{path,query,body,headers,response}`                                  | Zod on the decorator; slot 0 = validated input bundle                                                                                                                                                                       |
 | MCP tools           | `@mcpServer`, `@tool('name', {input, output, scope?})`, `@resource`, `@prompt`                               | Zod on the decorator; stdio + HTTP transport                                                                                                                                                                                |
+| MCP Events          | `@event('name', {input, payload, scope?})`, `MCPBindings.EVENTS.emit()`, `installMcpEvents(app)`             | Webhook subscriptions (`events/*`); principal required; verified, IP-pinned, Standard-Webhooks-signed delivery (`@agentback/mcp-events`)                                                                                    |
 | OpenAPI             | emitted from Zod via `z.toJSONSchema({target:'draft-2020-12'})`                                              | `/openapi.json`, Swagger at `/explorer`                                                                                                                                                                                     |
 | Schema-typed client | `@agentback/client` (`defineRoute`, `routeGroup`, `safeCall`)                                                | Browser-safe; shares the SAME Zod schemas; no codegen                                                                                                                                                                       |
 | Auth                | `@authenticate('jwt'\|'api-key'\|...)`, `@authorize({...})`, voters                                          | Strategies + voter pipeline; client-app scope governance                                                                                                                                                                    |
@@ -290,6 +295,9 @@ vercel|cloudflare` (`@agentback/cli`). The schema-typed `client` depends on
   `@mcpServer`/`@tool`/`@resource`/`@prompt`, dispatch, `confirm:` gating, MCP
   Apps widgets (`ui:`), host extensions (`@agentback/mcp-openai`, per-host
   mounts), stdio vs HTTP transport, scope-gated tools, the inspector.
+- **MCP Events**: [references/mcp-events.md](references/mcp-events.md) —
+  `@event` + emit, webhook subscriptions (identity, TTL, rotation), endpoint
+  verification, IP-pinned signed delivery, revocation.
 - **Schema sharing & client**:
   [references/schema-sharing-and-client.md](references/schema-sharing-and-client.md)
   — one schema for both ends, `defineRoute`/`routeGroup`/`safeCall`, no codegen.
