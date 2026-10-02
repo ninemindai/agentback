@@ -41,12 +41,18 @@ class EchoTools {
   @tool('greet', {description: 'Asks your name, then greets you.'})
   async greet(
     @inject(MCPBindings.ELICIT) elicit: Elicitor,
-  ): Promise<{greeting: string}> {
+  ): Promise<{greeting: string; askedAt: string}> {
+    // Work that must happen before the question (a lookup, a slow API) goes in
+    // `elicit.once`: the first round stores its JSON result and later rounds
+    // replay it, so `askedAt` is the first round's time, not the answer's.
+    const askedAt = await elicit.once('askedAt', () =>
+      new Date().toISOString(),
+    );
     const {name} = await elicit.ask('name', {
       message: 'What should I call you?',
       standard: NameForm,
     });
-    return {greeting: `Hello, ${name}!`};
+    return {greeting: `Hello, ${name}!`, askedAt};
   }
 }
 

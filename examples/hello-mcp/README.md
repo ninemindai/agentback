@@ -6,12 +6,15 @@ Three entry points:
 
 - [`src/server.ts`](src/server.ts) — `MCPApplication` serving `echo`/`add`
   tools (`@mcpServer` + `@tool` with Zod `input` schemas) over the default
-  **stdio** transport.
+  **stdio** transport, plus `greet`, which asks the user a question mid-call
+  (`elicit.ask`) and runs its pre-question work once per call
+  (`elicit.once`).
 - [`src/http-server.ts`](src/http-server.ts) — the same `@tool` surface
   mounted over the MCP **Streamable HTTP** transport (`installMcpHttp`),
   protected by an api-key auth strategy and per-tool rate limiting.
 - [`src/test-client.ts`](src/test-client.ts) — spawns the stdio server with
-  the official MCP SDK client and verifies `tools/list` + `tools/call`.
+  the official MCP SDK client and verifies `tools/list` + `tools/call`,
+  answering `greet`'s question as a host would.
 
 ## Run
 
