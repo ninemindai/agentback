@@ -16,11 +16,14 @@ pnpm -F hello-hybrid start
 
 ## Surfaces
 
-| Route                     | What it is                               |
-| ------------------------- | ---------------------------------------- |
-| `GET /greet/hello/{name}` | REST, path-schema validated              |
-| `POST /greet/echo`        | REST, body-schema validated              |
-| `POST /mcp`               | MCP Streamable HTTP (`echo`/`add` tools) |
-| `GET /openapi.json`       | OpenAPI 3.1.1                            |
-| `GET /explorer/`          | Swagger UI                               |
-| `GET /mcp-inspector/`     | MCP Inspector UI                         |
+| Route                     | What it is                                 |
+| ------------------------- | ------------------------------------------ |
+| `GET /greet/hello/{name}` | REST, path-schema validated                |
+| `POST /greet/echo`        | REST, body-schema validated                |
+| `POST /mcp`               | MCP Streamable HTTP (`echo`/`add`/`greet`) |
+| `GET /openapi.json`       | OpenAPI 3.1.1                              |
+| `GET /explorer/`          | Swagger UI                                 |
+| `GET /mcp-inspector/`     | MCP Inspector UI                           |
+
+In the inspector, call `greet`: the tool asks for your name, the inspector
+renders the question as a form, and submitting it continues the same call.
