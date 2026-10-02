@@ -45,6 +45,47 @@ specs settle.
 See the "Host extensions" section of
 [docs/guides/mcp-apps-widgets.md](../guides/mcp-apps-widgets.md).
 
+### Capability contributions and per-host presentation — `@agentback/mcp`, `@agentback/mcp-http`
+
+P1-7 phase 1b ([proposal](../proposals/host-extensions.md) §4.6–4.7):
+
+- **`contributeCapabilities(app, {extensions?, experimental?})`** advertises
+  capabilities from code (an installer, a host adapter). It returns an
+  `Installed`; contributions merge with `MCPServerConfig.capabilities`, and
+  the same entry declared differently by two sources throws at the call
+  (and `start()` re-checks).
+- **`@appResource({domain: fn})`** resolves the widget sandbox domain per
+  `resources/read` from `{client, mount, meta, request, context}`.
+- **`installMcpHttp({host})`**: mount the endpoint once per host
+  (`/mcp/claude`, `/mcp/chatgpt`); the hint reaches handlers as
+  `MCPBindings.REQUEST_MOUNT` on both hosts and every era.
+- **`MCPBindings.REQUEST_META`** — the request's `params._meta`, frozen.
+- `/llms.txt` lists one MCP section per mount.
+
+### ChatGPT adapters — `@agentback/mcp-openai` (new, experimental)
+
+P1-7 phase 3 ([proposal](../proposals/host-extensions.md) §6–8). Typed
+adapters for OpenAI's MCP extensions, built only on `@agentback/mcp`'s generic
+seams:
+
+- `openaiUi` / `globalEntrypoint` / `threadEntrypoint` / `settingsEntrypoint` /
+  `fileEntrypoint`, `mentionSearch()` and `displayModes()`, each checked when
+  the decorator runs.
+- `openaiForm` with `textField` / `choiceField` / `resourceField`, for
+  `elicit.ask`'s `extended` form.
+- `resourcePath()`, which confines `_meta["openai/resource"].path`.
+- `installSettings()`: structured settings keyed per verified user.
+
+Also new:
+
+- `isSynthesizedPrincipal()` / `isVerifiedPrincipal()` in `@agentback/mcp`.
+- `callTool` / `readResource` `{simulate}`.
+- **"Call as"** client profiles in `mcp-inspector`.
+- `mcp-host` README: the four limitations host extensions hit through a
+  gateway.
+- `examples/hello-mcp-apps` gains a ChatGPT entrypoint, display modes, a
+  settings page and a `/mcp/claude` per-host mount.
+
 ### Elicitation: ask the user mid-call — `@agentback/mcp` (experimental)
 
 P1-7 phase 2 ([proposal](../proposals/host-extensions.md) §5). A tool injects
@@ -59,6 +100,17 @@ error codes `elicitation_unavailable` / `elicitation_unsupported` /
 `elicitation_declined`.
 
 ## ⚠️ Behaviour changes
+
+- **An `elicit.ask` `extended` form now goes only to 2026-era clients.** A 2025
+  connection that declared `openai/elicitation` used to get the extended
+  schema through standard `elicitation/create`. OpenAI's spec puts extended
+  forms on its own `openai/elicitation/create` method for that era, so those
+  clients now get the `standard` form. An ask with only an `extended` form
+  answers `elicitation_unsupported` there.
+- **`authInfoToPrincipals` marks the principal it synthesizes from a
+  `clientId`** (`isSynthesizedPrincipal`), and the `localPrincipal` fallback
+  is now bound as a marked copy of the configured profile. Same fields, not
+  the same object. Both are otherwise unchanged.
 
 - **`confirm:`'s native prompt now carries its token in a signed envelope.**
   On the 2026 era the `requestState` is no longer the raw store token; a raw

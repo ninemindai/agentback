@@ -34,6 +34,7 @@ import {
   ORIGIN_REJECTED_HINT,
   originAllowed,
   rejectedOriginLogger,
+  mountOf,
   resolveSessionServer,
   setupStateless,
   withSessionIdExposed,
@@ -434,7 +435,9 @@ export function mountMcpHttpFetch(
           sessionCtx = resolved.sessionCtx;
           sessionMcp = resolved.mcp;
         }
-        await sessionMcp.buildServer({scopes}).connect(transport);
+        await sessionMcp
+          .buildServer({scopes, mount: mountOf(options)})
+          .connect(transport);
       } catch (err) {
         sessionCtx?.close();
         throw err;

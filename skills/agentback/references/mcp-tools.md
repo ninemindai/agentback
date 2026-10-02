@@ -155,8 +155,8 @@ or `elicit.askAll({...})`. **Experimental.**
   A stateless 2025 request, a client without the capability, and in-process
   `callTool` get `elicitation_unavailable`.
 - Declined/cancelled → `elicitation_declined`; schema-invalid answer →
-  `invalid_input`; only an `extended` form for a client without
-  `openai/elicitation` → `elicitation_unsupported`.
+  `invalid_input`; only an `extended` form for a client that is not 2026-era
+  with `openai/elicitation` → `elicitation_unsupported`.
 - Guards throw (`ElicitMisuseError` or a swallowed-signal error): catching the
   signal without `if (isInputRequired(e)) throw e`, asking after a stream tool
   yielded, the reserved key `confirm`, a repeated key, a non-flat form.
@@ -171,7 +171,8 @@ or `elicit.askAll({...})`. **Experimental.**
 - Work before an `ask` re-runs every round and only the final round is
   metered; the rate limiter debits every round.
 - `MCPBindings.REQUEST_CLIENT` — `{era, capabilities?, info?, canRoundTrip}`;
-  `hasClientExtension(client, id)`.
+  `hasClientExtension(client, id)`. `MCPBindings.REQUEST_META` /
+  `REQUEST_MOUNT` — the request's frozen `_meta` and its HTTP mount.
 - Dispatch hooks see `info.inputRequired` after `next()`; metering bills only
   the final round. Agents/CLI projections exclude ELICIT-injecting tools.
 - Test with `createTestApp(App, {mcpEra: 'modern', mcpElicit: answerFn})`.
@@ -354,6 +355,14 @@ const sidebar = toolFragment({
 - Server-level: `MCPServerConfig.{title, icons, websiteUrl}` and
   `capabilities: {extensions, experimental}` (e.g. `openai/settings`); a
   framework-owned capability key throws.
+- From code: `contributeCapabilities(app, {extensions})` → `Installed`
+  (constant `MCP_CAPABILITIES` binding; an entry declared differently
+  elsewhere throws at the call, and `start()` re-checks).
+- Per host: mount once per host —
+  `installMcpHttp(app, {path: '/mcp/claude', host: 'claude'})` — and read `MCPBindings.REQUEST_MOUNT` (server config).
+  `@appResource({domain: ({mount, client}) => …})` resolves the widget domain
+  per request. `MCPBindings.REQUEST_META` is the frozen request `_meta`
+  (client-asserted: presentation only, never authorization).
 - Duplicate tool names throw at `start()` (the same class bound twice is
   fine). `buildServer()` never throws on them: a duplicate mounted later (a
   `perSession` binder, a plugin) is served root-nearest first — an app-level
@@ -362,8 +371,33 @@ const sidebar = toolFragment({
 - `toolFragment`, `resourceFragment`, `@appResource` and `resourceContent` are
   **experimental** — shapes may change in a minor release.
 
-Recipes (sidebar entrypoint, display modes, mentions, settings, Claude's
-`domain`) and the host-connection checklist:
+ChatGPT — `@agentback/mcp-openai` (experimental, tracks OpenAI's spec):
+
+- `openaiUi({entrypoints: [{type: 'global'|'thread'|'settings'|'file', …}]})`
+  (or `globalEntrypoint()` etc.) — needs `ui.resourceUri`; `{}` must pass the
+  `input:` (file: `FileEntrypointIn`). **One `openaiUi` per tool** — two would
+  set `openai/ui` twice.
+- `mentionSearch()` with `input: MentionSearchIn, output: MentionSearchOut`.
+- `displayModes({preferred, available})` on `@appResource` (no `pip`).
+- `openaiForm({...textField/choiceField/resourceField})` → the `extended` of
+  `elicit.ask` (2026 clients with `openai/elicitation` only; `standard` must
+  accept what it submits).
+- `resourcePath(ctx, {roots})` — confined `_meta["openai/resource"].path`;
+  refused over HTTP unless `allowHttp`.
+- `installSettings(app, {schema, store, layout})` — `settings_read` /
+  `settings_update` + `openai/settings`. Fields: primitive, `.default()`,
+  `.meta({title})`. Keyed per **verified** user (`isVerifiedPrincipal` — never
+  a `clientId`-synthesized principal, `$anonymous`, or `localPrincipal`); else
+  update → `settings_identity_required`, read → defaults. A raw OAuth verifier
+  gives no user: use `strategyAuth` or `principalKey: (_u, auth) =>
+auth?.extra?.sub`. `shared: true` (single-user stdio), `authorize:`.
+- Inspector "Call as" (ChatGPT/Claude profiles) previews per-host
+  presentation; tests use `callTool(name, input, {simulate})`.
+- Through `mcp-host` request `_meta`, `input_required`, prefixed names in host
+  metadata and upstream capabilities do not survive — expose such servers
+  directly.
+
+Recipes (Claude's `domain`, per-host mounts) and the host-connection checklist:
 `docs/guides/mcp-apps-widgets.md`.
 
 ## Transport: stdio (MCPApplication)

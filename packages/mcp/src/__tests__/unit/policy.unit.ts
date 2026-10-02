@@ -16,7 +16,13 @@ import {MCPComponent} from '../../mcp.component.js';
 import {MCPServer, type ToolBinding} from '../../mcp.server.js';
 import {mcpServer, prompt, resource, tool} from '../../decorators/index.js';
 import {MCPBindings} from '../../keys.js';
-import {authInfoToPrincipals, requiredScopesForTool} from '../../policy.js';
+import {
+  authInfoToPrincipals,
+  isSynthesizedPrincipal,
+  isVerifiedPrincipal,
+  LOCAL_PRINCIPAL,
+  requiredScopesForTool,
+} from '../../policy.js';
 import type {MCPServerConfig} from '../../types.js';
 
 const OrderIn = z.object({what: z.string()});
@@ -107,6 +113,30 @@ describe('authInfoToPrincipals', () => {
     const {user} = authInfoToPrincipals(info);
     expect(user?.[securityId]).toBe('svc-1');
     expect(user?.scopes).toEqual(['x', 'y']);
+    // The clientId names the client application, not a person.
+    expect(isSynthesizedPrincipal(user)).toBe(true);
+  });
+
+  it('does not mark a framework principal as synthesized', () => {
+    const user = {[securityId]: 'u1'} as UserProfile;
+    const info = {token: 't', clientId: 'c', scopes: [], extra: {user}};
+    expect(isSynthesizedPrincipal(authInfoToPrincipals(info).user)).toBe(false);
+    expect(isSynthesizedPrincipal(undefined)).toBe(false);
+  });
+
+  it('isVerifiedPrincipal admits only a proven individual', () => {
+    expect(isVerifiedPrincipal({[securityId]: 'u1'})).toBe(true);
+    expect(isVerifiedPrincipal(undefined)).toBe(false);
+    expect(isVerifiedPrincipal({[securityId]: '$anonymous'})).toBe(false);
+    expect(isVerifiedPrincipal({[securityId]: ''})).toBe(false);
+    expect(
+      isVerifiedPrincipal(
+        authInfoToPrincipals({token: 't', clientId: 'host', scopes: []}).user,
+      ),
+    ).toBe(false);
+    expect(
+      isVerifiedPrincipal({[securityId]: 'me', [LOCAL_PRINCIPAL]: true}),
+    ).toBe(false);
   });
 });
 

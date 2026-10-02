@@ -389,8 +389,13 @@ export function requestedSchemaFor(
   form: ElicitForm,
   client: RequestClient | undefined,
 ): Record<string, unknown> {
+  // Modern era only. On a 2025 connection OpenAI's extended forms travel on
+  // their own method (`openai/elicitation/create`), not the standard
+  // `elicitation/create` the SDK shim sends — so a legacy client gets the
+  // standard form even when it declared the extension.
   if (
     form.extended &&
+    client?.era === 'modern' &&
     hasClientExtension(client, OPENAI_ELICITATION_EXTENSION)
   ) {
     return form.extended;
@@ -399,8 +404,8 @@ export function requestedSchemaFor(
     return schemaToOpenApiSchema(form.standard) as Record<string, unknown>;
   }
   throw new AgentError(
-    `The '${key}' question has only an extended form, and this client did ` +
-      `not declare '${OPENAI_ELICITATION_EXTENSION}'.`,
+    `The '${key}' question has only an extended form, which needs a ` +
+      `2026-era client declaring '${OPENAI_ELICITATION_EXTENSION}'.`,
     {code: ErrorCodes.ELICITATION_UNSUPPORTED, status: 422, retryable: false},
   );
 }

@@ -42,8 +42,61 @@ export function authInfoToPrincipals(authInfo: AuthInfo): McpPrincipals {
   const user: UserProfile = {
     [securityId]: authInfo.clientId,
     scopes: authInfo.scopes,
+    [SYNTHESIZED_PRINCIPAL]: true,
   };
   return {user};
+}
+
+/**
+ * Marks a `UserProfile` that {@link authInfoToPrincipals} synthesized from a
+ * token's `clientId` because the token carried no user. Under OAuth that id
+ * names the client **application** (ChatGPT, Claude) — shared by every one of
+ * its end users — so it identifies no one in particular.
+ */
+export const SYNTHESIZED_PRINCIPAL = Symbol.for(
+  'agentback.mcp.synthesizedPrincipal',
+);
+
+/**
+ * True for a principal synthesized from a token's `clientId` (see
+ * {@link SYNTHESIZED_PRINCIPAL}). Per-user state — settings, preferences,
+ * anything keyed "per user" — must not be keyed on such a principal: every
+ * user of the same host would share one bucket.
+ */
+export function isSynthesizedPrincipal(user: unknown): boolean {
+  return (
+    typeof user === 'object' &&
+    user !== null &&
+    (user as Record<symbol, unknown>)[SYNTHESIZED_PRINCIPAL] === true
+  );
+}
+
+/**
+ * Marks the `MCPServerConfig.localPrincipal` fallback as bound for a request:
+ * an identity the server's own config asserted, the same for every caller the
+ * transport admits — not one a request proved.
+ */
+export const LOCAL_PRINCIPAL = Symbol.for('agentback.mcp.localPrincipal');
+
+/** The id the `anonymous` authentication strategy gives an unauthenticated caller. */
+const ANONYMOUS_ID = '$anonymous';
+
+/**
+ * True only for a principal that identifies **one person the request proved**:
+ * a user an authentication strategy supplied, or one an in-process caller
+ * passed explicitly. False for no principal, the `anonymous` strategy's
+ * sentinel, a principal synthesized from a token's `clientId`
+ * ({@link isSynthesizedPrincipal}), and the `localPrincipal` config fallback.
+ * Key per-user state (settings, preferences) only on a verified principal.
+ */
+export function isVerifiedPrincipal(user: unknown): user is UserProfile {
+  if (typeof user !== 'object' || user === null) return false;
+  const u = user as Record<string | symbol, unknown>;
+  if (u[SYNTHESIZED_PRINCIPAL] === true || u[LOCAL_PRINCIPAL] === true) {
+    return false;
+  }
+  const id = u[securityId];
+  return typeof id === 'string' && id !== '' && id !== ANONYMOUS_ID;
 }
 
 /**

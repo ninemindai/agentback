@@ -285,7 +285,7 @@ describe.each(['modern', 'legacy'] as const)('elicit on the %s era', era => {
     expect(errorCode(r)).toBe('elicitation_unavailable');
   });
 
-  it('sends the extended form only to clients declaring openai/elicitation', async () => {
+  it('sends the extended form only to 2026 clients declaring openai/elicitation', async () => {
     const server = await boot();
     const ext = {'openai/elicitation': {}};
     const plain = await connect(server, era, byMessage);
@@ -302,12 +302,18 @@ describe.each(['modern', 'legacy'] as const)('elicit on the %s era', era => {
       text(await fancy.client.callTool({name: 'fancy', arguments: {}})),
     ).toBe('fancy bolt');
     expect(plain.seen[0]!.schema).not.toHaveProperty('x-openai-widget');
-    // Q1: a top-level vendor key survives to a TS SDK client (property-level
-    // vendor keys are stripped by the client's schema; see the guide).
-    expect(fancy.seen[0]!.schema).toHaveProperty(
-      'x-openai-widget',
-      'part-picker',
-    );
+    if (era === 'modern') {
+      // Q1: a top-level vendor key survives to a TS SDK client (property-level
+      // vendor keys are stripped by the client's schema; see the guide).
+      expect(fancy.seen[0]!.schema).toHaveProperty(
+        'x-openai-widget',
+        'part-picker',
+      );
+    } else {
+      // A 2025 connection would need `openai/elicitation/create`; the shim
+      // sends `elicitation/create`, so the standard form goes instead.
+      expect(fancy.seen[0]!.schema).not.toHaveProperty('x-openai-widget');
+    }
   });
 });
 
@@ -383,6 +389,22 @@ describe('elicit — guards', () => {
     await expect(server.callTool('pick', {})).rejects.toMatchObject({
       code: 'elicitation_unavailable',
     });
+    // A simulated elicitation-capable client opens no round trip either.
+    await expect(
+      server.callTool(
+        'pick',
+        {},
+        {
+          simulate: {
+            client: {
+              era: 'modern',
+              capabilities: {elicitation: {}},
+              canRoundTrip: true,
+            },
+          },
+        },
+      ),
+    ).rejects.toMatchObject({code: 'elicitation_unavailable'});
   });
 
   it('refuses a forged request state on a non-confirm tool', async () => {

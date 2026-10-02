@@ -206,73 +206,111 @@ Visibility, entrypoints and annotations are **presentation hints, never
 authorization**: an `['app']`-only tool is still callable by anyone its
 `@authorize` policy admits.
 
-### Recipe: a ChatGPT sidebar entrypoint with display modes
+### ChatGPT: `@agentback/mcp-openai`
+
+The typed adapter for [OpenAI's MCP extensions](https://github.com/openai/mcp-extensions/blob/main/docs/spec.md)
+builds on the seams above, so each host rule is checked when the decorator
+runs:
 
 ```ts
 import {z} from 'zod';
-import {appResource, resourceFragment, tool, toolFragment} from '@agentback/mcp';
-
-const Library = z.object({parts: z.array(z.string())}); // your output schema
-const WIDGET_HTML = '<!doctype html>…'; // your bundled widget (see above)
-
-// ChatGPT opens sidebar ("global") entrypoints with `{}` as the arguments.
-const sidebarEntrypoint = toolFragment({
-  meta: {'openai/ui': {entrypoints: [{type: 'global'}]}},
-  check: ({input}) => {
-    if (input && !(input as z.ZodType).safeParse({}).success) {
-      throw new Error('a global entrypoint must accept {} as its input');
-    }
-  },
-});
+import {appResource, tool} from '@agentback/mcp';
+import {
+  displayModes,
+  InMemorySettingsStore,
+  installSettings,
+  mentionSearch,
+  MentionSearchIn,
+  MentionSearchOut,
+  openaiUi,
+} from '@agentback/mcp-openai';
 
 @tool('parts_library', {
   title: 'Parts Library',
   output: Library,
   icons: [{src: 'https://bits.example.com/library.svg', mimeType: 'image/svg+xml'}],
-  annotations: {readOnlyHint: true},
   ui: {resourceUri: 'ui://bits/library'},
-  extend: [sidebarEntrypoint],
+  // Sidebar + thread tab. Both open with `{}` — checked against `input:`.
+  extend: [openaiUi({entrypoints: [{type: 'global'}, {type: 'thread'}]})],
 })
 async library(): Promise<z.infer<typeof Library>> { /* … */ }
 
 @appResource('ui://bits/library', {
-  extend: [
-    resourceFragment({
-      meta: {
-        'openai/ui': {
-          preferredDisplayMode: 'fullscreen',
-          availableDisplayModes: ['inline', 'fullscreen'],
-        },
-      },
-    }),
-  ],
+  extend: [displayModes({preferred: 'fullscreen', available: ['inline', 'fullscreen']})],
 })
-libraryWidget(): string { return WIDGET_HTML; }
+libraryWidget() { return WIDGET_HTML; }
+
+// Composer @-mentions: readOnlyHint, ui.visibility ['app'] and the marker.
+@tool('search_parts', {input: MentionSearchIn, output: MentionSearchOut, extend: [mentionSearch()]})
+async searchParts({query}: z.infer<typeof MentionSearchIn>) { /* … */ }
 ```
 
-Other `openai/*` keys follow the same pattern: a composer @-mention tool is
-`ui: {visibility: ['app']}` plus
-`toolFragment({meta: {'openai/extensions': {'mentions/search': {}}}})`, and
-structured settings are two ordinary tools named by a capability in the server
-config:
+| Export                                                                                                                                                   | What it checks                                                                                                                                |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `openaiUi({entrypoints, preferredModelDisplayMode})`, `globalEntrypoint()`, `threadEntrypoint()`, `settingsEntrypoint()`, `fileEntrypoint({extensions})` | a linked widget; `{}` accepted (global, thread, settings) or `FileEntrypointIn` (file); one entrypoint per type; warns with no `icons`        |
+| `mentionSearch()`                                                                                                                                        | input `MentionSearchIn`, output `MentionSearchOut`                                                                                            |
+| `displayModes({preferred, available})`                                                                                                                   | `inline` / `fullscreen` only (`pip` is refused); `preferred` among `available`                                                                |
+| `openaiForm`, `textField`, `choiceField`, `resourceField`                                                                                                | the `extended` form of `elicit.ask`: suggestions, option descriptions, thumbnails, resource pickers — with the spec's selection/default rules |
+| `resourcePath(ctx, {roots})`                                                                                                                             | `_meta["openai/resource"].path` from a file entrypoint, `realpath`ed and confined to `roots`; refused over HTTP unless `allowHttp`            |
+| `installSettings(app, {schema, store, layout})`                                                                                                          | primitive fields with a `.default()` and a title; layout keys typed and unique; layout tools accept `{}` (at `start()`)                       |
+
+One tool takes one `openaiUi` fragment: combine entrypoints in it, because two
+fragments would set the `openai/ui` key twice.
+
+**Settings** are one Zod schema. Defaults come from `.default()` and are
+stripped from the emitted schema, which OpenAI's format does not allow:
 
 ```ts
-import {MCPBindings} from '@agentback/mcp';
+const Settings = z.object({
+  units: z.enum(['mm', 'in']).default('mm').meta({title: 'Measurement units'}),
+  showGrid: z.boolean().default(false).meta({title: 'Show grid'}),
+});
 
-const settings = {readTool: 'settings_read', updateTool: 'settings_update'};
-app.configure(MCPBindings.SERVER).to({
-  capabilities: {
-    extensions: {'openai/settings': settings},
-    experimental: {'openai/settings': settings}, // 2025-era ChatGPT reads this
-  },
+await installSettings(app, {
+  schema: Settings,
+  store: myRedisSettingsStore, // InMemorySettingsStore warns
+  layout: [
+    {
+      kind: 'group',
+      title: 'Display',
+      items: [{kind: 'property', property: 'units'}],
+    },
+  ],
 });
 ```
 
-OpenAI's extensions are new and still moving, so AgentBack ships no typed
-`openai/*` helpers yet — see
-[P1-7](../proposals/host-extensions.md) for the planned
-`@agentback/mcp-openai`. The fragments above are the stable seam those helpers
-will build on.
+It registers `settings_read` (read-only, accepts `{}`, declares its output
+schema) and `settings_update` (`{set}`, at least one field, validated against
+the schema). It advertises `openai/settings` under both `extensions` and
+`experimental`. Settings are **per verified user** (`isVerifiedPrincipal`).
+That excludes a principal synthesized from a token's `clientId` (the host
+application, shared by all its users), the `anonymous` sentinel and the
+`localPrincipal` fallback. So without a verified user, an update is refused
+(`settings_identity_required`) and a read returns the defaults.
+
+A raw OAuth `verifier` yields no user. Use `strategyAuth`, or pass
+`principalKey: (_u, auth) => auth?.extra?.sub as string | undefined`. For a
+single-user stdio server, pass `shared: true`. `authorize: {scopes: [...]}`
+gates both tools.
+
+**Extended forms** reach only 2026-era clients that declare
+`openai/elicitation`. On a 2025 connection OpenAI uses a separate method,
+`openai/elicitation/create`, so those clients get the `standard` form. The
+answer is validated against `standard` either way, so make `standard` accept
+what the extended form submits. For example, a resource field submits a URI
+string.
+
+An installer that adds capabilities from code (rather than your config) uses
+`contributeCapabilities(app, {extensions: {...}})`. It returns an `Installed`
+whose `uninstall()` retracts the contribution. An entry that your config or
+another contribution declares differently throws at the call, naming both, and
+nothing is bound; `start()` re-checks the full set. Stateless HTTP
+picks up a contribution on the next request; a connected stdio or session
+client keeps what it negotiated.
+
+The raw seams still work for anything the adapter doesn't cover (deep-link
+host context, onboarding skills). Emit the key with
+`toolFragment({meta: {'openai/…': …}})`.
 
 ### Recipe: Claude's widget domain
 
@@ -295,17 +333,47 @@ if (!publicUrl) throw new Error('Set PUBLIC_MCP_URL to the URL added in Claude')
 @appResource(UI_URI, {domain: claudeDomain(publicUrl)})
 ```
 
-The domain format is host-specific. It is computed once, so this assumes **one
-public URL per process**, and a static `domain` is sent to every host — set one
-only if Claude is the host that needs it. A per-request `domain` (one value per
-host, or per public URL) arrives in phase 1b of
-[P1-7](../proposals/host-extensions.md).
+The domain format is host-specific. A **string** is computed once and sent to
+every host, so it assumes one public URL per process and that Claude is the
+only host that needs it.
+
+**One mount per host** removes both assumptions. Mount the endpoint once per
+host, each with its own `path` and `host` hint, and give `domain` a function.
+It runs on every `resources/read` (after `@authorize`) and returns `undefined`
+for a host that should get its default:
+
+```ts
+await installMcpHttp(app, {path: '/mcp/claude', host: 'claude'});
+await installMcpHttp(app, {path: '/mcp/chatgpt', host: 'chatgpt'});
+
+@appResource(UI_URI, {
+  domain: ({mount}) =>
+    mount?.host === 'claude'
+      ? claudeDomain(`${process.env.PUBLIC_ORIGIN}/mcp/claude`)
+      : undefined,
+})
+```
+
+The function receives `{client, mount, meta, request, context}`. Prefer
+`mount` (`MCPBindings.REQUEST_MOUNT`): it is **your** configuration, and it
+works on every era and transport, including a stateless 2025 request, where
+the client never sent `clientInfo`. `client.info?.name`
+(`MCPBindings.REQUEST_CLIENT`) and `meta` (`MCPBindings.REQUEST_META`, the
+request's frozen `params._meta`) are what the client _says_ — fine for picking
+a presentation, never for authorization. A per-call
+`resourceContent({meta: {ui: {domain}}})` still wins over the function.
 
 ## See what you emit
 
 - **`/mcp-inspector`** shows each tool's annotations, icons and `_meta`, each
   resource's content-item `_meta`, and the server's title and capabilities —
   check them before connecting a host.
+- **"Call as"** in the inspector runs a tool or reads a resource with a host's
+  simulated client, mount and `_meta` (built-in ChatGPT and Claude profiles;
+  bind `INSPECTOR_CLIENT_PROFILES` for your own). Form selection, a `domain`
+  function and capability checks then show what that host gets. Identity and
+  authorization are unchanged. The same seam is `callTool(name, input,
+{simulate})` / `readResource(name, {simulate})` in tests.
 - **`toolCostReport()`** lists `iconBytes` per tool, so a data-URI icon that
   bloats every `tools/list` shows up, and a `suppressed` list when a tool
   mounted after `start()` collides with an existing name.

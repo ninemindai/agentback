@@ -1,0 +1,51 @@
+{
+  "name": "@agentback/mcp-openai",
+  "version": "0.13.0",
+  "description": "Typed ChatGPT (OpenAI MCP extensions) adapters for @agentback/mcp: entrypoints, mentions, display modes, extended forms, file paths and structured settings.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@agentback/authorization": "workspace:~",
+    "@agentback/common": "workspace:~",
+    "@agentback/context": "workspace:~",
+    "@agentback/core": "workspace:~",
+    "@agentback/mcp": "workspace:~",
+    "@agentback/openapi": "workspace:~",
+    "@agentback/security": "workspace:~",
+    "@modelcontextprotocol/server": "^2.1.0",
+    "tslib": "^2.8.1",
+    "zod": "^4.6.5"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "devDependencies": {
+    "@agentback/mcp-http": "workspace:~",
+    "@agentback/rest": "workspace:~",
+    "@modelcontextprotocol/client": "^2.1.0",
+    "vitest": "~5.0.1"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ninemindai/agentback.git",
+    "directory": "packages/mcp-openai"
+  },
+  "homepage": "https://agentback.dev",
+  "bugs": "https://github.com/ninemindai/agentback/issues"
+}
