@@ -26,6 +26,7 @@ tracked in the doc headers.
 | P1-5 | [Skill generation](p1-5-skill-generation.md)         | `generateSkill()` + `/skills/<name>/SKILL.md` — derived from the registry, recipes via DI                                                                              |
 | P1-6 | [MCP Apps](p1-6-mcp-apps.md)                         | Interactive tool UI (SEP-1865): `@tool(..., {ui})`, `@appResource`, typed view bridge — **design**                                                                     |
 | P1-7 | [MCP host extensions](host-extensions.md)            | ChatGPT (`openai/*`) + Claude conventions: core `_meta`/annotations/capability seams, user elicitation over MRTR, gated `@agentback/mcp-openai` — **design, reviewed** |
+| P1-8 | [Distribution](distribution.md)                      | `agentback pack`: Claude plugins (remote first), `.mcpb` bundles, Codex plugins — generated from the app, never retyped — **design, reviewed**                         |
 
 ## P2 — prerequisites surfaced by review
 
