@@ -248,7 +248,7 @@ export function openaiForm(
         : (structuredClone(v) as JsonValue);
   }
   for (const r of options.required ?? []) {
-    if (!(r in out))
+    if (!Object.hasOwn(out, r))
       throw new Error(`openaiForm: required '${r}' is not a field`);
   }
   return {

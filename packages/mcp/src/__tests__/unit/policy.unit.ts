@@ -19,6 +19,8 @@ import {MCPBindings} from '../../keys.js';
 import {
   authInfoToPrincipals,
   isSynthesizedPrincipal,
+  isVerifiedPrincipal,
+  LOCAL_PRINCIPAL,
   requiredScopesForTool,
 } from '../../policy.js';
 import type {MCPServerConfig} from '../../types.js';
@@ -120,6 +122,21 @@ describe('authInfoToPrincipals', () => {
     const info = {token: 't', clientId: 'c', scopes: [], extra: {user}};
     expect(isSynthesizedPrincipal(authInfoToPrincipals(info).user)).toBe(false);
     expect(isSynthesizedPrincipal(undefined)).toBe(false);
+  });
+
+  it('isVerifiedPrincipal admits only a proven individual', () => {
+    expect(isVerifiedPrincipal({[securityId]: 'u1'})).toBe(true);
+    expect(isVerifiedPrincipal(undefined)).toBe(false);
+    expect(isVerifiedPrincipal({[securityId]: '$anonymous'})).toBe(false);
+    expect(isVerifiedPrincipal({[securityId]: ''})).toBe(false);
+    expect(
+      isVerifiedPrincipal(
+        authInfoToPrincipals({token: 't', clientId: 'host', scopes: []}).user,
+      ),
+    ).toBe(false);
+    expect(
+      isVerifiedPrincipal({[securityId]: 'me', [LOCAL_PRINCIPAL]: true}),
+    ).toBe(false);
   });
 });
 

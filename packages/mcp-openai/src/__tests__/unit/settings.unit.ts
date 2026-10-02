@@ -37,13 +37,14 @@ class Library {
 const alice = {[securityId]: 'alice'} as UserProfile;
 const bob = {[securityId]: 'bob'} as UserProfile;
 
-async function boot() {
+async function boot(localPrincipal?: UserProfile) {
   const app = new Application();
   app.component(MCPComponent);
   app.configure('servers.MCPServer').to({
     name: 'bits',
     version: '1.0.0',
     transports: {stdio: false},
+    ...(localPrincipal ? {localPrincipal} : {}),
   });
   app.service(Library);
   const server = await app.get<MCPServer>('servers.MCPServer');
@@ -199,6 +200,134 @@ describe('installSettings', () => {
         }
       ).values,
     ).toEqual({units: 'mm', showGrid: false, zoom: 3});
+  });
+
+  it('refuses the anonymous strategy sentinel and the localPrincipal fallback', async () => {
+    const {app, server} = await boot();
+    await installSettings(app, {
+      schema: Settings,
+      store: new InMemorySettingsStore(),
+    });
+    await expect(
+      server.callTool(
+        'settings_update',
+        {set: {units: 'in'}},
+        {principal: {[securityId]: '$anonymous', name: 'anonymous'}},
+      ),
+    ).rejects.toMatchObject({code: 'settings_identity_required'});
+
+    // The config's localPrincipal is the same for every caller the
+    // transport admits; it is not a proven individual.
+    const local = await boot(alice);
+    await installSettings(local.app, {
+      schema: Settings,
+      store: new InMemorySettingsStore(),
+    });
+    await expect(
+      local.server.callTool('settings_update', {set: {units: 'in'}}),
+    ).rejects.toMatchObject({code: 'settings_identity_required'});
+    // ...while the same principal passed explicitly is a verified caller.
+    await expect(
+      local.server.callTool(
+        'settings_update',
+        {set: {units: 'in'}},
+        {principal: alice},
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it('reads past stored values a schema change made invalid', async () => {
+    const {app, server} = await boot();
+    const store = new InMemorySettingsStore<Record<string, unknown>>();
+    await store.update('alice', {units: 'cm', removed: true, zoom: 7});
+    await installSettings(app, {schema: Settings, store: store as never});
+    expect(
+      (
+        (await server.callTool('settings_read', {}, {principal: alice})) as {
+          values: unknown;
+        }
+      ).values,
+    ).toEqual({units: 'mm', showGrid: false, zoom: 7});
+    expect(
+      await server.callTool(
+        'settings_update',
+        {set: {showGrid: true}},
+        {principal: alice},
+      ),
+    ).toEqual({values: {units: 'mm', showGrid: true, zoom: 7}});
+  });
+
+  it('applies an authorize policy to both tools', async () => {
+    const {app, server} = await boot();
+    await installSettings(app, {
+      schema: Settings,
+      store: new InMemorySettingsStore(),
+      authorize: {scopes: ['settings']},
+    });
+    await expect(
+      server.callTool('settings_read', {}, {principal: alice}),
+    ).rejects.toThrow();
+    await expect(
+      server.callTool(
+        'settings_read',
+        {},
+        {principal: {...alice, scopes: ['settings']} as UserProfile},
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it('emits only known layout keys', async () => {
+    const {app, server} = await boot();
+    await installSettings(app, {
+      schema: Settings,
+      store: new InMemorySettingsStore(),
+      layout: [
+        {
+          kind: 'group',
+          title: 'G',
+          extra: 1,
+          items: [{kind: 'property', property: 'units', junk: true}],
+        } as never,
+      ],
+    });
+    const res = (await server.callTool(
+      'settings_read',
+      {},
+      {principal: alice},
+    )) as {
+      layout: unknown;
+    };
+    expect(res.layout).toEqual([
+      {
+        kind: 'group',
+        title: 'G',
+        items: [{kind: 'property', property: 'units'}],
+      },
+    ]);
+  });
+
+  it('checks layout tools at once when installed after start()', async () => {
+    const {app} = await boot();
+    await app.start();
+    await expect(
+      installSettings(app, {
+        schema: Settings,
+        store: new InMemorySettingsStore(),
+        layout: [
+          {
+            kind: 'group',
+            title: 'G',
+            items: [{kind: 'tool', tool: 'nope', title: 'Go'}],
+          },
+        ],
+      }),
+    ).rejects.toThrow(/'nope' is not a registered tool/);
+    // The failed install left nothing behind.
+    const server = await app.get<MCPServer>('servers.MCPServer');
+    expect(server.listTools().map(t => t.meta.name)).not.toContain(
+      'settings_read',
+    );
+    await app.stop();
   });
 
   it('refuses an anonymous update over MCP and returns defaults on read', async () => {

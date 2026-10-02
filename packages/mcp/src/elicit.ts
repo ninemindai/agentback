@@ -404,8 +404,8 @@ export function requestedSchemaFor(
     return schemaToOpenApiSchema(form.standard) as Record<string, unknown>;
   }
   throw new AgentError(
-    `The '${key}' question has only an extended form, and this client did ` +
-      `not declare '${OPENAI_ELICITATION_EXTENSION}'.`,
+    `The '${key}' question has only an extended form, which needs a ` +
+      `2026-era client declaring '${OPENAI_ELICITATION_EXTENSION}'.`,
     {code: ErrorCodes.ELICITATION_UNSUPPORTED, status: 422, retryable: false},
   );
 }

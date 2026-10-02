@@ -20,7 +20,7 @@ applied, so a broken one fails at the decorator line instead of in ChatGPT.
 | `displayModes({preferred?, available?})`                                                                                       | widget content-item `_meta["openai/ui"]`; `pip` refused                                                                                                                                            |
 | `openaiForm(fields, {required?})`, `textField`, `choiceField`, `resourceField`                                                 | the `extended` form for `elicit.ask` (suggestions, option descriptions, thumbnails, resource picker with the spec's selection/default rules). 2026-era clients declaring `openai/elicitation` only |
 | `resourcePath(ctxOrSource, {roots, allowHttp?})`                                                                               | `_meta["openai/resource"].path` from a file-entrypoint call, `realpath`ed and confined to `roots`; refused over HTTP by default                                                                    |
-| `installSettings(app, {schema, store, layout?, names?, advertise?, principalKey?, shared?})`                                   | `settings_read` / `settings_update` tools over a Zod schema + `openai/settings` capability; returns an `Installed`                                                                                 |
+| `installSettings(app, {schema, store, layout?, names?, advertise?, principalKey?, shared?, authorize?})`                       | `settings_read` / `settings_update` tools over a Zod schema + `openai/settings` capability; returns an `Installed`                                                                                 |
 | `InMemorySettingsStore`, `SettingsStore`                                                                                       | the settings storage port (bring Redis/DB for production)                                                                                                                                          |
 
 ## Usage
@@ -72,11 +72,23 @@ await installSettings(app, {
 
 ## Settings identity
 
-Settings are stored **per verified user**. `authInfoToPrincipals`
-(`@agentback/mcp`) marks a principal it synthesizes from a token's `clientId`
-(`isSynthesizedPrincipal`). Under OAuth that id names the host application
-(ChatGPT), which every one of its users shares, so the default key never uses
-it. Without a verified user:
+Settings are stored **per verified user** (`isVerifiedPrincipal` from
+`@agentback/mcp`): a user an authentication strategy supplied. The default key
+never uses:
+
+- a principal synthesized from a token's `clientId` (`isSynthesizedPrincipal`).
+  Under OAuth that id names the host application, ChatGPT, which every one of
+  its users shares;
+- the `anonymous` strategy's `$anonymous` sentinel;
+- the `localPrincipal` config fallback, which applies to every caller the
+  transport admits.
+
+**A raw OAuth verifier** (`installMcpHttp({auth: {verifier}})`) yields no
+user, so every caller is synthesized. Use `strategyAuth`, or read the subject
+yourself with `principalKey: (_user, auth) => auth?.extra?.sub as string |
+undefined`.
+
+Without a verified user:
 
 - `settings_update` refuses with `settings_identity_required`;
 - `settings_read` returns the defaults.

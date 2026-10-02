@@ -65,8 +65,8 @@ const ForecastOutput = z.object({
 });
 
 // The app's settings — one Zod schema is the settings page, its defaults and
-// its validation. A single shared bucket suits this local, single-user demo;
-// a multi-user server keys settings per verified user (the default).
+// its validation. The stdio process (one local user) uses one shared bucket;
+// over HTTP settings are keyed per verified user (the default).
 const Settings = z.object({
   unit: z
     .enum(['celsius', 'fahrenheit'])
@@ -207,14 +207,16 @@ const SERVER: MCPServerConfig = {
   title: 'Hello MCP Apps',
 };
 
-/** Register the tools and the settings page on either host. */
-async function register(app: Application) {
+/**
+ * Register the tools and the settings page. `shared` is for the local stdio
+ * process only — one user, one bucket. Over HTTP the default applies: settings
+ * are keyed per verified user, and this demo mounts no auth, so updates are
+ * refused (`settings_identity_required`) and reads return the defaults. Add
+ * `strategyAuth` to `installMcpHttp` to give each user their own settings.
+ */
+async function register(app: Application, shared: boolean) {
   app.service(WeatherTools);
-  await installSettings(app, {
-    schema: Settings,
-    store: settingsStore,
-    shared: true,
-  });
+  await installSettings(app, {schema: Settings, store: settingsStore, shared});
 }
 
 async function main() {
@@ -228,7 +230,7 @@ async function main() {
       ...SERVER,
       transports: {stdio: false},
     });
-    await register(app);
+    await register(app, false);
     // One endpoint for any host, plus a per-host mount for Claude: the mount's
     // `host` is server configuration, so the widget domain above trusts it.
     await installMcpHttp(app);
@@ -242,7 +244,7 @@ async function main() {
   }
   const app = new MCPApplication();
   app.configure('servers.MCPServer').to(SERVER);
-  await register(app);
+  await register(app, true);
   // stdio transport is on by default: every stdout write after start() must be
   // a JSON-RPC frame — log to stderr.
   await app.start();

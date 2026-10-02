@@ -605,6 +605,13 @@ opaque `_meta` stays out (principle 1).
 > - The inspector profiles ride a new `callTool`/`readResource` `{simulate}`
 >   seam.
 >
+> Settings identity uses `isVerifiedPrincipal`. It refuses the `clientId`
+> synthesis, the `anonymous` sentinel and the `localPrincipal` fallback, so
+> §9's "anonymous callers cannot write" holds. A raw OAuth verifier yields no
+> user, so its deployments need `strategyAuth` or a `principalKey`.
+> `installSettings` serves no HTTP path, so its retraction is unit-tested
+> rather than run through `runInstallConformance`.
+>
 > Q3 stays open: `@openai/mcp-extensions/app` peers on ext-apps `^1.7.5` and
 > the SDK v1, and adding v1 to the lockfile is ruled out. Widget-side helpers
 > remain out of scope (§12).

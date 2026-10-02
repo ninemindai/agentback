@@ -83,6 +83,7 @@ import {
 } from './keys.js';
 import {
   authInfoToPrincipals,
+  LOCAL_PRINCIPAL,
   requiredScopesForMember,
   requiredScopesForTool,
 } from './policy.js';
@@ -1752,7 +1753,13 @@ export class MCPServer implements Server {
     const {user, clientApplication} = authInfo
       ? authInfoToPrincipals(authInfo)
       : {
-          user: explicit ?? this.config.localPrincipal,
+          user:
+            explicit ??
+            (this.config.localPrincipal
+              ? // Marked, so per-user state can tell a config-asserted
+                // identity (shared by every caller) from a proven one.
+                {...this.config.localPrincipal, [LOCAL_PRINCIPAL]: true}
+              : undefined),
           clientApplication: undefined,
         };
     if (user) reqCtx.bind(SecurityBindings.USER).to(user);

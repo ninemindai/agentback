@@ -5,9 +5,10 @@
 import {mkdtemp, mkdir, symlink, writeFile, realpath} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {Application} from '@agentback/core';
+import {Application, Context} from '@agentback/core';
 import {
   appResource,
+  MCPBindings,
   MCPComponent,
   mcpServer,
   type MCPServer,
@@ -406,5 +407,26 @@ describe('resourcePath', () => {
     await expect(
       resourcePath({meta: meta(join(root, 'nope'))}, {roots: [root]}),
     ).rejects.toMatchObject({code: 'not_found'});
+    // Outside the roots, a missing file answers like an existing one.
+    await expect(
+      resourcePath({meta: meta('/definitely/not/here')}, {roots: [root]}),
+    ).rejects.toMatchObject({code: 'forbidden'});
+  });
+
+  it('reads only a real transport request from a context', async () => {
+    const {root} = await tree();
+    const p = join(root, 'part.stl');
+    const ctx = new Context('req');
+    ctx.bind(MCPBindings.REQUEST_META).to(meta(p));
+    // In-process (simulated) — no transport extras, no path.
+    expect(await resourcePath(ctx, {roots: [root]})).toBeUndefined();
+    ctx.bind(MCPBindings.REQUEST_EXTRA).to({mcpReq: {}} as never);
+    expect(await resourcePath(ctx, {roots: [root]})).toBe(p);
+    ctx
+      .bind(MCPBindings.REQUEST_EXTRA)
+      .to({mcpReq: {}, http: {req: new Request('http://x/mcp')}} as never);
+    await expect(resourcePath(ctx, {roots: [root]})).rejects.toMatchObject({
+      code: 'forbidden',
+    });
   });
 });

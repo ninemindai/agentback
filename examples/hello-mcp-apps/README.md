@@ -67,7 +67,9 @@ The same server also carries the ChatGPT extras from `@agentback/mcp-openai`:
   (`openaiUi`);
 - the widget declares its display modes (`displayModes`);
 - a **Temperature unit** setting appears on the app's settings page
-  (`installSettings`, one shared bucket since this demo is single-user).
+  (`installSettings`). Over stdio it is one shared bucket for the single local
+  user. Over HTTP settings are per verified user, and the demo mounts no
+  auth, so updates there are refused until you add `strategyAuth`.
 
 `/mcp/claude` is a per-host mount (`installMcpHttp({host: 'claude'})`). With
 `PUBLIC_ORIGIN` set to the public origin you add in Claude, its widget gets

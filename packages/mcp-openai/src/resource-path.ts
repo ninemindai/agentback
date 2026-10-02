@@ -45,9 +45,11 @@ function forbidden(message: string): AgentError {
  * merely shares a prefix. It is refused (403) outside the roots, on an HTTP
  * request unless `allowHttp`, or when malformed (400). A missing file is 404.
  *
- * Pass the request context (`@inject.context()` in a tool method), or the
+ * Pass the request context (`@inject.context()` in a tool method): only a
+ * real MCP request (one with transport extras) yields a path, so an
+ * in-process `callTool`, simulated or not, returns `undefined`. Or pass the
  * request's `meta` (`MCPBindings.REQUEST_META`) and `request`
- * (`MCPBindings.REQUEST_INFO`) yourself.
+ * (`MCPBindings.REQUEST_INFO`) yourself — then **you** vouch for both.
  *
  * Node-only: it imports `node:fs` and `node:path` when called.
  *
@@ -89,6 +91,39 @@ export async function resourcePath(
       code: ErrorCodes.INVALID_INPUT,
     });
   }
+  const bases: string[] = [];
+  for (const root of options.roots) {
+    try {
+      bases.push(await realpath(root));
+    } catch {
+      // A missing root confines nothing.
+    }
+  }
+  const inside = (p: string) =>
+    bases.some(base => {
+      const rel = path.relative(base, p);
+      return !(
+        rel === '..' ||
+        rel.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(rel)
+      );
+    });
+  // Lexical containment first, so a path outside the roots is refused the
+  // same way whether or not it exists — the answer never reveals that.
+  // (A root reached through a symlink is compared by its resolved path, so
+  // a lexical miss is re-checked after resolution below.)
+  const lexical = path.resolve(raw);
+  const lexicallyInside =
+    inside(lexical) ||
+    options.roots.some(root => {
+      const rel = path.relative(path.resolve(root), lexical);
+      return !(
+        rel === '..' ||
+        rel.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(rel)
+      );
+    });
+  if (!lexicallyInside) throw outsideRoots();
   let resolved: string;
   try {
     resolved = await realpath(raw);
@@ -99,28 +134,28 @@ export async function resourcePath(
       retryable: false,
     });
   }
-  for (const root of options.roots) {
-    let base: string;
-    try {
-      base = await realpath(root);
-    } catch {
-      continue;
-    }
-    const rel = path.relative(base, resolved);
-    const escapes =
-      rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel);
-    if (!escapes) {
-      return resolved;
-    }
-  }
-  throw forbidden('The file is outside the directories this server may read.');
+  // Re-checked after resolution: a symlink inside a root may point out.
+  if (!inside(resolved)) throw outsideRoots();
+  return resolved;
+}
+
+function outsideRoots(): AgentError {
+  return forbidden('The file is outside the directories this server may read.');
 }
 
 function readSource(source: Context | Source): Source {
   if (isContext(source)) {
+    // Only a real transport request carries a host-attached path. An
+    // in-process call — including one simulating a host's `_meta` — has no
+    // transport extras and so no path, which also keeps `allowHttp` from
+    // being sidestepped by a call that is itself served over HTTP.
+    const extra = source.getSync(MCPBindings.REQUEST_EXTRA, {optional: true});
+    if (!extra) return {};
     return {
       meta: source.getSync(MCPBindings.REQUEST_META, {optional: true}),
-      request: source.getSync(MCPBindings.REQUEST_INFO, {optional: true}),
+      request:
+        (extra as {http?: {req?: unknown}}).http?.req ??
+        source.getSync(MCPBindings.REQUEST_INFO, {optional: true}),
     };
   }
   return source;

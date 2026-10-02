@@ -20,6 +20,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
+    "@agentback/authorization": "workspace:~",
     "@agentback/common": "workspace:~",
     "@agentback/context": "workspace:~",
     "@agentback/core": "workspace:~",
