@@ -282,11 +282,16 @@ await installSettings(app, {
 It registers `settings_read` (read-only, accepts `{}`, declares its output
 schema) and `settings_update` (`{set}`, at least one field, validated against
 the schema). It advertises `openai/settings` under both `extensions` and
-`experimental`. Settings are **per verified user**: a principal synthesized
-from a token's `clientId` names the host application, which every one of its
-users shares. So without a verified user, an update is refused
-(`settings_identity_required`) and a read returns the defaults. Opt in with
-`principalKey` or, for a single-user server, `shared: true`.
+`experimental`. Settings are **per verified user** (`isVerifiedPrincipal`).
+That excludes a principal synthesized from a token's `clientId` (the host
+application, shared by all its users), the `anonymous` sentinel and the
+`localPrincipal` fallback. So without a verified user, an update is refused
+(`settings_identity_required`) and a read returns the defaults.
+
+A raw OAuth `verifier` yields no user. Use `strategyAuth`, or pass
+`principalKey: (_u, auth) => auth?.extra?.sub as string | undefined`. For a
+single-user stdio server, pass `shared: true`. `authorize: {scopes: [...]}`
+gates both tools.
 
 **Extended forms** reach only 2026-era clients that declare
 `openai/elicitation`. On a 2025 connection OpenAI uses a separate method,

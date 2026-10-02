@@ -9,7 +9,7 @@ import {unbindOwned, type Application, type Installed} from '@agentback/core';
 import {
   addTool,
   contributeCapabilities,
-  isSynthesizedPrincipal,
+  isVerifiedPrincipal,
   MCPBindings,
   mcpServer,
   tool,
@@ -17,6 +17,7 @@ import {
   type MCPServer,
 } from '@agentback/mcp';
 import {AgentError} from '@agentback/openapi';
+import {authorize, type AuthorizationMetadata} from '@agentback/authorization';
 import {
   securityId,
   SecurityBindings,
@@ -101,10 +102,14 @@ export interface InstallSettingsOptions<S extends AnyZodObject> {
   advertise?: 'openai'[];
   /**
    * Whose settings a call reads and writes. The default uses only a
-   * **verified** user — one an authentication strategy supplied — and never a
-   * principal synthesized from a token's `clientId`, which names the host
-   * application shared by all of its users. Return `undefined` for "no
-   * identity": update refuses, read returns defaults.
+   * **verified** user (`isVerifiedPrincipal`): one an authentication
+   * strategy supplied. It never uses a principal synthesized from a token's
+   * `clientId` — under OAuth that names the host application, shared by all
+   * of its users — nor the `anonymous` strategy's sentinel, nor the
+   * `localPrincipal` config fallback. A raw OAuth verifier yields no user,
+   * so read the subject yourself: `(user, auth) => auth?.extra?.sub as
+   * string | undefined`. Return `undefined` for "no identity": update
+   * refuses, read returns defaults.
    */
   principalKey?: (
     user: UserProfile | undefined,
@@ -116,6 +121,12 @@ export interface InstallSettingsOptions<S extends AnyZodObject> {
    * `principalKey`.
    */
   shared?: boolean;
+  /**
+   * `@authorize` policy for both tools (scopes, roles, voters) — the same
+   * metadata the decorator takes. Without it the tools are as open as the
+   * transport.
+   */
+  authorize?: AuthorizationMetadata;
 }
 
 const FIELD_KEYS = new Set([
@@ -138,9 +149,7 @@ export const SETTINGS_IDENTITY_REQUIRED = 'settings_identity_required';
 function defaultPrincipalKey(
   user: UserProfile | undefined,
 ): string | undefined {
-  if (!user || isSynthesizedPrincipal(user)) return undefined;
-  const id = user[securityId];
-  return typeof id === 'string' && id ? id : undefined;
+  return isVerifiedPrincipal(user) ? (user[securityId] as string) : undefined;
 }
 
 /**
@@ -249,30 +258,42 @@ export async function installSettings<S extends AnyZodObject>(
 
   const jsonSchema = settingsJsonSchema(schema);
   const keys = Object.keys(jsonSchema.properties);
-  const layout = (options.layout ?? []).map(g => structuredClone(g));
+  // Rebuilt from the known keys only: ChatGPT's layout schema is strict, so
+  // an extra key would make the whole read result invalid.
   const seen = new Set<string>();
-  for (const group of layout) {
-    if (group.kind !== 'group')
+  const layout: SettingsGroup[] = (options.layout ?? []).map(group => {
+    if (group?.kind !== 'group') {
       throw new Error("layout items are {kind: 'group'}");
-    nonBlank(group.title, 'layout group title');
-    for (const item of group.items) {
-      if (item.kind === 'property') {
-        if (!keys.includes(item.property) || seen.has(item.property)) {
-          throw new Error(
-            `layout: unknown or duplicate settings field '${item.property}'`,
-          );
+    }
+    return {
+      kind: 'group',
+      title: nonBlank(group.title, 'layout group title'),
+      items: group.items.map(item => {
+        if (item.kind === 'property') {
+          if (!keys.includes(item.property) || seen.has(item.property)) {
+            throw new Error(
+              `layout: unknown or duplicate settings field '${item.property}'`,
+            );
+          }
+          seen.add(item.property);
+          return {kind: 'property', property: item.property};
         }
-        seen.add(item.property);
-      } else if (item.kind === 'tool') {
-        nonBlank(item.tool, 'layout tool');
-        nonBlank(item.title, 'layout tool title');
-      } else {
+        if (item.kind === 'tool') {
+          return {
+            kind: 'tool',
+            tool: nonBlank(item.tool, 'layout tool'),
+            title: nonBlank(item.title, 'layout tool title'),
+            ...(item.description !== undefined
+              ? {description: String(item.description)}
+              : {}),
+          };
+        }
         throw new Error(
           "layout items are {kind: 'property'} or {kind: 'tool'}",
         );
-      }
-    }
-  }
+      }),
+    };
+  });
 
   const defaults = schema.parse({}) as Record<string, unknown>;
   const fields = Object.fromEntries(
@@ -301,8 +322,19 @@ export async function installSettings<S extends AnyZodObject>(
       : options.principalKey
         ? options.principalKey(user, auth)
         : defaultPrincipalKey(user);
-  const effective = (stored: Record<string, unknown> | undefined) =>
-    Values.parse({...defaults, ...(stored ?? {})});
+  // Stored data may predate a schema change (a removed field, a narrowed
+  // enum). Keep only fields the current schema still accepts; the rest fall
+  // back to their defaults instead of failing the read.
+  const effective = (stored: Record<string, unknown> | undefined) => {
+    const out: Record<string, unknown> = {...defaults};
+    for (const k of keys) {
+      if (stored && Object.hasOwn(stored, k)) {
+        const r = fields[k].safeParse(stored[k]);
+        if (r.success) out[k] = r.data;
+      }
+    }
+    return Values.parse(out);
+  };
 
   @mcpServer()
   class SettingsTools {
@@ -360,6 +392,8 @@ export async function installSettings<S extends AnyZodObject>(
     }
   }
 
+  if (options.authorize) authorize(options.authorize)(SettingsTools);
+
   const td = composeTeardown();
   const toolBinding = addTool(app, SettingsTools);
   td.push(() => unbindOwned(app, toolBinding));
@@ -378,7 +412,7 @@ export async function installSettings<S extends AnyZodObject>(
       ),
     );
     if (toolItems.length) {
-      const check = app.onStart(async () => {
+      const checkLayoutTools = async () => {
         const mcp = (await app.get(MCPBindings.SERVER)) as MCPServer;
         const tools = mcp.servedTools();
         for (const item of toolItems) {
@@ -395,8 +429,14 @@ export async function installSettings<S extends AnyZodObject>(
             );
           }
         }
-      });
-      td.push(() => unbindOwned(app, check));
+      };
+      if (app.state === 'started') {
+        // Installed after start: no start hook will run, so check now.
+        await checkLayoutTools();
+      } else {
+        const check = app.onStart(checkLayoutTools);
+        td.push(() => unbindOwned(app, check));
+      }
     }
   } catch (err) {
     await td.run();

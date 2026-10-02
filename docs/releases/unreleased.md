@@ -78,7 +78,7 @@ seams:
 
 Also new:
 
-- `isSynthesizedPrincipal()` in `@agentback/mcp`.
+- `isSynthesizedPrincipal()` / `isVerifiedPrincipal()` in `@agentback/mcp`.
 - `callTool` / `readResource` `{simulate}`.
 - **"Call as"** client profiles in `mcp-inspector`.
 - `mcp-host` README: the four limitations host extensions hit through a
@@ -108,7 +108,9 @@ error codes `elicitation_unavailable` / `elicitation_unsupported` /
   clients now get the `standard` form. An ask with only an `extended` form
   answers `elicitation_unsupported` there.
 - **`authInfoToPrincipals` marks the principal it synthesizes from a
-  `clientId`** (`isSynthesizedPrincipal`). The profile is otherwise unchanged.
+  `clientId`** (`isSynthesizedPrincipal`), and the `localPrincipal` fallback
+  is now bound as a marked copy of the configured profile. Same fields, not
+  the same object. Both are otherwise unchanged.
 
 - **`confirm:`'s native prompt now carries its token in a signed envelope.**
   On the 2026 era the `requestState` is no longer the raw store token; a raw

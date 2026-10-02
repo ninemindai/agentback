@@ -72,6 +72,34 @@ export function isSynthesizedPrincipal(user: unknown): boolean {
 }
 
 /**
+ * Marks the `MCPServerConfig.localPrincipal` fallback as bound for a request:
+ * an identity the server's own config asserted, the same for every caller the
+ * transport admits — not one a request proved.
+ */
+export const LOCAL_PRINCIPAL = Symbol.for('agentback.mcp.localPrincipal');
+
+/** The id the `anonymous` authentication strategy gives an unauthenticated caller. */
+const ANONYMOUS_ID = '$anonymous';
+
+/**
+ * True only for a principal that identifies **one person the request proved**:
+ * a user an authentication strategy supplied, or one an in-process caller
+ * passed explicitly. False for no principal, the `anonymous` strategy's
+ * sentinel, a principal synthesized from a token's `clientId`
+ * ({@link isSynthesizedPrincipal}), and the `localPrincipal` config fallback.
+ * Key per-user state (settings, preferences) only on a verified principal.
+ */
+export function isVerifiedPrincipal(user: unknown): user is UserProfile {
+  if (typeof user !== 'object' || user === null) return false;
+  const u = user as Record<string | symbol, unknown>;
+  if (u[SYNTHESIZED_PRINCIPAL] === true || u[LOCAL_PRINCIPAL] === true) {
+    return false;
+  }
+  const id = u[securityId];
+  return typeof id === 'string' && id !== '' && id !== ANONYMOUS_ID;
+}
+
+/**
  * The scopes a session must hold for a tool to be *visible* (registered for
  * `tools/list` / `tools/call`).
  *

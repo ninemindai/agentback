@@ -2266,6 +2266,9 @@ importers:
 
   packages/mcp-openai:
     dependencies:
+      '@agentback/authorization':
+        specifier: workspace:~
+        version: link:../authorization
       '@agentback/common':
         specifier: workspace:~
         version: link:../common

@@ -386,10 +386,11 @@ ChatGPT — `@agentback/mcp-openai` (experimental, tracks OpenAI's spec):
   refused over HTTP unless `allowHttp`.
 - `installSettings(app, {schema, store, layout})` — `settings_read` /
   `settings_update` + `openai/settings`. Fields: primitive, `.default()`,
-  `.meta({title})`. Keyed per **verified** user (never a `clientId`-synthesized
-  principal — `isSynthesizedPrincipal`); else update →
-  `settings_identity_required`, read → defaults. `principalKey` / `shared: true`
-  opt in.
+  `.meta({title})`. Keyed per **verified** user (`isVerifiedPrincipal` — never
+  a `clientId`-synthesized principal, `$anonymous`, or `localPrincipal`); else
+  update → `settings_identity_required`, read → defaults. A raw OAuth verifier
+  gives no user: use `strategyAuth` or `principalKey: (_u, auth) =>
+auth?.extra?.sub`. `shared: true` (single-user stdio), `authorize:`.
 - Inspector "Call as" (ChatGPT/Claude profiles) previews per-host
   presentation; tests use `callTool(name, input, {simulate})`.
 - Through `mcp-host` request `_meta`, `input_required`, prefixed names in host
