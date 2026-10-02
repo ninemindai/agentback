@@ -699,8 +699,9 @@ P1-6's header points here.
   ([`modelcontextprotocol/mcpb`](https://github.com/modelcontextprotocol/mcpb)),
   Claude and OpenAI plugin packaging (`marketplace.json` + `skills/`), OpenAI's
   `onboardingSkill`, and a `create-agentback --with mcp-apps` scaffold all
-  belong in a separate distribution proposal. It should be filed after phase 1a
-  lands, because that is how users of either host actually find an app.
+  belong in a separate distribution proposal, now filed as
+  [P1-8 Distribution](distribution.md). (The `mcp-apps` scaffold has since
+  shipped.)
 - **Widget-side helpers** (deep links, `ui/message` targets, model-context
   titles, `openai/resources/write`, `openai/files/open`). These are browser
   code against the host bridge; they belong to P1-6 phase 2's typed view
