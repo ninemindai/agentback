@@ -51,7 +51,7 @@ Read top-to-bottom the first time; jump around afterwards.
 | Guide                                                                  | Outcome                                                                                                                                                           |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Build a REST API](guides/build-a-rest-api.md)                         | A Zod-validated REST service with auto-emitted OpenAPI 3.1 and Swagger UI.                                                                                        |
-| [Build an MCP server](guides/build-an-mcp-server.md)                   | Tools, resources, and prompts an MCP client (or Claude) can call, with an inspector UI.                                                                           |
+| [Build an MCP server](guides/build-an-mcp-server.md)                   | Tools, resources, and prompts an MCP client (or Claude) can call; asking the user mid-call (`elicit.ask`/`once`); an inspector UI that answers those questions.   |
 | [Build a hybrid app](guides/build-a-hybrid-app.md)                     | REST + MCP from a single process and a single set of schemas, plus a type-safe HTTP client.                                                                       |
 | [Typed streaming (SSE & JSONL)](guides/streaming.md)                   | `streamOf:` routes: per-item Zod validation, typed client `for await`, MCP progress, bring-your-own streams.                                                      |
 | [Render a widget with MCP Apps](guides/mcp-apps-widgets.md)            | An interactive `ui://` widget a host (Claude Desktop) renders inline for a tool's result (SEP-1865); ChatGPT extras via `@agentback/mcp-openai`.                  |
@@ -84,6 +84,14 @@ its exports, a usage snippet, and where it sits in the layering.
 [Prometheus metrics](../packages/extension-metrics/README.md) ·
 [rate limiting](../packages/extension-rate-limit/README.md) (in-memory or Redis,
 `429` + `RateLimit-*` headers).
+
+**MCP clients & gateways**:
+[connect to a remote MCP server](../packages/mcp-client/README.md) (OAuth,
+bearer refresh) ·
+[aggregate upstreams into one gateway](../packages/mcp-host/README.md)
+(namespaced tools/prompts/resources; relays an upstream's elicitation
+questions on both protocol eras and, opt-in, request `_meta` — see
+[host extensions through the gateway](../packages/mcp-host/README.md#host-extensions-through-the-gateway)).
 
 **Metering & payments** (subclass the dispatcher / mount a rail):
 [usage metering](../packages/metering/README.md) (per-principal
@@ -135,8 +143,8 @@ pnpm -F hello-client start       # the typed client calling hello-rest's schemas
 | Example                        | Demonstrates                                                  | Guide                                                                                                    |
 | ------------------------------ | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `examples/hello-rest`          | REST + SSE streaming + auth + health + metrics + explorers    | [REST](guides/build-a-rest-api.md), [Streaming](guides/streaming.md)                                     |
-| `examples/hello-mcp`           | MCP tools over stdio                                          | [MCP](guides/build-an-mcp-server.md)                                                                     |
-| `examples/hello-hybrid`        | REST + MCP in one process                                     | [Hybrid](guides/build-a-hybrid-app.md)                                                                   |
+| `examples/hello-mcp`           | MCP tools over stdio; elicitation (`ask` + `once`)            | [MCP](guides/build-an-mcp-server.md)                                                                     |
+| `examples/hello-hybrid`        | REST + MCP in one process; the inspector answers `greet`      | [Hybrid](guides/build-a-hybrid-app.md)                                                                   |
 | `examples/hello-client`        | Schema-shared typed client                                    | [Hybrid](guides/build-a-hybrid-app.md#a-type-safe-client-with-no-codegen)                                |
 | `examples/hello-mcp-apps`      | MCP Apps `ui://` widget rendered by a host                    | [MCP Apps](guides/mcp-apps-widgets.md)                                                                   |
 | `examples/hello-mcp-events`    | `@event` + emit + signed webhook delivery to a subscriber     | [MCP Events](guides/mcp-events.md)                                                                       |

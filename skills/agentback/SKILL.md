@@ -45,9 +45,12 @@ ESM-only, Node 22.18+, TypeScript 7, pnpm workspaces. **Relative imports use
 3. **Tools / resources / prompts for MCP clients (Claude, Cursor, agents),
    over stdio or HTTP — incl. MCP Apps `ui://` widgets rendered inline by the
    host, or a tool that asks the user something mid-call (elicitation,
-   `elicit.ask`), or ChatGPT/Claude host extras (entrypoints, settings,
-   @-mentions, per-host widget domain — `@agentback/mcp-openai`)?** → MCP
-   tools ([mcp-tools.md](references/mcp-tools.md))
+   `elicit.ask`, with pre-question work run once per call via `elicit.once`),
+   or ChatGPT/Claude host extras (entrypoints, settings, @-mentions, per-host
+   widget domain — `@agentback/mcp-openai`), or a gateway over several
+   upstream MCP servers that relays their questions and `_meta`
+   (`@agentback/mcp-host`)?** → MCP tools
+   ([mcp-tools.md](references/mcp-tools.md))
 4. **Share schemas/types between server and a typed client (no codegen)?** →
    Schema sharing & client ([schema-sharing-and-client.md](references/schema-sharing-and-client.md))
 5. **Authentication, authorization, scopes, rate limiting (REST or MCP/HTTP)?**
@@ -294,7 +297,9 @@ vercel|cloudflare` (`@agentback/cli`). The schema-typed `client` depends on
 - **MCP tools**: [references/mcp-tools.md](references/mcp-tools.md) —
   `@mcpServer`/`@tool`/`@resource`/`@prompt`, dispatch, `confirm:` gating, MCP
   Apps widgets (`ui:`), host extensions (`@agentback/mcp-openai`, per-host
-  mounts), stdio vs HTTP transport, scope-gated tools, the inspector.
+  mounts), elicitation (`elicit.ask`/`once`), the `mcp-host` gateway relay,
+  stdio vs HTTP transport, scope-gated tools, the inspector (which answers
+  elicitation questions).
 - **MCP Events**: [references/mcp-events.md](references/mcp-events.md) —
   `@event` + emit, webhook subscriptions (identity, TTL, rotation), endpoint
   verification, IP-pinned signed delivery, revocation.

@@ -37,8 +37,8 @@
           client that lists it. Now the host reads it too. ChatGPT looks for
           <code>openai/*</code> keys, and Claude looks for a widget
           <code>domain</code>. AgentBack adds those keys to the same
-          <code>@tool</code> and checks them when the decorator runs, so one
-          Zod schema still describes every surface.
+          <code>@tool</code> and checks them when the decorator runs, so one Zod
+          schema still describes every surface.
         </p>
 
         <h2>The contract</h2>
@@ -55,11 +55,12 @@
 async library(): Promise&lt;z.infer&lt;typeof Library&gt;&gt; { … }</code></pre>
 
         <p>
-          That declaration is an MCP tool with an output schema, and an MCP
-          Apps tool whose result a conformant host renders through the linked
+          That declaration is an MCP tool with an output schema, and an MCP Apps
+          tool whose result a conformant host renders through the linked
           <code>ui://</code> widget. The widget receives the result's
-          <code>structuredContent</code>, which is the <code>Library</code>
-          shape. A REST route on an <code>@api</code> controller that declares
+          <code>structuredContent</code>, which is the
+          <code>Library</code> shape. A REST route on an
+          <code>@api</code> controller that declares
           <code>response: Library</code> validates its responses against the
           same schema object.
         </p>
@@ -85,16 +86,16 @@ async library(): Promise&lt;z.infer&lt;typeof Library&gt;&gt; { … }</code></pr
 
         <p>
           The <code>check</code> runs when <code>@tool</code> is applied, with
-          the real input schema in hand. If someone later adds a required
-          field, the build fails at the decorator line and names the tool. The
-          alternative is finding out in ChatGPT, where the entrypoint just
-          does nothing.
+          the real input schema in hand. If someone later adds a required field,
+          the build fails at the decorator line and names the tool. The
+          alternative is finding out in ChatGPT, where the entrypoint just does
+          nothing.
         </p>
 
         <p>
-          Claude renders each widget on its own sandbox origin, derived from
-          the URL you add as a connector. That is a resource-side fact, so it
-          goes on the widget:
+          Claude renders each widget on its own sandbox origin, derived from the
+          URL you add as a connector. That is a resource-side fact, so it goes
+          on the widget:
         </p>
 
         <pre><code class="language-ts">@appResource('ui://bits/library', {domain: claudeDomain(publicUrl)})
@@ -118,7 +119,9 @@ libraryWidget() { return WIDGET_HTML; }</code></pre>
           </li>
           <li>an annotation hint that is not a boolean;</li>
           <li>an icon without a <code>src</code>;</li>
-          <li>a <code>confirm:</code> tool that also claims to be read-only.</li>
+          <li>
+            a <code>confirm:</code> tool that also claims to be read-only.
+          </li>
         </ul>
 
         <p>
@@ -130,20 +133,38 @@ libraryWidget() { return WIDGET_HTML; }</code></pre>
         <h2>Why the core holds no host vocabulary</h2>
         <p>
           OpenAI's extensions are new and still moving, and Claude has exactly
-          one convention so far. Typed <code>openai/*</code> helpers would put a
-          moving spec into every app's dependency graph. So the core ships
-          generic, checked seams, and the host words live in fragments and
-          recipes you can see. When a spec settles, a typed adapter builds on
-          the same seams and your <code>@tool</code> does not change.
+          one convention so far. Typed <code>openai/*</code> helpers in the core
+          would put a moving spec into every app's dependency graph. So the core
+          ships generic, checked seams, and the host words live outside it.
+        </p>
+        <p>
+          The typed ChatGPT words now exist, in their own package.
+          <code>@agentback/mcp-openai</code> is built only on those seams:
+          <code>openaiUi({entrypoints})</code> is the fragment above with the
+          check written for you, and <code>installSettings</code> adds a
+          per-user settings page. When OpenAI's spec moves, that package moves.
+          <code>@agentback/mcp</code> and your <code>@tool</code> stay as they
+          are.
+        </p>
+
+        <h2>One mount per host</h2>
+        <p>
+          Sometimes the same widget must look different in each host. A client
+          names itself in <code>clientInfo</code>, but the client asserts that
+          name, and a stateless 2025 request does not send it at all. A mount is
+          server configuration. Serve each host its own path, such as
+          <code
+            >installMcpHttp(app, {path: '/mcp/chatgpt', host: 'chatgpt'})</code
+          >. Then a tool or a widget's <code>domain</code> function reads the
+          host from <code>MCPBindings.REQUEST_MOUNT</code>, on every protocol
+          era.
         </p>
 
         <div class="post-actions">
           <a class="button" href="../../guides/mcp-apps-widgets.md"
             >MCP Apps widgets guide</a
           >
-          <a
-            class="button secondary"
-            href="../../proposals/host-extensions.md"
+          <a class="button secondary" href="../../proposals/host-extensions.md"
             >Read the design notes</a
           >
         </div>

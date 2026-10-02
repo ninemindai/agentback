@@ -12,11 +12,19 @@
 //   POST /mcp-inspector/api/tools/:name/call  (inspector call API)
 
 import {z} from 'zod';
-import {isMain} from '@agentback/core';
+import {inject, isMain} from '@agentback/core';
 import {api, get, post} from '@agentback/openapi';
 import {RestApplication} from '@agentback/rest';
 import {installExplorer} from '@agentback/rest-explorer';
-import {MCPComponent, mcpServer, prompt, resource, tool} from '@agentback/mcp';
+import {
+  MCPBindings,
+  MCPComponent,
+  mcpServer,
+  prompt,
+  resource,
+  tool,
+  type Elicitor,
+} from '@agentback/mcp';
 import {installInspector} from '@agentback/mcp-inspector';
 import {installMcpHttp} from '@agentback/mcp-http';
 
@@ -48,6 +56,7 @@ class GreetingController {
 
 const McpEchoInput = z.object({text: z.string().min(1).max(280)});
 const McpAddInput = z.object({a: z.number().int(), b: z.number().int()});
+const NameForm = z.object({name: z.string().min(1).describe('Your name')});
 
 @mcpServer()
 class EchoTools {
@@ -64,6 +73,17 @@ class EchoTools {
     return {sum: input.a + input.b};
   }
 
+  // Asks a question mid-call. Open /mcp-inspector/, call `greet`, and the
+  // inspector shows a form for the question; submitting it continues the call.
+  @tool('greet', {description: 'Asks your name, then greets you.'})
+  async greet(@inject(MCPBindings.ELICIT) elicit: Elicitor) {
+    const {name} = await elicit.ask('name', {
+      message: 'What should I call you?',
+      standard: NameForm,
+    });
+    return {greeting: `Hello, ${name}!`};
+  }
+
   @resource('hello://motd', {
     name: 'motd',
     description: 'Message of the day.',
@@ -75,7 +95,7 @@ class EchoTools {
 
   @prompt('welcome', {description: 'A short welcome prompt.'})
   welcome() {
-    return 'Welcome! Try the echo and add tools.';
+    return 'Welcome! Try the echo, add and greet tools.';
   }
 }
 
