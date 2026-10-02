@@ -47,8 +47,10 @@ Options:
 - **Answers questions** — a tool that asks the user (`elicit.ask`, a
   `confirm:` prompt) runs through a real in-memory 2026-era MCP client in
   manual multi-round-trip mode. Each question renders as a form (Answer or
-  Decline), and the call continues until the tool returns. Other tools keep
-  the in-process path; "Call as" profiles do not apply to asking tools.
+  Decline), and the call continues until the tool returns. `confirm:` tools
+  take the same path, so they are confirmed natively. Other tools keep the
+  in-process path. "Call as" is refused for an asking tool, and a server
+  configured with `protocol: 'legacy'` cannot be answered from the page.
 - **Call as** — run a tool or read a resource with a host's simulated client,
   mount and `_meta` (built-in **ChatGPT** and **Claude** profiles; bind
   `INSPECTOR_CLIENT_PROFILES` to replace them, `{}` to hide the picker). It

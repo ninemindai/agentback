@@ -453,6 +453,11 @@ class AskingTools {
     });
     return {text: `${input.greeting}, ${name} (${age})`};
   }
+
+  @tool('wipe', {confirm: true})
+  wipe() {
+    return {wiped: true};
+  }
 }
 
 describe('mcp-inspector answers elicitation', () => {
@@ -519,7 +524,65 @@ describe('mcp-inspector answers elicitation', () => {
         requestState: first.body.inputRequired.requestState,
         inputResponses: {who: {action: 'decline'}},
       })
+      .expect(409);
+    expect(r.body.error.code).toBe('elicitation_declined');
+    expect(r.body.error.message).toMatch(/declined the 'who' question/);
+  });
+
+  it('asks a confirm: tool natively instead of returning a token', async () => {
+    const first = await client
+      .post('/mcp-inspector/api/tools/wipe/call')
+      .send({})
+      .expect(200);
+    const q = first.body.inputRequired;
+    const [key] = Object.keys(q.questions);
+    expect(q.questions[key].requestedSchema).toMatchObject({
+      properties: {confirm: {type: 'boolean'}},
+    });
+    const done = await client
+      .post('/mcp-inspector/api/tools/wipe/answer')
+      .send({
+        arguments: {},
+        requestState: q.requestState,
+        inputResponses: {[key]: {action: 'accept', content: {confirm: true}}},
+      })
+      .expect(200);
+    expect(done.body).toEqual({wiped: true});
+  });
+
+  it('refuses ?as= for a tool that asks', async () => {
+    const r = await client
+      .post('/mcp-inspector/api/tools/greet/call?as=claude')
+      .send({greeting: 'Hi'})
       .expect(400);
-    expect(r.body.error.message).toMatch(/declined.*elicitation_declined/);
+    expect(r.body.error.message).toMatch(
+      /cannot be called as a client profile/,
+    );
+  });
+});
+
+describe('mcp-inspector on a legacy-protocol server', () => {
+  it('explains that it cannot answer questions there', async () => {
+    const app = new RestApplication({});
+    app.configure('servers.RestServer').to({port: 0, host: '127.0.0.1'});
+    app.component(MCPComponent);
+    app.configure('servers.MCPServer').to({
+      protocol: 'legacy',
+      transports: {stdio: false},
+    });
+    app.service(AskingTools);
+    await app.get<MCPServer>('servers.MCPServer');
+    await installInspector(app);
+    await app.start();
+    try {
+      const r = await supertest((await app.restServer).url)
+        .post('/mcp-inspector/api/tools/greet/call')
+        .send({greeting: 'Hi'})
+        .expect(422);
+      expect(r.body.error.code).toBe('elicitation_unavailable');
+      expect(r.body.error.message).toMatch(/protocol: 'legacy'/);
+    } finally {
+      await app.stop();
+    }
   });
 });

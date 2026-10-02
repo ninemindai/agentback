@@ -420,6 +420,12 @@ describe('elicit — guards', () => {
       session.once('huge', () => 'x'.repeat(40 * 1024)),
     ).rejects.toThrow(/over the 32768-byte limit/);
     expect(Object.keys(session.memo)).toEqual(['k']);
+    // Over the cap is not stored, so the key is free for a retry.
+    await expect(session.once('huge', () => 'small')).resolves.toBe('small');
+    // Every round sees the JSON form, the first included.
+    const d = await session.once('when', () => new Date(0));
+    expect(d).toBe('1970-01-01T00:00:00.000Z');
+    expect(Object.keys(session.memo)).toEqual(['k', 'huge', 'when']);
     // A replayed result is returned as a copy, without running fn.
     const replay = createElicitSession({}, undefined, {k: {a: 1}});
     let ran = false;

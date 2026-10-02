@@ -27,6 +27,7 @@ import {
   type SimulatedRequest,
 } from '@agentback/mcp';
 import {BindingKey} from '@agentback/core';
+import {AgentError, ErrorCodes} from '@agentback/openapi';
 import {
   installMcpConnect,
   type McpConnectOptions,
@@ -324,6 +325,16 @@ export class McpInspectorController {
     // A tool that asks the user goes through a real MCP client: an
     // in-process call has nobody to ask.
     if (this.asks(input.path.name)) {
+      if (input.query.as) {
+        throw Object.assign(
+          new Error(
+            `'${input.path.name}' asks the user, so it runs through a real ` +
+              `MCP client and cannot be called as a client profile — call ` +
+              `it without ?as=`,
+          ),
+          {statusCode: 400},
+        );
+      }
       return this.invoke(() =>
         this.askingCall({name: input.path.name, arguments: input.body}),
       );
@@ -364,10 +375,14 @@ export class McpInspectorController {
     );
   }
 
-  /** True when `name` is a served tool that injects the elicitor. */
+  /**
+   * True when `name` is a served tool that can ask the user: one that injects
+   * the elicitor, or a `confirm:` tool (which a 2026 client is asked natively
+   * instead of being handed a confirmation token).
+   */
   private asks(name: string): boolean {
     const t = this.mcp.servedTools().find(x => x.meta.name === name);
-    return t !== undefined && toolAsksUser(t);
+    return t !== undefined && (toolAsksUser(t) || Boolean(t.meta.confirm));
   }
 
   /**
@@ -379,8 +394,24 @@ export class McpInspectorController {
    * for a conformant host — only the human is the page.
    */
   private async askingCall(params: Record<string, unknown>): Promise<unknown> {
+    if ((this.mcp.config as {protocol?: string}).protocol === 'legacy') {
+      // A 2025 server asks with a server→client request mid-call, which a
+      // page cannot answer inside one HTTP request.
+      throw new AgentError(
+        `The MCP Inspector answers questions only on the 2026 protocol; ` +
+          `this server is configured with protocol: 'legacy'. Call ` +
+          `'${String(params.name)}' through an MCP client instead.`,
+        {code: 'elicitation_unavailable', status: 422, retryable: false},
+      );
+    }
     const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-    const served = this.mcp.serveTransport(serverSide);
+    let served: {close(): Promise<void>};
+    try {
+      served = this.mcp.serveTransport(serverSide);
+    } catch (err) {
+      await clientSide.close().catch(() => {});
+      throw err;
+    }
     const client = new Client(
       {name: 'mcp-inspector', version: '0.0.0'},
       {
@@ -451,6 +482,9 @@ export class McpInspectorController {
     try {
       return await fn();
     } catch (err) {
+      // An AgentError already carries its status and code (a declined
+      // question is a 409, not a validation failure); keep them.
+      if (err instanceof AgentError) throw err;
       const e = err as Error & {statusCode?: number; details?: unknown};
       e.statusCode = 400;
       const issues = (err as {issues?: unknown}).issues;
@@ -459,6 +493,21 @@ export class McpInspectorController {
     }
   }
 }
+
+/** HTTP status for an MCP error envelope's `code`, which carries none. */
+const STATUS_FOR_CODE: Record<string, number> = {
+  [ErrorCodes.UNAUTHORIZED]: 401,
+  [ErrorCodes.PAYMENT_REQUIRED]: 402,
+  [ErrorCodes.FORBIDDEN]: 403,
+  [ErrorCodes.NOT_FOUND]: 404,
+  [ErrorCodes.CONFLICT]: 409,
+  [ErrorCodes.ELICITATION_DECLINED]: 409,
+  [ErrorCodes.ELICITATION_UNAVAILABLE]: 422,
+  [ErrorCodes.ELICITATION_UNSUPPORTED]: 422,
+  [ErrorCodes.RATE_LIMITED]: 429,
+  [ErrorCodes.INTERNAL_ERROR]: 500,
+  [ErrorCodes.SERVICE_UNAVAILABLE]: 503,
+};
 
 /**
  * The tool's value from a `tools/call` result, the shape the in-process path
@@ -474,20 +523,19 @@ function unwrapToolResult(result: {
   const text =
     items.length === 1 && items[0].type === 'text' ? items[0].text : undefined;
   if (result.isError) {
-    let message = text ?? 'The tool failed.';
+    // The tool's error envelope, rethrown with its own status and code.
+    let env: {error?: {message?: string; code?: string; statusCode?: number}} =
+      {};
     try {
-      const env = JSON.parse(message) as {
-        error?: {message?: string; code?: string};
-      };
-      if (env.error?.message) {
-        message = env.error.code
-          ? `${env.error.message} (${env.error.code})`
-          : env.error.message;
-      }
+      env = JSON.parse(text ?? '{}');
     } catch {
       // Plain text error.
     }
-    throw new Error(message);
+    throw new AgentError(env.error?.message ?? text ?? 'The tool failed.', {
+      ...(env.error?.code ? {code: env.error.code} : {}),
+      // The MCP envelope omits the HTTP status; recover it from the code.
+      status: env.error?.code ? (STATUS_FOR_CODE[env.error.code] ?? 400) : 400,
+    });
   }
   if (result.structuredContent !== undefined) return result.structuredContent;
   if (text !== undefined) {

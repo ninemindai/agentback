@@ -252,9 +252,13 @@ so a constructor gets the app-level default, whose asks always fail.
   effect. Expensive work that must come before an `ask` (an LLM call, a paid
   API, a slow search) goes in `elicit.once(key, fn)`: the first round stores
   its JSON result in the request-state envelope and later rounds replay it,
-  so it runs, and bills, once per call. The envelope is signed, not
-  encrypted, so the client can read what you store: never pass a secret
-  through `once`. Results are capped at 32 KiB per call.
+  so it runs, and bills, once per call. Every round, the first included,
+  gets the JSON form of the result (a `Date` comes back an ISO string). The
+  envelope is signed, not encrypted, so the client can read what you store:
+  never pass a secret through `once`. Results are capped at 32 KiB per call.
+  The envelope is not single-use either: a caller may replay a round's state
+  on a new call with the same input within its hour, so keep freshness- or
+  authorization-sensitive data out of `once`, or re-check it.
 - `askAll({a: formA, b: formB})` asks several questions in one round.
 - A declined or cancelled answer throws `AgentError` `elicitation_declined`
   (409); an answer that fails the form's schema is `invalid_input` (400).
