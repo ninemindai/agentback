@@ -393,9 +393,10 @@ ChatGPT — `@agentback/mcp-openai` (experimental, tracks OpenAI's spec):
 auth?.extra?.sub`. `shared: true` (single-user stdio), `authorize:`.
 - Inspector "Call as" (ChatGPT/Claude profiles) previews per-host
   presentation; tests use `callTool(name, input, {simulate})`.
-- Through `mcp-host` request `_meta`, `input_required`, prefixed names in host
-  metadata and upstream capabilities do not survive — expose such servers
-  directly.
+- `mcp-host` relays vendor request `_meta` (`relayMeta`) and upstream
+  elicitation to its downstream client (`relayElicitation`). Prefixed names
+  inside host metadata and upstream capabilities still do not survive — use
+  `prefix: false` or expose such servers directly.
 
 Recipes (Claude's `domain`, per-host mounts) and the host-connection checklist:
 `docs/guides/mcp-apps-widgets.md`.

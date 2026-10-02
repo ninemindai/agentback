@@ -245,9 +245,6 @@ spike proved vs what is still assumed.
 
 - `elicit.once(key, fn)` — memoize expensive work done before an `ask` in the
   request-state envelope, so a re-run round does not repeat (or re-bill) it.
-- `mcp-host` gateway: decide what happens when an upstream tool asks the user
-  (pass `input_required` through, or refuse with `elicitation_unavailable`).
-  Today it is undefined behaviour behind the gateway.
 - MCP Inspector: render elicitation forms so an asking tool can be exercised
   from `/mcp-inspector` (it calls tools in-process today, which cannot answer).
 
