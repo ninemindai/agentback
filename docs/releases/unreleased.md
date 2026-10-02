@@ -81,10 +81,15 @@ Also new:
 - `isSynthesizedPrincipal()` / `isVerifiedPrincipal()` in `@agentback/mcp`.
 - `callTool` / `readResource` `{simulate}`.
 - **"Call as"** client profiles in `mcp-inspector`.
-- **`mcp-host` relays request `_meta` and elicitation** (`relayMeta`,
-  `relayElicitation`, both on by default). Upstreams now connect with
-  automatic version negotiation, so a 2026 upstream is spoken to in its own
-  revision. The README lists the two limitations that remain.
+- **`mcp-host` relays elicitation and, opt-in, request `_meta`.**
+  - An upstream tool's question reaches the downstream client
+    (`relayElicitation`, on by default; `elicitationTimeoutMs`, 10 minutes).
+  - Vendor `_meta` keys are forwarded when listed (`relayMeta`, off by
+    default).
+  - Upstreams now connect with automatic version negotiation, so a 2026
+    upstream is spoken to in its own revision. Per upstream,
+    `versionNegotiation: 'legacy'` restores the old handshake.
+  - The README lists the two limitations that remain.
 - `@agentback/mcp-client` `connectMcp({clientOptions, beforeConnect})`.
 - `examples/hello-mcp-apps` gains a ChatGPT entrypoint, display modes, a
   settings page and a `/mcp/claude` per-host mount.

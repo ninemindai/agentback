@@ -393,8 +393,10 @@ ChatGPT — `@agentback/mcp-openai` (experimental, tracks OpenAI's spec):
 auth?.extra?.sub`. `shared: true` (single-user stdio), `authorize:`.
 - Inspector "Call as" (ChatGPT/Claude profiles) previews per-host
   presentation; tests use `callTool(name, input, {simulate})`.
-- `mcp-host` relays vendor request `_meta` (`relayMeta`) and upstream
-  elicitation to its downstream client (`relayElicitation`). Prefixed names
+- `mcp-host` relays upstream elicitation to its downstream client
+  (`relayElicitation`, on; `elicitationTimeoutMs`, 10 min) and, opt-in,
+  vendor request `_meta` (`relayMeta: ['openai/resource']` — off by default,
+  since upstreams authenticate the gateway, not the end client). Prefixed names
   inside host metadata and upstream capabilities still do not survive — use
   `prefix: false` or expose such servers directly.
 

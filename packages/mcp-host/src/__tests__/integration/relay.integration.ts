@@ -2,7 +2,13 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
-import {Client, InMemoryTransport} from '@modelcontextprotocol/client';
+import {
+  Client,
+  InMemoryTransport,
+  StreamableHTTPClientTransport,
+} from '@modelcontextprotocol/client';
+import {WebStandardStreamableHTTPServerTransport} from '@modelcontextprotocol/server';
+import {randomUUID} from 'node:crypto';
 import {afterEach, describe, expect, it} from 'vitest';
 import {z} from 'zod';
 import {inject} from '@agentback/core';
@@ -102,21 +108,50 @@ async function legacyUpstream() {
   return clientSide;
 }
 
+type Answer = {action: 'accept' | 'decline' | 'cancel'; delayMs?: number};
+
 async function downstream(
   host: McpHost,
-  opts: {canElicit?: boolean} = {},
+  opts: {canElicit?: boolean; answer?: Answer; http?: boolean} = {},
 ): Promise<Client> {
-  const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-  await host.connect(serverSide);
+  let clientSide;
+  if (opts.http) {
+    // The gateway served over Streamable HTTP (a session): a question must
+    // travel on the stream of the request it belongs to.
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+    });
+    await host.connect(transport);
+    clientSide = new StreamableHTTPClientTransport(
+      new URL('http://gateway.test/mcp'),
+      {
+        // No standalone GET stream: a question with no related request would
+        // have nowhere to go, so this proves it rides the asking request.
+        fetch: (input, init) =>
+          (init?.method ?? 'GET') === 'GET'
+            ? Promise.resolve(new Response(null, {status: 405}))
+            : transport.handleRequest(new Request(input, init)),
+      },
+    );
+  } else {
+    const [c, serverSide] = InMemoryTransport.createLinkedPair();
+    await host.connect(serverSide);
+    clientSide = c;
+  }
   const client = new Client(
     {name: 'downstream', version: '0'},
     opts.canElicit === false ? {} : {capabilities: {elicitation: {form: {}}}},
   );
   if (opts.canElicit !== false) {
-    client.setRequestHandler('elicitation/create', async () => ({
-      action: 'accept',
-      content: {name: 'Ada'},
-    }));
+    const answer = opts.answer ?? {action: 'accept'};
+    client.setRequestHandler('elicitation/create', async () => {
+      if (answer.delayMs) {
+        await new Promise(r => setTimeout(r, answer.delayMs));
+      }
+      return answer.action === 'accept'
+        ? {action: 'accept', content: {name: 'Ada'}}
+        : {action: answer.action};
+    });
   }
   await client.connect(clientSide);
   closers.push(
@@ -132,9 +167,23 @@ const text = (r: unknown) =>
     .join('');
 
 describe('mcp-host relays request _meta', () => {
-  it('forwards vendor keys only, on tools/call and resources/read', async () => {
+  it('forwards none by default', async () => {
     const host = await createMcpHost({
       upstreams: [{name: 'up', transport: 'http', url: await httpUpstream()}],
+    });
+    const client = await downstream(host);
+    const res = await client.callTool({
+      name: 'up__meta',
+      arguments: {},
+      _meta: {'openai/resource': {path: '/x'}},
+    });
+    expect(res.structuredContent ?? JSON.parse(text(res))).toEqual({keys: []});
+  });
+
+  it('with relayMeta: true forwards vendor keys only, on tools/call and resources/read', async () => {
+    const host = await createMcpHost({
+      upstreams: [{name: 'up', transport: 'http', url: await httpUpstream()}],
+      relayMeta: true,
     });
     const client = await downstream(host);
     const res = await client.callTool({
@@ -164,7 +213,10 @@ describe('mcp-host relays request _meta', () => {
     const url = await httpUpstream();
     for (const [relayMeta, keys] of [
       [false, []],
+      [['openai/resource'], ['openai/resource']],
       [(k: string) => k.startsWith('openai/'), ['openai/resource']],
+      // Reserved keys never pass, whatever a predicate says.
+      [() => true, ['com.example/y', 'openai/resource']],
     ] as const) {
       const host = await createMcpHost({
         upstreams: [{name: 'up', transport: 'http', url}],
@@ -174,7 +226,12 @@ describe('mcp-host relays request _meta', () => {
       const res = await client.callTool({
         name: 'up__meta',
         arguments: {},
-        _meta: {'openai/resource': {path: '/x'}, 'com.example/y': 1},
+        _meta: {
+          'openai/resource': {path: '/x'},
+          'com.example/y': 1,
+          'io.modelcontextprotocol/related-task': {taskId: 't'},
+          progressToken: 3,
+        },
       });
       expect(res.structuredContent ?? JSON.parse(text(res))).toEqual({
         keys,
@@ -210,6 +267,53 @@ describe('mcp-host relays elicitation', () => {
     expect(text(res)).toContain('hello Ada');
   });
 
+  it('sends the question on the asking request when the gateway is served over HTTP', async () => {
+    const host = await createMcpHost({
+      upstreams: [{name: 'up', transport: 'http', url: await httpUpstream()}],
+    });
+    const client = await downstream(host, {http: true});
+    const res = await client.callTool({name: 'up__greet', arguments: {}});
+    expect(text(res)).toContain('hello Ada');
+  });
+
+  it('relays a decline back to the upstream tool', async () => {
+    const host = await createMcpHost({
+      upstreams: [{name: 'up', transport: 'http', url: await httpUpstream()}],
+    });
+    const client = await downstream(host, {answer: {action: 'decline'}});
+    const res = await client.callTool({name: 'up__greet', arguments: {}});
+    expect(res.isError).toBe(true);
+    expect(text(res)).toContain('elicitation_declined');
+  });
+
+  it('bounds a question by elicitationTimeoutMs', async () => {
+    const url = await httpUpstream();
+    const slow = await createMcpHost({
+      upstreams: [{name: 'up', transport: 'http', url}],
+      elicitationTimeoutMs: 150,
+    });
+    const tooSlow = await downstream(slow, {
+      answer: {action: 'accept', delayMs: 600},
+    });
+    const outcome = await tooSlow
+      .callTool({name: 'up__greet', arguments: {}})
+      .then(
+        r => JSON.stringify(r),
+        (e: Error) => e.message,
+      );
+    expect(outcome).toMatch(/timed out|timeout/i);
+
+    const patient = await createMcpHost({
+      upstreams: [{name: 'up', transport: 'http', url}],
+      elicitationTimeoutMs: 5_000,
+    });
+    const inTime = await downstream(patient, {
+      answer: {action: 'accept', delayMs: 300},
+    });
+    const res = await inTime.callTool({name: 'up__greet', arguments: {}});
+    expect(text(res)).toContain('hello Ada');
+  });
+
   it('says so when the downstream client cannot be asked', async () => {
     const host = await createMcpHost({
       upstreams: [{name: 'up', transport: 'http', url: await httpUpstream()}],
@@ -233,5 +337,21 @@ describe('mcp-host relays elicitation', () => {
     const res = await client.callTool({name: 'up__greet', arguments: {}});
     expect(res.isError).toBe(true);
     expect(text(res)).toContain('elicitation_unavailable');
+
+    const legacy = await createMcpHost({
+      upstreams: [
+        {
+          name: 'legacy',
+          transport: 'custom',
+          clientTransport: await legacyUpstream(),
+          versionNegotiation: 'legacy',
+        },
+      ],
+      relayElicitation: false,
+    });
+    const viaLegacy = await downstream(legacy);
+    const r2 = await viaLegacy.callTool({name: 'legacy__greet', arguments: {}});
+    expect(r2.isError).toBe(true);
+    expect(text(r2)).toContain('elicitation_unavailable');
   });
 });

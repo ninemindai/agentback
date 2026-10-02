@@ -83,23 +83,32 @@ Tool listings pass through whole — `_meta`, `icons` and `annotations` survive
 — so a ChatGPT entrypoint or a Claude widget `domain` on an upstream still
 reaches the host. Two more things are relayed:
 
-- **Request `_meta`** (`relayMeta`, default on). Vendor-prefixed keys a
-  client sends on `tools/call`, `resources/read` and `prompts/get` —
-  `_meta["openai/resource"].path` from a ChatGPT file entrypoint, say — reach
-  the upstream. Reserved `io.modelcontextprotocol/*` keys and `progressToken`
-  describe this hop and are never forwarded. Pass a key predicate to narrow
-  it, or `false` for none.
 - **Elicitation** (`relayElicitation`, default on). The gateway declares the
   `elicitation` capability to every upstream and forwards a question
   (`elicit.ask`, a 2026 `confirm:` prompt) to its downstream client, then
   returns the answer.
+  - The question travels on the stream of the downstream request that asked,
+    so it arrives over a Streamable HTTP downstream too.
+  - One question, and so the relayed upstream request, may take
+    `elicitationTimeoutMs` (default 10 minutes; the SDK's 60 s default would
+    fail a person answering slowly).
   - Upstreams are spoken to with automatic version negotiation. A stateless
     2026 upstream asks through multi-round-trip results, and a 2025 session
     upstream sends a real `elicitation/create`. Both reach the same relay.
+    Per upstream, `versionNegotiation: 'legacy'` skips the probe (on stdio,
+    the probe is an extra process).
   - A downstream client that did not declare `elicitation` gets an error
     saying so.
   - With `relayElicitation: false`, upstreams see a client that cannot be
     asked.
+- **Request `_meta`** (`relayMeta`, **off by default**). An upstream
+  authenticates the gateway, not the end client, so a forwarded key arrives
+  under the gateway's credential: an upstream that trusts a host-asserted key
+  would trust whatever any downstream client sends. Opt in per key — e.g.
+  `relayMeta: ['openai/resource']` for ChatGPT file entrypoints — with a
+  predicate, or with `true` for every vendor-prefixed key. Reserved
+  `io.modelcontextprotocol/*` keys and `progressToken` describe this hop and
+  never pass.
 
 Two limitations remain:
 
