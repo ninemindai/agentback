@@ -50,6 +50,31 @@ async function* ticks(run: Run): AsyncGenerator<z.infer<typeof Tick>> {
   }
 }
 
+function deferred(): {promise: Promise<void>; resolve: () => void} {
+  let resolve!: () => void;
+  const promise = new Promise<void>(r => (resolve = r));
+  return {promise, resolve};
+}
+
+/** Lets the late producer go on; the test decides when. */
+let release = deferred();
+
+/**
+ * Ignores its abort signal: after the first item it waits for `release`, then
+ * yields one more item whether or not the stream is still open.
+ */
+async function* late(run: Run): AsyncGenerator<z.infer<typeof Tick>> {
+  try {
+    run.produced = 1;
+    yield {n: 1};
+    await release.promise;
+    run.produced = 2;
+    yield {n: 2};
+  } finally {
+    run.disposed = true;
+  }
+}
+
 /** As fast as the consumer allows: only backpressure can slow it down. */
 async function* chunks(run: Run): AsyncGenerator<z.infer<typeof Chunk>> {
   try {
@@ -69,6 +94,13 @@ class StreamController {
     @inject(CoreBindings.ABORT_SIGNAL, {optional: true}) signal?: AbortSignal,
   ): AsyncGenerator<z.infer<typeof Tick>> {
     return ticks(track('ticker', signal));
+  }
+
+  @get('/late', {streamOf: Tick})
+  late(
+    @inject(CoreBindings.ABORT_SIGNAL, {optional: true}) signal?: AbortSignal,
+  ): AsyncGenerator<z.infer<typeof Tick>> {
+    return late(track('late', signal));
   }
 
   @get('/chunks', {streamOf: Chunk})
@@ -94,6 +126,7 @@ async function boot(cfg: RestServerConfig): Promise<string> {
 
 beforeEach(() => {
   runs = {};
+  release = deferred();
 });
 
 afterEach(async () => {
@@ -138,6 +171,39 @@ async function waitFor(check: () => boolean, budgetMs = 5000): Promise<void> {
   while (!check() && Date.now() < deadline) await sleep(10);
 }
 
+/** Read a body to its end (or until it goes quiet) as text. */
+async function readText(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+): Promise<string> {
+  const decoder = new TextDecoder();
+  let text = '';
+  for (;;) {
+    const r = await Promise.race([
+      reader.read().catch(() => ({done: true, value: undefined})),
+      sleep(1000).then(() => undefined),
+    ]);
+    if (!r || r.done) return text;
+    text += decoder.decode(r.value, {stream: true});
+  }
+}
+
+/**
+ * Run `body` and return what reached the process as an uncaught exception
+ * meanwhile, including anything Node raises on the next tick after it.
+ */
+async function uncaughtDuring(body: () => Promise<void>): Promise<Error[]> {
+  const errors: Error[] = [];
+  const onError = (err: Error) => errors.push(err);
+  process.on('uncaughtException', onError);
+  try {
+    await body();
+    await new Promise(r => setImmediate(r));
+  } finally {
+    process.off('uncaughtException', onError);
+  }
+  return errors;
+}
+
 // Same three hosts as the other streaming suites: backpressure and shutdown are
 // promises of the framework, not of one pipeline.
 const HOSTS: Array<[string, RestServerConfig]> = [
@@ -178,6 +244,47 @@ describe.each(HOSTS)('stream lifecycle — %s', (_name, cfg) => {
     expect((runs.ticker!.signal!.reason as Error).message).toBe(
       AbortReasons.CANCELLED,
     );
+  });
+
+  it('drops an item the producer yields after stop() ended its stream', async () => {
+    const base = await boot(cfg);
+    const res = await fetch(`${base}/s/late`);
+    const reader = res.body!.getReader();
+    await reader.read();
+    // The producer ignores its signal; the test uses the abort only as the
+    // moment stop() ends the stream, and lets the late item go right then.
+    runs.late!.signal!.addEventListener('abort', release.resolve);
+
+    let text = '';
+    const errors = await uncaughtDuring(async () => {
+      await app!.stop();
+      app = undefined;
+      text = await readText(reader);
+      await waitFor(() => runs.late!.disposed);
+    });
+
+    expect(errors).toEqual([]);
+    expect(runs.late!.produced).toBe(2);
+    expect(text).not.toContain('"n":2');
+    expect(runs.late!.disposed).toBe(true);
+  });
+
+  it('drops an item the producer yields after its client disconnected', async () => {
+    const base = await boot(cfg);
+    const ac = new AbortController();
+    const res = await fetch(`${base}/s/late`, {signal: ac.signal});
+    const reader = res.body!.getReader();
+    await reader.read();
+    runs.late!.signal!.addEventListener('abort', release.resolve);
+
+    const errors = await uncaughtDuring(async () => {
+      ac.abort();
+      await waitFor(() => runs.late!.disposed);
+    });
+
+    expect(errors).toEqual([]);
+    expect(runs.late!.produced).toBe(2);
+    expect(runs.late!.disposed).toBe(true);
   });
 
   it('pauses a plain producer while its reader is not reading, then finishes', async () => {
