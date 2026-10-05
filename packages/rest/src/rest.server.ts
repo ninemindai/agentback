@@ -1280,7 +1280,9 @@ export class RestServer implements Server {
         if (res.writableNeedDrain) await untilDrained(res);
         if (closed) break;
         const {value, done} = await iterator.next();
-        if (done) break;
+        // stop() or a hangup can end the response while the producer is
+        // still working on this item: drop it rather than write after end.
+        if (done || closed) break;
         if (!writeItem(value)) break;
       }
     } catch (err) {
