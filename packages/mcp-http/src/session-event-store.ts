@@ -22,6 +22,9 @@ import type {
  * Replay is buffered and forwarded only if the store resolves the id to one
  * of this session's streams: an event id is opaque to this wrapper, so a
  * crafted id naming another session's stream must not reach `send` first.
+ * The buffer holds one resume's events, so it is bounded by the store's
+ * retention (`InMemoryEventStore`'s `maxEvents`; for a store you write, by
+ * what it keeps).
  */
 export function sessionEventStore(
   store: EventStore,
