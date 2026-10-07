@@ -2,7 +2,10 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import http from 'node:http';
+import type {AddressInfo} from 'node:net';
 import {
+  createMcpHandler,
   InMemoryTransport,
   McpServer,
   ProtocolError,
@@ -34,6 +37,39 @@ async function asUpstream(
     InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   return {name, transport: 'custom', clientTransport};
+}
+
+/**
+ * Serve a Web `fetch` handler on an ephemeral port. A small adapter instead
+ * of `@modelcontextprotocol/node`, which this package does not depend on;
+ * the response body is streamed, so SSE (`subscriptions/listen`) works.
+ */
+async function serveFetch(fetchFn: (request: Request) => Promise<Response>) {
+  const server = http.createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(chunk as Buffer);
+    const response = await fetchFn(
+      new Request(`http://${req.headers.host}${req.url}`, {
+        method: req.method,
+        headers: req.headers as Record<string, string>,
+        ...(chunks.length ? {body: Buffer.concat(chunks)} : {}),
+      }),
+    );
+    res.writeHead(response.status, Object.fromEntries(response.headers));
+    if (response.body)
+      for await (const chunk of response.body) res.write(chunk);
+    res.end();
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const {port} = server.address() as AddressInfo;
+  return {
+    url: `http://127.0.0.1:${port}/mcp`,
+    close: () =>
+      new Promise<void>(resolve => {
+        server.closeAllConnections();
+        server.close(() => resolve());
+      }),
+  };
 }
 
 /** Upstream A: a tool, a prompt, a fixed resource, and a wide template. */
@@ -197,6 +233,102 @@ describe('mcp-host aggregation (prompts + resources)', () => {
     await expect
       .poll(() => seen.at(-1), {timeout: 5000})
       .toEqual(['a__add', 'a__sub', 'b__echo']);
+  });
+
+  it('re-syncs a 2026-07-28 upstream served over HTTP', async () => {
+    // AgentBack upstreams default to `protocol: 'both'`, so the gateway's
+    // client speaks 2026-07-28 to them and hears list_changed only through
+    // the `subscriptions/listen` stream its `listChanged` option opens. A
+    // stateless 2025 fallback has no stream at all, so passing proves that path.
+    let late = false;
+    const handler = createMcpHandler(() => {
+      const s = new McpServer({name: 'modern', version: '0.0.0'});
+      s.registerTool('a', {}, async () => ({
+        content: [{type: 'text', text: 'a'}],
+      }));
+      if (late) {
+        s.registerTool('b', {}, async () => ({
+          content: [{type: 'text', text: 'b'}],
+        }));
+      }
+      return s;
+    });
+    const upstream = await serveFetch(req => handler.fetch(req));
+    try {
+      host = await createMcpHost({
+        upstreams: [{name: 'm', transport: 'http', url: upstream.url}],
+      });
+      const c = await connectConsumer(host);
+      const names = async () =>
+        (await c.listTools()).tools.map(t => t.name).sort();
+      expect(await names()).toEqual(['m__a']);
+
+      late = true;
+      // The listen stream opens asynchronously after connect, so keep
+      // announcing until the gateway has re-synced. The interval must exceed
+      // the SDK client's 300 ms list_changed debounce, which restarts on
+      // every notification: announce faster and the re-list never runs.
+      await expect
+        .poll(
+          async () => {
+            handler.notify.toolsChanged();
+            return names();
+          },
+          {timeout: 5000, interval: 500},
+        )
+        .toEqual(['m__a', 'm__b']);
+      const r = await c.callTool({name: 'm__b', arguments: {}});
+      expect(r.content).toEqual([{type: 'text', text: 'b'}]);
+    } finally {
+      await host?.close().catch(() => {});
+      host = undefined;
+      await handler.close();
+      await upstream.close();
+    }
+  });
+
+  it('throws at connect on tool name collision when prefixing is off', async () => {
+    await expect(
+      createMcpHost({
+        upstreams: [
+          await trackedUpstream('x', makeToolsOnlyUpstream()),
+          await trackedUpstream('y', makeToolsOnlyUpstream()),
+        ],
+        prefix: false,
+      }),
+    ).rejects.toThrow(/tool name collision on 'ping'/);
+  });
+
+  it('keeps the existing owner when a re-sync re-lists a taken name', async () => {
+    const y = new McpServer({name: 'y-srv', version: '0.0.0'});
+    y.registerTool('other', {}, async () => ({
+      content: [{type: 'text', text: 'other'}],
+    }));
+    host = await createMcpHost({
+      upstreams: [
+        await trackedUpstream('x', makeToolsOnlyUpstream()),
+        await trackedUpstream('y', y),
+      ],
+      prefix: false,
+    });
+    const c = await connectConsumer(host);
+
+    // y now also offers `ping`, which x already owns, plus a marker tool that
+    // shows when the re-sync has happened.
+    y.registerTool('ping', {}, async () => ({
+      content: [{type: 'text', text: 'pong from y'}],
+    }));
+    y.registerTool('marker', {}, async () => ({
+      content: [{type: 'text', text: 'marker'}],
+    }));
+    await expect
+      .poll(async () => (await c.listTools()).tools.map(t => t.name).sort(), {
+        timeout: 5000,
+      })
+      .toEqual(['marker', 'other', 'ping']);
+
+    const r = await c.callTool({name: 'ping', arguments: {}});
+    expect(r.content).toEqual([{type: 'text', text: 'pong'}]);
   });
 
   it('proxies prompts/get to the owning upstream, prefix stripped', async () => {
