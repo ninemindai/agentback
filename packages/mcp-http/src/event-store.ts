@@ -8,6 +8,12 @@ import type {
   StreamId,
   JSONRPCMessage,
 } from '@modelcontextprotocol/server';
+import {loggers} from '@agentback/common';
+
+const log = loggers('agentback:mcp-http:event-store');
+
+/** `<streamId>::<12-digit counter>`, the shape {@link InMemoryEventStore} issues. */
+const EVENT_ID = /^(.*)::(\d{12})$/;
 
 /**
  * A simple in-memory {@link EventStore} enabling **resumable** Streamable HTTP
@@ -23,8 +29,14 @@ import type {
  * a stream or session ended, so without a cap every message of every session
  * stayed in memory for the life of the process. The cap is global, not
  * per-stream (unlike `rest`'s `resumable.maxEvents`): a chatty stream can
- * evict another's replay window, and a client resuming from an evicted event
- * is treated like one presenting an unknown id.
+ * evict another's replay window. It counts **messages, not bytes** — each
+ * event holds a whole JSON-RPC message, so size it to your largest results.
+ *
+ * A client resuming from an evicted event is still re-attached to its stream
+ * and replayed the events that are kept; the evicted ones are lost, and a
+ * warning says so. Answering "unknown" instead would make the SDK close the
+ * reconnect at once, leaving the client deaf for the rest of its session. An
+ * id this store never issued is unknown.
  */
 export class InMemoryEventStore implements EventStore {
   // Insertion-ordered: Map preserves order, and the monotonically increasing
@@ -65,18 +77,24 @@ export class InMemoryEventStore implements EventStore {
       send,
     }: {send: (eventId: EventId, message: JSONRPCMessage) => Promise<void>},
   ): Promise<StreamId> {
-    const anchor = lastEventId ? this.events.get(lastEventId) : undefined;
-    if (!anchor) return '';
-    let reached = false;
-    for (const [eventId, {streamId, message}] of this.events) {
-      if (eventId === lastEventId) {
-        reached = true;
-        continue;
-      }
-      if (reached && streamId === anchor.streamId) {
-        await send(eventId, message);
+    // The id itself says which stream and where in it, so replay works even
+    // when the anchor event has been evicted.
+    const match = EVENT_ID.exec(lastEventId);
+    if (!match || Number(match[2]) >= this.counter) return '';
+    const streamId = match[1];
+    if (!this.events.has(lastEventId)) {
+      log.warn(
+        'resuming stream %s after an evicted event; earlier events are lost',
+        streamId,
+      );
+    }
+    for (const [eventId, event] of this.events) {
+      // Same stream ⇒ same prefix and a fixed-width counter, so string order
+      // is event order.
+      if (event.streamId === streamId && eventId > lastEventId) {
+        await send(eventId, event.message);
       }
     }
-    return anchor.streamId;
+    return streamId;
   }
 }

@@ -546,8 +546,10 @@ granted scopes. `ttlMs` is the entitlement-revocation window.
 
 Pass `eventStore` to replay missed events when a dropped SSE stream reconnects
 with `Last-Event-ID`. The bundled `InMemoryEventStore` suits a single process
-and keeps at most `maxEvents` (default 10,000) across all streams, evicting the
-oldest — a resume from an evicted event is treated as an unknown id. Implement
+and keeps at most `maxEvents` (default 10,000) messages across all streams,
+evicting the oldest. The cap counts messages, not bytes, so size it to your
+largest results. A resume from an evicted event re-attaches to its stream and
+replays what is kept (the evicted events are lost, with a warning). Implement
 `EventStore` over Redis for multi-instance.
 
 ```ts

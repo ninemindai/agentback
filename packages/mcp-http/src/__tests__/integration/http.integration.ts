@@ -440,13 +440,24 @@ describe('mcp-http (resumable EventStore)', () => {
     const e2 = await store.storeEvent('s1', msg(2));
     const e3 = await store.storeEvent('s2', msg(3));
     const e4 = await store.storeEvent('s1', msg(4)); // evicts e1
-    // An evicted anchor is indistinguishable from an unknown one...
-    expect(await replay(e1)).toEqual({streamId: '', sent: []});
-    // ...while a surviving anchor still replays its stream's later events.
+    // A surviving anchor replays its stream's later events.
     expect(await replay(e2)).toEqual({streamId: 's1', sent: [e4]});
-    await store.storeEvent('s1', msg(5)); // evicts e2
-    expect(await replay(e2)).toEqual({streamId: '', sent: []});
+    // An evicted anchor still re-attaches the client to its stream and
+    // replays what is kept, rather than closing the stream on it.
+    expect(await replay(e1)).toEqual({streamId: 's1', sent: [e2, e4]});
+    const e5 = await store.storeEvent('s1', msg(5)); // evicts e2
+    expect(await replay(e2)).toEqual({streamId: 's1', sent: [e4, e5]});
     expect(await replay(e3)).toEqual({streamId: 's2', sent: []});
+    // An id this store never issued is unknown, whatever it looks like.
+    expect(await replay('s1::999999999999')).toEqual({streamId: '', sent: []});
+    expect(await replay('not-an-event-id')).toEqual({streamId: '', sent: []});
+    expect(await replay('')).toEqual({streamId: '', sent: []});
+  });
+
+  it('InMemoryEventStore rejects a maxEvents that is not a positive integer', () => {
+    for (const maxEvents of [0, -1, 1.5, Number.NaN]) {
+      expect(() => new InMemoryEventStore({maxEvents})).toThrow(RangeError);
+    }
   });
 
   it('serves tools over HTTP with an eventStore configured', async () => {
