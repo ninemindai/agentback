@@ -112,6 +112,17 @@ instead of becoming 400), and the
 error codes `elicitation_unavailable` / `elicitation_unsupported` /
 `elicitation_declined`.
 
+## 🐛 Fixes
+
+- **mcp-http** — `InMemoryEventStore` is bounded: `maxEvents` (default 10,000
+  messages across all streams, oldest evicted first). It used to keep every
+  message of every session for the life of the process. A client resuming from
+  an evicted event is re-attached to its stream and replayed what is kept.
+- **mcp-host** — the gateway re-syncs an upstream's tools when that upstream
+  announces `notifications/tools/list_changed` (both protocol eras) and passes
+  the change on to its own client. A tool an upstream added after connect used
+  to be missing from `tools/list` and answered "unknown tool".
+
 ## ⚠️ Behaviour changes
 
 - **An `elicit.ask` `extended` form now goes only to 2026-era clients.** A 2025
