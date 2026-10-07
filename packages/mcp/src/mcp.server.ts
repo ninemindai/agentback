@@ -2025,6 +2025,8 @@ export class MCPServer implements Server {
     if (this.config.protocol === 'legacy') {
       const server = this.buildPushedServer(options);
       server.connect(transport).catch(err => {
+        // A failed connect never fires `onclose`, which is what untracks it.
+        this.pushTargets.delete(server);
         log.error('serveTransport: connect failed: %s', err);
       });
       return {close: () => server.close()};
@@ -2838,6 +2840,17 @@ export class MCPServer implements Server {
     // legal — the SDK refuses it once connected.
     if (!this.mcp.isConnected()) {
       this.mcp.server.registerCapabilities(capabilities);
+      // It is told about list changes only when it serves stdio under
+      // 'legacy' (pushed below). Anywhere else, including an app connecting
+      // `sdkServer` itself, the SDK's default `true` would be a false promise.
+      const listChanged =
+        this.config.transports.stdio !== false &&
+        this.config.protocol !== 'both';
+      this.mcp.server.registerCapabilities({
+        tools: {listChanged},
+        prompts: {listChanged},
+        resources: {listChanged},
+      });
     }
 
     if (this.config.transports.stdio !== false) {
@@ -2850,8 +2863,7 @@ export class MCPServer implements Server {
         log.debug('mcp stdio serving both protocol eras');
       } else {
         this.stdioTransport = new StdioServerTransport();
-        // The constructor-built server keeps the SDK's `listChanged: true`,
-        // which this now honours.
+        // Advertised `listChanged: true` above; this is what honours it.
         this.pushTo(this.mcp);
         await this.mcp.connect(this.stdioTransport);
         log.debug('mcp stdio transport connected');
