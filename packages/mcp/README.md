@@ -178,6 +178,21 @@ or `extra.sub`, never the OAuth `clientId`; `localPrincipal` only off HTTP —
 and `-32012` otherwise. See
 [docs/guides/mcp-events.md](../../docs/guides/mcp-events.md).
 
+## List changes
+
+Binding or unbinding an `@mcpServer` class at runtime (a plugin mounting or
+retracting, say) announces `notifications/{tools,prompts,resources}/list_changed`
+to every connection that can carry it. `mcp.onListsChanged(fn)` is the signal —
+one call per burst of changes — and `sendListsChanged(server)` sends all three
+notifications on a connected SDK server. `buildServer({listChanged: true})`
+advertises the capability; it defaults to `false`, so a server only promises
+notifications its owner actually forwards.
+
+Over stdio a 2025-era connection is notified; a 2026-07-28 connection is told
+`listChanged: false`, because the SDK's `serveStdio` exposes no event bus for its
+`subscriptions/listen`. `@agentback/mcp-http` forwards the signal to its own
+connections.
+
 ## Layering
 
 Depends on: `@agentback/context`, `@agentback/core`, `@agentback/metadata`, `@modelcontextprotocol/server`, `zod`.

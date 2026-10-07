@@ -542,6 +542,16 @@ the client _application_ id, shared by every end user of that app, so keying on
 it leaks one user's tool list to another. Use your IdP's subject claim plus
 granted scopes. `ttlMs` is the entitlement-revocation window.
 
+### List changes
+
+Mounting or retracting an `@mcpServer` class at runtime sends
+`notifications/{tools,prompts,resources}/list_changed` to connected clients —
+2025 sessions directly, 2026-07-28 clients through `subscriptions/listen`. No
+code needed. A connection that cannot be notified is told `listChanged: false`:
+a 2025 client on the stateless mount, and a 2026-07-28 client over stdio. To
+react to changes yourself, use `mcp.onListsChanged(fn)` (returns an unsubscribe
+function).
+
 ### Resumable sessions
 
 Pass `eventStore` to replay missed events when a dropped SSE stream reconnects

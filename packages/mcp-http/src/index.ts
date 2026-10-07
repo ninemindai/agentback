@@ -52,6 +52,7 @@ import {
   rejectedOriginLogger,
   mountOf,
   resolveSessionServer,
+  sessionListRelay,
   setupStateless,
   withSessionIdExposed,
   type SessionBinder,
@@ -552,6 +553,7 @@ export function mountMcpHttp(
     handler: statelessHandler,
     allowedHostnames,
     originRules,
+    offListsChanged,
   } = setupStateless(mcp, options);
   // Built after `setupStateless` so the limiter knows whether its requests go
   // on to the SDK's inbound validation ladder — a request that ladder will
@@ -614,6 +616,7 @@ export function mountMcpHttp(
     const closeStateless = async () => {
       if (statelessClosed) return;
       statelessClosed = true;
+      offListsChanged?.();
       await statelessHandler.close();
     };
     return {
@@ -629,6 +632,7 @@ export function mountMcpHttp(
   // it never mints a session id). Lets a cross-origin browser client READ the
   // id the SDK is about to mint — inert unless the app configured `rest.cors`.
   // See `withSessionIdExposed`.
+  const listRelay = sessionListRelay(mcp);
   const exposeSessionId: RequestHandler = (_req, res, next) => {
     res.setHeader(
       'Access-Control-Expose-Headers',
@@ -722,8 +726,14 @@ export function mountMcpHttp(
             sessionCtx = resolved.sessionCtx;
             sessionMcp = resolved.mcp;
           }
-          await sessionMcp
-            .buildServer({scopes, mount: mountOf(options)})
+          await listRelay
+            .track(
+              sessionMcp.buildServer({
+                scopes,
+                mount: mountOf(options),
+                listChanged: true,
+              }),
+            )
             .connect(transport);
         } catch (err) {
           sessionCtx?.close();
@@ -754,6 +764,7 @@ export function mountMcpHttp(
   expressApp.delete(path, gate, exposeSessionId, ...guards, onSessionRequest);
 
   const closeSessions = async () => {
+    listRelay.off();
     const open = Object.values(transports);
     // Clear the maps up front: close() is fired once per transport even if
     // closeAll runs again (stop-then-uninstall), and dead gate layers no

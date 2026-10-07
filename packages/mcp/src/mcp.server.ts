@@ -5,6 +5,7 @@
 import {
   config,
   Context,
+  ContextView,
   inject,
   resolveInjectedArguments,
 } from '@agentback/context';
@@ -671,6 +672,16 @@ export class MCPServer implements Server {
   private _listening = false;
   private stdioTransport?: StdioServerTransport;
   private stdioHandle?: StdioServerHandle;
+  /** Listeners of {@link onListsChanged}, and the view that feeds them. */
+  private readonly listsChangedListeners = new Set<() => void>();
+  private listsChangedView?: ContextView;
+  private listsChangedTimer?: ReturnType<typeof setTimeout>;
+  /**
+   * Long-lived 2025-era connections this server serves itself (stdio,
+   * {@link serveTransport}) — told about list changes until they close.
+   */
+  private readonly pushTargets = new Set<McpServer>();
+  private offPush?: () => void;
   /** Tools already reported as class-level-gated (one log line per tool). */
   private warnedClassGated = new Set<string>();
   readonly config: Required<Omit<MCPServerConfig, MCPServerOptionalKeys>> &
@@ -1889,14 +1900,114 @@ export class MCPServer implements Server {
    * at a time, so concurrent HTTP sessions each get their own server instance
    * (all exposing the same surface). See `@agentback/mcp-http`.
    */
-  buildServer(options: {scopes?: string[]; mount?: McpMount} = {}): McpServer {
+  buildServer(
+    options: {
+      scopes?: string[];
+      mount?: McpMount;
+      /**
+       * Whether the connection this server is built for can carry
+       * `notifications/{tools,prompts,resources}/list_changed` — that is,
+       * whether its owner forwards {@link onListsChanged} to it. Advertised
+       * as each list's `listChanged` capability. Default `false`: the SDK
+       * would otherwise advertise `true` with nothing ever sent.
+       */
+      listChanged?: boolean;
+    } = {},
+  ): McpServer {
     // Contributions are re-read per build, so a capability installed (or
     // retracted) after start reaches the next stateless request.
     const server = new McpServer(this.serverInfo, {
       capabilities: resolveCapabilities(this.config, this.context),
     });
     this.registerAllOn(server, options.scopes, options.mount);
+    const listChanged = options.listChanged ?? false;
+    server.server.registerCapabilities({
+      tools: {listChanged},
+      prompts: {listChanged},
+      resources: {listChanged},
+    });
     return server;
+  }
+
+  /**
+   * Call `listener` when the served tool, prompt or resource lists change —
+   * an `@mcpServer` class bound or unbound at runtime (a plugin mounting or
+   * retracting, say). A burst of changes in one turn of the event loop is
+   * reported once. Returns the unsubscribe function.
+   *
+   * The signal does not say which list changed: a class can contribute to all
+   * three, so callers announce all three, and a client re-fetches a list that
+   * turns out unchanged at worst. Hosts that serve connections of their own
+   * (`@agentback/mcp-http`) forward it; the stdio and {@link serveTransport}
+   * connections this server owns are told directly.
+   */
+  onListsChanged(listener: () => void): () => void {
+    this.listsChangedListeners.add(listener);
+    if (!this.listsChangedView) {
+      const view = this.context.createView(extensionFilter(MCP_SERVERS));
+      const schedule = () => {
+        if (this.listsChangedTimer) return;
+        this.listsChangedTimer = setTimeout(() => {
+          this.listsChangedTimer = undefined;
+          for (const fn of [...this.listsChangedListeners]) {
+            try {
+              fn();
+            } catch (err) {
+              log.warn('list-changed listener failed: %s', err);
+            }
+          }
+        }, 0);
+        // A pending announcement must not keep the process alive.
+        this.listsChangedTimer.unref?.();
+      };
+      view.on('bind', schedule);
+      view.on('unbind', schedule);
+      this.listsChangedView = view;
+    }
+    return () => {
+      this.listsChangedListeners.delete(listener);
+      if (this.listsChangedListeners.size === 0) {
+        this.listsChangedView?.close();
+        this.listsChangedView = undefined;
+        clearTimeout(this.listsChangedTimer);
+        this.listsChangedTimer = undefined;
+      }
+    };
+  }
+
+  /**
+   * Build a server for a long-lived 2025-era connection this MCPServer serves
+   * itself, and announce list changes on it until it closes.
+   */
+  private buildPushedServer(options: {scopes?: string[]} = {}): McpServer {
+    const server = this.buildServer({...options, listChanged: true});
+    this.pushTo(server);
+    const previous = server.server.onclose;
+    server.server.onclose = () => {
+      previous?.();
+      this.pushTargets.delete(server);
+    };
+    return server;
+  }
+
+  private pushTo(server: McpServer): void {
+    this.pushTargets.add(server);
+    this.offPush ??= this.onListsChanged(() => {
+      for (const target of this.pushTargets) sendListsChanged(target);
+    });
+  }
+
+  /**
+   * The factory `serveStdio` calls per connection. Only a 2025-era connection
+   * can be told about list changes: the SDK's `serveStdio` exposes no event
+   * bus for a 2026-07-28 connection's `subscriptions/listen`, so that era is
+   * built advertising `listChanged: false` rather than promising it.
+   */
+  private stdioFactory(options: {scopes?: string[]} = {}) {
+    return (ctx: {era: 'legacy' | 'modern'}) =>
+      ctx.era === 'legacy'
+        ? this.buildPushedServer(options)
+        : this.buildServer({...options, listChanged: false});
   }
 
   /**
@@ -1912,13 +2023,13 @@ export class MCPServer implements Server {
     options: {scopes?: string[]} = {},
   ): {close(): Promise<void>} {
     if (this.config.protocol === 'legacy') {
-      const server = this.buildServer(options);
+      const server = this.buildPushedServer(options);
       server.connect(transport).catch(err => {
         log.error('serveTransport: connect failed: %s', err);
       });
       return {close: () => server.close()};
     }
-    return serveStdio(() => this.buildServer(options), {
+    return serveStdio(this.stdioFactory(options), {
       transport,
       onerror: err => log.error('serveTransport: %s', err),
     });
@@ -2735,10 +2846,13 @@ export class MCPServer implements Server {
         // and ONE instance from the factory is pinned for the connection's
         // lifetime. Unlike HTTP there is no per-request construction here, so
         // the factory hands back a freshly built server per connection.
-        this.stdioHandle = serveStdio(() => this.buildServer());
+        this.stdioHandle = serveStdio(this.stdioFactory());
         log.debug('mcp stdio serving both protocol eras');
       } else {
         this.stdioTransport = new StdioServerTransport();
+        // The constructor-built server keeps the SDK's `listChanged: true`,
+        // which this now honours.
+        this.pushTo(this.mcp);
         await this.mcp.connect(this.stdioTransport);
         log.debug('mcp stdio transport connected');
       }
@@ -2755,7 +2869,28 @@ export class MCPServer implements Server {
       await this.mcp.close();
       this.stdioTransport = undefined;
     }
+    this.offPush?.();
+    this.offPush = undefined;
+    this.pushTargets.clear();
     this._listening = false;
+  }
+}
+
+/**
+ * Announce `notifications/{tools,prompts,resources}/list_changed` on a
+ * connected server — what an {@link MCPServer.onListsChanged} listener sends
+ * to each long-lived connection it owns. A send that fails (the connection
+ * went away mid-announcement) is logged, never thrown.
+ */
+export function sendListsChanged(server: McpServer): void {
+  if (!server.isConnected()) return;
+  const sdk = server.server;
+  for (const send of [
+    () => sdk.sendToolListChanged(),
+    () => sdk.sendPromptListChanged(),
+    () => sdk.sendResourceListChanged(),
+  ]) {
+    send().catch(err => log.debug('list_changed not delivered: %s', err));
   }
 }
 

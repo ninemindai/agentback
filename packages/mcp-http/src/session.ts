@@ -11,10 +11,16 @@ import type {
   AuthInfo,
   McpHttpHandler,
   McpRequestContext,
+  McpServer,
 } from '@modelcontextprotocol/server';
 import {BindingScope, Context} from '@agentback/core';
 import {loggers} from '@agentback/common';
-import {MCPBindings, MCPServer, type McpMount} from '@agentback/mcp';
+import {
+  MCPBindings,
+  MCPServer,
+  sendListsChanged,
+  type McpMount,
+} from '@agentback/mcp';
 import type {McpHttpOptions} from './index.js';
 
 const log = loggers('agentback:mcp-http:session');
@@ -146,8 +152,12 @@ export function perRequestFactory(options: {
       ...(options.authEnabled ? {scopes: ctx.authInfo?.scopes ?? []} : {}),
       ...(options.mount ? {mount: options.mount} : {}),
     };
+    // Only a 2026-07-28 client can hear a list change here — through
+    // `subscriptions/listen`, which `setupStateless` feeds. A 2025 client on
+    // this mount gets one server per request and no standing stream.
+    const listChanged = ctx.era === 'modern';
     if (!options.binder || !ctx.requestInfo) {
-      return options.mcp.buildServer(scoped);
+      return options.mcp.buildServer({...scoped, listChanged});
     }
     const {sessionCtx, mcp} = await resolveSessionServer({
       appContext: options.appContext!,
@@ -155,7 +165,7 @@ export function perRequestFactory(options: {
       request: ctx.requestInfo,
       ...(ctx.authInfo ? {authInfo: ctx.authInfo} : {}),
     });
-    const server = mcp.buildServer(scoped);
+    const server = mcp.buildServer({...scoped, listChanged});
     const previous = server.server.onclose;
     server.server.onclose = () => {
       previous?.();
@@ -542,6 +552,39 @@ export interface StatelessSetup {
    * matching precision — see {@link OriginRule}.
    */
   originRules?: OriginRule[];
+  /**
+   * Stops forwarding the MCPServer's list changes to {@link handler}. Hosts
+   * call it on teardown. Present only when enabled.
+   */
+  offListsChanged?: () => void;
+}
+
+/**
+ * The live 2025-era session servers one mount owns, told about list changes
+ * until each closes. Shared by both hosts so neither can wire sessions and
+ * forget to notify them. Call `off()` on teardown.
+ */
+export function sessionListRelay(mcp: MCPServer): {
+  /** Track a session's server; it advertises `listChanged`, so it must be. */
+  track(server: McpServer): McpServer;
+  off(): void;
+} {
+  const servers = new Set<McpServer>();
+  const off = mcp.onListsChanged(() => {
+    for (const server of servers) sendListsChanged(server);
+  });
+  return {
+    track(server) {
+      servers.add(server);
+      const previous = server.server.onclose;
+      server.server.onclose = () => {
+        previous?.();
+        servers.delete(server);
+      };
+      return server;
+    },
+    off,
+  };
 }
 
 /**
@@ -608,24 +651,33 @@ export function setupStateless(
     options.enableDnsRebindingProtection ??
     (options.allowedHosts != null || originRules != null);
 
+  const handler = createMcpHandler(
+    perRequestFactory({
+      mcp,
+      authEnabled: Boolean(options.auth ?? options.strategyAuth),
+      mount: mountOf(options),
+      ...(options.perSession ? {binder: options.perSession} : {}),
+      ...(options.appContext ? {appContext: options.appContext} : {}),
+    }),
+    {
+      // Without this, a throwing factory — which is where the perSession
+      // binder runs — answers 500 with nothing logged, so an entitlement
+      // outage presents as an unexplained error from our server.
+      onerror: (error: Error) =>
+        log.error('stateless request failed: %s', error.stack ?? error),
+    },
+  );
+  // A tool class mounted or retracted at runtime reaches every open
+  // `subscriptions/listen` stream that opted in (no-op when none is open).
+  const offListsChanged = mcp.onListsChanged(() => {
+    handler.notify.toolsChanged();
+    handler.notify.promptsChanged();
+    handler.notify.resourcesChanged();
+  });
   return {
     enabled: true,
-    handler: createMcpHandler(
-      perRequestFactory({
-        mcp,
-        authEnabled: Boolean(options.auth ?? options.strategyAuth),
-        mount: mountOf(options),
-        ...(options.perSession ? {binder: options.perSession} : {}),
-        ...(options.appContext ? {appContext: options.appContext} : {}),
-      }),
-      {
-        // Without this, a throwing factory — which is where the perSession
-        // binder runs — answers 500 with nothing logged, so an entitlement
-        // outage presents as an unexplained error from our server.
-        onerror: (error: Error) =>
-          log.error('stateless request failed: %s', error.stack ?? error),
-      },
-    ),
+    handler,
+    offListsChanged,
     ...(rebinding && options.allowedHosts
       ? {allowedHostnames: toHostnames(options.allowedHosts)}
       : {}),
