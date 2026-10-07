@@ -420,6 +420,35 @@ describe('mcp-http (resumable EventStore)', () => {
     expect(replayed).toEqual([e2]);
   });
 
+  it('InMemoryEventStore evicts the oldest events past maxEvents', async () => {
+    const store = new InMemoryEventStore({maxEvents: 3});
+    const msg = (id: number): JSONRPCMessage => ({
+      jsonrpc: '2.0',
+      id,
+      result: {},
+    });
+    const replay = async (after: string) => {
+      const sent: string[] = [];
+      const streamId = await store.replayEventsAfter(after, {
+        send: async eventId => {
+          sent.push(eventId);
+        },
+      });
+      return {streamId, sent};
+    };
+    const e1 = await store.storeEvent('s1', msg(1));
+    const e2 = await store.storeEvent('s1', msg(2));
+    const e3 = await store.storeEvent('s2', msg(3));
+    const e4 = await store.storeEvent('s1', msg(4)); // evicts e1
+    // An evicted anchor is indistinguishable from an unknown one...
+    expect(await replay(e1)).toEqual({streamId: '', sent: []});
+    // ...while a surviving anchor still replays its stream's later events.
+    expect(await replay(e2)).toEqual({streamId: 's1', sent: [e4]});
+    await store.storeEvent('s1', msg(5)); // evicts e2
+    expect(await replay(e2)).toEqual({streamId: '', sent: []});
+    expect(await replay(e3)).toEqual({streamId: 's2', sent: []});
+  });
+
   it('serves tools over HTTP with an eventStore configured', async () => {
     const app = new RestApplication({});
     app.configure('servers.RestServer').to({port: 0, host: '127.0.0.1'});
