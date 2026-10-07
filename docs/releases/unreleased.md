@@ -127,6 +127,11 @@ error codes `elicitation_unavailable` / `elicitation_unsupported` /
   to connected clients: 2025 sessions and stdio directly, 2026-07-28 HTTP
   clients through `subscriptions/listen`. Every server advertised
   `listChanged: true` before, but nothing was ever sent.
+- **mcp-http** — with `eventStore` set, a session resuming its standalone SSE
+  stream (`Last-Event-ID`) was also replayed other sessions' standalone events:
+  every session shares the store, and the SDK names every standalone stream
+  `_GET_stream`. The mount now scopes the store per session; stream ids reach a
+  custom `EventStore` as `<sessionId>/<streamId>`.
 
 ## ⚠️ Behaviour changes
 

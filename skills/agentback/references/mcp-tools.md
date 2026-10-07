@@ -560,7 +560,9 @@ and keeps at most `maxEvents` (default 10,000) messages across all streams,
 evicting the oldest. The cap counts messages, not bytes, so size it to your
 largest results. A resume from an evicted event re-attaches to its stream and
 replays what is kept (the evicted events are lost, with a warning). Implement
-`EventStore` over Redis for multi-instance.
+`EventStore` over Redis for multi-instance. The mount scopes the one store per
+session (stream ids arrive as `<sessionId>/<streamId>`), so a resume replays
+only that session's events.
 
 ```ts
 import {installMcpHttp, InMemoryEventStore} from '@agentback/mcp-http';

@@ -40,6 +40,7 @@ import {
   setupStateless,
   withSessionIdExposed,
 } from './session.js';
+import {sessionEventStore} from './session-event-store.js';
 
 const DEFAULT_PATH = '/mcp';
 const PROTECTED_RESOURCE_PATH = '/.well-known/oauth-protected-resource';
@@ -405,9 +406,14 @@ export function mountMcpHttpFetch(
         );
       }
       let sessionCtx: Context | undefined;
+      // Minted here, not by the transport, so the shared event store can be
+      // scoped to this session before the transport sees it.
+      const newSessionId = crypto.randomUUID();
       transport = new WebStandardStreamableHTTPServerTransport({
-        sessionIdGenerator: () => crypto.randomUUID(),
-        ...(options.eventStore ? {eventStore: options.eventStore} : {}),
+        sessionIdGenerator: () => newSessionId,
+        ...(options.eventStore
+          ? {eventStore: sessionEventStore(options.eventStore, newSessionId)}
+          : {}),
         onsessioninitialized: id => {
           transports[id] = transport!;
           if (authEnabled) sessionOwners[id] = principal;
