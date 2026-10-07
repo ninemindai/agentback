@@ -140,4 +140,17 @@ describe('MCPServer list_changed', () => {
     expect(client.getServerCapabilities()?.prompts?.listChanged).toBe(false);
     expect(client.getServerCapabilities()?.resources?.listChanged).toBe(false);
   });
+
+  for (const protocol of [undefined, 'both', 'legacy'] as const) {
+    it(`keeps sdkServer from promising list changes it is never sent (protocol: ${protocol ?? 'default'})`, async () => {
+      // The escape hatch is told about changes only when MCPServer serves
+      // stdio with it under 'legacy'; with stdio off it never is, so an app
+      // connecting it to its own transport must not be promised them.
+      const mcp = await boot(protocol);
+      const caps = mcp.sdkServer.server.getCapabilities();
+      expect(caps.tools?.listChanged).toBe(false);
+      expect(caps.prompts?.listChanged).toBe(false);
+      expect(caps.resources?.listChanged).toBe(false);
+    });
+  }
 });
