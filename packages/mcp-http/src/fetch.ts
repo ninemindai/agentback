@@ -36,6 +36,7 @@ import {
   rejectedOriginLogger,
   mountOf,
   resolveSessionServer,
+  sessionListRelay,
   setupStateless,
   withSessionIdExposed,
 } from './session.js';
@@ -189,6 +190,7 @@ export function mountMcpHttpFetch(
     handler: statelessHandler,
     allowedHostnames,
     originRules,
+    offListsChanged,
   } = setupStateless(mcp, {
     ...options,
     ...(options.corsConfig === undefined
@@ -198,6 +200,8 @@ export function mountMcpHttpFetch(
   const warnRejectedOrigin = originRules
     ? rejectedOriginLogger(describeOriginRules(originRules))
     : undefined;
+  // Sessions exist only when stateless serving is off.
+  const listRelay = statelessHandler ? undefined : sessionListRelay(mcp);
 
   // Per-tool throttling. This host has no middleware chain, so rather than
   // mounting middleware it applies the shared decision core inline, below.
@@ -435,9 +439,12 @@ export function mountMcpHttpFetch(
           sessionCtx = resolved.sessionCtx;
           sessionMcp = resolved.mcp;
         }
-        await sessionMcp
-          .buildServer({scopes, mount: mountOf(options)})
-          .connect(transport);
+        const built = sessionMcp.buildServer({
+          scopes,
+          mount: mountOf(options),
+          listChanged: true,
+        });
+        await (listRelay?.track(built) ?? built).connect(transport);
       } catch (err) {
         sessionCtx?.close();
         throw err;
@@ -498,6 +505,8 @@ export function mountMcpHttpFetch(
   }
 
   const closeAll = async () => {
+    offListsChanged?.();
+    listRelay?.off();
     await statelessHandler?.close();
     await Promise.all(
       Object.values(transports).map(t => t.close().catch(() => {})),

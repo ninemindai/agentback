@@ -140,6 +140,14 @@ keep working from the same URL.
 Both hosts support both: the Express mount adapts the SDK's web-standards-only
 handler with `toNodeHandler`, the fetch/edge mount uses it directly.
 
+**List changes.** A tool class mounted or retracted at runtime is announced as
+`notifications/{tools,prompts,resources}/list_changed`: to each live session
+under `'legacy'`, and to every open `subscriptions/listen` stream under `'both'`.
+A 2025-era client on the stateless mount has no standing stream to hear it on,
+so it is told `listChanged: false`. A session hears the notification on its
+standalone GET stream; one announced before the client opens that stream is lost
+unless `eventStore` is set.
+
 ### Why the default flipped, and how to undo it
 
 `'both'` serves 2025-era clients **by construction**, so this is not a drop in
