@@ -281,6 +281,13 @@ Pass an `eventStore` to replay missed events when a dropped SSE stream reconnect
 with `Last-Event-ID`. The bundled `InMemoryEventStore` suits a single process;
 implement `EventStore` over a shared store (e.g. Redis) for multi-instance.
 
+One store serves every session on the mount, and the mount scopes it per
+session: stream ids reach your store prefixed with the session id
+(`<sessionId>/<streamId>`), and a resume replays only that session's events.
+The SDK names every session's standalone stream `_GET_stream`, so an unscoped
+shared store would hand one session another's events. A store you write must
+keep stream ids as given; it needs no session logic of its own.
+
 ```ts
 import {installMcpHttp, InMemoryEventStore} from '@agentback/mcp-http';
 await installMcpHttp(app, {eventStore: new InMemoryEventStore()});

@@ -57,6 +57,7 @@ import {
   withSessionIdExposed,
   type SessionBinder,
 } from './session.js';
+import {sessionEventStore} from './session-event-store.js';
 
 export {InMemoryEventStore} from './event-store.js';
 export {
@@ -680,14 +681,19 @@ export function mountMcpHttp(
         // own MCPServer resolved from a child context the binder populates
         // (principal + user-specific tools). Closed on every teardown path.
         let sessionCtx: Context | undefined;
+        // Minted here, not by the transport, so the shared event store can be
+        // scoped to this session before the transport sees it.
+        const newSessionId = randomUUID();
         transport = new NodeStreamableHTTPServerTransport({
-          sessionIdGenerator: () => randomUUID(),
+          sessionIdGenerator: () => newSessionId,
           enableDnsRebindingProtection,
           ...(options.allowedHosts ? {allowedHosts: options.allowedHosts} : {}),
           ...(options.allowedOrigins
             ? {allowedOrigins: options.allowedOrigins}
             : {}),
-          ...(options.eventStore ? {eventStore: options.eventStore} : {}),
+          ...(options.eventStore
+            ? {eventStore: sessionEventStore(options.eventStore, newSessionId)}
+            : {}),
           onsessioninitialized: id => {
             transports[id] = transport!;
             if (authEnabled) sessionOwners[id] = principalOf(req);
