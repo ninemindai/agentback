@@ -469,3 +469,17 @@ helper would make that one line.
 Proposal §4: a callback endpoint that verifies Standard Webhooks signatures
 (`verifyWebhook` exists) and runs an `agents` turn per event under
 `withModelScope`. Its own proposal.
+
+## mcp-host
+
+### End-to-end: an AgentBack upstream behind the gateway re-syncs — P3, S (after #74 and #75 merge)
+
+#74 makes the gateway re-list an upstream's tools on
+`notifications/tools/list_changed`; #75 makes AgentBack send it when an
+`@mcpServer` class is mounted or retracted. Each is tested against SDK
+fixtures, and they only meet in production. Add a `host.integration.ts` case
+beside "merges tools from multiple upstreams": boot an AgentBack upstream with
+`installMcpHttp` (default `protocol: 'both'`, so the gateway hears the change
+through `subscriptions/listen`), `app.service(NewTools)` on it, poll the
+gateway's `tools/list` for the prefixed name, and call it. Blocked by both PRs
+being on `main`.

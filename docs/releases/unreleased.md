@@ -122,9 +122,21 @@ error codes `elicitation_unavailable` / `elicitation_unsupported` /
   announces `notifications/tools/list_changed` (both protocol eras) and passes
   the change on to its own client. A tool an upstream added after connect used
   to be missing from `tools/list` and answered "unknown tool".
+- **mcp**, **mcp-http** — mounting or retracting an `@mcpServer` class at
+  runtime now announces `notifications/{tools,prompts,resources}/list_changed`
+  to connected clients: 2025 sessions and stdio directly, 2026-07-28 HTTP
+  clients through `subscriptions/listen`. Every server advertised
+  `listChanged: true` before, but nothing was ever sent.
 
 ## ⚠️ Behaviour changes
 
+- **`MCPServer.buildServer({listChanged})` defaults to `false`.** A server
+  built without it no longer advertises list-change notifications; pass `true`
+  only for a connection you forward `mcp.onListsChanged()` to. Two connections
+  now advertise `false` because they cannot be told: a 2025-era client on the
+  stateless HTTP mount, and a 2026-07-28 client over stdio. `sdkServer`
+  advertises `true` only when MCPServer serves stdio with it under
+  `protocol: 'legacy'`.
 - **An `elicit.ask` `extended` form now goes only to 2026-era clients.** A 2025
   connection that declared `openai/elicitation` used to get the extended
   schema through standard `elicitation/create`. OpenAI's spec puts extended
