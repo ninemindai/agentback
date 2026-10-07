@@ -18,7 +18,10 @@ import type {
   Transport,
 } from '@modelcontextprotocol/server';
 
+import {loggers} from '@agentback/common';
 import {connectMcp, type TokenSource} from '@agentback/mcp-client';
+
+const log = loggers('agentback:mcp-host');
 
 /** Declares one upstream MCP server to aggregate. */
 export type UpstreamConfig = {
@@ -266,7 +269,12 @@ export function compileUriTemplate(uriTemplate: string): {
  *   across upstreams throw at connect.
  * - `resources/list`, `resources/templates/list`, and `prompts/list`
  *   re-query upstreams per request (no cache). `tools/list` is cached at
- *   connect.
+ *   connect and re-synced, per upstream, when that upstream announces
+ *   `notifications/tools/list_changed`; the gateway then announces the same
+ *   to its own client. An upstream that does not advertise
+ *   `tools.listChanged` is never re-synced. A tool name that a re-sync finds
+ *   already owned by another upstream keeps its existing owner (logged) —
+ *   at connect the same collision throws.
  * - The aggregate declares the `resources`/`prompts` capability only when at
  *   least one upstream advertises it.
  *
@@ -336,8 +344,73 @@ export async function createMcpHost(options: McpHostOptions): Promise<McpHost> {
   // can reach the downstream client through it.
   const server = new Server(
     {name: options.name ?? 'mcp-host', version: options.version ?? '0.0.0'},
-    {capabilities: {tools: {}}},
+    {capabilities: {tools: {listChanged: true}}},
   );
+
+  /**
+   * Replace one upstream's tool routes with `tools`. Builds the new set
+   * first and swaps it in synchronously, so a concurrent `tools/call` sees
+   * either the old routes or the new ones, never a mix.
+   */
+  const setToolRoutes = (
+    upstream: string,
+    client: Client,
+    tools: Tool[],
+    onCollision: (name: string) => void,
+  ) => {
+    const next = new Map<string, ToolRoute>();
+    for (const tool of tools) {
+      const name = exposed(upstream, tool.name);
+      const owner = toolRoutes.get(name)?.client;
+      if (next.has(name) || (owner && owner !== client)) {
+        onCollision(name);
+        continue;
+      }
+      next.set(name, {client, originalName: tool.name, def: {...tool, name}});
+    }
+    for (const [name, route] of toolRoutes) {
+      if (route.client === client) toolRoutes.delete(name);
+    }
+    for (const [name, route] of next) toolRoutes.set(name, route);
+  };
+
+  /** Client options for one upstream: re-sync its tools on list_changed. */
+  const optionsFor = (
+    cfg: UpstreamConfig,
+    current: () => Client | undefined,
+  ): ClientOptions => ({
+    ...clientOptions,
+    listChanged: {
+      tools: {
+        onChanged: (error, tools) => {
+          const client = current();
+          // Before connect returns, the connect-time listing below wins.
+          if (!client) return;
+          if (error || !tools) {
+            log.warn(
+              'upstream %s announced a tool change but re-listing failed: %s',
+              cfg.name,
+              error?.message ?? 'no tools returned',
+            );
+            return;
+          }
+          setToolRoutes(cfg.name, client, tools, name =>
+            log.warn(
+              "upstream %s re-listed tool '%s', already owned by another upstream; keeping the existing owner",
+              cfg.name,
+              name,
+            ),
+          );
+          // Fails when no downstream client is connected yet, which is fine.
+          server
+            .sendToolListChanged()
+            .catch(e =>
+              log.debug('downstream tools list_changed not delivered: %s', e),
+            );
+        },
+      },
+    },
+  });
 
   const clientOptions: ClientOptions = {
     versionNegotiation: {mode: 'auto'},
@@ -366,7 +439,13 @@ export async function createMcpHost(options: McpHostOptions): Promise<McpHost> {
   };
 
   for (const cfg of options.upstreams) {
-    const client = await connectUpstream(cfg, clientOptions, beforeConnect);
+    let connected: Client | undefined;
+    const client = await connectUpstream(
+      cfg,
+      optionsFor(cfg, () => connected),
+      beforeConnect,
+    );
+    connected = client;
     clients.push(client);
     // Capability-guarded probing: only query the surfaces the upstream
     // advertises — a server without a capability may reject (or not answer)
@@ -377,19 +456,11 @@ export async function createMcpHost(options: McpHostOptions): Promise<McpHost> {
       const {tools} = await client
         .listTools()
         .catch(emptyOnMethodNotFound({tools: [] as Tool[]}));
-      for (const tool of tools) {
-        const name = exposed(cfg.name, tool.name);
-        if (toolRoutes.has(name)) {
-          throw new Error(
-            `mcp-host: tool name collision on '${name}'. Enable prefixing or rename.`,
-          );
-        }
-        toolRoutes.set(name, {
-          client,
-          originalName: tool.name,
-          def: {...tool, name},
-        });
-      }
+      setToolRoutes(cfg.name, client, tools, name => {
+        throw new Error(
+          `mcp-host: tool name collision on '${name}'. Enable prefixing or rename.`,
+        );
+      });
     }
 
     if (caps?.prompts) {

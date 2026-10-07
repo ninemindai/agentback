@@ -144,6 +144,61 @@ describe('mcp-host aggregation (prompts + resources)', () => {
     expect(promptNames).toEqual(['a__greet', 'b__greet']);
   });
 
+  it('re-syncs an upstream’s tools when it announces list_changed', async () => {
+    const a = makeUpstreamA();
+    const old = a.registerTool('old', {}, async () => ({
+      content: [{type: 'text', text: 'old'}],
+    }));
+    host = await createMcpHost({
+      upstreams: [
+        await trackedUpstream('a', a),
+        await trackedUpstream('b', makeUpstreamB()),
+      ],
+    });
+    const seen: string[][] = [];
+    const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+    await host.connect(serverSide);
+    client = new Client(
+      {name: 'consumer', version: '0.0.0'},
+      {
+        listChanged: {
+          tools: {
+            debounceMs: 0,
+            onChanged: (_err, tools) =>
+              seen.push((tools ?? []).map(t => t.name).sort()),
+          },
+        },
+      },
+    );
+    await client.connect(clientSide);
+
+    // The upstream adds one tool and drops another after the gateway connected.
+    a.registerTool(
+      'sub',
+      {inputSchema: z.object({a: z.number(), b: z.number()})},
+      async ({a, b}) => ({
+        content: [{type: 'text', text: String(a - b)}],
+      }),
+    );
+    old.remove();
+    await expect
+      .poll(
+        async () => (await client!.listTools()).tools.map(t => t.name).sort(),
+        {timeout: 5000},
+      )
+      .toEqual(['a__add', 'a__sub', 'b__echo']);
+
+    const r = await client.callTool({name: 'a__sub', arguments: {a: 5, b: 2}});
+    expect(r.content).toEqual([{type: 'text', text: '3'}]);
+    // The other upstream's routes survive a re-sync of this one.
+    const e = await client.callTool({name: 'b__echo', arguments: {text: 'hi'}});
+    expect(e.isError).toBeFalsy();
+    // And the gateway tells its own client the list changed.
+    await expect
+      .poll(() => seen.at(-1), {timeout: 5000})
+      .toEqual(['a__add', 'a__sub', 'b__echo']);
+  });
+
   it('proxies prompts/get to the owning upstream, prefix stripped', async () => {
     host = await createMcpHost({
       upstreams: [
