@@ -2181,6 +2181,9 @@ importers:
 
   packages/mcp-host:
     dependencies:
+      '@agentback/common':
+        specifier: workspace:~
+        version: link:../common
       '@agentback/mcp-client':
         specifier: workspace:~
         version: link:../mcp-client

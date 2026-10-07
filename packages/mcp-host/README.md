@@ -48,6 +48,14 @@ names). `tools/list` merges all upstreams (cached at connect); `tools/call`
 routes to the owning one, preserving the upstream's input schema. Name
 collisions **throw at connect**.
 
+When an upstream announces `notifications/tools/list_changed` (it must
+advertise `tools.listChanged`), the gateway re-lists that upstream's tools,
+swaps its routes in one step, and announces `list_changed` to its own client.
+A re-listed name already owned by another upstream keeps its existing owner
+and is logged under `agentback:mcp-host:warn`, since nothing could catch a
+throw at that point. An upstream that never advertises `listChanged` stays as
+it was at connect.
+
 ### Prompts
 
 Aggregated exactly like tools: names are prefixed `<upstream>__<prompt>`
