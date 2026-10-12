@@ -71,6 +71,54 @@ self-hosted facilitator in production; inject a fake in tests (no chain, no
 network). This package does not sign EIP-3009 authorizations or broadcast
 transactions; that is the client's and the facilitator's job.
 
+### Nano (XNO) beside USDC
+
+`NanoFacilitator` adds Nano to an existing x402 rail without changing how the
+other entries are handled: it wraps your current facilitator as `fallback`,
+answers payments for network `nano:mainnet` itself, and hands every other
+payment to the fallback untouched.
+
+```ts
+import {NanoFacilitator, X402Rail, nanoRequirement} from '@agentback/payments';
+
+const rail = new X402Rail({
+  facilitator: new NanoFacilitator({fallback: facilitator}),
+  requirements: ctx => [
+    usdcRequirement(ctx), // unchanged
+    nanoRequirement({
+      payTo:
+        'nano_3t6k35gi95xu6tergt6p69ck76ogmitsa8mnijtpxm9fkcm736xtoncuohr3',
+      amountRaw: '10000000000000000000000000000', // 0.01 XNO (1 XNO = 10^30 raw)
+      resource: ctx.resource,
+    }),
+  ],
+});
+```
+
+The client publishes a send block to `payTo` first, then presents its hash as
+an ordinary x402 payload (base64 JSON in `X-PAYMENT`):
+
+```json
+{
+  "x402Version": 1,
+  "scheme": "exact",
+  "network": "nano:mainnet",
+  "payload": {"blockHash": "<64 hex>"}
+}
+```
+
+`verify` reads the block (`block_info`) from a Nano node and accepts it only if
+it is a confirmed state `send` to `payTo` of at least `maxAmountRequired` raw
+(the previous block's balance minus this block's). Nano sends are final once
+confirmed, so `settle` holds no key and broadcasts nothing: it re-verifies and
+records the hash in a `NanoReplayStore` so one block pays for one call. The
+node defaults to `https://rpc.nano.to`; pass `rpc: new FetchNanoRpc({url})` for
+your own node, or any `NanoRpc` in tests.
+
+A block hash is a bearer proof — whoever presents a qualifying send first gets
+the call — and the default `InMemoryNanoReplayStore` forgets on restart. Back
+the replay store with shared, durable storage in production.
+
 ## MPP (sessions)
 
 Instead of settling per call, MPP pre-authorizes a spending **session** and
