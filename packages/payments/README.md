@@ -82,7 +82,10 @@ payment to the fallback untouched.
 import {NanoFacilitator, X402Rail, nanoRequirement} from '@agentback/payments';
 
 const rail = new X402Rail({
-  facilitator: new NanoFacilitator({fallback: facilitator}),
+  facilitator: new NanoFacilitator({
+    fallback: facilitator,
+    replayStore: spentBlocks, // required: shared + durable, see below
+  }),
   requirements: ctx => [
     usdcRequirement(ctx), // unchanged
     nanoRequirement({
@@ -90,6 +93,7 @@ const rail = new X402Rail({
         'nano_3t6k35gi95xu6tergt6p69ck76ogmitsa8mnijtpxm9fkcm736xtoncuohr3',
       amountRaw: '10000000000000000000000000000', // 0.01 XNO (1 XNO = 10^30 raw)
       resource: ctx.resource,
+      maxTimeoutSeconds: 300, // the default
     }),
   ],
 });
@@ -107,17 +111,38 @@ an ordinary x402 payload (base64 JSON in `X-PAYMENT`):
 }
 ```
 
-`verify` reads the block (`block_info`) from a Nano node and accepts it only if
-it is a confirmed state `send` to `payTo` of at least `maxAmountRequired` raw
-(the previous block's balance minus this block's). Nano sends are final once
-confirmed, so `settle` holds no key and broadcasts nothing: it re-verifies and
-records the hash in a `NanoReplayStore` so one block pays for one call. The
-node defaults to `https://rpc.nano.to`; pass `rpc: new FetchNanoRpc({url})` for
-your own node, or any `NanoRpc` in tests.
+`verify` reads the block with one `block_info` call and accepts it only if it
+is a confirmed state `send` to `payTo` of at least `maxAmountRequired` raw (the
+`amount` the node reports, so the previous block, legacy or not, is never
+read) that the node first saw no more than `maxTimeoutSeconds` ago (its
+`local_timestamp`; a block with no usable timestamp is refused). Nano sends are
+final once confirmed, so `settle` holds no key and broadcasts nothing: it
+re-verifies and claims the hash in the `NanoReplayStore` so one block pays for
+one call. The node defaults to `https://rpc.nano.to`; pass
+`rpc: new FetchNanoRpc({url})` for your own node, or any `NanoRpc` in tests.
 
-A block hash is a bearer proof — whoever presents a qualifying send first gets
-the call — and the default `InMemoryNanoReplayStore` forgets on restart. Back
-the replay store with shared, durable storage in production.
+If the node cannot answer, `verify` and `settle` throw `NanoRpcUnavailableError`
+(message `nano: node unavailable`, the node's error kept as `cause`) rather
+than returning an invalid payment: the call fails closed with a server error,
+no raw error text reaches the 402 body, and the payer can retry the same hash.
+
+**The replay store is required, and it must be shared and durable.** It is
+the only thing that stops one send block paying twice. A store that forgets on
+restart, or is not shared by every instance behind the load balancer, lets a
+block pay again for as long as it is inside `maxTimeoutSeconds`.
+`InMemoryNanoReplayStore` is for tests and single-process development only.
+Implement `has`/`claim` over Redis (`SET key 1 NX` with an expiry longer than
+`maxTimeoutSeconds`) or a unique-keyed table; `claim` must be atomic.
+
+**A block hash is a bearer proof.** Nothing in the send ties it to the caller
+who presents it, so whoever presents a qualifying recent send first gets the
+call. The recency window keeps old sends and unrelated donations to `payTo`
+from being redeemed, but it does not stop someone watching `payTo` from
+presenting a payer's fresh hash before the payer does. Closing that needs the
+presenter to prove control of the paying account (a signature over a
+server-issued nonce) or a server-issued per-challenge amount remembered until
+it is paid; neither is implemented here. Keep `maxTimeoutSeconds` short and
+prices small accordingly.
 
 ## MPP (sessions)
 

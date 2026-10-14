@@ -16,6 +16,15 @@ export const NANO_MAINNET = 'nano:mainnet';
 export const DEFAULT_NANO_RPC_URL = 'https://rpc.nano.to';
 
 /**
+ * Default `maxTimeoutSeconds` of a {@link nanoRequirement}: how old a send
+ * block may be, by the node's `local_timestamp`, and still pay.
+ */
+export const DEFAULT_NANO_MAX_TIMEOUT_SECONDS = 300;
+
+/** How far ahead of our clock a node's `local_timestamp` may run. */
+const CLOCK_SKEW_SECONDS = 60;
+
+/**
  * The subset of a Nano node's `block_info` response (with `json_block: true`)
  * the facilitator reads. Amounts and balances are decimal strings in raw
  * (1 XNO = 10^30 raw).
@@ -25,6 +34,13 @@ export interface NanoBlockInfo {
   confirmed: string;
   /** State block subtype: `send`, `receive`, `open`, `change`, `epoch`. */
   subtype?: string;
+  /** Raw amount this block transferred, as computed by the node. */
+  amount?: string;
+  /**
+   * Unix seconds at which the answering node first saw the block (`"0"` when
+   * it does not know, e.g. for blocks from before it recorded the time).
+   */
+  local_timestamp?: string;
   contents: {
     type: string;
     account: string;
@@ -40,9 +56,26 @@ export interface NanoBlockInfo {
  * Read access to a Nano node. Only `block_info` is needed: the facilitator
  * holds no key and broadcasts nothing. Injectable so tests run without a
  * network.
+ *
+ * `blockInfo` resolves `undefined` when the node does not know the block, and
+ * throws when the node cannot answer (outage, HTTP error, malformed reply).
  */
 export interface NanoRpc {
-  blockInfo(hash: string): Promise<NanoBlockInfo>;
+  blockInfo(hash: string): Promise<NanoBlockInfo | undefined>;
+}
+
+/**
+ * Thrown by {@link NanoFacilitator} when the Nano node cannot answer. It is
+ * not a verdict on the payment, so it is thrown rather than reported as an
+ * invalid payment: the request fails (no call is granted) and the payer can
+ * retry the same block hash. The message is generic; the node's own error is
+ * kept as `cause` for logs only.
+ */
+export class NanoRpcUnavailableError extends Error {
+  constructor(options?: {cause?: unknown}) {
+    super('nano: node unavailable', options);
+    this.name = 'NanoRpcUnavailableError';
+  }
 }
 
 export interface FetchNanoRpcOptions {
@@ -56,7 +89,7 @@ export interface FetchNanoRpcOptions {
 export class FetchNanoRpc implements NanoRpc {
   constructor(private readonly opts: FetchNanoRpcOptions = {}) {}
 
-  async blockInfo(hash: string): Promise<NanoBlockInfo> {
+  async blockInfo(hash: string): Promise<NanoBlockInfo | undefined> {
     const doFetch = this.opts.fetch ?? fetch;
     const res = await doFetch(this.opts.url ?? DEFAULT_NANO_RPC_URL, {
       method: 'POST',
@@ -67,6 +100,7 @@ export class FetchNanoRpc implements NanoRpc {
     const body = (await res.json()) as Partial<NanoBlockInfo> & {
       error?: string;
     };
+    if (body.error === 'Block not found') return undefined;
     if (body.error) throw new Error(`nano rpc: ${body.error}`);
     if (!body.contents) throw new Error('nano rpc: malformed block_info');
     return body as NanoBlockInfo;
@@ -76,15 +110,21 @@ export class FetchNanoRpc implements NanoRpc {
 /**
  * Records which send blocks have already paid for a call, so one block hash
  * pays once. `claim` must be atomic: it returns `true` only for the first
- * caller. The default is in-memory (lost on restart); back it with a shared
- * store in production.
+ * caller. Required by {@link NanoFacilitator}: back it with shared, durable
+ * storage in production. {@link InMemoryNanoReplayStore} is for tests and
+ * single-process development only.
  */
 export interface NanoReplayStore {
   has(blockHash: string): boolean | Promise<boolean>;
   claim(blockHash: string): boolean | Promise<boolean>;
 }
 
-/** Default in-memory {@link NanoReplayStore}. */
+/**
+ * In-memory {@link NanoReplayStore}, for tests and single-process
+ * development. It forgets on restart and is not shared between instances, so
+ * a block that paid on one process (or before a restart) pays again on
+ * another while it is still inside the `maxTimeoutSeconds` window.
+ */
 export class InMemoryNanoReplayStore implements NanoReplayStore {
   private readonly used = new Set<string>();
 
@@ -104,8 +144,14 @@ export interface NanoFacilitatorOptions {
   fallback?: X402Facilitator;
   /** Node RPC. Default {@link FetchNanoRpc} against {@link DEFAULT_NANO_RPC_URL}. */
   rpc?: NanoRpc;
-  /** Spent block hashes. Default {@link InMemoryNanoReplayStore}. */
-  replayStore?: NanoReplayStore;
+  /**
+   * Spent block hashes. Required, and must be shared and durable in
+   * production: a store that forgets (restart) or is not shared (several
+   * instances) lets one block pay more than once.
+   */
+  replayStore: NanoReplayStore;
+  /** Clock for the recency check, Unix ms. Injectable for tests. Default `Date.now`. */
+  now?: () => number;
 }
 
 /**
@@ -121,22 +167,29 @@ export interface NanoFacilitatorOptions {
  *
  * (base64-encoded in `X-PAYMENT`, as x402 payloads are; plain JSON is also
  * read). Nano sends are final once confirmed, so there is nothing to sign or
- * broadcast: `verify` reads the block from a node and checks it is a
- * confirmed send to `payTo` of at least `maxAmountRequired` raw; `settle`
+ * broadcast: `verify` reads the block from a node (one `block_info` call) and
+ * checks it is a confirmed send to `payTo` of at least `maxAmountRequired`
+ * raw, first seen by the node no more than `maxTimeoutSeconds` ago; `settle`
  * re-verifies and records the hash so it cannot pay twice. Any other payment
- * goes to `fallback` untouched.
+ * goes to `fallback` untouched. If the node cannot answer, both throw
+ * {@link NanoRpcUnavailableError} instead of reporting an invalid payment.
  *
- * A block hash is a bearer proof: whoever presents a qualifying send first
- * gets the call. Use a persistent {@link NanoReplayStore} in production, or a
- * restart forgets which blocks have paid.
+ * A block hash is a bearer proof: nothing ties the send to the caller who
+ * presents it, so whoever presents a qualifying recent send first gets the
+ * call. The recency window bounds which sends count (old sends and donations
+ * to `payTo` do not), but it does not stop a watcher of `payTo` presenting a
+ * payer's fresh hash before the payer does.
  */
 export class NanoFacilitator implements X402Facilitator {
   private readonly rpc: NanoRpc;
   private readonly replay: NanoReplayStore;
 
-  constructor(private readonly opts: NanoFacilitatorOptions = {}) {
+  constructor(private readonly opts: NanoFacilitatorOptions) {
+    if (!opts?.replayStore) {
+      throw new Error('NanoFacilitator: replayStore is required');
+    }
     this.rpc = opts.rpc ?? new FetchNanoRpc();
-    this.replay = opts.replayStore ?? new InMemoryNanoReplayStore();
+    this.replay = opts.replayStore;
   }
 
   async verify(
@@ -209,21 +262,30 @@ export class NanoFacilitator implements X402Facilitator {
       return invalid('nano: block already used');
     }
 
-    let block: NanoBlockInfo;
-    let previous: NanoBlockInfo;
+    let block: NanoBlockInfo | undefined;
     try {
       block = await this.rpc.blockInfo(blockHash);
-      if (block.confirmed !== 'true') return invalid('nano: not confirmed');
-      if (block.contents.type !== 'state' || block.subtype !== 'send') {
-        return invalid('nano: not a send block');
-      }
-      previous = await this.rpc.blockInfo(block.contents.previous);
     } catch (err) {
-      return invalid(`nano: rpc error (${(err as Error).message})`);
+      throw new NanoRpcUnavailableError({cause: err});
+    }
+    if (!block) return invalid('nano: block not found');
+    if (block.confirmed !== 'true') return invalid('nano: not confirmed');
+    if (block.contents.type !== 'state' || block.subtype !== 'send') {
+      return invalid('nano: not a send block');
     }
 
-    const sent = rawAmount(previous.contents.balance, block.contents.balance);
-    if (sent == null) return invalid('nano: unreadable balance');
+    // The node reports the transferred amount itself, so the previous block
+    // (which may be a legacy block with another shape) is never read.
+    const sent = rawAmount(block.amount);
+    if (sent == null) return invalid('nano: unreadable amount');
+    const seenAt = unixSeconds(block.local_timestamp);
+    const now = Math.floor((this.opts.now ?? Date.now)() / 1000);
+    // Fail closed: a node that cannot say when it saw the block cannot show
+    // the send is recent.
+    if (seenAt == null || seenAt > now + CLOCK_SKEW_SECONDS) {
+      return invalid('nano: block time unknown');
+    }
+    const age = now - seenAt;
     const dest = normalizeAccount(block.contents.link_as_account ?? '');
 
     let reason = 'nano: wrong destination';
@@ -239,6 +301,10 @@ export class NanoFacilitator implements X402Facilitator {
       }
       if (sent < BigInt(req.maxAmountRequired)) {
         reason = 'nano: amount too low';
+        continue;
+      }
+      if (age > (req.maxTimeoutSeconds ?? DEFAULT_NANO_MAX_TIMEOUT_SECONDS)) {
+        reason = 'nano: block too old';
         continue;
       }
       return {
@@ -262,6 +328,11 @@ export interface NanoRequirementOptions {
   resource: string;
   description?: string;
   mimeType?: string;
+  /**
+   * How old the send block may be, in seconds by the node's
+   * `local_timestamp`, and still pay. Enforced by {@link NanoFacilitator}.
+   * Default {@link DEFAULT_NANO_MAX_TIMEOUT_SECONDS}.
+   */
   maxTimeoutSeconds?: number;
 }
 
@@ -279,6 +350,11 @@ export function nanoRequirement(
   if (!RAW_RE.test(opts.amountRaw) || BigInt(opts.amountRaw) === 0n) {
     throw new Error(`Invalid Nano raw amount: ${opts.amountRaw}`);
   }
+  const maxTimeoutSeconds =
+    opts.maxTimeoutSeconds ?? DEFAULT_NANO_MAX_TIMEOUT_SECONDS;
+  if (!Number.isInteger(maxTimeoutSeconds) || maxTimeoutSeconds <= 0) {
+    throw new Error(`Invalid maxTimeoutSeconds: ${opts.maxTimeoutSeconds}`);
+  }
   return {
     scheme: 'exact',
     network: NANO_MAINNET,
@@ -288,9 +364,7 @@ export function nanoRequirement(
     resource: opts.resource,
     ...(opts.description != null ? {description: opts.description} : {}),
     ...(opts.mimeType != null ? {mimeType: opts.mimeType} : {}),
-    ...(opts.maxTimeoutSeconds != null
-      ? {maxTimeoutSeconds: opts.maxTimeoutSeconds}
-      : {}),
+    maxTimeoutSeconds,
   };
 }
 
@@ -321,10 +395,17 @@ function normalizeAccount(account: string): string {
   return account.startsWith('xrb_') ? `nano_${account.slice(4)}` : account;
 }
 
-function rawAmount(before: string, after: string): bigint | undefined {
-  if (!RAW_RE.test(before) || !RAW_RE.test(after)) return undefined;
-  const sent = BigInt(before) - BigInt(after);
+function rawAmount(amount: string | undefined): bigint | undefined {
+  if (amount == null || !RAW_RE.test(amount)) return undefined;
+  const sent = BigInt(amount);
   return sent > 0n ? sent : undefined;
+}
+
+/** A positive Unix-seconds decimal string, or `undefined`. */
+function unixSeconds(value: string | undefined): number | undefined {
+  if (value == null || !RAW_RE.test(value)) return undefined;
+  const seconds = Number(value);
+  return Number.isSafeInteger(seconds) && seconds > 0 ? seconds : undefined;
 }
 
 /** Parse an x402 payment payload for Nano; `undefined` means "not Nano". */
