@@ -57,6 +57,33 @@ describe('scaffold', () => {
     expect(readme).not.toContain('{{name}}');
   });
 
+  // The Express host loads `express` and `cors` at boot, but both are
+  // optional peers of @agentback/rest, so npm never installs them
+  // transitively. In this workspace the linked `rest` resolves them from its
+  // own devDependencies, so validate-templates cannot catch a template that
+  // omits them.
+  it.each(TEMPLATES)(
+    'the %s template declares the Express host peers',
+    template => {
+      const restPkg = JSON.parse(
+        readFileSync(
+          new URL('../../../../rest/package.json', import.meta.url),
+          'utf8',
+        ),
+      );
+      const {dir} = scaffold({name: 'my-service', template, cwd});
+      const pkg = JSON.parse(
+        readFileSync(path.join(dir, 'package.json'), 'utf8'),
+      );
+      if (!pkg.dependencies['@agentback/rest']) return;
+      for (const peer of ['express', 'cors']) {
+        expect(pkg.dependencies[peer], peer).toBe(
+          restPkg.peerDependencies[peer],
+        );
+      }
+    },
+  );
+
   it('substitutes the name into source files', () => {
     const {dir} = scaffold({name: 'acme-api', template: 'hybrid', cwd});
     const main = readFileSync(path.join(dir, 'src/main.ts'), 'utf8');
