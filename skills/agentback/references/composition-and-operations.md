@@ -557,8 +557,10 @@ port `0`, and asserts against it.
 
 ### Serverless deployment (`listen: false`)
 
-The same `buildApp` factory also deploys to a serverless platform (Vercel,
-AWS Lambda). Set `listen: false` on the RestServer config: `app.start()` then
+The same `buildApp` factory also deploys to a handler-based serverless platform
+(Vercel, AWS Lambda **Event** Functions — classic Lambda). AWS Lambda **Web**
+Functions are different: they run the normal listener (see below). Set
+`listen: false` on the RestServer config: `app.start()` then
 mounts the remaining routes — controllers, framework routes (`/openapi.json`,
 explorers, …) behind the already-mounted middleware chain — but **skips
 `app.listen()`**. The platform owns the HTTP listener; you hand it the
@@ -600,6 +602,23 @@ account** (no signup/token, 60-min TTL) for a _secretless_ real deploy in CI.
 `--temporary` only works **unauthenticated** — wrangler refuses it when logged in
 or `CLOUDFLARE_API_TOKEN` is set (the inverse of the normal `wrangler login`
 prerequisite); needs wrangler ≥ 4.102.
+
+For **AWS Lambda Web Functions** there is no `agentback deploy` target yet. The
+app runs as a normal server, so keep `listen: true`. Two rules:
+
+- **Translate the listen address.** Lambda sets only `AWS_LAMBDA_HTTP_ENDPOINT`
+  (`host:port`), and `RestApplication` reads `PORT`/`HOST`. A root `index.js`
+  copies the variable into `PORT`/`HOST`, then imports the entry.
+- **The imported entry must start the server.** Lambda's runtime imports
+  `index.js`, so the entry module is not the process entry point: an
+  `isMain(import.meta)` guard stays false and the server never starts. Start at
+  module top level (the scaffold's `main.ts` does), or call an exported factory
+  from `index.js`.
+
+There are no WebSockets there (`RestServer.upgrade()` never fires), shutdown
+gets about 1 s after `SIGTERM`, and each environment counts as one instance for
+the multi-instance rules. The full recipe is in
+`docs/guides/deploy-to-production.md`.
 
 ## Key Rules
 

@@ -160,6 +160,91 @@ Also remember that MCP-over-HTTP sessions are sticky to an instance unless
 you enable session resumability — terminate MCP at one instance or use a
 session-affinity LB policy.
 
+## AWS Lambda Web Functions
+
+[Lambda Web Functions](https://docs.aws.amazon.com/lambda/latest/dg/web-functions.html)
+run a normal Node HTTP server, so the app deploys as it is: keep the default
+`listen: true`. Do not use the `listen: false` handler recipe. That recipe is
+for handler-based platforms such as Vercel and Lambda Event Functions (classic
+Lambda). AgentBack has no `agentback deploy` target for AWS yet; this section
+is the manual recipe.
+
+**Translate the listen address.** Lambda chooses the address and sets only
+`AWS_LAMBDA_HTTP_ENDPOINT`, in `host:port` form. `RestApplication` reads
+`PORT` and `HOST`, not that variable. If the server listens on a different
+address, Lambda's requests do not reach it. Lambda loads `index.js` at the
+root of the package, so make that file the translator:
+
+```js
+// index.js
+const endpoint = process.env.AWS_LAMBDA_HTTP_ENDPOINT;
+if (endpoint) {
+  const i = endpoint.lastIndexOf(':');
+  process.env.HOST = endpoint.slice(0, i);
+  process.env.PORT = endpoint.slice(i + 1);
+}
+await import('./dist/main.js');
+```
+
+Explicit `port`/`host` config wins over the environment, so do not hard-code
+either value on this host. The [Configuration](#configuration) example above
+hard-codes `host: '0.0.0.0'`; for Lambda, change it to
+`host: process.env.HOST ?? '0.0.0.0'`.
+
+**The imported entry must start the server.** Lambda's runtime imports
+`index.js`, so `dist/main.js` is not the process entry point. If the entry
+starts the app inside an `isMain(import.meta)` guard, the guard is false and
+the server never starts. The scaffolded `main.ts` starts at module top level,
+so it works. If your entry has the guard, export the factory and call it from
+`index.js` instead of importing `dist/main.js`.
+
+**Package with production dependencies.** Lambda installs nothing and bundles
+nothing: you upload a `.zip` to a versioned S3 bucket. ESM
+(`"type": "module"`) works. pnpm workspace symlinks do not survive a zip, so
+use the same `pnpm deploy` step as the Dockerfile above. `pnpm deploy` copies
+what `pnpm pack` would publish: without a `files` field it skips everything in
+`.gitignore`, and the scaffold's `.gitignore` lists `dist/`. Name both files
+in `package.json`:
+
+```json
+"files": ["dist", "index.js"]
+```
+
+Then build, package, and zip:
+
+```sh
+pnpm build
+pnpm --filter my-service deploy --prod /out
+(cd /out && zip -qr ../function.zip .)
+```
+
+Then create the function, revision, and endpoint. The `aws lambda-web deploy`
+command (AWS CLI 2.37.13 or later) does all of it in one step; see
+[Creating a Web Function](https://docs.aws.amazon.com/lambda/latest/dg/web-functions-create.html).
+
+What changes on this host:
+
+- **Runtime.** Node.js 24 on arm64 only. Native dependencies need arm64
+  builds.
+- **Startup.** The server must listen within 10 seconds of start.
+- **Shutdown.** The process gets about 1 second after `SIGTERM`. Keep
+  lifecycle `stop()` work short. The [signal hook](#graceful-shutdown) above
+  still applies.
+- **WebSockets.** Not supported. Lambda strips the `Upgrade` header, so
+  `RestServer.upgrade()` endpoints receive nothing.
+- **Request bodies.** Half-duplex: read the whole body before you write the
+  response. Built-in body parsing and `fileField` uploads already do this.
+- **Long streams.** Each request ends at the revision's `timeoutSeconds`. Set
+  it to the longest SSE stream you serve.
+- **Instances.** Each environment serves many concurrent requests, and Lambda
+  runs many environments. Apply the
+  [multi-instance checklist](#multi-instance-checklist): in-memory stores and
+  resumable-SSE buffers are per environment.
+- **MCP over HTTP.** The stateless default (`protocol: 'both'`) needs no
+  affinity. Do not use `protocol: 'legacy'` sessions: AWS says not to use the
+  execution environment as a session store.
+- **Custom domain or WAF.** Put Amazon CloudFront in front of the endpoint.
+
 ## Exposure checklist
 
 - `cors:` — off by default; enable deliberately (`true` or `CorsOptions`).
