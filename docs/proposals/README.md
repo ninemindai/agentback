@@ -42,15 +42,16 @@ tracked in the doc headers.
 
 ## Exploratory — not part of the reviewed roadmap
 
-| #   | Proposal                              | One-liner                                                                                                                                           |
-| --- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| E-1 | [Chat channels](chat-channels.md)     | `@agentback/chat` — chat platforms (Slack/Discord/…) as a third inbound surface via Vercel's Chat SDK                                               |
-| E-2 | [Circuit breaker](circuit-breaker.md) | `@agentback/extension-circuit-breaker` — outbound fault tolerance; the dual of `extension-rate-limit`                                               |
-| E-3 | [AI SDK agents](harness.md)           | `@agentback/agents` — opt-in AI SDK agent wiring; projects `@tool` classes as host tools (DX-reviewed)                                              |
-| E-4 | [CLI projection](cli-projection.md)   | `@agentback/command` — project `@tool` classes as an operator CLI (argv→callTool); sixth surface — **eng-reviewed, operator-first**                 |
-| E-5 | [CLI lifecycle](cli-lifecycle.md)     | `agentback new`/`deploy`/`update` — one ops binary; `update` bumps lockstep ranges + runs a codemod-or-advisory migration registry — **design**     |
-| E-6 | [Chat message IR](chat-message-ir.md) | Rich cards for `@agentback/chat`: Zod message IR → Chat SDK elements (agent-emittable UI), typed `@onAction` routing, confirm-card HITL — **draft** |
-| E-7 | [MCP Events](mcp-events.md)           | `@event` + webhook delivery (MCP Events extension, OpenAI's webhook-only subset): Zod input/payload schemas, IP-pinned signed delivery — **built**  |
+| #   | Proposal                               | One-liner                                                                                                                                                                                   |
+| --- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| E-1 | [Chat channels](chat-channels.md)      | `@agentback/chat` — chat platforms (Slack/Discord/…) as a third inbound surface via Vercel's Chat SDK                                                                                       |
+| E-2 | [Circuit breaker](circuit-breaker.md)  | `@agentback/extension-circuit-breaker` — outbound fault tolerance; the dual of `extension-rate-limit`                                                                                       |
+| E-3 | [AI SDK agents](harness.md)            | `@agentback/agents` — opt-in AI SDK agent wiring; projects `@tool` classes as host tools (DX-reviewed)                                                                                      |
+| E-4 | [CLI projection](cli-projection.md)    | `@agentback/command` — project `@tool` classes as an operator CLI (argv→callTool); sixth surface — **eng-reviewed, operator-first**                                                         |
+| E-5 | [CLI lifecycle](cli-lifecycle.md)      | `agentback new`/`deploy`/`update` — one ops binary; `update` bumps lockstep ranges + runs a codemod-or-advisory migration registry — **design**                                             |
+| E-6 | [Chat message IR](chat-message-ir.md)  | Rich cards for `@agentback/chat`: Zod message IR → Chat SDK elements (agent-emittable UI), typed `@onAction` routing, confirm-card HITL — **draft**                                         |
+| E-7 | [MCP Events](mcp-events.md)            | `@event` + webhook delivery (MCP Events extension, OpenAI's webhook-only subset): Zod input/payload schemas, IP-pinned signed delivery — **built**                                          |
+| E-8 | [WebSocket transport](ws-transport.md) | `@agentback/ws` — existing `@api` routes and `@tool`s over one socket (JSON-RPC 2.0, calls in both directions); dispatch follows the host, so HTTP parity holds — **design, not scheduled** |
 
 ## Sequencing constraints (from eng review)
 
