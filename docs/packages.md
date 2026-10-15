@@ -52,7 +52,7 @@ Each package also ships its own `README.md` under [`packages/`](../packages/).
 | `@agentback/metering`              | Per-principal REST/MCP/agent usage events, audit sinks, and quota                                                                                   |
 | `@agentback/model-gateway`         | The model-call seam — retry classification, circuit breaker, provider fallback, token-granular metering, as language-model middleware               |
 | `@agentback/agents`                | Opt-in AI SDK agent wiring — `@tool` classes projected as host-executed agent tools, per-turn identity, sessions, metering                          |
-| `@agentback/payments`              | x402/MPP/Stripe payment authorization and billing seams                                                                                             |
+| `@agentback/payments`              | x402 (USDC, or Nano via `NanoFacilitator`)/MPP/Stripe payment authorization and billing seams                                                       |
 | `@agentback/messaging`             | Zod-typed JobQueue/EventBus/Scheduler ports with in-memory adapter                                                                                  |
 | `@agentback/messaging-bullmq`      | BullMQ + Redis Streams durable adapter for messaging ports                                                                                          |
 | `@agentback/actors`                | Zod-typed actor runtime port — `@actor`/`@actorCommand`, per-identity serialized turns, idempotent replay, in-memory adapter                        |
