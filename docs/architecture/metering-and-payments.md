@@ -170,6 +170,18 @@ is `verify`-ed and `settle`-d through the facilitator; success sets
 calls. See `examples/hello-x402` for the full 402 → pay → 200 flow against an
 in-process fake facilitator.
 
+**Nano (XNO) beside USDC.** `NanoFacilitator` wraps your existing facilitator
+as `fallback`. It answers payloads whose `network` is `nano:mainnet` itself and
+passes every other payload to the fallback unchanged. To offer Nano, add a
+`nanoRequirement({payTo, amountRaw, resource})` entry to `accepts`. The client
+publishes a send block and presents its hash. `verify` reads the block from a
+node and checks it is a confirmed send of at least the price to `payTo`,
+within `maxTimeoutSeconds`. `settle` claims the hash in a required, durable
+`NanoReplayStore`, so one block pays once. The hash is a bearer proof: whoever
+presents a qualifying recent send first gets the call. See the
+[payments README](../../packages/payments/README.md#nano-xno-beside-usdc) for
+the replay-store rules and the limits.
+
 ### MPP (pre-authorized sessions)
 
 ```ts

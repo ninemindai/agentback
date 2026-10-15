@@ -218,6 +218,37 @@ describe('NanoFacilitator.verify', () => {
     expect(node.calls).toEqual([]);
   });
 
+  it('rejects a Nano payload that is not x402 v1 exact, without calling the node', async () => {
+    const node = rpc(block({}));
+    const usdc = usdcFacilitator();
+    const fac = nanoFacilitator({rpc: node, fallback: usdc});
+    const payload = (over: Record<string, unknown>) =>
+      JSON.stringify({
+        x402Version: 1,
+        scheme: 'exact',
+        network: NANO_MAINNET,
+        payload: {blockHash: SEND},
+        ...over,
+      });
+    const cases: [Record<string, unknown>, string][] = [
+      [{scheme: 'upto'}, 'nano: unsupported scheme'],
+      [{scheme: undefined}, 'nano: unsupported scheme'],
+      [{x402Version: 2}, 'nano: unsupported x402Version'],
+      [{x402Version: '1'}, 'nano: unsupported x402Version'],
+    ];
+    for (const [over, reason] of cases) {
+      expect(await fac.verify(payload(over), ACCEPTS)).toEqual({
+        valid: false,
+        reason,
+      });
+      expect(await fac.settle(payload(over), ACCEPTS)).toEqual({
+        success: false,
+      });
+    }
+    expect(node.calls).toEqual([]);
+    expect(usdc.seen).toEqual([]);
+  });
+
   it('rejects a payTo with a bad checksum', async () => {
     const badPayTo = MERCHANT.slice(0, -1) + '4';
     const fac = nanoFacilitator({rpc: rpc(block({dest: badPayTo}))});
@@ -337,6 +368,8 @@ describe('NanoFacilitator.verify', () => {
   it('reads a plain-JSON payload as well as base64', async () => {
     const fac = nanoFacilitator({rpc: rpc(block({}))});
     const json = JSON.stringify({
+      x402Version: 1,
+      scheme: 'exact',
       network: NANO_MAINNET,
       payload: {blockHash: SEND},
     });
@@ -453,16 +486,41 @@ describe('NanoFacilitator with an expiring replay store', () => {
   }
 
   it('refuses a window the store would forget a claim inside', async () => {
-    const store = expiringStore(DEFAULT_NANO_MAX_TIMEOUT_SECONDS, () => NOW_MS);
+    const store = expiringStore(
+      DEFAULT_NANO_MAX_TIMEOUT_SECONDS + 120,
+      () => NOW_MS,
+    );
     const fac = nanoFacilitator({rpc: rpc(block({})), replayStore: store});
-    expect(await fac.verify(nanoPayment(SEND), ACCEPTS)).toEqual({
+    // One second longer than the store can cover.
+    const long = [
+      USDC,
+      nanoRequirement({
+        payTo: MERCHANT,
+        amountRaw: PRICE,
+        resource: '/widgets',
+        maxTimeoutSeconds: DEFAULT_NANO_MAX_TIMEOUT_SECONDS + 1,
+      }),
+    ];
+    expect(await fac.verify(nanoPayment(SEND), long)).toEqual({
       valid: false,
       reason: 'nano: replay store retention shorter than window',
     });
-    expect(await fac.settle(nanoPayment(SEND), ACCEPTS)).toEqual({
+    expect(await fac.settle(nanoPayment(SEND), long)).toEqual({
       success: false,
     });
     expect(store.has(SEND)).toBe(false);
+  });
+
+  it('refuses at construction a store too short for the default window', () => {
+    const tooShort = DEFAULT_NANO_MAX_TIMEOUT_SECONDS + 119;
+    expect(() =>
+      nanoFacilitator({replayStore: expiringStore(tooShort, () => NOW_MS)}),
+    ).toThrow(/shorter than the default window plus clock skew \(420s\)/);
+    expect(() =>
+      nanoFacilitator({
+        replayStore: expiringStore(tooShort + 1, () => NOW_MS),
+      }),
+    ).not.toThrow();
   });
 
   it('still refuses a re-presented hash once the store has forgotten it', async () => {

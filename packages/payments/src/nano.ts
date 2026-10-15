@@ -136,7 +136,9 @@ export interface NanoReplayStore {
   claim(blockHash: string): boolean | Promise<boolean>;
   /**
    * Seconds a claimed hash is kept, when the store expires entries. Leave
-   * unset for a store that keeps every claim forever.
+   * unset for a store that keeps every claim forever. At least 420 (the
+   * default window plus twice the clock skew), or the
+   * {@link NanoFacilitator} constructor throws.
    */
   readonly retentionSeconds?: number;
 }
@@ -222,6 +224,19 @@ export class NanoFacilitator implements X402Facilitator {
         `NanoFacilitator: invalid replayStore.retentionSeconds: ${retention}`,
       );
     }
+    // A store too short for the default window would refuse every payment
+    // made against a default requirement, and only after the payer has sent
+    // XNO, so refuse it here instead. Longer windows are checked per
+    // requirement in `check`.
+    const minRetention =
+      DEFAULT_NANO_MAX_TIMEOUT_SECONDS + 2 * CLOCK_SKEW_SECONDS;
+    if (retention !== undefined && retention < minRetention) {
+      throw new Error(
+        `NanoFacilitator: replayStore.retentionSeconds ${retention} is ` +
+          `shorter than the default window plus clock skew ` +
+          `(${minRetention}s)`,
+      );
+    }
     this.rpc = opts.rpc ?? new FetchNanoRpc();
     this.replay = opts.replayStore;
   }
@@ -296,7 +311,7 @@ export class NanoFacilitator implements X402Facilitator {
   }
 
   private async check(
-    nano: {blockHash: unknown},
+    nano: NanoPayment,
     requirements: PaymentRequirements[],
     now: number,
   ): Promise<
@@ -310,6 +325,10 @@ export class NanoFacilitator implements X402Facilitator {
       }
   > {
     const invalid = (reason: string) => ({valid: false as const, reason});
+    // Only x402 v1 `exact` is defined for Nano. Refuse anything else rather
+    // than read it as an `exact` send.
+    if (nano.x402Version !== 1) return invalid('nano: unsupported x402Version');
+    if (nano.scheme !== 'exact') return invalid('nano: unsupported scheme');
     if (typeof nano.blockHash !== 'string' || !HASH_RE.test(nano.blockHash)) {
       return invalid('nano: malformed block hash');
     }
@@ -474,8 +493,15 @@ function unixSeconds(value: string | undefined): number | undefined {
   return Number.isSafeInteger(seconds) && seconds > 0 ? seconds : undefined;
 }
 
+/** A payment payload that names network `nano:mainnet`, fields unchecked. */
+interface NanoPayment {
+  blockHash: unknown;
+  scheme: unknown;
+  x402Version: unknown;
+}
+
 /** Parse an x402 payment payload for Nano; `undefined` means "not Nano". */
-function decodeNanoPayment(payment: string): {blockHash: unknown} | undefined {
+function decodeNanoPayment(payment: string): NanoPayment | undefined {
   const trimmed = payment.trim();
   let json: string;
   if (trimmed.startsWith('{')) {
@@ -491,10 +517,19 @@ function decodeNanoPayment(payment: string): {blockHash: unknown} | undefined {
     return undefined;
   }
   if (typeof parsed !== 'object' || parsed === null) return undefined;
-  const p = parsed as {network?: unknown; payload?: unknown};
+  const p = parsed as {
+    network?: unknown;
+    scheme?: unknown;
+    x402Version?: unknown;
+    payload?: unknown;
+  };
   if (p.network !== NANO_MAINNET) return undefined;
   const inner = (p.payload ?? {}) as {blockHash?: unknown};
-  return {blockHash: inner.blockHash};
+  return {
+    blockHash: inner.blockHash,
+    scheme: p.scheme,
+    x402Version: p.x402Version,
+  };
 }
 
 /** Decode Nano base32 into the big-endian bytes of a `bits`-bit number. */

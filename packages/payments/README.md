@@ -100,7 +100,9 @@ const rail = new X402Rail({
 ```
 
 The client publishes a send block to `payTo` first, then presents its hash as
-an ordinary x402 payload (base64 JSON in `X-PAYMENT`):
+an ordinary x402 payload (base64 JSON in `X-PAYMENT`). `x402Version` must be
+`1` and `scheme` must be `exact`; a `nano:mainnet` payload with anything else
+is refused rather than passed to the fallback:
 
 ```json
 {
@@ -119,8 +121,9 @@ read) that the node first saw no more than `maxTimeoutSeconds` ago (its
 final once confirmed, so `settle` holds no key and broadcasts nothing: it
 re-verifies and claims the hash in the `NanoReplayStore` so one block pays for
 one call. `settle` judges recency at the time `verify` accepted the block, so a
-send at the edge of the window is not refused between the two calls. The node defaults to `https://rpc.nano.to`; pass
-`rpc: new FetchNanoRpc({url})` for your own node, or any `NanoRpc` in tests.
+send at the edge of the window is not refused between the two calls. The node
+defaults to `https://rpc.nano.to`; pass `rpc: new FetchNanoRpc({url})` for
+your own node, or any `NanoRpc` in tests.
 
 If the node cannot answer, `verify` and `settle` throw `NanoRpcUnavailableError`
 (message `nano: node unavailable`, the node's error kept as `cause`) rather
@@ -138,7 +141,10 @@ measured by the node's `local_timestamp`, which the facilitator cannot check,
 so only a store that never forgets is independent of what a node reports. A
 store that expires entries must set `retentionSeconds`, and the facilitator
 refuses any requirement whose `maxTimeoutSeconds + 120` exceeds it (60s of
-node clock skew, 60s between our own instances).
+node clock skew, 60s between our own instances). A `retentionSeconds` below
+420 (the default window plus 120) is refused when the facilitator is
+constructed, so a store too short for the default fails at boot rather than
+after a payer has sent XNO.
 
 **A block hash is a bearer proof.** Nothing in the send ties it to the caller
 who presents it, so whoever presents a qualifying recent send first gets the
