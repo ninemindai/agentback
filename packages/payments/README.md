@@ -118,7 +118,8 @@ read) that the node first saw no more than `maxTimeoutSeconds` ago (its
 `local_timestamp`; a block with no usable timestamp is refused). Nano sends are
 final once confirmed, so `settle` holds no key and broadcasts nothing: it
 re-verifies and claims the hash in the `NanoReplayStore` so one block pays for
-one call. The node defaults to `https://rpc.nano.to`; pass
+one call. `settle` judges recency at the time `verify` accepted the block, so a
+send at the edge of the window is not refused between the two calls. The node defaults to `https://rpc.nano.to`; pass
 `rpc: new FetchNanoRpc({url})` for your own node, or any `NanoRpc` in tests.
 
 If the node cannot answer, `verify` and `settle` throw `NanoRpcUnavailableError`
@@ -131,8 +132,13 @@ the only thing that stops one send block paying twice. A store that forgets on
 restart, or is not shared by every instance behind the load balancer, lets a
 block pay again for as long as it is inside `maxTimeoutSeconds`.
 `InMemoryNanoReplayStore` is for tests and single-process development only.
-Implement `has`/`claim` over Redis (`SET key 1 NX` with an expiry longer than
-`maxTimeoutSeconds`) or a unique-keyed table; `claim` must be atomic.
+Implement `has`/`claim` over a unique-keyed table or Redis (`SET key 1 NX`);
+`claim` must be atomic. Keep claimed hashes forever if you can: the window is
+measured by the node's `local_timestamp`, which the facilitator cannot check,
+so only a store that never forgets is independent of what a node reports. A
+store that expires entries must set `retentionSeconds`, and the facilitator
+refuses any requirement whose `maxTimeoutSeconds + 120` exceeds it (60s of
+node clock skew, 60s between our own instances).
 
 **A block hash is a bearer proof.** Nothing in the send ties it to the caller
 who presents it, so whoever presents a qualifying recent send first gets the

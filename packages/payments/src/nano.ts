@@ -25,6 +25,13 @@ export const DEFAULT_NANO_MAX_TIMEOUT_SECONDS = 300;
 const CLOCK_SKEW_SECONDS = 60;
 
 /**
+ * How long `settle` honours the reference time `verify` checked a block
+ * against, so a send that passed `verify` at the edge of the window is not
+ * refused as too old by the `settle` that follows it.
+ */
+const VERIFIED_HOLD_SECONDS = 300;
+
+/**
  * The subset of a Nano node's `block_info` response (with `json_block: true`)
  * the facilitator reads. Amounts and balances are decimal strings in raw
  * (1 XNO = 10^30 raw).
@@ -113,10 +120,25 @@ export class FetchNanoRpc implements NanoRpc {
  * caller. Required by {@link NanoFacilitator}: back it with shared, durable
  * storage in production. {@link InMemoryNanoReplayStore} is for tests and
  * single-process development only.
+ *
+ * A claimed hash should be kept forever. The recency window is measured
+ * against the answering node's `local_timestamp`, which our clock cannot
+ * check, so only a store that never forgets keeps a hash from paying twice
+ * whatever a node reports. A store that expires entries must say so in
+ * `retentionSeconds`; {@link NanoFacilitator} then refuses any requirement
+ * whose `maxTimeoutSeconds` plus twice the allowed clock skew (60s: a node
+ * running ahead, and our instances' clocks differing) exceeds it, and such a
+ * store still trusts the node's `local_timestamp` to age an expired hash out
+ * of the window.
  */
 export interface NanoReplayStore {
   has(blockHash: string): boolean | Promise<boolean>;
   claim(blockHash: string): boolean | Promise<boolean>;
+  /**
+   * Seconds a claimed hash is kept, when the store expires entries. Leave
+   * unset for a store that keeps every claim forever.
+   */
+  readonly retentionSeconds?: number;
 }
 
 /**
@@ -170,8 +192,9 @@ export interface NanoFacilitatorOptions {
  * broadcast: `verify` reads the block from a node (one `block_info` call) and
  * checks it is a confirmed send to `payTo` of at least `maxAmountRequired`
  * raw, first seen by the node no more than `maxTimeoutSeconds` ago; `settle`
- * re-verifies and records the hash so it cannot pay twice. Any other payment
- * goes to `fallback` untouched. If the node cannot answer, both throw
+ * re-verifies (judging recency at the time `verify` accepted the block) and
+ * records the hash so it cannot pay twice. Any other payment goes to
+ * `fallback` untouched. If the node cannot answer, both throw
  * {@link NanoRpcUnavailableError} instead of reporting an invalid payment.
  *
  * A block hash is a bearer proof: nothing ties the send to the caller who
@@ -183,10 +206,21 @@ export interface NanoFacilitatorOptions {
 export class NanoFacilitator implements X402Facilitator {
   private readonly rpc: NanoRpc;
   private readonly replay: NanoReplayStore;
+  /** Block hash -> the time (Unix s) `verify` accepted it against. */
+  private readonly verified = new Map<string, number>();
 
   constructor(private readonly opts: NanoFacilitatorOptions) {
     if (!opts?.replayStore) {
       throw new Error('NanoFacilitator: replayStore is required');
+    }
+    const retention = opts.replayStore.retentionSeconds;
+    if (
+      retention !== undefined &&
+      !(Number.isFinite(retention) && retention > 0)
+    ) {
+      throw new Error(
+        `NanoFacilitator: invalid replayStore.retentionSeconds: ${retention}`,
+      );
     }
     this.rpc = opts.rpc ?? new FetchNanoRpc();
     this.replay = opts.replayStore;
@@ -198,10 +232,14 @@ export class NanoFacilitator implements X402Facilitator {
   ): Promise<X402VerifyResult> {
     const nano = decodeNanoPayment(payment);
     if (!nano) return this.delegateVerify(payment, requirements);
-    const checked = await this.check(nano, requirements);
-    return checked.valid
-      ? {valid: true}
-      : {valid: false, reason: checked.reason};
+    const now = this.nowSeconds();
+    const checked = await this.check(nano, requirements, now);
+    if (!checked.valid) return {valid: false, reason: checked.reason};
+    for (const [hash, at] of this.verified) {
+      if (at < now - VERIFIED_HOLD_SECONDS) this.verified.delete(hash);
+    }
+    this.verified.set(checked.blockHash, now);
+    return {valid: true};
   }
 
   async settle(
@@ -213,8 +251,23 @@ export class NanoFacilitator implements X402Facilitator {
       if (!this.opts.fallback) return {success: false};
       return this.opts.fallback.settle(payment, requirements);
     }
-    const checked = await this.check(nano, requirements);
+    // Check the block against the same time `verify` accepted it at, so a
+    // send near the edge of the window does not pass `verify` and then fail
+    // here only because the clock moved. Everything else is re-checked, and
+    // the replay claim below still decides whether it pays.
+    const now = this.nowSeconds();
+    const hash =
+      typeof nano.blockHash === 'string' ? nano.blockHash.toUpperCase() : '';
+    const verifiedAt = this.verified.get(hash);
+    const at =
+      verifiedAt !== undefined &&
+      verifiedAt <= now &&
+      verifiedAt >= now - VERIFIED_HOLD_SECONDS
+        ? verifiedAt
+        : now;
+    const checked = await this.check(nano, requirements, at);
     if (!checked.valid) return {success: false};
+    this.verified.delete(checked.blockHash);
     if (!(await this.replay.claim(checked.blockHash))) return {success: false};
     return {
       success: true,
@@ -238,9 +291,14 @@ export class NanoFacilitator implements X402Facilitator {
     return this.opts.fallback.verify(payment, requirements);
   }
 
+  private nowSeconds(): number {
+    return Math.floor((this.opts.now ?? Date.now)() / 1000);
+  }
+
   private async check(
     nano: {blockHash: unknown},
     requirements: PaymentRequirements[],
+    now: number,
   ): Promise<
     | {valid: false; reason: string}
     | {
@@ -279,7 +337,6 @@ export class NanoFacilitator implements X402Facilitator {
     const sent = rawAmount(block.amount);
     if (sent == null) return invalid('nano: unreadable amount');
     const seenAt = unixSeconds(block.local_timestamp);
-    const now = Math.floor((this.opts.now ?? Date.now)() / 1000);
     // Fail closed: a node that cannot say when it saw the block cannot show
     // the send is recent.
     if (seenAt == null || seenAt > now + CLOCK_SKEW_SECONDS) {
@@ -303,7 +360,16 @@ export class NanoFacilitator implements X402Facilitator {
         reason = 'nano: amount too low';
         continue;
       }
-      if (age > (req.maxTimeoutSeconds ?? DEFAULT_NANO_MAX_TIMEOUT_SECONDS)) {
+      const window = req.maxTimeoutSeconds ?? DEFAULT_NANO_MAX_TIMEOUT_SECONDS;
+      const retention = this.replay.retentionSeconds;
+      if (
+        retention !== undefined &&
+        retention < window + 2 * CLOCK_SKEW_SECONDS
+      ) {
+        reason = 'nano: replay store retention shorter than window';
+        continue;
+      }
+      if (age > window) {
         reason = 'nano: block too old';
         continue;
       }

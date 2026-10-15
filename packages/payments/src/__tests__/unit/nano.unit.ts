@@ -396,6 +396,111 @@ describe('NanoFacilitator.settle', () => {
     });
     expect(store.has(SEND)).toBe(false);
   });
+
+  it('settles a send verify accepted at the edge of the window', async () => {
+    let nowMs = NOW_MS;
+    const edge = String(NOW_S - DEFAULT_NANO_MAX_TIMEOUT_SECONDS);
+    const fac = nanoFacilitator({
+      rpc: rpc(block({localTimestamp: edge})),
+      now: () => nowMs,
+    });
+    expect((await fac.verify(nanoPayment(SEND), ACCEPTS)).valid).toBe(true);
+    nowMs += 2000; // the clock moves between verify and settle
+    expect((await fac.settle(nanoPayment(SEND), ACCEPTS)).success).toBe(true);
+    expect(await fac.settle(nanoPayment(SEND), ACCEPTS)).toEqual({
+      success: false,
+    });
+  });
+
+  it('judges recency by its own clock when verify did not accept the block', async () => {
+    let nowMs = NOW_MS;
+    const edge = String(NOW_S - DEFAULT_NANO_MAX_TIMEOUT_SECONDS);
+    const fac = nanoFacilitator({
+      rpc: rpc(block({localTimestamp: edge})),
+      now: () => nowMs,
+    });
+    nowMs += 2000;
+    expect(await fac.settle(nanoPayment(SEND), ACCEPTS)).toEqual({
+      success: false,
+    });
+    // A verify time older than the hold is not honoured either.
+    nowMs = NOW_MS;
+    expect((await fac.verify(nanoPayment(SEND), ACCEPTS)).valid).toBe(true);
+    nowMs += 301_000;
+    expect(await fac.settle(nanoPayment(SEND), ACCEPTS)).toEqual({
+      success: false,
+    });
+  });
+});
+
+describe('NanoFacilitator with an expiring replay store', () => {
+  // A store that forgets a claim `retentionSeconds` after it was made.
+  function expiringStore(retentionSeconds: number, nowMs: () => number) {
+    const claimed = new Map<string, number>();
+    const live = (hash: string) => {
+      const at = claimed.get(hash);
+      return at !== undefined && nowMs() < at + retentionSeconds * 1000;
+    };
+    return {
+      retentionSeconds,
+      has: live,
+      claim(hash: string) {
+        if (live(hash)) return false;
+        claimed.set(hash, nowMs());
+        return true;
+      },
+    };
+  }
+
+  it('refuses a window the store would forget a claim inside', async () => {
+    const store = expiringStore(DEFAULT_NANO_MAX_TIMEOUT_SECONDS, () => NOW_MS);
+    const fac = nanoFacilitator({rpc: rpc(block({})), replayStore: store});
+    expect(await fac.verify(nanoPayment(SEND), ACCEPTS)).toEqual({
+      valid: false,
+      reason: 'nano: replay store retention shorter than window',
+    });
+    expect(await fac.settle(nanoPayment(SEND), ACCEPTS)).toEqual({
+      success: false,
+    });
+    expect(store.has(SEND)).toBe(false);
+  });
+
+  it('still refuses a re-presented hash once the store has forgotten it', async () => {
+    let nowMs = NOW_MS;
+    const retention = DEFAULT_NANO_MAX_TIMEOUT_SECONDS + 120;
+    const store = expiringStore(retention, () => nowMs);
+    // The node runs as far ahead of our clock as is allowed.
+    const ahead = String(NOW_S + 60);
+    const fac = nanoFacilitator({
+      rpc: rpc(block({localTimestamp: ahead})),
+      replayStore: store,
+      now: () => nowMs,
+    });
+    expect((await fac.settle(nanoPayment(SEND), ACCEPTS)).success).toBe(true);
+    nowMs += retention * 1000;
+    expect(store.has(SEND)).toBe(false);
+    expect(await fac.verify(nanoPayment(SEND), ACCEPTS)).toEqual({
+      valid: false,
+      reason: 'nano: block too old',
+    });
+    expect(await fac.settle(nanoPayment(SEND), ACCEPTS)).toEqual({
+      success: false,
+    });
+  });
+
+  it('rejects an invalid retentionSeconds at construction', () => {
+    for (const retentionSeconds of [0, -1, Number.NaN]) {
+      expect(() =>
+        nanoFacilitator({
+          replayStore: {
+            retentionSeconds,
+            has: () => false,
+            claim: () => true,
+          },
+        }),
+      ).toThrow(/invalid replayStore.retentionSeconds/);
+    }
+  });
 });
 
 describe('NanoFacilitator fallback', () => {
