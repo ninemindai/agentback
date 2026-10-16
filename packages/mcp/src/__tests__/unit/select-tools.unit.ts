@@ -73,6 +73,50 @@ describe('selectTools', () => {
     ).toEqual(['echo']);
   });
 
+  // ui.visibility (MCP Apps, SEP-1865): a tool whose visibility is set and
+  // omits 'model' is app-only, so the model-facing projections leave it out.
+  describe('ui.visibility', () => {
+    const vis = [
+      bind('app_only', {ui: {visibility: ['app']}}),
+      bind('both', {ui: {visibility: ['model', 'app']}}),
+      bind('model_only', {ui: {visibility: ['model']}}),
+      bind('widget', {ui: {resourceUri: 'ui://w'}}),
+      bind('plain'),
+    ];
+
+    it('excludes a tool whose visibility omits model', () => {
+      expect(selectTools(vis).map(t => t.meta.name)).toEqual([
+        'both',
+        'model_only',
+        'widget',
+        'plain',
+      ]);
+    });
+
+    it('excludes an empty visibility list (it omits model too)', () => {
+      const empty = bind('nowhere', {
+        ui: {resourceUri: 'ui://w', visibility: []},
+      });
+      expect(selectTools([empty, bind('plain')]).map(t => t.meta.name)).toEqual(
+        ['plain'],
+      );
+    });
+
+    it('throws when an include list names an app-only tool', () => {
+      expect(() => selectTools(vis, {include: ['app_only']})).toThrow(
+        /tool 'app_only' is app-only/,
+      );
+    });
+
+    it('accepts an app-only tool in an exclude list', () => {
+      expect(
+        selectTools(vis, {exclude: ['app_only', 'plain']}).map(
+          t => t.meta.name,
+        ),
+      ).toEqual(['both', 'model_only', 'widget']);
+    });
+  });
+
   it('says "visible" (not "registered") when a scope gate is active', () => {
     const scoped = [bind('echo'), scopedBind('admin_op', ['admin:ops'])];
     expect(() =>
