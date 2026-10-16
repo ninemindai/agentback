@@ -66,6 +66,28 @@ describe('token accounting', () => {
     expect(event.meta?.correlationId).toBe('turn-9');
   });
 
+  it('stamps the typed turnId and runId only from a scope that set them', async () => {
+    const {sink, generate} = givenPolicy();
+    await withModelScope(
+      {correlationId: 'turn-9', turnId: 'turn-9', runId: 'run-3'},
+      () => generate(usageOf(10, 5)),
+    );
+    // A scope opened for a request: its correlation id is not a turn id.
+    await withModelScope({correlationId: 'req-4'}, () =>
+      generate(usageOf(10, 5)),
+    );
+    const [turn, request] = sink.all();
+    expect(turn.turnId).toBe('turn-9');
+    expect(turn.runId).toBe('run-3');
+    expect(turn.meta?.correlationId).toBe('turn-9');
+    expect(request.turnId).toBeUndefined();
+    expect(request.runId).toBeUndefined();
+    expect(request.meta?.correlationId).toBe('req-4');
+    // The gateway cannot see who called the model, so it never says.
+    expect(turn.actorKind).toBeUndefined();
+    expect(request.actorKind).toBeUndefined();
+  });
+
   it('bills anonymously outside a scope rather than failing', async () => {
     const {sink, generate} = givenPolicy();
     await generate(usageOf(10, 5));

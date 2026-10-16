@@ -12,6 +12,15 @@ export interface PrincipalRef {
   id: string;
 }
 
+/**
+ * Who made a call, when the framework can observe it. Only `'agent'` exists:
+ * an `@agentback/agents` turn and the host-tool calls it makes are the one
+ * place the framework knows the caller is an agent. A REST or external MCP
+ * caller may be a person or an agent, and the framework cannot tell which, so
+ * those events carry no `actorKind` rather than a guess.
+ */
+export type ActorKind = 'agent';
+
 /** What was called — a REST route, an MCP tool, or an agent turn. */
 export interface UsageDescriptor {
   surface: 'rest' | 'mcp' | 'agent';
@@ -33,6 +42,23 @@ export interface UsageDescriptor {
    * from the bound `TRACE_ID_PROVIDER` when one exists.
    */
   traceId?: string;
+  /**
+   * The agent turn this event belongs to. An `@agentback/agents` turn stamps
+   * it on its own `'agent'` event, on each host-tool `'mcp'` event, and on the
+   * gateway's token events, so a sink can group a turn. Absent outside a turn.
+   */
+  turnId?: string;
+  /**
+   * Who made the call, set only where the framework observes it (see
+   * {@link ActorKind}). Absent means unknown, not "a person".
+   */
+  actorKind?: ActorKind;
+  /**
+   * The app's run id, read from `MeteringBindings.RUN_ID` through the context
+   * chain. The framework never invents one; it is absent unless the app binds
+   * it.
+   */
+  runId?: string;
 }
 
 /**
