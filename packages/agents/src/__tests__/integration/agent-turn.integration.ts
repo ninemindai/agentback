@@ -226,6 +226,9 @@ describe('agent turn (ToolLoopAgent + toHostTools, mock model)', () => {
 
     const reqCtx = new Context(app, 'request');
     reqCtx.bind(SecurityBindings.USER).to(admin);
+    // The app owns run ids: bound on the request, every event in the turn
+    // carries it.
+    reqCtx.bind(MeteringBindings.RUN_ID).to('run-42');
     const wrapped = await reqCtx.get<AgentPort>(AgentBindings.AGENT.key);
     await wrapped.generate({prompt: 'go'});
 
@@ -237,8 +240,16 @@ describe('agent turn (ToolLoopAgent + toHostTools, mock model)', () => {
     // Same principal, same correlation id — the sink can group the turn.
     expect(agentEvents[0].principal).toEqual({kind: 'user', id: 'admin-1'});
     expect(mcpEvents[0].principal).toEqual({kind: 'user', id: 'admin-1'});
-    const turnId = agentEvents[0].meta?.correlationId;
+    const turnId = agentEvents[0].turnId;
     expect(turnId).toBeTruthy();
+    expect(mcpEvents[0].turnId).toBe(turnId);
+    // The framework observes this caller: an agent turn and its host tools.
+    expect(agentEvents[0].actorKind).toBe('agent');
+    expect(mcpEvents[0].actorKind).toBe('agent');
+    expect(agentEvents[0].runId).toBe('run-42');
+    expect(mcpEvents[0].runId).toBe('run-42');
+    // Deprecated, kept for one release: the same id under meta.correlationId.
+    expect(agentEvents[0].meta?.correlationId).toBe(turnId);
     expect(mcpEvents[0].meta?.correlationId).toBe(turnId);
 
     // Quota was consumed post-turn (limit 1) → the next turn is denied
@@ -248,6 +259,20 @@ describe('agent turn (ToolLoopAgent + toHostTools, mock model)', () => {
     );
     // The denial produced no extra model call and no new mcp event.
     expect(sink.all().filter(e => e.surface === 'mcp')).toHaveLength(1);
+  });
+
+  it('metering: a tool call outside a turn carries no actorKind and no turnId', async () => {
+    const {app, server} = await givenApp();
+    app.component(MeteringComponent);
+    const sink = new InMemoryUsageSink();
+    app.bind(MeteringBindings.SINK.key).to(sink);
+    // The same tool an agent projects, called by code the framework cannot
+    // identify (here in-process, as an MCP client's call would arrive).
+    await server.callTool('forecast', {city: 'Tokyo'}, {principal: admin});
+    const [event] = sink.all();
+    expect(event.surface).toBe('mcp');
+    expect(event).not.toHaveProperty('actorKind');
+    expect(event).not.toHaveProperty('turnId');
   });
 
   it('installAgent lifecycle: sessions destroyed on app.stop(); RAW_AGENT is the unwrapped escape hatch', async () => {
@@ -420,6 +445,8 @@ describe('agent turn — model accounting scope', () => {
     const [agentEvent] = sink
       .all()
       .filter(e => e.surface === 'agent' && e.operation === 'agent.turn');
+    expect(agentEvent.turnId).toBeTruthy();
+    expect(modelEvents[0].turnId).toBe(agentEvent.turnId);
     expect(modelEvents[0].meta?.correlationId).toBe(
       agentEvent.meta?.correlationId,
     );

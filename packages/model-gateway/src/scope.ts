@@ -21,6 +21,14 @@ export interface ModelScope {
   principal?: PrincipalRef;
   /** Groups this scope's events with the turn/request that produced them. */
   correlationId?: string;
+  /**
+   * The agent turn this scope belongs to, stamped as `UsageEvent.turnId`.
+   * `@agentback/agents` sets it per turn. A scope opened for anything else
+   * (a request, a job) leaves it unset: a `correlationId` is not a turn id.
+   */
+  turnId?: string;
+  /** The app's run id, stamped as `UsageEvent.runId` when set. */
+  runId?: string;
   /** Token ceiling for everything called inside this scope. */
   tokenBudget?: number;
   /** Running total, mutated by the metering policy as calls complete. */

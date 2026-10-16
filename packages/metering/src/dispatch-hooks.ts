@@ -33,20 +33,26 @@ export function createMeteringRestHook(appCtx: Context): RestDispatchHook {
     const meter = await appCtx.get(MeteringBindings.METER, {optional: true});
     if (!meter) return next();
     const priceSpec = getPrice(info.ctor.prototype, info.methodName);
-    return meter.observe(
-      () => ({
+    return meter.observe(() => {
+      // The app's run id, if it bound one anywhere up the chain. A REST
+      // caller gets no actorKind: the framework cannot tell a person from
+      // an agent here.
+      const runId = info.ctx?.getSync(MeteringBindings.RUN_ID, {
+        optional: true,
+      });
+      return {
         surface: 'rest' as const,
         operation: `${info.ctor.name}.${info.methodName}`,
         principal: info.ctx ? principalFromContext(info.ctx) : ANONYMOUS,
+        ...(runId ? {runId} : {}),
         ...(priceSpec
           ? {
               units: priceSpec.units ?? 1,
               cost: {amount: priceSpec.amount, currency: priceSpec.currency},
             }
           : {}),
-      }),
-      next,
-    );
+      };
+    }, next);
   };
 }
 
@@ -72,14 +78,20 @@ export function createMeteringMcpHook(appCtx: Context): McpDispatchHook {
     );
     return meter.observe(
       () => {
-        // Turn correlation: an agent turn binds its id into the turn-scoped
-        // parent context; the chain walk finds it from the request child.
-        const correlationId = info.ctx.getSync(
-          MeteringBindings.CORRELATION_ID,
-          {
-            optional: true,
-          },
-        );
+        // Turn correlation: an agent turn binds its id and its actor kind
+        // into the turn-scoped parent context; the chain walk finds them from
+        // the request child. An external MCP request has no turn context in
+        // its chain, so it gets neither: the framework cannot observe whether
+        // a person or an agent is on the other end.
+        const turnId = info.ctx.getSync(MeteringBindings.CORRELATION_ID, {
+          optional: true,
+        });
+        const actorKind = info.ctx.getSync(MeteringBindings.ACTOR_KIND, {
+          optional: true,
+        });
+        const runId = info.ctx.getSync(MeteringBindings.RUN_ID, {
+          optional: true,
+        });
         return {
           surface: 'mcp' as const,
           operation: info.tool.meta.name,
@@ -89,7 +101,11 @@ export function createMeteringMcpHook(appCtx: Context): McpDispatchHook {
           principal: auth
             ? principalFromAuthInfo(auth)
             : principalFromContext(info.ctx),
-          ...(correlationId ? {meta: {correlationId}} : {}),
+          ...(turnId ? {turnId} : {}),
+          ...(actorKind ? {actorKind} : {}),
+          ...(runId ? {runId} : {}),
+          // Deprecated: the same id as `turnId`, kept for one release.
+          ...(turnId ? {meta: {correlationId: turnId}} : {}),
           ...(priceSpec
             ? {
                 units: priceSpec.units ?? 1,

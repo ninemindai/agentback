@@ -87,6 +87,25 @@ describe('createMeteringRestHook', () => {
     await hook(restInfo(new Context(app, 'req')), async () => 'ok');
     expect(sink.all()[0].traceId).toBe('trace-123');
   });
+
+  it('stamps a RUN_ID bound in the context chain as runId, and no actor or turn', async () => {
+    const {app, sink} = givenApp();
+    app.bind(MeteringBindings.RUN_ID).to('run-1');
+    const hook = createMeteringRestHook(app);
+    await hook(restInfo(new Context(app, 'req')), async () => 'ok');
+    const [event] = sink.all();
+    expect(event.runId).toBe('run-1');
+    // A REST caller may be a person or an agent; the framework cannot tell.
+    expect(event.actorKind).toBeUndefined();
+    expect(event.turnId).toBeUndefined();
+  });
+
+  it('carries no runId when none is bound', async () => {
+    const {app, sink} = givenApp();
+    const hook = createMeteringRestHook(app);
+    await hook(restInfo(new Context(app, 'req')), async () => 'ok');
+    expect(sink.all()[0]).not.toHaveProperty('runId');
+  });
 });
 
 describe('createMeteringMcpHook', () => {
@@ -116,6 +135,37 @@ describe('createMeteringMcpHook', () => {
         status: 'ok',
       },
     ]);
+  });
+
+  it('an external MCP call carries no actorKind, turnId or runId', async () => {
+    const {app, sink} = givenApp();
+    const hook = createMeteringMcpHook(app);
+    await hook(mcpInfo(app, 'svc-1'), async () => ({ok: true}));
+    const [event] = sink.all();
+    // An external MCP client is usually an agent, but the framework cannot
+    // observe that, so it records nothing rather than a guess.
+    expect(event).not.toHaveProperty('actorKind');
+    expect(event).not.toHaveProperty('turnId');
+    expect(event).not.toHaveProperty('runId');
+    expect(event.meta?.correlationId).toBeUndefined();
+  });
+
+  it('stamps turnId, actorKind and runId bound up the chain, and keeps meta.correlationId', async () => {
+    const {app, sink} = givenApp();
+    app.bind(MeteringBindings.RUN_ID).to('run-7');
+    // The shape an agent turn builds: a turn context between the app and the
+    // tool call's request context.
+    const turnCtx = new Context(app, 'agent.turn');
+    turnCtx.bind(MeteringBindings.CORRELATION_ID).to('turn-1');
+    turnCtx.bind(MeteringBindings.ACTOR_KIND).to('agent');
+    const hook = createMeteringMcpHook(app);
+    await hook(mcpInfo(turnCtx), async () => ({ok: true}));
+    const [event] = sink.all();
+    expect(event.turnId).toBe('turn-1');
+    expect(event.actorKind).toBe('agent');
+    expect(event.runId).toBe('run-7');
+    // Deprecated, kept for one release.
+    expect(event.meta?.correlationId).toBe('turn-1');
   });
 
   it('records nothing for a round that only asked the user, then bills the final one', async () => {

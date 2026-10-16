@@ -54,8 +54,9 @@ interface PreparedTurn {
  * 4. records one `'agent'` usage event via the bound Meter (when present),
  * 5. charges quota post-turn on success.
  *
- * Tool-call `'mcp'` events share the turn's principal and correlation id via
- * the turn context — the MCP metering hook reads both through the chain walk.
+ * Tool-call `'mcp'` events share the turn's principal, `turnId` and
+ * `actorKind: 'agent'` via the turn context — the MCP metering hook reads
+ * them through the chain walk.
  */
 export function wrapAgent(
   raw: AgentPort,
@@ -149,6 +150,11 @@ async function prepareTurn(
   const turnCtx = new Context(ctx, 'agent.turn');
   if (user) turnCtx.bind(SecurityBindings.USER).to(user);
   turnCtx.bind(MeteringBindings.CORRELATION_ID.key).to(turnId);
+  // The one caller the framework observes: this turn is an agent, and so is
+  // whoever makes its host-tool calls (they run under turnCtx).
+  turnCtx.bind(MeteringBindings.ACTOR_KIND.key).to('agent');
+  // The app owns run ids; carry one only when it bound one.
+  const runId = ctx.getSync(MeteringBindings.RUN_ID, {optional: true});
 
   // Cancellation, in precedence order: what the caller passed for this turn,
   // else the ambient signal of whatever unit of work we are running inside (a
@@ -187,6 +193,8 @@ async function prepareTurn(
         {
           principal,
           correlationId: turnId,
+          turnId,
+          ...(runId ? {runId} : {}),
           ...(tokenBudget !== undefined ? {tokenBudget} : {}),
         },
         () => {
@@ -200,6 +208,10 @@ async function prepareTurn(
       surface: 'agent' as const,
       operation: cfg.operation ?? 'agent.turn',
       principal,
+      turnId,
+      actorKind: 'agent' as const,
+      ...(runId ? {runId} : {}),
+      // Deprecated: the same id as `turnId`, kept for one release.
       meta: {correlationId: turnId},
     }),
     succeed: async () => {

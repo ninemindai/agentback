@@ -81,6 +81,11 @@ export function accountingPolicy(
         units: tokens,
         status,
         latencyMs: Date.now() - startedAt,
+        // Only a scope that names a turn (an agent turn does) gives a turnId;
+        // a bare correlationId may be a request id. No actorKind: the gateway
+        // cannot see who called the model.
+        ...(scope?.turnId ? {turnId: scope.turnId} : {}),
+        ...(scope?.runId ? {runId: scope.runId} : {}),
         meta: {
           model: label,
           inputTokens: usage?.inputTokens?.total,
