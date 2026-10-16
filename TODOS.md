@@ -505,4 +505,4 @@ resumes it with a `ToolApprovalResponse`. Two design points:
 - The server's `confirm:` gate also runs on in-process `callTool` calls. The
   host approver's yes needs a way through it that a model cannot forge.
 
-Evolvey uses no `confirm:` tools, so no user is waiting on this.
+No user has asked for this yet.
