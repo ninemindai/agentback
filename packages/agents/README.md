@@ -84,6 +84,7 @@ class TaskController {
 | `needs the optional peer dependency 'ai'` | `toHostTools` without `ai` installed                                                | `pnpm add ai`                                                                                        |
 | `include/exclude name(s) match no … tool` | typo in the include list                                                            | the message names available tools                                                                    |
 | `tool 'x' is a confirm: tool`             | `confirm:` tools are excluded from projection (their round-trip doesn't survive it) | keep it MCP-only; watch the approval-flows design                                                    |
+| `tool 'x' is app-only`                    | its MCP Apps `ui.visibility` omits `'model'`, so it is excluded from projection     | add `'model'` to its visibility, or keep it MCP-only                                                 |
 | authorization denied from your own tool   | the turn ran without a principal                                                    | run the turn via the injected `AgentBindings.AGENT` in an authenticated request, or check your voter |
 
 Diagnostics: `DEBUG=agentback:agents:*`.
@@ -101,7 +102,7 @@ Tools relying on these still run — silently degraded.
 
 ## Security posture
 
-Handing an LLM host-executed tools means tool results are model inputs — a tool returning untrusted content can steer the loop (prompt injection). For v1: **read-only/idempotent tools in the `include` list + per-principal quota** as blast-radius limiters. Side-effecting tools should wait for the approval-flows design. `toHostTools(app, {scopes})` applies the same visibility gate as a scoped MCP transport.
+Handing an LLM host-executed tools means tool results are model inputs — a tool returning untrusted content can steer the loop (prompt injection). For v1: **read-only/idempotent tools in the `include` list + per-principal quota** as blast-radius limiters. Side-effecting tools should wait for the approval-flows design. `toHostTools(app, {scopes})` applies the same visibility gate as a scoped MCP transport. App-only tools (MCP Apps `ui.visibility` set without `'model'`) are never projected.
 
 ## Cloud-sandbox harnesses (level 2 — recipe, manually verified per release)
 

@@ -101,7 +101,7 @@ it.
 
 ## Security posture
 
-Tool results are model inputs: a tool that returns untrusted content can steer the loop (prompt injection). Defaults to copy: **read-only/idempotent tools in the `include` list**, per-principal quota as the blast-radius limiter, and `{scopes}` to apply the same visibility gate as a scoped MCP transport. Side-effecting tools should wait for the approval-flows design; `confirm:` tools are excluded from projection.
+Tool results are model inputs: a tool that returns untrusted content can steer the loop (prompt injection). Defaults to copy: **read-only/idempotent tools in the `include` list**, per-principal quota as the blast-radius limiter, and `{scopes}` to apply the same visibility gate as a scoped MCP transport. Side-effecting tools should wait for the approval-flows design; `confirm:` tools are excluded from projection. App-only tools, whose MCP Apps `ui.visibility` is set and does not contain `'model'`, are excluded too; `tools/list` still lists them for the host.
 
 ## Degraded MCP features under projection
 

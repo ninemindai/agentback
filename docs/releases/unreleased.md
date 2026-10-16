@@ -173,6 +173,13 @@ error codes `elicitation_unavailable` / `elicitation_unsupported` /
 - `examples/hello-mcp` gains a `greet` tool that asks the user's name.
 - `selectTools` (the agents and CLI projections) now excludes tools that
   inject `MCPBindings.ELICIT`, and throws if one is named in `include`.
+- `selectTools` also excludes **app-only tools**: a tool whose MCP Apps
+  `ui.visibility` is set and does not contain `'model'` (for example
+  `@tool({ui: {visibility: ['app']}})` or `mcp-openai`'s `mentionSearch()`) no
+  longer reaches an AI SDK model through `toHostTools` and is no longer a
+  `buildCli` command. Naming one in `include` throws. MCP `tools/list` is
+  unchanged: it lists the tool and the host filters
+  ([#83](https://github.com/ninemindai/agentback/issues/83)).
 
 - **Duplicate tool names now throw at `start()`**, naming both members.
   Before, the last registration silently won. The same class bound twice (e.g.
