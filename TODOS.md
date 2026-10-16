@@ -483,3 +483,26 @@ beside "merges tools from multiple upstreams": boot an AgentBack upstream with
 through `subscriptions/listen`), `app.service(NewTools)` on it, poll the
 gateway's `tools/list` for the prefixed name, and call it. Blocked by both PRs
 being on `main`.
+
+## agents
+
+### Map `confirm:` to the AI SDK's tool approval in `toHostTools` — P3, M (build only when a user asks)
+
+Today `selectTools` excludes `confirm:` tools from agent and CLI projections,
+and native MCP elicitation is the human gate on the MCP surface (resolved in
+[#82](https://github.com/ninemindai/agentback/issues/82); see
+[harness.md, Open questions 2](docs/proposals/harness.md#open-questions)). A
+projected `confirm:` tool would need a host approver instead. `ai@7.0.114`, the
+pinned version, has the mechanism: `toolApproval?: ToolApprovalConfiguration`
+on `ToolLoopAgentSettings`, `generateText` and `streamText`. The status
+`'user-approval'` stops the loop with a `ToolApprovalRequest`, and the caller
+resumes it with a `ToolApprovalResponse`. Two design points:
+
+- `Tool.needsApproval` is `@deprecated` in favour of the loop-level setting,
+  and `toHostTools` returns only a `ToolSet`. So it must either return a
+  `toolApproval` entry for the developer to pass to the agent, or use the
+  deprecated field.
+- The server's `confirm:` gate also runs on in-process `callTool` calls. The
+  host approver's yes needs a way through it that a model cannot forge.
+
+Evolvey uses no `confirm:` tools, so no user is waiting on this.

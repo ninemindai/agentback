@@ -93,8 +93,10 @@ class TaskController {
 
 Tool results are model inputs — a tool returning untrusted content can steer
 the loop (prompt injection). Defaults: read-only/idempotent tools in the
-`include` list; per-principal quota as blast-radius limiter; side-effecting
-tools wait for approval flows.
+`include` list; per-principal quota as blast-radius limiter. AgentBack adds no
+approval step to a side-effecting tool in the `include` list. A tool that needs a
+human yes is a `confirm:` tool: it stays on the MCP surface, where native MCP
+elicitation is the human gate, and projection excludes it.
 
 ## Testing (mock model, no network/key)
 
