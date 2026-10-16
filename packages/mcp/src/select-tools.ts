@@ -27,6 +27,17 @@ export function toolAsksUser(t: ToolBinding): boolean {
 }
 
 /**
+ * Whether the tool is app-only: its MCP Apps (SEP-1865) `ui.visibility` is set
+ * and omits `'model'`, so a host shows it to the app surface but not to the
+ * model. An empty list omits `'model'` too. A tool with no `ui.visibility`
+ * (host default) or with `'model'` in it is not app-only.
+ */
+function toolIsAppOnly(t: ToolBinding): boolean {
+  const visibility = t.meta.ui?.visibility;
+  return visibility !== undefined && !visibility.includes('model');
+}
+
+/**
  * Transport-neutral tool selection, shared by every projection that hands a
  * subset of the app's `@tool` classes to a caller — the AI SDK host-tools
  * (`@agentback/agents`) and the CLI (`@agentback/command`). Eng review T3 /
@@ -41,7 +52,12 @@ export function toolAsksUser(t: ToolBinding): boolean {
  * - `confirm:` tools named in an include list (their confirmation round-trip
  *   does not survive projection — excluded by default),
  * - tools that inject `MCPBindings.ELICIT` named in an include list (a
- *   projected caller has no user to ask — excluded by default).
+ *   projected caller has no user to ask — excluded by default),
+ * - app-only tools (`ui.visibility` set without `'model'`) named in an include
+ *   list. Both projections are model- or operator-facing, which is what an
+ *   app-only tool opts out of, so they are excluded by default. The MCP
+ *   `tools/list` path does not use this function and still lists them: an MCP
+ *   Apps host filters by visibility itself.
  */
 export interface SelectToolsOptions {
   /** Only these tools are selected (least privilege). */
@@ -101,6 +117,13 @@ export function selectTools(
           `such tools are excluded by default.`,
       );
     }
+    if (toolIsAppOnly(byName.get(n)!)) {
+      throw new Error(
+        `selectTools: tool '${n}' is app-only (its ui.visibility omits ` +
+          `'model') — app-only tools are excluded from model-facing ` +
+          `projections. Add 'model' to its visibility or drop it from include.`,
+      );
+    }
     if (byName.get(n)!.meta.confirm) {
       throw new Error(
         `selectTools: tool '${n}' is a confirm: tool — the confirmation ` +
@@ -114,6 +137,7 @@ export function selectTools(
     t =>
       !t.meta.confirm &&
       !toolAsksUser(t) &&
+      !toolIsAppOnly(t) &&
       (!opts.include || opts.include.includes(t.meta.name)) &&
       !(opts.exclude ?? []).includes(t.meta.name),
   );

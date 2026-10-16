@@ -55,9 +55,10 @@ export type HostToolsOptions = SelectToolsOptions;
 /**
  * Filter the registered tool bindings for AI SDK projection. Delegates the
  * transport-neutral selection (dedup, scope gate, include/exclude validation,
- * `confirm:` exclusion) to `selectTools` in `@agentback/mcp` (shared with the
- * CLI projection — eng review T3), then applies the one AI-provider-specific
- * rule that does NOT belong in mcp core: the OpenAI/Anthropic tool-name regex.
+ * `confirm:` exclusion, app-only `ui.visibility` exclusion) to `selectTools`
+ * in `@agentback/mcp` (shared with the CLI projection — eng review T3), then
+ * applies the one AI-provider-specific rule that does NOT belong in mcp core:
+ * the OpenAI/Anthropic tool-name regex.
  * Throws at projection time so a misconfiguration never surfaces as "the model
  * ignores my tool".
  */

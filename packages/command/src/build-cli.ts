@@ -110,6 +110,9 @@ export async function buildCli(
 ): Promise<CliRunner> {
   const {principal, ...selectOpts} = opts;
   const mcp = await app.get<MCPServer>(MCPBindings.SERVER.key);
+  // selectTools also drops app-only tools (`ui.visibility` without 'model'):
+  // a CLI is driven by a person or an agent at a terminal and has no app
+  // surface to render one into, and `--llms` is a model-facing manifest.
   const tools = selectTools(mcp.listTools(), selectOpts);
   const byName = new Map<string, ToolBinding>(tools.map(t => [t.meta.name, t]));
 

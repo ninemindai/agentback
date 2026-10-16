@@ -121,6 +121,57 @@ describe('filterTools', () => {
   });
 });
 
+// MCP Apps (SEP-1865) ui.visibility: a tool whose visibility is set and omits
+// 'model' is app-only. tools/list still lists it (hosts filter); a model never
+// gets it from toHostTools.
+@mcpServer()
+class VisibilityTools {
+  @tool('app_only', {ui: {visibility: ['app']}})
+  appOnly() {
+    return {ok: true};
+  }
+
+  @tool('both', {ui: {visibility: ['model', 'app']}})
+  both() {
+    return {ok: true};
+  }
+
+  @tool('plain')
+  plain() {
+    return {ok: true};
+  }
+}
+
+describe('toHostTools — ui.visibility', () => {
+  async function givenVisibilityApp() {
+    const app = new Application();
+    app.component(MCPComponent);
+    app.configure('servers.MCPServer').to({
+      name: 'test',
+      version: '0.0.0',
+      transports: {stdio: false},
+    });
+    app.service(VisibilityTools);
+    const server = await app.get<MCPServer>('servers.MCPServer');
+    return {app, server};
+  }
+
+  it('leaves an app-only tool out and keeps model+app and unset tools', async () => {
+    const {app, server} = await givenVisibilityApp();
+    const tools = await toHostTools(app);
+    expect(Object.keys(tools).sort()).toEqual(['both', 'plain']);
+    // Still registered on the MCP server.
+    expect(server.listTools().map(t => t.meta.name)).toContain('app_only');
+  });
+
+  it('throws when an include list names an app-only tool', async () => {
+    const {app} = await givenVisibilityApp();
+    await expect(toHostTools(app, {include: ['app_only']})).rejects.toThrow(
+      /tool 'app_only' is app-only/,
+    );
+  });
+});
+
 describe('toHostTools', () => {
   it('projects tools with the Zod input passed through and marks them', async () => {
     const {app} = await givenApp();
