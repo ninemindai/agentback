@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AgentBack Agent-Native Framework Diagram</title>
+    <title>AgentBack Framework Loop Diagram</title>
     <link
       href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap"
       rel="stylesheet"
@@ -227,7 +227,7 @@
       <div class="header">
         <div class="header-row">
           <div class="pulse-dot"></div>
-          <h1>AgentBack: Agent-Native Framework Loop</h1>
+          <h1>AgentBack: Framework Loop for Coding Agents</h1>
           <div class="toolbar">
             <div class="toolbar-actions">
               <button onclick="copyAsImage(this)">📋 Copy</button>
@@ -559,7 +559,7 @@
             font-weight="600"
             text-anchor="middle"
           >
-            Agent-Native Development Rails
+            Development Rails for Coding Agents
           </text>
           <text
             x="760"
@@ -761,8 +761,8 @@
       </div>
 
       <p class="footer">
-        AgentBack • agent-native API and MCP framework • generated for blog
-        sharing
+        AgentBack • API and MCP framework for people and agents • generated for
+        blog sharing
       </p>
     </div>
 
@@ -812,7 +812,7 @@
             height: r.height + pad * 2,
           });
           const link = document.createElement('a');
-          link.download = 'agentback-agent-native-framework.png';
+          link.download = 'agentback-framework-loop.png';
           link.href = canvas.toDataURL('image/png');
           link.click();
           btn.textContent = '✓ Done!';
@@ -850,7 +850,7 @@
             hotfixes: ['px_scaling'],
           });
           pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
-          pdf.save('agentback-agent-native-framework.pdf');
+          pdf.save('agentback-framework-loop.pdf');
           btn.textContent = '✓ Done!';
         } catch (e) {
           btn.textContent = '✗ Failed';
