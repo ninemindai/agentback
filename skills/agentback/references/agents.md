@@ -40,8 +40,10 @@ Key facts about `toHostTools(app, {include?, exclude?, scopes?})`:
 - Throws at projection time on: include/exclude typos (lists available
   tools), duplicate names, provider-illegal names (`^[a-zA-Z0-9_-]{1,64}$`),
   `confirm:` tools in an include list (`confirm:` never projects — the
-  confirmation round-trip cannot survive projection), and tools that inject
-  `MCPBindings.ELICIT` (an agent has no user to ask; they never project).
+  confirmation round-trip cannot survive projection), tools that inject
+  `MCPBindings.ELICIT` (an agent has no user to ask; they never project), and
+  app-only tools, whose MCP Apps `ui.visibility` is set and omits `'model'`
+  (they never project; `tools/list` still lists them).
 - `{scopes}` applies the same visibility gate as a scoped MCP transport.
 - Async-generator (`streamOf`) tools drain to a collected array.
 - Degraded under projection: `MCPBindings.PROGRESS` → no-op, `REQUEST_EXTRA`

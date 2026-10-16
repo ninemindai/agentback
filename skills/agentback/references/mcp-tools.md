@@ -353,6 +353,10 @@ const sidebar = toolFragment({
   or non-JSON throws **at decoration**, as does a fragment `check`.
 - `ui: {visibility: ['app']}` with no `resourceUri` is valid (a tool the host
   calls but the model does not see) — it is NOT authorization.
+- `tools/list` still lists an app-only tool (the host filters). The
+  projections that hand tools to a model or a terminal, `toHostTools` and
+  `buildCli`, leave out any tool whose `ui.visibility` is set and omits
+  `'model'`, and throw if one is named in `include`.
 - `@appResource` puts `_meta.ui` on the `resources/read` **content item**.
   `resourceContent({blob})` serves binary (base64) and per-call `_meta`.
 - Server-level: `MCPServerConfig.{title, icons, websiteUrl}` and
@@ -766,6 +770,9 @@ are declared via `@api`-decorated REST controllers registered in the DI containe
   hosts. Bundle the widget and inline it into the `ui://` resource's HTML.
 - **Host metadata is presentation, not policy** — `ui.visibility`,
   annotations and host entrypoints never gate a call; `@authorize` does.
+  `ui.visibility` does decide which tools the agents and CLI projections
+  list (app-only tools are left out), but a call to the tool over MCP is not
+  affected.
 - **Tool names are unique** — a duplicate throws at `start()`; one mounted later
   is served root-nearest first (app-level wins) and logged once.
 - **Stdio stdout is the transport wire** — all logging after `app.start()` must

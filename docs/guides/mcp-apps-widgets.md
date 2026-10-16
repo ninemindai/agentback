@@ -74,6 +74,15 @@ class WeatherTools {
 `visibility` is optional — `'model'` lets the model reference the widget,
 `'app'` lets the host surface it in the app UI; omit it to defer to host policy.
 
+The server lists every tool on `tools/list`, whatever its `visibility`, and the
+host decides what the model sees. The projections AgentBack builds itself
+follow the same rule as a host: `toHostTools` (`@agentback/agents`) and
+`buildCli` (`@agentback/command`) leave out a tool whose `visibility` is set and
+does not contain `'model'`. A tool with no `visibility`, or with `'model'` in
+it, is projected as before. Naming an app-only tool in their `include` list
+throws. `visibility` is not authorization: an app-only tool can still be called
+over MCP by any caller its `@authorize` policy admits.
+
 ## The widget MUST use the `App` bridge
 
 This is the one non-obvious requirement. The widget is an MCP **client** that

@@ -304,6 +304,11 @@ export interface ToolUiMeta {
    *
    * A rendering hint, NOT authorization: an `['app']`-only tool is still
    * callable by any caller the tool's `@authorize` policy admits.
+   *
+   * MCP `tools/list` lists every tool and leaves the filtering to the host.
+   * The projections built on `selectTools` (`@agentback/agents`'
+   * `toHostTools` and `@agentback/command`'s `buildCli`) leave out a tool
+   * whose list is set and omits `'model'`.
    */
   visibility?: ToolUiVisibility[];
 }

@@ -9,6 +9,7 @@ import {MCP_APP_MIME_TYPE} from '../../keys.js';
 import {mcpServer, resource, tool} from '../../decorators/index.js';
 import {MCPComponent} from '../../mcp.component.js';
 import {MCPServer} from '../../mcp.server.js';
+import {selectTools} from '../../select-tools.js';
 
 // SEP-1865 "MCP Apps": a tool links a ui:// widget via `_meta.ui.resourceUri`,
 // and the widget HTML is served by a @resource with the mcp-app MIME type. The
@@ -38,6 +39,13 @@ class WeatherTools {
     };
   }
 
+  // App-only: the host calls it (e.g. a widget's refresh button); the model
+  // never sees it.
+  @tool('refresh_forecast', {ui: {visibility: ['app']}})
+  refreshForecast() {
+    return {refreshed: true};
+  }
+
   // A plain tool with no ui: — must NOT carry _meta.ui.
   @tool('ping')
   ping() {
@@ -50,7 +58,7 @@ class WeatherTools {
   }
 }
 
-async function makeClient(): Promise<Client> {
+async function makeServer(): Promise<MCPServer> {
   const app = new Application();
   app.component(MCPComponent);
   app.configure('servers.MCPServer').to({
@@ -59,7 +67,11 @@ async function makeClient(): Promise<Client> {
     transports: {stdio: false},
   });
   app.service(WeatherTools);
-  const server = await app.get<MCPServer>('servers.MCPServer');
+  return app.get<MCPServer>('servers.MCPServer');
+}
+
+async function makeClient(server?: MCPServer): Promise<Client> {
+  server ??= await makeServer();
   const sdkServer = server.buildServer();
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();
@@ -85,6 +97,23 @@ describe('MCP Apps (SEP-1865) ui: link', () => {
     const {tools} = await client.listTools();
     const ping = tools.find(t => t.name === 'ping')!;
     expect(ping._meta?.ui).toBeUndefined();
+    await client.close();
+  });
+
+  it('lists an app-only tool on tools/list but leaves it out of the model-facing projections', async () => {
+    const server = await makeServer();
+    const client = await makeClient(server);
+    const {tools} = await client.listTools();
+    // MCP: unchanged. The host reads _meta.ui.visibility and filters itself.
+    const refresh = tools.find(t => t.name === 'refresh_forecast')!;
+    expect(refresh._meta).toEqual({ui: {visibility: ['app']}});
+    // selectTools (the agents and CLI projections) drops it.
+    const projected = selectTools(server.listTools()).map(t => t.meta.name);
+    expect(projected).not.toContain('refresh_forecast');
+    expect(projected).toEqual(expect.arrayContaining(['get_forecast', 'ping']));
+    // A rendering hint, not authorization: MCP still dispatches it.
+    const result = await client.callTool({name: 'refresh_forecast'});
+    expect(result.isError).toBeFalsy();
     await client.close();
   });
 
