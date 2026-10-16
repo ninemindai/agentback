@@ -67,7 +67,7 @@ class TaskController {
 1. reads the **principal** from the request (identity is per-turn, never baked at projection time — `@authorize`-guarded tools authorize as the request's user),
 2. checks **quota preflight** (`MeteringBindings.QUOTA`) — a denied turn costs zero model spend (429 `quota_exceeded`),
 3. supplies `toolsContext` (principal + turn id) for every projected tool,
-4. records one `'agent'` usage event; each tool call's `'mcp'` event shares the turn's `meta.correlationId` and principal,
+4. records one `'agent'` usage event; each tool call's `'mcp'` event shares the turn's principal, `turnId` and `actorKind: 'agent'` (and `runId`, when the app binds `MeteringBindings.RUN_ID`). `meta.correlationId` still carries the turn id for one release; it is deprecated in favour of `turnId`,
 5. consumes quota post-turn on success. Streams finalize on completion **and** abort.
 
 Sessions created through the wrapped agent (`HarnessAgent`'s `createSession`) register in `AgentBindings.SESSIONS`; `app.stop()` destroys them all — a leaked harness session is a billing cloud sandbox.

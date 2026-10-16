@@ -112,6 +112,35 @@ instead of becoming 400), and the
 error codes `elicitation_unavailable` / `elicitation_unsupported` /
 `elicitation_declined`.
 
+### Typed turn, actor and run ids on usage events — `@agentback/metering`, `@agentback/agents`, `@agentback/model-gateway`
+
+`UsageEvent` gains three optional fields
+([#81](https://github.com/ninemindai/agentback/issues/81)):
+
+- **`turnId`.** An agent turn already stamped its id on its own event, its
+  host-tool events and its model token events, but only as
+  `meta.correlationId`. It is now a typed field. A scope you open with
+  `withModelScope` stamps it only if you set `turnId` on the scope; a
+  `correlationId` alone is not taken to be a turn id.
+- **`actorKind`.** The only value is `'agent'`. An `@agentback/agents` turn
+  stamps it on its own event and on its host-tool calls, where the framework
+  runs the agent and so observes the caller. REST requests, external MCP
+  clients and model token events get no `actorKind`, because the framework
+  cannot tell a person from an agent there.
+- **`runId`.** Bind the new `MeteringBindings.RUN_ID` anywhere in a call's
+  context chain and the REST hook, the MCP hook and agent turns stamp it.
+  The framework never binds it.
+
+Also new: `MeteringBindings.ACTOR_KIND`, the binding a turn sets so the MCP
+hook can stamp its tool calls, and `ModelScope.turnId` / `ModelScope.runId`.
+
+## ⚠️ Deprecations
+
+- **`meta.correlationId` on usage events is deprecated.** Read `turnId`
+  instead. Events still carry `meta.correlationId` with the same value in this
+  release; it will be removed in the next one. `MeteringBindings.CORRELATION_ID`
+  stays: it is the binding the MCP hook reads the turn id from.
+
 ## 🐛 Fixes
 
 - **mcp-http** — `InMemoryEventStore` is bounded: `maxEvents` (default 10,000

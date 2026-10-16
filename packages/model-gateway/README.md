@@ -120,9 +120,13 @@ await withModelScope(
 ```
 
 **`@agentback/agents` does this for you** — every turn runs inside a scope
-carrying the turn's principal and correlation id, so a singleton agent on a
-singleton model still produces per-principal, per-turn token events. Pass
-`generate({tokenBudget})` to cap one turn.
+carrying the turn's principal, correlation id and `turnId`, so a singleton
+agent on a singleton model still produces per-principal, per-turn token events.
+Pass `generate({tokenBudget})` to cap one turn.
+
+A token event carries `turnId` (and `runId`) only when the scope sets them. A
+scope opened with just a `correlationId` keeps it in `meta.correlationId`; the
+gateway does not assume a correlation id is a turn id.
 
 The budget is checked before each call and the spend added after, so each
 call may overshoot by one response; calls running in parallel in one scope

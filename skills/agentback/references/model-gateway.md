@@ -79,7 +79,9 @@ await withModelScope(
 
 `@agentback/agents` opens one per turn automatically, so a singleton agent on a
 singleton model still emits per-principal token events sharing the turn's
-`correlationId`. Cap one turn with `generate({prompt, tokenBudget})`.
+`turnId` (and, deprecated, `meta.correlationId`). A scope you open yourself
+stamps `turnId`/`runId` only if you set them. Cap one turn with
+`generate({prompt, tokenBudget})`.
 
 Outside a scope, calls bill anonymously rather than failing.
 

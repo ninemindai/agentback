@@ -84,14 +84,23 @@ interface UsageEvent {
   id: string; // ulid; also the idempotency key for sinks
   at: string; // ISO timestamp
   principal: {kind: 'user' | 'client' | 'anonymous'; id: string};
-  surface: 'rest' | 'mcp';
+  surface: 'rest' | 'mcp' | 'agent';
   operation: string; // 'Controller.method' or tool name
   status: 'ok' | 'error' | 'denied' | 'rate_limited' | 'payment_required';
   latencyMs: number;
   units: number; // billable units (default 1)
   cost?: {amount: string; currency: string}; // priced downstream, not here
+  turnId?: string; // the @agentback/agents turn this event belongs to
+  actorKind?: 'agent'; // set only where the framework observes the caller
+  runId?: string; // the app's run id, from MeteringBindings.RUN_ID
 }
 ```
+
+`turnId`, `actorKind` and `runId` are absent unless the framework knows them.
+`actorKind` is `'agent'` only on an `@agentback/agents` turn and its host-tool
+calls; a REST or external MCP caller gets none, because the framework cannot
+tell a person from an agent there. See the
+[metering README](../../packages/metering/README.md#turn-actor-and-run).
 
 `status` is what makes the log an audit trail rather than a counter: a refused
 call (`denied`/`rate_limited`/`payment_required`) is **recorded with why, but

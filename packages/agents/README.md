@@ -74,7 +74,7 @@ class TaskController {
 
 - **Per-turn principal:** read from the resolution context per call — never baked at projection time. `@authorize`-guarded tools authorize under it (transport `REQUEST_AUTH` always wins over any in-process principal).
 - **Quota preflight:** with `MeteringBindings.QUOTA` bound, a turn is denied (429 `quota_exceeded`) _before_ the LLM call spends money; quota is consumed post-turn on success.
-- **Events:** one `'agent'` event per turn + N `'mcp'` events per tool call, sharing `meta.correlationId` (the turn id) and the principal. Streams finalize on completion _and_ abort.
+- **Events:** one `'agent'` event per turn + N `'mcp'` events per tool call, sharing the principal, a typed `turnId`, and `actorKind: 'agent'`. A gateway-wrapped model's token events carry the same `turnId`. If the app binds `MeteringBindings.RUN_ID` on the request, every one of these events carries it as `runId`. `meta.correlationId` still holds the turn id for one release; it is deprecated in favour of `turnId`. Streams finalize on completion _and_ abort.
 - **Cancellation:** the turn reads `CoreBindings.ABORT_SIGNAL` off the resolution context and forwards it to the model as `abortSignal`, so a caller who hangs up stops the generation instead of paying for tokens nobody reads. An explicit `generate({abortSignal})` wins. The signal is also bound on the turn context, so every projected tool inherits it — and the AI SDK's own per-call signal, being narrower, wins inside a tool. See [docs/concepts/cancellation.md](../../docs/concepts/cancellation.md).
 
 ## Errors you might hit
