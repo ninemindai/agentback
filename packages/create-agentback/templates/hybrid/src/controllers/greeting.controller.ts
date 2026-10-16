@@ -9,6 +9,12 @@ export const HelloPath = z.object({name: z.string().min(1).max(64)});
 export const EchoIn = z.object({text: z.string().min(1).max(280)});
 export const EchoOut = z.object({echoed: z.string()});
 
+// One place for the echo behaviour. The REST route and the MCP tool below both
+// call it, so a change here changes both callers.
+export function echo(text: string): z.infer<typeof EchoOut> {
+  return {echoed: text};
+}
+
 @api({basePath: '/greet'})
 @mcpServer()
 export class GreetingController {
@@ -20,17 +26,24 @@ export class GreetingController {
     return {greeting: `Hello, ${input.path.name}!`};
   }
 
-  // REST: POST /greet/echo — and the SAME method shape as an MCP tool below.
+  // REST: POST /greet/echo. Calls the same `echo` as the MCP tool below.
   @post('/echo', {body: EchoIn, response: EchoOut})
-  async echo(input: {
+  async echoRoute(input: {
     body: z.infer<typeof EchoIn>;
   }): Promise<z.infer<typeof EchoOut>> {
-    return {echoed: input.body.text};
+    return echo(input.body.text);
   }
 
-  // MCP tool sharing the schemas (visible at /mcp and in the inspector).
-  @tool('echo', {description: 'Echo back the text.', input: EchoIn})
-  async echoTool(input: z.infer<typeof EchoIn>) {
-    return {echoed: input.text};
+  // MCP tool `echo` with the same schemas (visible at /mcp and in the
+  // inspector). It calls the same `echo` as the REST route above.
+  @tool('echo', {
+    description: 'Echo back the text.',
+    input: EchoIn,
+    output: EchoOut,
+  })
+  async echoTool(
+    input: z.infer<typeof EchoIn>,
+  ): Promise<z.infer<typeof EchoOut>> {
+    return echo(input.text);
   }
 }
