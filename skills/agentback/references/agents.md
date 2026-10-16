@@ -79,8 +79,10 @@ class TaskController {
   throws 429 `quota_exceeded` BEFORE the model call spends money; quota is
   consumed post-turn on success.
 - **Events**: one `'agent'` event per turn + N `'mcp'` events per tool call,
-  sharing the principal and `meta.correlationId` (the turn id). Register the
-  hooks via `app.component(MeteringComponent)`.
+  sharing the principal, `turnId` and `actorKind: 'agent'` (plus `runId` when
+  the app binds `MeteringBindings.RUN_ID`). `meta.correlationId` is the
+  deprecated copy of `turnId`, kept for one release. Register the hooks via
+  `app.component(MeteringComponent)`.
 - **Sessions**: `createSession()` results register in
   `AgentBindings.SESSIONS`; `app.stop()` destroys them all (a leaked harness
   session is a billing cloud sandbox).
