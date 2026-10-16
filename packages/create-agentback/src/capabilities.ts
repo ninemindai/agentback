@@ -76,6 +76,11 @@ function retargetReadmeToConsole(dir: string): void {
     .replace(
       '`GET /explorer` (Swagger UI) · `GET /mcp-inspector` · `POST /mcp` (MCP HTTP)',
       '`GET /console` (dev console) · `POST /mcp` (MCP HTTP)',
+    )
+    // The hybrid README's "Your first change" step.
+    .replace(
+      'the MCP inspector at `/mcp-inspector`',
+      'the MCP inspector in `/console`',
     );
   writeFileSync(readmePath, text);
 }

@@ -176,6 +176,9 @@ describe('scaffold', () => {
       const readme = readFileSync(path.join(dir, 'README.md'), 'utf8');
       expect(readme).toContain('/console');
       expect(readme).not.toContain('/explorer');
+      // Including the "Your first change" step: the console serves the MCP
+      // inspector inside /console, not at /mcp-inspector.
+      expect(readme).not.toContain('/mcp-inspector');
     },
   );
 

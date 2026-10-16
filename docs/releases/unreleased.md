@@ -134,6 +134,17 @@ error codes `elicitation_unavailable` / `elicitation_unsupported` /
 Also new: `MeteringBindings.ACTOR_KIND`, the binding a turn sets so the MCP
 hook can stamp its tool calls, and `ModelScope.turnId` / `ModelScope.runId`.
 
+### Hybrid template: one function behind both callers — `create-agentback`
+
+The hybrid template's `POST /greet/echo` route and `echo` MCP tool now both
+call one exported function, `echo(text)`, in `greeting.controller.ts`. Before,
+each method wrote the echo logic itself, so changing one left the two callers
+disagreeing. The REST method is renamed `echoRoute`, and the tool declares
+`output: EchoOut`, so its result carries `structuredContent`. The template's
+test calls both callers and expects the same answer, and the README gains a
+"Your first change" step: change `echo`, run `npm test`, then check both
+callers. With `--console` the step points at the MCP inspector in `/console`.
+
 ## ⚠️ Deprecations
 
 - **`meta.correlationId` on usage events is deprecated.** Read `turnId`

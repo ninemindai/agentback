@@ -14,4 +14,14 @@ describe('{{name}}', () => {
     const tools = await t.mcp.listTools();
     expect(tools.tools.map(x => x.name)).toContain('echo');
   });
+
+  it('gives the same answer over REST and MCP', async () => {
+    await using t = await createTestApp(Application);
+    const rest = await t.http
+      .post('/greet/echo')
+      .send({text: 'hi'})
+      .expect(200);
+    const mcp = await t.mcp.callTool({name: 'echo', arguments: {text: 'hi'}});
+    expect(mcp.structuredContent).toEqual(rest.body);
+  });
 });
