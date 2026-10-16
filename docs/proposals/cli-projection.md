@@ -156,6 +156,7 @@ Consequences (mirroring E-3's, because it is the same seam):
   confirmation round-trip (`--yes` re-invokes with the token, or a two-call
   flow). v1 keeps parity with E-3 (**excluded**, throw on include) and revisits
   in the approval-flows work — a terminal is arguably the _best_ place to prompt.
+  _(Resolved 2026-10-16: the exclusion stays. See open question 3.)_
 
 ## The one thin new part: `argvToBundle`
 
@@ -356,7 +357,17 @@ _and_ a hand-runnable command.
    exclusion: `filterTools` throws if an include list names a `confirm:` tool.
    Reason: no confirm-token plumbing before the shared approval-flows design
    settles, and one consistent rule across both projections. Revisit with
-   approval-flows.
+   approval-flows. _(Approval flows resolved 2026-10-16,
+   [#82](https://github.com/ninemindai/agentback/issues/82); the exclusion
+   stays.)_ The human gate for a `confirm:` tool is native MCP elicitation: a
+   client that declares `elicitation` gets a confirmation prompt, and the server
+   runs the tool only on an accepted answer with `confirm: true`. A projected
+   call has no client to elicit from, so the CLI excludes `confirm:` tools, as
+   the agent projection does. The token exchange is the fallback for an MCP
+   client that cannot elicit. It returns the token to the caller, which can be
+   an agent, so it is not a human gate. A terminal prompt for the CLI remains a
+   possible later feature; nobody has asked for it. See
+   [harness.md, Open questions 2](harness.md#open-questions).
 4. **REST routes too, or tools only?** _(Resolved, eng review — tools only in
    v1.)_ `@get('/hello/{name}')` is also a `callTool`-shaped invocation in
    spirit, but it goes through REST dispatch, not `callTool`, so it needs a
