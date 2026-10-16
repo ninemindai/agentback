@@ -107,4 +107,7 @@ args and incremental `streamOf` streaming shipped in v1.1.
 - `usage` / `toolHelp` / `renderLlms` — the discovery surface.
 
 Selection (`include`/`exclude`/`scopes`) is shared with `@agentback/agents` via
-`selectTools` in `@agentback/mcp`. Example: [examples/hello-command](../../examples/hello-command).
+`selectTools` in `@agentback/mcp`. It leaves out `confirm:` tools, tools that
+ask the user mid-call, and app-only tools (MCP Apps `ui.visibility` set without
+`'model'`). A CLI has no app surface to show an app-only tool in, so such a tool
+is not a command. Example: [examples/hello-command](../../examples/hello-command).

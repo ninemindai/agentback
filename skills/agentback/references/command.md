@@ -34,7 +34,8 @@ try {
 
 `buildCli(app, {include?, exclude?, scopes?, principal?})` → `(argv, io?) =>
 Promise<number>`. Selection (`include`/`exclude`/`scopes`) is the same
-`selectTools` predicate `@agentback/agents` uses. `principal` is the one local
+`selectTools` predicate `@agentback/agents` uses, so app-only tools
+(`ui.visibility` without `'model'`) are not commands. `principal` is the one local
 identity the CLI runs as (`@authorize` tools authorize under it).
 
 ## The rules that bite
