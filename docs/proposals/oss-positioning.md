@@ -1,4 +1,4 @@
-# Proposal: OSS positioning — making AgentBack the agent-native API framework for TypeScript
+# Proposal: OSS positioning — making AgentBack the API framework for TypeScript that serves people and agents from one schema
 
 Status: draft (2026-06-11) — L-1 through L-4 implemented 2026-06-11:
 L-1 (`/llms.txt` + `/llms-full.txt` served by RestServer, `generateAgentContext`,
@@ -60,10 +60,16 @@ decorator; it becomes your validator, your TypeScript type, your OpenAPI 3.1
 document, your MCP tool contract, your typed client, and your docs — with the
 same `@authorize` policy governing the human surface and the agent surface.
 
-**Category:** the agent-native API framework for TypeScript. Not "an MCP
-framework" (crowded: fastmcp, xmcp, tmcp) and not "a fast router" (owned by
-Hono/Elysia). The category claim is: _your API is one artifact consumed by
-apps, humans, and agents, and the framework keeps all three views coherent._
+**Category:** the API framework for TypeScript that serves people and agents
+from one schema. Not "an MCP framework" (crowded: fastmcp, xmcp, tmcp) and not
+"a fast router" (owned by Hono/Elysia). The category claim is: _your API is
+one artifact consumed by apps, humans, and agents, and the framework keeps all
+three views coherent._
+
+**Retired name (2026-10-16):** this section used to claim "the agent-native API
+framework for TypeScript". We dropped it because Builder.io ships an
+open-source TypeScript framework named Agent-Native and owns the
+`@agent-native` npm scope (ruled 2026-10-16, evolvey/evolvey-biz#184).
 
 **Elevator comparisons:**
 
@@ -217,7 +223,7 @@ chasing it; a design doc now, implementation post-launch.
 - **Brand**: "LoopBack" reads as legacy IBM-era Node to much of the 2026 TS
   audience, and "agent" suffix collides with agent-orchestration frameworks.
   Worth a deliberate naming decision before the public launch — keep (heritage
-  - SEO from LB4 users) vs. rename (clean agent-native identity). Decide once;
+  - SEO from LB4 users) vs. rename (clean agent-first identity). Decide once;
     renaming after launch is far more expensive.
 - **Decorators + classes + DI** are countercultural next to Hono/oRPC's
   functional minimalism. Counter with the benchmark/LoC page and with the
@@ -230,8 +236,9 @@ chasing it; a design doc now, implementation post-launch.
 - **FastMCP/Prefect** owns the category narrative and could ship a serious TS
   port; **xmcp+Vercel** could add REST duality; **Mastra** absorbs "my agent
   framework already does MCP" demand. Speed-to-narrative matters more than
-  feature count: claim "agent-native API framework for TypeScript" publicly
-  before someone else does.
+  feature count: claim "the API framework for TypeScript that serves people and
+  agents from one schema" publicly (§2 records why the earlier name was
+  retired).
 - **Pre-alpha honesty**: keep the "API still moving" banner until the decorator
   surface survives one external-user cycle; nothing kills a launch like a
   breaking change the week after Show HN.

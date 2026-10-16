@@ -56,6 +56,13 @@ async function serveMarkdown(request, env) {
   return new Response(asset.body, {status: 200, headers});
 }
 
+// Old path → new path, for pages that were renamed after they went live.
+const MOVED_PATHS = {
+  '/blog/diagrams/agent-native-framework.html':
+    '/blog/diagrams/framework-loop.html',
+  '/blog/diagrams/agent-native-framework': '/blog/diagrams/framework-loop',
+};
+
 export default {
   async fetch(request, env) {
     // Canonicalize www → apex (preserves path + query). Keeps the redirect off
@@ -63,6 +70,12 @@ export default {
     const reqUrl = new URL(request.url);
     if (reqUrl.hostname === 'www.agentback.dev') {
       reqUrl.hostname = 'agentback.dev';
+      return Response.redirect(reqUrl.toString(), 301);
+    }
+    // Renamed blog diagram (ninemindai/agentback#84): keep the old URL working.
+    const moved = MOVED_PATHS[reqUrl.pathname];
+    if (moved) {
+      reqUrl.pathname = moved;
       return Response.redirect(reqUrl.toString(), 301);
     }
     try {

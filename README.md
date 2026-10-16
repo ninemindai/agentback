@@ -355,7 +355,7 @@ hood. When you bind the class with `app.service()` (or `app.controller()`),
 the framework reads that metadata via `createServiceBinding` and the
 `mcpServer` tag is applied automatically — no manual `.tag()` call needed.
 
-### The agent-native contract
+### The agent-facing contract
 
 Beyond schemas, the framework ships the conventions agents need from an API:
 
