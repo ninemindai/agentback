@@ -37,7 +37,7 @@
 - [ ] **Step 1:** Create `packages/rest/src/route-meta.ts` with the 3-line header and the `lookupSuccessStatus` function moved verbatim from `rest.server.ts` (find it with `grep -n "function lookupSuccessStatus" packages/rest/src/rest.server.ts`). It imports `getControllerSpec` from `@agentback/openapi`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -71,7 +71,7 @@ export function lookupSuccessStatus(
 - [ ] **Step 1: Implement** (mirrors `RestServer.controller()`'s discovery; produces `{name}`-template records the core `Router` consumes directly):
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 

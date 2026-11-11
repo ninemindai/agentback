@@ -282,7 +282,7 @@ if (isMain(import.meta)) await main();
 vercel|cloudflare` (`@agentback/cli`). The schema-typed `client` depends on
   nothing but `zod` (browser-safe).
 - Every source file carries the three-line MIT header
-  (`// Copyright NineMind, Inc. 2026. All Rights Reserved.`).
+  (`// Copyright Zhaohui Feng 2026. All Rights Reserved.`).
 
 ## References
 

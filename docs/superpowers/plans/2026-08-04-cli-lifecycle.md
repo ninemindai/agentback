@@ -17,7 +17,7 @@
 - **ESM-only.** Every relative import carries a `.js` extension, even from `.ts` sources.
 - **Copyright header on every new file**, exactly three lines:
   ```ts
-  // Copyright NineMind, Inc. 2026. All Rights Reserved.
+  // Copyright Zhaohui Feng 2026. All Rights Reserved.
   // This file is licensed under the MIT License.
   // License text available at https://opensource.org/license/mit/
   ```
@@ -286,7 +286,7 @@ Expected: PASS, including the pre-existing `parseDeployArgs` tests.
 Create `packages/cli/src/__tests__/unit/new.unit.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -346,7 +346,7 @@ Expected: FAIL — cannot resolve `../../new.js`.
 - [ ] **Step 8: Implement `new.ts`**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -478,7 +478,7 @@ git commit -m "feat(cli): subcommand router and \`agentback new\` delegating to 
 Create `packages/cli/src/__tests__/unit/update-versions.unit.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -629,7 +629,7 @@ Expected: FAIL — cannot resolve `../../update/versions.js`.
 - [ ] **Step 3: Implement `versions.ts`**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -805,7 +805,7 @@ git commit -m "feat(cli): version resolution and lockstep range bumping for upda
 Create `packages/cli/src/__tests__/unit/update-package-manager.unit.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -904,7 +904,7 @@ Expected: FAIL — cannot resolve `../../update/package-manager.js`.
 - [ ] **Step 3: Implement `package-manager.ts`**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1011,7 +1011,7 @@ git commit -m "feat(cli): lockfile-based package-manager detection for update"
 Create `packages/cli/src/__tests__/unit/update-migration.unit.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1065,7 +1065,7 @@ Expected: FAIL — cannot resolve `../../update/migration.js`.
 - [ ] **Step 3: Implement `migration.ts`**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1185,7 +1185,7 @@ Expected: `function`. If pnpm rejected the version at install with `ERR_PNPM_MIN
 Create `packages/cli/src/__tests__/integration/update-project.integration.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1281,7 +1281,7 @@ Expected: FAIL — cannot resolve `../../update/project.js`.
 - [ ] **Step 4: Implement `project.ts`**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1364,7 +1364,7 @@ git commit -m "feat(cli): lazy ts-morph project seam with a formatting-fidelity 
 Create `packages/cli/src/__tests__/unit/update-advisories.unit.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1507,7 +1507,7 @@ Expected: FAIL — cannot resolve `../../update/migrations/index.js`.
 Create `packages/cli/src/update/migrations/helpers.ts` — shared queries live in their own file, **not** inside one migration. A helper exported from `mcp-stateless-default.ts` and imported by its two siblings means deleting that migration breaks the other two:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1553,7 +1553,7 @@ export function rel(ctx: MigrationContext, file: SourceFile): string {
 Create `packages/cli/src/update/migrations/mcp-stateless-default.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1606,7 +1606,7 @@ export const mcpStatelessDefault: Migration = {
 Create `packages/cli/src/update/migrations/mcp-stateless-scope-holes.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1660,7 +1660,7 @@ export const mcpStatelessScopeHoles: Migration = {
 Create `packages/cli/src/update/migrations/mcp-origin-validation.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1701,7 +1701,7 @@ export const mcpOriginValidation: Migration = {
 Create `packages/cli/src/update/migrations/index.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1760,7 +1760,7 @@ git commit -m "feat(cli): three 0.9.0 seed advisories with positive and negative
 Create `packages/cli/src/__tests__/unit/update-run.unit.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -2152,7 +2152,7 @@ export function parseUpdateArgs(argv: string[]): UpdateArgs {
 - [ ] **Step 4: Implement `run-update.ts`**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
