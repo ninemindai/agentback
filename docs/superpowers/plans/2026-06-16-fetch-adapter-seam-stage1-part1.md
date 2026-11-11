@@ -44,7 +44,7 @@
 Create `packages/rest/src/__tests__/unit/web-router.unit.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -123,7 +123,7 @@ Expected: build FAILS — `Cannot find module '../../web/router.js'` (the source
 Create `packages/rest/src/web/router.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -224,7 +224,7 @@ git commit -m "feat(rest): runtime-neutral core Router"
 Create `packages/rest/src/__tests__/unit/web-convert.unit.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -295,7 +295,7 @@ Expected: build FAILS — `Cannot find module '../../web/convert.js'`.
 Create `packages/rest/src/web/convert.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -377,7 +377,7 @@ git commit -m "feat(rest): Node<->Web request/response converters"
 Create `packages/rest/src/__tests__/unit/host-fetch.unit.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -439,7 +439,7 @@ Expected: build FAILS — `Cannot find module '../../host/fetch.js'`.
 Create `packages/rest/src/host/fetch.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -513,7 +513,7 @@ git commit -m "feat(rest): FetchHost adapter composing router + dispatch"
 Create `packages/rest/src/__tests__/integration/host-node.integration.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -594,7 +594,7 @@ Expected: build FAILS — `Cannot find module '../../host/node.js'`.
 Create `packages/rest/src/host/node.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -743,7 +743,7 @@ These seven decisions SUPERSEDE the tasks above where they conflict. Apply them 
 - **Task 4 `host/node.ts` becomes a thin wrapper** over Hono's listener — which handles Set-Cookie multiplicity, `AbortSignal`/client-disconnect, HEAD, 204, Content-Length, and stream errors for free:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -771,7 +771,7 @@ export function createNodeListener(host: FetchHost): RequestListener {
 Before Task 3, add `web/dispatch.ts` declaring the type Part 2's `RestHandler` will implement, so `FetchHost` is validated against the real consumer's needs on paper:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -847,7 +847,7 @@ Replace Task 1's implementation and tests with the version below. Static segment
 **`web/router.ts`:**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 

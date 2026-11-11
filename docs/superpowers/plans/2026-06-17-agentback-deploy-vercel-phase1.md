@@ -14,7 +14,7 @@
 - **Tests run against `dist/`**, not `src/`. Always `pnpm -F @agentback/cli build` before `pnpm -F @agentback/cli test`. Test files: `src/__tests__/unit/<name>.unit.ts`, compiled and globbed as `packages/*/dist/__tests__/**/*.unit.js`.
 - **License header** on every source file (tooling-package style, matching `create-agentback`):
   ```ts
-  // Copyright NineMind, Inc. 2026. All Rights Reserved.
+  // Copyright Zhaohui Feng 2026. All Rights Reserved.
   // This file is licensed under the MIT License.
   // License text available at https://opensource.org/license/mit/
   ```
@@ -135,7 +135,7 @@ In root `tsconfig.json`, add to the `references` array (after `packages/create-a
 - [ ] **Step 4: Create `packages/cli/src/cli.ts` (minimal, prints usage)**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -219,7 +219,7 @@ git commit -m "feat(cli): @agentback/cli package skeleton with agentback/abc bin
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -292,7 +292,7 @@ Expected: FAIL — cannot find module `../../args.js`.
 - [ ] **Step 3: Write minimal implementation**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -406,7 +406,7 @@ git commit -m "feat(cli): deploy arg parser"
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -446,7 +446,7 @@ Expected: FAIL — cannot find module `../../generate-entry.js`.
 - [ ] **Step 3: Write minimal implementation**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -520,7 +520,7 @@ git commit -m "feat(cli): generate Vercel api/index.ts entry"
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -592,7 +592,7 @@ Expected: FAIL — cannot find module `../../merge-config.js`.
 - [ ] **Step 3: Write minimal implementation**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -698,7 +698,7 @@ git commit -m "feat(cli): order-aware idempotent vercel.json merge"
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -775,7 +775,7 @@ Expected: FAIL — cannot find module `../../detect.js`.
 - [ ] **Step 3: Write minimal implementation**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -872,7 +872,7 @@ git commit -m "feat(cli): builder resolution and console acknowledgement gate"
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -931,7 +931,7 @@ Expected: FAIL — cannot find module `../../verify.js`.
 - [ ] **Step 3: Write minimal implementation**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1008,7 +1008,7 @@ git commit -m "feat(cli): REST liveness verify with injectable fetch"
 - [ ] **Step 1: Write `exec.ts` (no test — thin wrapper)**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1042,7 +1042,7 @@ export const nodeExec: Exec = (cmd, args) =>
 - [ ] **Step 2: Write the failing test for `run-vercel.ts`**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1154,7 +1154,7 @@ Expected: FAIL — cannot find module `../../run-vercel.js`.
 - [ ] **Step 4: Write minimal implementation**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1311,7 +1311,7 @@ git commit -m "feat(cli): vercel deploy orchestration with injectable exec/fetch
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1342,7 +1342,7 @@ Expected: FAIL — `main(['deploy','vercel','--bogus'])` currently returns the s
 - [ ] **Step 3: Write the implementation**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1459,7 +1459,7 @@ git commit -m "feat(cli): wire deploy vercel end-to-end with clean error mapping
 - [ ] **Step 1: Write the gated e2e**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 

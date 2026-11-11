@@ -16,7 +16,7 @@
 - **ESM:** every relative import carries a `.js` extension, even from a `.ts` file.
 - **Copyright header** on every new file, exactly three lines:
   ```ts
-  // Copyright NineMind, Inc. 2026. All Rights Reserved.
+  // Copyright Zhaohui Feng 2026. All Rights Reserved.
   // This file is licensed under the MIT License.
   // License text available at https://opensource.org/license/mit/
   ```
@@ -48,7 +48,7 @@ The existing `unbindOwned` guards the _unbind_. The teardown also needs to _rest
 Create `packages/core/src/__tests__/unit/installed.unit.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -244,7 +244,7 @@ Create fixture `packages/plugin/fixtures/graph-provider/package.json`:
 Create `packages/plugin/fixtures/graph-provider/index.js`:
 
 ```js
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -277,7 +277,7 @@ Create fixture `packages/plugin/fixtures/graph-malformed/package.json`:
 Create `packages/plugin/fixtures/graph-malformed/index.js`:
 
 ```js
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -424,7 +424,7 @@ export type PluginLoadErrorKind =
 Create `packages/plugin/src/__tests__/unit/graph.unit.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -582,7 +582,7 @@ Expected: FAIL — cannot resolve `../../graph.js`.
 Create `packages/plugin/src/graph.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -832,7 +832,7 @@ Create fixture `packages/plugin/fixtures/graph-consumer/package.json`:
 Create `packages/plugin/fixtures/graph-consumer/index.js`:
 
 ```js
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -941,7 +941,7 @@ app.component() had run its side effects."
 Create `packages/plugin/src/__tests__/unit/mount.unit.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1045,7 +1045,7 @@ Expected: FAIL — `buildTeardown` is not exported and `tryMount` takes 3 args.
 Replace `packages/plugin/src/mount.ts` in full:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1320,7 +1320,7 @@ A colliding mount now rolls back instead of staying mounted and unreported."
 Create `packages/plugin/src/__tests__/acceptance/unmount.acceptance.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1395,7 +1395,7 @@ Create `packages/plugin/fixtures/observer-plugin/package.json`:
 Create `packages/plugin/fixtures/observer-plugin/index.js`:
 
 ```js
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1702,7 +1702,7 @@ The mechanism landed in Task 5; this task proves it, because the failure is sile
 `packages/plugin/fixtures/shared-component/index.js` (plain module, not a plugin):
 
 ```js
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1731,7 +1731,7 @@ export class SharedComponent {
 `packages/plugin/fixtures/shared-a/index.js`:
 
 ```js
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -1812,7 +1812,7 @@ An unbound `@mcpServer` currently stays in a built server's `visible` map, and `
 Create `packages/mcp/src/__tests__/integration/tool-retraction.integration.ts`:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -2000,7 +2000,7 @@ controller liveness gate and removes the fallback."
 `packages/plugin/fixtures/route-plugin/package.json` mirrors `good-plugin` with `"component": "RouteComponent"`. `index.js`:
 
 ```js
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -2029,7 +2029,7 @@ export class RouteComponent {
 - [ ] **Step 2: Write the conformance test**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 

@@ -41,7 +41,7 @@
     "vitest": "~5.0.1"
   },
   "license": "MIT",
-  "copyright.owner": "NineMind, Inc.",
+  "copyright.owner": "Zhaohui Feng",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ninemindai/agentback.git"

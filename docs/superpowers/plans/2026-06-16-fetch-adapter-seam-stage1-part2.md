@@ -36,7 +36,7 @@
 - [ ] **Step 1: Create the module**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -93,7 +93,7 @@ git commit -m "refactor(rest): extract parseSection into shared neutral module"
 - [ ] **Step 1: Create**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -127,7 +127,7 @@ export interface RouteValue {
 - [ ] **Step 2: Implement**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
@@ -301,7 +301,7 @@ Build a real `Context`, bind a controller, wrap `RestHandler.dispatch` in `creat
 - [ ] **Step 1: Write tests**
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 

@@ -283,10 +283,10 @@ substitute. **When you edit this file, run `pnpm agents-md`.**
 
 ## Licensing and copyright headers
 
-The project is MIT-licensed (root `LICENSE`, `Copyright (c) NineMind, Inc.`). Every source file carries a three-line header — keep it on new files:
+The project is MIT-licensed (root `LICENSE`, `Copyright (c) Zhaohui Feng`). Every source file carries a three-line header — keep it on new files:
 
 ```ts
-// Copyright NineMind, Inc. 2026. All Rights Reserved.
+// Copyright Zhaohui Feng 2026. All Rights Reserved.
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 ```
