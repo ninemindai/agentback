@@ -146,15 +146,52 @@ node clock skew, 60s between our own instances). A `retentionSeconds` below
 constructed, so a store too short for the default fails at boot rather than
 after a payer has sent XNO.
 
-**A block hash is a bearer proof.** Nothing in the send ties it to the caller
-who presents it, so whoever presents a qualifying recent send first gets the
-call. The recency window keeps old sends and unrelated donations to `payTo`
-from being redeemed, but it does not stop someone watching `payTo` from
-presenting a payer's fresh hash before the payer does. Closing that needs the
-presenter to prove control of the paying account (a signature over a
-server-issued nonce) or a server-issued per-challenge amount remembered until
-it is paid; neither is implemented here. Keep `maxTimeoutSeconds` short and
-prices small accordingly.
+For a single process, `FileNanoReplayStore` keeps claims in an append-only
+file (one block hash per line, flushed to disk before `claim` returns), so a
+block that paid before a restart is still refused after it. It keeps every
+claim forever, uses only `node:fs`, and drops a last line cut short by a crash
+when it reopens; any other bad line stops the boot. Several instances still
+need a shared store.
+
+```ts
+import {FileNanoReplayStore} from '@agentback/payments';
+
+const spentBlocks = new FileNanoReplayStore('/var/lib/myapp/nano-claims.txt');
+```
+
+**Without a binding, a block hash is a bearer proof.** Nothing in the send
+ties it to the caller who presents it, so whoever presents a qualifying recent
+send first gets the call. The recency window keeps old sends and unrelated
+donations to `payTo` from being redeemed, but it does not stop someone
+watching `payTo` from presenting a payer's fresh hash before the payer does.
+
+`nanoRequirement({..., requireBinding: true})` closes that with an order
+commitment (xno-binding v1, option C). The entry carries
+`extra: {binding: 'xno-binding/v1/rep'}`. The client draws a random order id
+(22 to 128 URL-safe characters, at least 128 random bits) for the call, sends
+exactly `maxAmountRequired` raw to `payTo` with the block's representative
+set to `nanoOrderCommitment(orderId, payTo, maxAmountRequired)` (the
+SHA-256 of `"xno-binding/v1/rep|" + orderId + "|" + payTo + "|" + amount`,
+encoded as a `nano_` account), and presents both:
+
+```json
+{
+  "x402Version": 1,
+  "scheme": "exact",
+  "network": "nano:mainnet",
+  "payload": {"blockHash": "<64 hex>", "orderId": "<order id>"}
+}
+```
+
+The payer signs the representative, so the block binds to that order, that
+destination and that price; someone who sees the block on the ledger does not
+know the order id and cannot redeem it. A bound requirement refuses a payload
+without `orderId`, a representative that is not the commitment, and any amount
+other than the exact price; the settled receipt carries the `orderId`. The
+replay store still makes each block pay once. The order id is the payer's
+secret until it presents the payment, so keep it out of logs and URLs.
+Without `requireBinding` nothing changes; keep `maxTimeoutSeconds` short and
+prices small for unbound requirements.
 
 ## MPP (sessions)
 

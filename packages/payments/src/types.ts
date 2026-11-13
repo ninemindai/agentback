@@ -26,6 +26,8 @@ export interface PaymentRequirements {
   mimeType?: string;
   /** How long the client has to complete payment. */
   maxTimeoutSeconds?: number;
+  /** Scheme-specific details (x402 `extra`). */
+  extra?: Record<string, unknown>;
 }
 
 /** The body returned with an HTTP 402 for x402 — what the client must pay. */

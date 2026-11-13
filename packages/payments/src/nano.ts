@@ -2,6 +2,7 @@
 // This file is licensed under the MIT License.
 // License text available at https://opensource.org/license/mit/
 
+import {createHash} from 'node:crypto';
 import type {
   PaymentRequirements,
   X402Facilitator,
@@ -56,6 +57,8 @@ export interface NanoBlockInfo {
     balance: string;
     link: string;
     link_as_account?: string;
+    /** Representative the block sets; carries the order commitment. */
+    representative?: string;
   };
 }
 
@@ -199,11 +202,14 @@ export interface NanoFacilitatorOptions {
  * `fallback` untouched. If the node cannot answer, both throw
  * {@link NanoRpcUnavailableError} instead of reporting an invalid payment.
  *
- * A block hash is a bearer proof: nothing ties the send to the caller who
- * presents it, so whoever presents a qualifying recent send first gets the
- * call. The recency window bounds which sends count (old sends and donations
- * to `payTo` do not), but it does not stop a watcher of `payTo` presenting a
- * payer's fresh hash before the payer does.
+ * Without a binding, a block hash is a bearer proof: nothing ties the send to
+ * the caller who presents it, so whoever presents a qualifying recent send
+ * first gets the call. The recency window bounds which sends count (old sends
+ * and donations to `payTo` do not), but it does not stop a watcher of `payTo`
+ * presenting a payer's fresh hash before the payer does. A requirement built
+ * with `requireBinding` closes that: the send must set its representative to
+ * {@link nanoOrderCommitment} of an order id only the payer knows, pay exactly
+ * `maxAmountRequired`, and the payload must carry that `orderId`.
  */
 export class NanoFacilitator implements X402Facilitator {
   private readonly rpc: NanoRpc;
@@ -292,6 +298,7 @@ export class NanoFacilitator implements X402Facilitator {
         payer: checked.payer,
         payTo: checked.payTo,
         amount: checked.amount,
+        ...(checked.orderId !== undefined ? {orderId: checked.orderId} : {}),
       },
     };
   }
@@ -322,6 +329,7 @@ export class NanoFacilitator implements X402Facilitator {
         payer: string;
         payTo: string;
         amount: string;
+        orderId?: string;
       }
   > {
     const invalid = (reason: string) => ({valid: false as const, reason});
@@ -379,6 +387,14 @@ export class NanoFacilitator implements X402Facilitator {
         reason = 'nano: amount too low';
         continue;
       }
+      const bound = requiresBinding(req);
+      if (bound) {
+        const refused = bindingRefusal(nano.orderId, block, req, sent);
+        if (refused) {
+          reason = refused;
+          continue;
+        }
+      }
       const window = req.maxTimeoutSeconds ?? DEFAULT_NANO_MAX_TIMEOUT_SECONDS;
       const retention = this.replay.retentionSeconds;
       if (
@@ -398,6 +414,7 @@ export class NanoFacilitator implements X402Facilitator {
         payer: normalizeAccount(block.contents.account),
         payTo: dest,
         amount: sent.toString(),
+        ...(bound ? {orderId: nano.orderId as string} : {}),
       };
     }
     return invalid(reason);
@@ -419,6 +436,16 @@ export interface NanoRequirementOptions {
    * Default {@link DEFAULT_NANO_MAX_TIMEOUT_SECONDS}.
    */
   maxTimeoutSeconds?: number;
+  /**
+   * Bind each payment to one order (xno-binding v1, representative
+   * commitment). The entry then carries `extra: {binding:
+   * 'xno-binding/v1/rep'}` and {@link NanoFacilitator} accepts a send only if
+   * it pays exactly `amountRaw`, its representative is
+   * {@link nanoOrderCommitment} of the payload's `orderId`, and the payload
+   * carries that `orderId`. Default `false`: the payload is a block hash
+   * alone, as before.
+   */
+  requireBinding?: boolean;
 }
 
 /**
@@ -450,7 +477,66 @@ export function nanoRequirement(
     ...(opts.description != null ? {description: opts.description} : {}),
     ...(opts.mimeType != null ? {mimeType: opts.mimeType} : {}),
     maxTimeoutSeconds,
+    ...(opts.requireBinding ? {extra: {binding: NANO_BINDING_V1}} : {}),
   };
+}
+
+/** `extra.binding` of a requirement that binds a Nano payment to one order. */
+export const NANO_BINDING_V1 = 'xno-binding/v1/rep';
+
+const ORDER_ID_RE = /^[A-Za-z0-9_-]{22,128}$/;
+
+/**
+ * Whether `orderId` can bind a payment: URL-safe and at least 22 characters,
+ * so it can carry 128 random bits. It is the payer's claim secret, so it must
+ * be random and kept private until the payment is presented.
+ */
+export function isValidNanoOrderId(orderId: unknown): orderId is string {
+  return typeof orderId === 'string' && ORDER_ID_RE.test(orderId);
+}
+
+/**
+ * The `nano_` account a payer sets as the representative of its send block
+ * to bind the payment to one order (xno-binding v1, option C): the public key
+ * is `SHA-256("xno-binding/v1/rep|" + orderId + "|" + payTo + "|" +
+ * amountRaw)`. The payer signs the block, so the commitment covers the order,
+ * the destination and the exact price; someone who sees the block on the
+ * ledger cannot present it without the order id.
+ */
+export function nanoOrderCommitment(
+  orderId: string,
+  payTo: string,
+  amountRaw: string,
+): string {
+  const key = createHash('sha256')
+    .update(`${NANO_BINDING_V1}|${orderId}|${payTo}|${amountRaw}`, 'utf8')
+    .digest();
+  return encodeNanoAccount(new Uint8Array(key));
+}
+
+function requiresBinding(req: PaymentRequirements): boolean {
+  return req.extra?.binding === NANO_BINDING_V1;
+}
+
+/** Why a send does not meet a binding requirement, or `undefined` if it does. */
+function bindingRefusal(
+  orderId: unknown,
+  block: NanoBlockInfo,
+  req: PaymentRequirements,
+  sent: bigint,
+): string | undefined {
+  if (orderId === undefined) return 'nano: order id required';
+  if (!isValidNanoOrderId(orderId)) return 'nano: malformed order id';
+  if (sent !== BigInt(req.maxAmountRequired)) {
+    return 'nano: amount not exact';
+  }
+  const commitment = nanoOrderCommitment(
+    orderId,
+    normalizeAccount(req.payTo),
+    req.maxAmountRequired,
+  );
+  const rep = normalizeAccount(block.contents.representative ?? '');
+  return rep === commitment ? undefined : 'nano: not bound to this order';
 }
 
 /**
@@ -496,6 +582,7 @@ function unixSeconds(value: string | undefined): number | undefined {
 /** A payment payload that names network `nano:mainnet`, fields unchecked. */
 interface NanoPayment {
   blockHash: unknown;
+  orderId: unknown;
   scheme: unknown;
   x402Version: unknown;
 }
@@ -524,12 +611,31 @@ function decodeNanoPayment(payment: string): NanoPayment | undefined {
     payload?: unknown;
   };
   if (p.network !== NANO_MAINNET) return undefined;
-  const inner = (p.payload ?? {}) as {blockHash?: unknown};
+  const inner = (p.payload ?? {}) as {blockHash?: unknown; orderId?: unknown};
   return {
     blockHash: inner.blockHash,
+    orderId: inner.orderId,
     scheme: p.scheme,
     x402Version: p.x402Version,
   };
+}
+
+/** Encode a 32-byte public key as a `nano_` account with its checksum. */
+function encodeNanoAccount(publicKey: Uint8Array): string {
+  const checksum = blake2b(publicKey, 5).reverse();
+  return `nano_${base32Encode(publicKey, 52)}${base32Encode(checksum, 8)}`;
+}
+
+/** The low `5 * chars` bits of the big-endian `bytes`, in Nano base32. */
+function base32Encode(bytes: Uint8Array, chars: number): string {
+  let value = 0n;
+  for (const b of bytes) value = (value << 8n) | BigInt(b);
+  let out = '';
+  for (let i = 0; i < chars; i++) {
+    out = ALPHABET[Number(value & 31n)] + out;
+    value >>= 5n;
+  }
+  return out;
 }
 
 /** Decode Nano base32 into the big-endian bytes of a `bits`-bit number. */
